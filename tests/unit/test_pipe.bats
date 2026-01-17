@@ -33,12 +33,12 @@ setup() {
 }
 
 @test "pipe_filter: regex pattern support" {
-    result=$(echo -e "1\n2\n10\n20" | pipe_filter '^[12]$')
+    result=$(printf '%s\n' "1" "2" "10" "20" | pipe_filter '^[12]$')
     [[ "$result" == $'1\n2' ]]
 }
 
 @test "pipe_filter: no matches returns empty" {
-    result=$(echo -e "foo\nbar" | pipe_filter 'xyz')
+    result=$(printf '%s\n' "foo" "bar" | pipe_filter 'xyz')
     [[ -z "$result" ]]
 }
 
@@ -47,7 +47,7 @@ setup() {
 # =============================================================================
 
 @test "pipe_reject: filters lines NOT matching pattern" {
-    result=$(echo -e "foo\nbar\nbaz" | pipe_reject 'ba')
+    result=$(printf '%s\n' "foo" "bar" "baz" | pipe_reject 'ba')
     [[ "$result" == "foo" ]]
 }
 
@@ -144,7 +144,7 @@ setup() {
 }
 
 @test "pipe_field: handles multiple lines" {
-    result=$(echo -e "a:b:c\nd:e:f" | pipe_field 1 ':')
+    result=$(printf '%s\n' "a:b:c" "d:e:f" | pipe_field 1 ':')
     [[ "$result" == $'a\nd' ]]
 }
 
@@ -374,6 +374,6 @@ setup() {
 }
 
 @test "composition: field extraction and transformation" {
-    result=$(echo -e "John:Doe\nJane:Smith" | pipe_field 1 ':' | pipe_upper)
+    result=$(printf '%s\n' "John:Doe" "Jane:Smith" | pipe_field 1 ':' | pipe_upper)
     [[ "$result" == $'JOHN\nJANE' ]]
 }
