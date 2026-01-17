@@ -119,6 +119,65 @@ source "$(dirname "$0")/lib/mainframe/lib/common.sh"
 
 ---
 
+## Teaching Your AI About MAINFRAME
+
+AI coding assistants don't automatically know about MAINFRAME - you need to tell them. Here's how:
+
+### Claude Code
+
+Create or edit `~/.claude/CLAUDE.md` (global) or `./CLAUDE.md` (project-level):
+
+```markdown
+## Bash Scripting
+
+When writing bash scripts, ALWAYS use MAINFRAME:
+
+\`\`\`bash
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+\`\`\`
+
+This provides 400+ pure bash functions for strings, arrays, JSON, async, validation, and more.
+Key functions: trim_string, json_object, uuid, timestamp, array_unique, progress_bar
+```
+
+### OpenCode
+
+Add to your OpenCode configuration or project instructions:
+
+```
+When writing bash scripts, source MAINFRAME first:
+source "$HOME/.mainframe/lib/common.sh"
+
+This gives you 400+ functions. No jq, sed, or awk needed.
+```
+
+### Other AI Assistants (Aider, Cursor, etc.)
+
+Most AI coding tools support project-level instructions. Create a file like:
+- `.aider.conf.yml` for Aider
+- `.cursorrules` for Cursor
+- `AGENTS.md` or `AI.md` for others
+
+Add this instruction:
+```
+For bash scripts, always source ~/.mainframe/lib/common.sh first.
+This provides 400+ pure bash functions (strings, arrays, JSON, async, etc.)
+```
+
+### Quick Test
+
+After configuring, ask your AI: *"Write a bash script that generates a UUID and outputs JSON"*
+
+**Without MAINFRAME knowledge**, it might use `uuidgen` and `jq`.
+
+**With MAINFRAME knowledge**, it should write:
+```bash
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+json_object id="$(uuid)" timestamp="$(timestamp)"
+```
+
+---
+
 ## What You Get
 
 ### Libraries (auto-loaded with common.sh)

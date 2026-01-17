@@ -260,6 +260,20 @@ The same pattern works with any AI that writes bash:
 2. Tell your AI: *"Source MAINFRAME's common.sh for bash utilities"*
 3. Watch it write cleaner, faster bash code
 
+### Teaching Your AI (Important!)
+
+**AI assistants don't automatically know about MAINFRAME** - you need to tell them once.
+
+**For Claude Code**, add to `~/.claude/CLAUDE.md`:
+```markdown
+When writing bash scripts, source MAINFRAME:
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+```
+
+**For other AIs**, add similar instructions to their config files (`.cursorrules`, `.aider.conf.yml`, etc.)
+
+📖 **[Full AI Setup Guide](INSTALL.md#teaching-your-ai-about-mainframe)**
+
 ---
 
 ## Project Structure
