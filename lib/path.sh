@@ -523,6 +523,7 @@ path_sanitize() {
 path_expand_tilde() {
     local path="$1"
 
+    # shellcheck disable=SC2088  # Intentional: matching literal tilde patterns for expansion
     case "$path" in
         "~")
             printf '%s\n' "$HOME"
