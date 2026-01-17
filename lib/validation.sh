@@ -523,7 +523,7 @@ sanitize_html() {
     value="${value//\"/&quot;}"
     value="${value//\'/&#39;}"
 
-    printf '%s' "$value"
+    printf '%s\n' "$value"
 }
 
 # Sanitize for JSON string (escape special chars)
