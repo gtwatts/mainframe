@@ -11,7 +11,6 @@
 ║         "Mainframe can make a computer do anything               ║
 ║                       short of tap dance."                       ║
 ╚══════════════════════════════════════════════════════════════════╝
-           G.I. JOE: A REAL AMERICAN HERO
       "Knowing Your Shell is half the battle."
 ```
 
