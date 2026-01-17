@@ -69,9 +69,10 @@ jobs:
           # Exclude expected warnings for hook code:
           # SC1090: Can't follow non-constant source
           # SC2034: Variables unused (exported for users)
+          # SC2053: Intentional glob pattern matching in [[ ]]
           # SC2155: Declare and assign separately
           find hooks -name '*.sh' -type f | xargs shellcheck -x \
-            -e SC1090 -e SC2034 -e SC2155
+            -e SC1090 -e SC2034 -e SC2053 -e SC2155
 
   test-unit:
     name: Unit Tests
