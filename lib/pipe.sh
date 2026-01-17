@@ -59,15 +59,12 @@ pipe_map() {
 pipe_filter() {
     local pattern="$1"
     local invert="${2:-}"
-    local line
 
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        if [[ "$invert" == "-v" ]]; then
-            [[ ! "$line" =~ $pattern ]] && printf '%s\n' "$line"
-        else
-            [[ "$line" =~ $pattern ]] && printf '%s\n' "$line"
-        fi
-    done
+    if [[ "$invert" == "-v" ]]; then
+        grep -v -E -- "$pattern" || true
+    else
+        grep -E -- "$pattern" || true
+    fi
 }
 
 # Filter lines NOT matching a pattern
@@ -241,25 +238,26 @@ pipe_shuffle() {
 # Example: echo "a:b:c" | pipe_field 2 ':'   # outputs: b
 #          echo "a b c" | pipe_field 1       # outputs: a
 pipe_field() {
-    local n="$1"
+    local field_num="$1"
     local delim="${2:- }"
-    local line
+    local line idx
 
     while IFS= read -r line || [[ -n "$line" ]]; do
         local IFS="$delim"
         local -a fields
         read -ra fields <<< "$line"
 
-        if [[ $n -lt 0 ]]; then
+        # Calculate index fresh for each line
+        if [[ $field_num -lt 0 ]]; then
             # Negative index from end
-            n=$((${#fields[@]} + n))
+            idx=$((${#fields[@]} + field_num))
         else
             # Convert to 0-based
-            ((n--))
+            idx=$((field_num - 1))
         fi
 
-        if [[ $n -ge 0 && $n -lt ${#fields[@]} ]]; then
-            printf '%s\n' "${fields[n]}"
+        if [[ $idx -ge 0 && $idx -lt ${#fields[@]} ]]; then
+            printf '%s\n' "${fields[idx]}"
         else
             printf '\n'
         fi
