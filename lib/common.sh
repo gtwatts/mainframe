@@ -668,6 +668,11 @@ if [[ -f "${_MAINFRAME_LIB_DIR}/crypto.sh" ]]; then
     source "${_MAINFRAME_LIB_DIR}/crypto.sh"
 fi
 
+# Source docker.sh for Docker container operations
+if [[ -f "${_MAINFRAME_LIB_DIR}/docker.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/docker.sh"
+fi
+
 # =============================================================================
 # MODULE EXPORTS
 # =============================================================================
@@ -726,4 +731,21 @@ BASHER_COMMON_EXPORTS=(
     proc_signal proc_kill proc_kill_force proc_kill_tree
     proc_wait proc_wait_timeout proc_wait_start
     proc_count proc_load proc_uptime proc_uptime_human
+    # Docker (from docker.sh)
+    docker_running docker_version
+    docker_container_exists docker_container_running docker_container_status
+    docker_container_id docker_container_id_short
+    docker_container_start docker_container_stop docker_container_restart docker_container_remove
+    docker_containers_running docker_containers_all
+    docker_exec docker_exec_it
+    docker_logs docker_logs_follow
+    docker_stats_json docker_cpu docker_memory docker_memory_percent
+    docker_container_ip docker_container_ports docker_container_env docker_container_labels docker_container_image
+    docker_image_exists docker_image_id docker_image_size docker_image_size_human
+    docker_image_pull docker_image_remove docker_images
+    docker_port_used docker_port_container
+    compose_running compose_status compose_exec compose_up compose_down compose_logs compose_services
+    docker_volume_exists docker_volume_create docker_volume_remove docker_volumes
+    docker_network_exists docker_network_create docker_network_remove docker_networks
+    docker_prune_containers docker_prune_images docker_prune_volumes docker_prune_all
 )

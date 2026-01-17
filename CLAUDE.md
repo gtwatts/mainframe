@@ -35,6 +35,7 @@ MAINFRAME provides **17 libraries** with **500+ functions**. Here's what's avail
 | **Git** | `git_branch`, `git_is_dirty`, `git_commit_hash`, `git_changed_files` | Git workflows |
 | **Crypto** | `sha256`, `md5`, `base64_encode`, `base64_decode`, `random_token` | Hashing/encoding |
 | **Process** | `proc_exists`, `proc_find_by_port`, `lockfile_acquire`, `with_timeout` | Process management |
+| **Docker** | `docker_running`, `docker_container_running`, `docker_exec`, `compose_up` | Docker/Compose helpers |
 
 ### Formatting Functions
 
@@ -108,6 +109,21 @@ sha256 "data"           # SHA-256 hash
 md5 "data"              # MD5 hash
 base64_encode "hello"   # Base64 encode
 random_token 32         # Secure random token
+```
+
+### Docker
+
+```bash
+docker_running                          # Check if daemon is running
+docker_container_running "nginx"        # Check if container is running
+docker_container_status "nginx"         # Get status: running, exited, etc.
+docker_exec "nginx" "cat /etc/nginx/nginx.conf"  # Execute in container
+docker_logs "nginx" 100                 # Get last 100 lines of logs
+docker_stats_json "nginx"               # Get CPU/memory stats as JSON
+docker_port_used 8080                   # Check if port used by Docker
+compose_running "web"                   # Check if compose service running
+compose_exec "web" "npm run migrate"    # Execute in compose service
+compose_up                              # Start compose services
 ```
 
 ## Important Rules
