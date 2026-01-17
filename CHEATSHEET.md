@@ -270,6 +270,279 @@ success "Complete!"
 
 ---
 
-*397 functions | 11 libraries | Zero dependencies | 20-72x faster*
+## DateTime Functions (datetime.sh)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `now` | `now` | `now` | `1705312896` (Unix timestamp) |
+| `now_ms` | `now_ms` | `now_ms` | `1705312896123` |
+| `now_iso` | `now_iso` | `now_iso` | `2024-01-15T10:30:00-0500` |
+| `now_rfc2822` | `now_rfc2822` | `now_rfc2822` | `Mon, 15 Jan 2024 10:30:00 -0500` |
+| `parse_iso` | `parse_iso "iso_string"` | `parse_iso "2024-01-15T10:30:00Z"` | `1705312200` |
+| `parse_date` | `parse_date "date_string"` | `parse_date "2024-01-15"` | `1705276800` |
+| `format_epoch` | `format_epoch epoch "format"` | `format_epoch 1705312896 "%Y-%m-%d"` | `2024-01-15` |
+| `format_iso` | `format_iso [epoch]` | `format_iso` | `2024-01-15T10:30:00Z` |
+| `format_date` | `format_date [epoch]` | `format_date` | `2024-01-15` |
+| `format_time` | `format_time [epoch]` | `format_time` | `10:30:00` |
+| `format_relative` | `format_relative epoch` | `format_relative $(($(now)-3600))` | `1 hour ago` |
+| `date_add` | `date_add epoch "duration"` | `date_add $(now) "2d"` | (epoch + 2 days) |
+| `date_subtract` | `date_subtract epoch "duration"` | `date_subtract $(now) "1w"` | (epoch - 1 week) |
+| `date_diff` | `date_diff epoch1 epoch2` | `date_diff 1705312896 1705226496` | `86400` (seconds) |
+| `date_diff_human` | `date_diff_human epoch1 epoch2` | `date_diff_human $e1 $e2` | `1 day, 2 hours` |
+| `year` | `year [epoch]` | `year` | `2024` |
+| `month` | `month [epoch]` | `month` | `1` |
+| `day` | `day [epoch]` | `day` | `15` |
+| `day_of_week` | `day_of_week [epoch]` | `day_of_week` | `Monday` |
+| `is_weekend` | `is_weekend [epoch]` | `is_weekend` | (returns 0/1) |
+| `is_weekday` | `is_weekday [epoch]` | `is_weekday` | (returns 0/1) |
+| `is_leap_year` | `is_leap_year year` | `is_leap_year 2024` | (returns 0/1) |
+| `start_of_day` | `start_of_day [epoch]` | `start_of_day` | (midnight epoch) |
+| `end_of_day` | `end_of_day [epoch]` | `end_of_day` | (23:59:59 epoch) |
+| `start_of_month` | `start_of_month [epoch]` | `start_of_month` | (first day epoch) |
+| `end_of_month` | `end_of_month [epoch]` | `end_of_month` | (last day epoch) |
+
+---
+
+## HTTP Functions (http.sh)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `http_get` | `http_get "url"` | `http_get "http://api.example.com/data"` | Response body |
+| `http_post` | `http_post "url" "data"` | `http_post "http://api.example.com" "name=test"` | Response body |
+| `http_put` | `http_put "url" "data"` | `http_put "http://api.example.com/1" "{}"` | Response body |
+| `http_delete` | `http_delete "url"` | `http_delete "http://api.example.com/1"` | Response body |
+| `http_head` | `http_head "url"` | `http_head "http://example.com"` | Headers only |
+| `http_json_get` | `http_json_get "url"` | `http_json_get "http://api.example.com"` | JSON response |
+| `http_json_post` | `http_json_post "url" "json"` | `http_json_post "$url" '{"name":"test"}'` | JSON response |
+| `url_parse` | `url_parse "url"` | `url_parse "http://host:8080/path?q=1"` | Sets URL_* vars |
+| `url_encode` | `url_encode "string"` | `url_encode "hello world"` | `hello%20world` |
+| `url_decode` | `url_decode "string"` | `url_decode "hello%20world"` | `hello world` |
+| `query_string` | `query_string "k=v" "k2=v2"` | `query_string "a=1" "b=2"` | `a=1&b=2` |
+| `http_header` | `http_header "name" "value"` | `http_header "Accept" "application/json"` | Header line |
+| `http_auth_basic` | `http_auth_basic "user" "pass"` | `http_auth_basic "admin" "secret"` | Auth header |
+| `http_auth_bearer` | `http_auth_bearer "token"` | `http_auth_bearer "abc123"` | Auth header |
+| `http_status` | `http_status` | `http_status` | `200` (last response) |
+| `http_body` | `http_body` | `http_body` | Response body |
+| `http_header_get` | `http_header_get "name"` | `http_header_get "Content-Type"` | Header value |
+| `http_is_success` | `http_is_success` | `http_is_success && echo "OK"` | (returns 0/1) |
+
+**Note**: Pure bash HTTP only. HTTPS requires openssl.
+
+---
+
+## CSV Functions (csv.sh)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `csv_parse_line` | `csv_parse_line "line"` | `csv_parse_line 'a,"b,c",d'` | Sets CSV_FIELDS array |
+| `csv_parse_file` | `csv_parse_file "file"` | `csv_parse_file "data.csv"` | Sets CSV_ROWS array |
+| `csv_field` | `csv_field "line" index` | `csv_field "a,b,c" 1` | `b` |
+| `csv_field_count` | `csv_field_count "line"` | `csv_field_count "a,b,c"` | `3` |
+| `csv_read` | `csv_read "file"` | `csv_read "data.csv"` | Sets CSV_HEADERS + CSV_ROWS |
+| `csv_get` | `csv_get row_num "column"` | `csv_get 0 "name"` | Field value |
+| `csv_column` | `csv_column "column"` | `csv_column "email"` | Column values array |
+| `csv_row` | `csv_row val1 val2 ...` | `csv_row "John" "john@ex.com"` | `John,john@ex.com` |
+| `csv_escape` | `csv_escape "value"` | `csv_escape 'has, comma'` | `"has, comma"` |
+| `csv_header` | `csv_header col1 col2 ...` | `csv_header "name" "email"` | `name,email` |
+| `csv_write` | `csv_write "file"` | `csv_write "out.csv"` | Writes CSV_ROWS to file |
+| `csv_append_row` | `csv_append_row "file" vals...` | `csv_append_row "f.csv" "a" "b"` | Appends row |
+| `csv_filter` | `csv_filter "file" "col" "val"` | `csv_filter "f.csv" "status" "active"` | Filtered CSV |
+| `csv_sort` | `csv_sort "file" "column"` | `csv_sort "data.csv" "name"` | Sorted CSV |
+| `csv_select` | `csv_select "file" "cols"` | `csv_select "f.csv" "name,email"` | Selected columns |
+| `csv_to_json` | `csv_to_json "file"` | `csv_to_json "data.csv"` | JSON array |
+| `csv_row_count` | `csv_row_count "file"` | `csv_row_count "data.csv"` | `100` |
+| `csv_validate` | `csv_validate "file"` | `csv_validate "data.csv"` | (returns 0/1) |
+| `csv_delimiter` | `csv_delimiter "char"` | `csv_delimiter "\t"` | Sets delimiter (TSV) |
+
+---
+
+## Git Functions (git.sh)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `git_is_repo` | `git_is_repo` | `git_is_repo && echo "yes"` | (returns 0/1) |
+| `git_root` | `git_root` | `git_root` | `/path/to/repo` |
+| `git_branch` | `git_branch` | `git_branch` | `main` |
+| `git_branches` | `git_branches` | `git_branches` | List of branches |
+| `git_default_branch` | `git_default_branch` | `git_default_branch` | `main` or `master` |
+| `git_is_dirty` | `git_is_dirty` | `git_is_dirty && echo "uncommitted"` | (returns 0/1) |
+| `git_is_clean` | `git_is_clean` | `git_is_clean && git push` | (returns 0/1) |
+| `git_has_staged` | `git_has_staged` | `git_has_staged` | (returns 0/1) |
+| `git_has_unstaged` | `git_has_unstaged` | `git_has_unstaged` | (returns 0/1) |
+| `git_has_untracked` | `git_has_untracked` | `git_has_untracked` | (returns 0/1) |
+| `git_files_changed` | `git_files_changed` | `git_files_changed` | List of files |
+| `git_commit_hash` | `git_commit_hash` | `git_commit_hash` | `abc1234` |
+| `git_commit_hash_full` | `git_commit_hash_full` | `git_commit_hash_full` | Full 40-char hash |
+| `git_commit_message` | `git_commit_message` | `git_commit_message` | Latest message |
+| `git_commit_author` | `git_commit_author` | `git_commit_author` | `John Doe` |
+| `git_commit_count` | `git_commit_count` | `git_commit_count` | `42` |
+| `git_commits_ahead` | `git_commits_ahead` | `git_commits_ahead` | `3` |
+| `git_commits_behind` | `git_commits_behind` | `git_commits_behind` | `0` |
+| `git_tag_latest` | `git_tag_latest` | `git_tag_latest` | `v1.2.3` |
+| `git_tags` | `git_tags` | `git_tags` | List of tags |
+| `git_tag_exists` | `git_tag_exists "tag"` | `git_tag_exists "v1.0.0"` | (returns 0/1) |
+| `git_describe` | `git_describe` | `git_describe` | `v1.2.3-4-gabc1234` |
+| `git_remote_url` | `git_remote_url` | `git_remote_url` | `git@github.com:...` |
+| `git_has_remote` | `git_has_remote` | `git_has_remote` | (returns 0/1) |
+| `git_is_pushed` | `git_is_pushed` | `git_is_pushed` | (returns 0/1) |
+| `git_user_name` | `git_user_name` | `git_user_name` | Configured name |
+| `git_user_email` | `git_user_email` | `git_user_email` | Configured email |
+| `git_summary` | `git_summary` | `git_summary` | `main @ abc1234 [clean]` |
+| `git_log_oneline` | `git_log_oneline [n]` | `git_log_oneline 5` | Last 5 commits |
+| `git_changed_since` | `git_changed_since "ref"` | `git_changed_since "HEAD~5"` | Changed files |
+
+---
+
+## Crypto Functions (crypto.sh)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `base64_encode` | `base64_encode "string"` | `base64_encode "hello"` | `aGVsbG8=` |
+| `base64_decode` | `base64_decode "encoded"` | `base64_decode "aGVsbG8="` | `hello` |
+| `base64_encode_file` | `base64_encode_file "file"` | `base64_encode_file "image.png"` | Base64 string |
+| `hex_encode` | `hex_encode "string"` | `hex_encode "hi"` | `6869` |
+| `hex_decode` | `hex_decode "hex"` | `hex_decode "6869"` | `hi` |
+| `md5` | `md5 "string"` | `md5 "hello"` | `5d41402abc4b2a76...` |
+| `md5_file` | `md5_file "file"` | `md5_file "data.txt"` | MD5 hash |
+| `sha1` | `sha1 "string"` | `sha1 "hello"` | SHA-1 hash |
+| `sha256` | `sha256 "string"` | `sha256 "hello"` | `2cf24dba5fb0a30e...` |
+| `sha256_file` | `sha256_file "file"` | `sha256_file "data.txt"` | SHA-256 hash |
+| `sha512` | `sha512 "string"` | `sha512 "hello"` | SHA-512 hash |
+| `hmac_sha256` | `hmac_sha256 "key" "msg"` | `hmac_sha256 "secret" "data"` | HMAC signature |
+| `random_bytes` | `random_bytes count` | `random_bytes 16` | Hex bytes |
+| `random_hex` | `random_hex length` | `random_hex 32` | Random hex string |
+| `random_base64` | `random_base64 length` | `random_base64 24` | Random base64 |
+| `random_token` | `random_token length` | `random_token 32` | URL-safe token |
+| `checksum` | `checksum "file"` | `checksum "data.txt"` | SHA-256 hash |
+| `checksum_verify` | `checksum_verify "file" "hash"` | `checksum_verify "f.txt" "$hash"` | (returns 0/1) |
+| `password_hash` | `password_hash "password"` | `password_hash "secret123"` | Hashed password |
+| `password_verify` | `password_verify "pw" "hash"` | `password_verify "secret" "$h"` | (returns 0/1) |
+| `generate_password` | `generate_password [len]` | `generate_password 16` | Random password |
+| `rot13` | `rot13 "string"` | `rot13 "hello"` | `uryyb` |
+
+---
+
+## Process Functions (proc.sh)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `proc_exists` | `proc_exists pid` | `proc_exists $$` | (returns 0/1) |
+| `proc_name` | `proc_name pid` | `proc_name $$` | `bash` |
+| `proc_cmd` | `proc_cmd pid` | `proc_cmd $$` | Full command line |
+| `proc_parent` | `proc_parent pid` | `proc_parent $$` | Parent PID |
+| `proc_children` | `proc_children pid` | `proc_children $$` | Child PIDs |
+| `proc_tree` | `proc_tree pid` | `proc_tree $$` | Process tree |
+| `proc_user` | `proc_user pid` | `proc_user $$` | `gordon` |
+| `proc_memory` | `proc_memory pid` | `proc_memory $$` | Memory in KB |
+| `proc_cpu` | `proc_cpu pid` | `proc_cpu $$` | CPU percentage |
+| `proc_threads` | `proc_threads pid` | `proc_threads $$` | Thread count |
+| `proc_find_by_name` | `proc_find_by_name "name"` | `proc_find_by_name "node"` | PIDs |
+| `proc_find_by_port` | `proc_find_by_port port` | `proc_find_by_port 8080` | PID |
+| `proc_find_by_user` | `proc_find_by_user "user"` | `proc_find_by_user "root"` | PIDs |
+| `pidfile_create` | `pidfile_create "file"` | `pidfile_create "/tmp/app.pid"` | Creates PID file |
+| `pidfile_read` | `pidfile_read "file"` | `pidfile_read "/tmp/app.pid"` | PID value |
+| `pidfile_check` | `pidfile_check "file"` | `pidfile_check "/tmp/app.pid"` | (returns 0/1) |
+| `pidfile_remove` | `pidfile_remove "file"` | `pidfile_remove "/tmp/app.pid"` | Removes file |
+| `lockfile_acquire` | `lockfile_acquire "file" [timeout]` | `lockfile_acquire "/tmp/app.lock"` | (returns 0/1) |
+| `lockfile_release` | `lockfile_release "file"` | `lockfile_release "/tmp/app.lock"` | Releases lock |
+| `with_lock` | `with_lock "file" "command"` | `with_lock "/tmp/l" "do_work"` | Runs with lock |
+| `proc_signal` | `proc_signal pid "signal"` | `proc_signal $pid "TERM"` | Sends signal |
+| `proc_kill` | `proc_kill pid` | `proc_kill $pid` | SIGTERM |
+| `proc_kill_force` | `proc_kill_force pid` | `proc_kill_force $pid` | SIGKILL |
+| `proc_kill_tree` | `proc_kill_tree pid` | `proc_kill_tree $pid` | Kills tree |
+| `proc_wait` | `proc_wait pid` | `proc_wait $pid` | Waits for exit |
+| `proc_wait_timeout` | `proc_wait_timeout pid secs` | `proc_wait_timeout $pid 30` | Waits with timeout |
+| `proc_count` | `proc_count` | `proc_count` | Total processes |
+| `proc_load` | `proc_load` | `proc_load` | Load average |
+| `proc_uptime` | `proc_uptime` | `proc_uptime` | Uptime in seconds |
+| `proc_uptime_human` | `proc_uptime_human` | `proc_uptime_human` | `5 days, 3 hours` |
+
+---
+
+## Quick Patterns (NEW)
+
+### DateTime Operations
+```bash
+# Get current time
+echo "Now: $(now_iso)"
+echo "Epoch: $(now)"
+
+# Time arithmetic
+tomorrow=$(date_add $(now) "1d")
+last_week=$(date_subtract $(now) "1w")
+
+# Human-readable diff
+echo "$(format_relative $last_week)"  # "1 week ago"
+```
+
+### HTTP Requests
+```bash
+# Simple GET
+response=$(http_get "http://api.example.com/data")
+
+# POST JSON
+result=$(http_json_post "http://api.example.com" '{"name":"test"}')
+
+# Check status
+if http_is_success; then
+    echo "Request succeeded"
+fi
+```
+
+### CSV Processing
+```bash
+# Read and iterate
+csv_read "users.csv"
+for i in $(seq 0 $((${#CSV_ROWS[@]}-1))); do
+    name=$(csv_get $i "name")
+    email=$(csv_get $i "email")
+    echo "$name: $email"
+done
+
+# Create CSV
+csv_row "John" "john@example.com" >> users.csv
+```
+
+### Git Workflow
+```bash
+if git_is_dirty; then
+    echo "Uncommitted changes in $(git_branch)"
+    echo "Files: $(git_files_changed)"
+fi
+echo "$(git_summary)"  # main @ abc1234 [clean]
+```
+
+### Crypto Operations
+```bash
+# Hash data
+hash=$(sha256 "sensitive data")
+
+# Generate tokens
+token=$(random_token 32)
+password=$(generate_password 16)
+
+# Verify checksums
+if checksum_verify "download.tar.gz" "$expected_hash"; then
+    echo "File verified"
+fi
+```
+
+### Process Management
+```bash
+# Check if running
+if proc_exists $pid; then
+    echo "Memory: $(proc_memory $pid) KB"
+fi
+
+# Find by port
+pid=$(proc_find_by_port 8080)
+
+# Run with lock
+with_lock "/tmp/myapp.lock" "run_exclusive_task"
+```
+
+---
+
+*500+ functions | 17 libraries | Zero dependencies | 20-72x faster*
 
 **YO JOE!**

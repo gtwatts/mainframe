@@ -638,6 +638,36 @@ if [[ -f "${_MAINFRAME_LIB_DIR}/config.sh" ]]; then
     source "${_MAINFRAME_LIB_DIR}/config.sh"
 fi
 
+# Source git.sh for git helper functions
+if [[ -f "${_MAINFRAME_LIB_DIR}/git.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/git.sh"
+fi
+
+# Source datetime.sh for date/time operations
+if [[ -f "${_MAINFRAME_LIB_DIR}/datetime.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/datetime.sh"
+fi
+
+# Source http.sh for HTTP client operations
+if [[ -f "${_MAINFRAME_LIB_DIR}/http.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/http.sh"
+fi
+
+# Source proc.sh for process management
+if [[ -f "${_MAINFRAME_LIB_DIR}/proc.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/proc.sh"
+fi
+
+# Source csv.sh for CSV parsing
+if [[ -f "${_MAINFRAME_LIB_DIR}/csv.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/csv.sh"
+fi
+
+# Source crypto.sh for hashing and encoding
+if [[ -f "${_MAINFRAME_LIB_DIR}/crypto.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/crypto.sh"
+fi
+
 # =============================================================================
 # MODULE EXPORTS
 # =============================================================================
@@ -666,4 +696,34 @@ BASHER_COMMON_EXPORTS=(
     version_compare version_at_least
     # Init
     basher_init
+    # Git (from git.sh)
+    git_is_repo git_root git_branch git_branches git_remote_branches git_default_branch
+    git_is_dirty git_is_clean git_has_staged git_has_unstaged git_has_untracked
+    git_status_short git_files_changed
+    git_commit_hash git_commit_hash_full git_commit_message git_commit_author
+    git_commit_date git_commit_count git_commits_ahead git_commits_behind
+    git_tag_latest git_tags git_tag_exists git_describe
+    git_remote_url git_remote_name git_has_remote git_is_pushed
+    git_user_name git_user_email git_ignore_check git_file_history git_blame_line
+    git_diff_files git_diff_stat git_merge_base
+    git_summary git_log_oneline git_changed_since
+    # Date/Time (from datetime.sh)
+    now now_ms now_iso now_rfc2822
+    parse_iso parse_date parse_datetime
+    format_epoch format_iso format_date format_time format_datetime format_relative
+    date_add date_subtract date_diff date_diff_human
+    year month day hour minute second day_of_week day_of_year week_of_year is_leap_year
+    is_before is_after is_same_day is_weekend is_weekday
+    start_of_day end_of_day start_of_month end_of_month start_of_year end_of_year
+    days_in_month make_datetime tz_offset tz_name is_dst
+    # Process Management (from proc.sh)
+    proc_exists proc_name proc_cmd proc_parent proc_children proc_tree
+    proc_user proc_start_time proc_runtime
+    proc_memory proc_memory_percent proc_cpu proc_threads proc_open_files
+    proc_find_by_name proc_find_by_port proc_find_by_user proc_find_by_cmd
+    pidfile_create pidfile_read pidfile_check pidfile_remove pidfile_kill
+    lockfile_acquire lockfile_release lockfile_check with_lock
+    proc_signal proc_kill proc_kill_force proc_kill_tree
+    proc_wait proc_wait_timeout proc_wait_start
+    proc_count proc_load proc_uptime proc_uptime_human
 )

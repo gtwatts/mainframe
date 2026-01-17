@@ -19,7 +19,7 @@
 
 ### Give Your AI Coding Assistant **BASH SUPERPOWERS**
 
-**400+ Pure Bash Functions** | **Zero Dependencies** | **20-72x Faster**
+**500+ Pure Bash Functions** | **Zero Dependencies** | **20-72x Faster**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Bash 4.0+](https://img.shields.io/badge/bash-4.0%2B-green.svg)](https://www.gnu.org/software/bash/)
@@ -43,7 +43,7 @@ When AI coding assistants like **Claude Code** or **OpenCode** write bash script
 
 ## The Solution: MAINFRAME
 
-One line of code gives your AI instant access to **400+ battle-tested functions**:
+One line of code gives your AI instant access to **500+ battle-tested functions**:
 
 ```bash
 source "${MAINFRAME_ROOT}/lib/common.sh"
@@ -126,7 +126,7 @@ bash benchmarks/superpower_benchmarks.sh
 
 ## What You Get
 
-### 11 Libraries, 400+ Functions
+### 17 Libraries, 500+ Functions
 
 | Library | Functions | What It Does |
 |---------|-----------|--------------|
@@ -280,7 +280,7 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 
 ```
 mainframe/
-├── lib/                    # Core libraries (400+ functions)
+├── lib/                    # Core libraries (500+ functions)
 │   ├── common.sh          # Main entry point (auto-sources others)
 │   ├── pure-string.sh     # String manipulation
 │   ├── pure-array.sh      # Array operations
@@ -363,7 +363,7 @@ MIT License - Use freely in your projects. See [LICENSE](LICENSE).
 
 ---
 
-**400+ functions** | **Zero dependencies** | **20-72x faster** | **Pure Bash**
+**500+ functions** | **Zero dependencies** | **20-72x faster** | **Pure Bash**
 
 *Made with ❤️ for AI coding assistants everywhere*
 
