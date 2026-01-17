@@ -187,12 +187,13 @@ stream_diff() {
 
 # Interleave streams (round-robin)
 # Usage: stream_interleave <file1> <file2> ...
+# shellcheck disable=SC1083,SC2093
 stream_interleave() {
     local -a files=("$@")
     local -a fds
     local i line done=0
 
-    # Open all files
+    # Open all files (dynamic fd assignment is bash 4+ feature)
     for i in "${!files[@]}"; do
         exec {fds[i]}<"${files[i]}"
     done
