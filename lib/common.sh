@@ -678,6 +678,11 @@ if [[ -f "${_MAINFRAME_LIB_DIR}/validation.sh" ]]; then
     source "${_MAINFRAME_LIB_DIR}/validation.sh"
 fi
 
+# Source env.sh for environment variable management
+if [[ -f "${_MAINFRAME_LIB_DIR}/env.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/env.sh"
+fi
+
 # =============================================================================
 # MODULE EXPORTS
 # =============================================================================
@@ -756,4 +761,14 @@ BASHER_COMMON_EXPORTS=(
     validate_command_safe build_safe_command
     validate_port validate_mac validate_credit_card validate_phone
     validate_json validate_alnum validate_slug validate_cidr validate_base64
+    # Environment (from env.sh)
+    env_detect_shell env_config_file
+    env_set env_persist env_get env_unset env_remove_persist
+    env_path_prepend env_path_append env_path_remove env_path_list env_path_has
+    env_path_persist_prepend env_path_persist_append env_path_clean
+    env_load_dotenv env_save_dotenv
+    env_is_set env_is_nonempty env_require env_require_all
+    env_list env_export_from env_with env_copy env_swap
+    env_get_int env_get_bool env_get_array env_set_array
+    env_debug env_diff env_expand env_summary env_backup env_restore
 )

@@ -37,6 +37,7 @@ MAINFRAME provides **19 libraries** with **550+ functions**. Here's what's avail
 | **Process** | `proc_exists`, `proc_find_by_port`, `lockfile_acquire`, `with_timeout` | Process management |
 | **Path** | `path_normalize`, `path_join`, `path_is_safe`, `path_quote`, `path_relative` | Path manipulation |
 | **Validation** | `validate_int`, `validate_email`, `sanitize_html`, `validate_path_safe` | Input validation & security |
+| **Environment** | `env_set`, `env_get`, `env_path_prepend`, `env_load_dotenv`, `env_require` | Env var management |
 
 ### Formatting Functions
 
@@ -161,6 +162,45 @@ validate_command_safe "ls -la"           # No injection
 build_safe_command "grep" "$pat" "$file" # Escaped command
 ```
 
+### Environment (Council Priority #3 - Every script deals with env handling)
+
+```bash
+# Shell detection
+env_detect_shell             # Returns: bash, zsh, fish, sh
+env_config_file              # Returns: ~/.bashrc, ~/.zshrc, etc.
+
+# Variable management
+env_set "MY_VAR" "value"     # Set and export
+env_get "MY_VAR" "default"   # Get with fallback
+env_unset "MY_VAR"           # Unset variable
+env_persist "VAR" "val"      # Persist to shell config
+
+# PATH management
+env_path_prepend "/opt/bin"  # Add to start of PATH
+env_path_append "/opt/bin"   # Add to end of PATH
+env_path_remove "/old/bin"   # Remove from PATH
+env_path_has "/usr/bin"      # 0 if present, 1 if not
+env_path_list                # List entries one per line
+env_path_clean               # Remove duplicates and non-existent
+
+# Dotenv support
+env_load_dotenv ".env"       # Load .env file
+env_save_dotenv "out.env" VAR1 VAR2  # Save vars to .env
+
+# Validation
+env_is_set "VAR"             # 0 if set (may be empty)
+env_is_nonempty "VAR"        # 0 if set and non-empty
+env_require "VAR" "message"  # Error if not set
+env_require_all VAR1 VAR2    # Error if any missing
+
+# Utilities
+env_with "VAR=val" cmd args  # Run with temp env
+env_get_int "PORT" 8080      # Get as integer with default
+env_get_bool "DEBUG"         # Returns 0 for true, 1 for false
+env_copy "SRC" "DEST"        # Copy variable
+env_summary                  # Show shell info
+```
+
 ## Important Rules
 
 1. **Don't read MAINFRAME source into context** - just use the functions
@@ -170,4 +210,4 @@ build_safe_command "grep" "$pat" "$file" # Escaped command
 
 ## Full Reference
 
-For all 500+ function signatures: [CHEATSHEET.md](CHEATSHEET.md)
+For all 580+ function signatures: [CHEATSHEET.md](CHEATSHEET.md)

@@ -732,6 +732,132 @@ fi
 
 ---
 
-*550+ functions | 19 libraries | Zero dependencies | 20-72x faster*
+## Environment Functions (env.sh)
+
+### Shell Detection
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `env_detect_shell` | `env_detect_shell` | `env_detect_shell` | `bash` |
+| `env_config_file` | `env_config_file [shell]` | `env_config_file "bash"` | `~/.bashrc` |
+
+### Variable Management
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `env_set` | `env_set "VAR" "value"` | `env_set "MY_VAR" "hello"` | (exports MY_VAR) |
+| `env_get` | `env_get "VAR" [default]` | `env_get "MY_VAR" "fallback"` | `hello` or `fallback` |
+| `env_unset` | `env_unset "VAR"` | `env_unset "MY_VAR"` | (unsets variable) |
+| `env_persist` | `env_persist "VAR" "val" [shell]` | `env_persist "MY_VAR" "hello"` | (adds to ~/.bashrc) |
+| `env_remove_persist` | `env_remove_persist "VAR" [shell]` | `env_remove_persist "MY_VAR"` | (removes from config) |
+
+### PATH Management
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `env_path_prepend` | `env_path_prepend "/path"` | `env_path_prepend "/opt/bin"` | (adds to PATH start) |
+| `env_path_append` | `env_path_append "/path"` | `env_path_append "/opt/bin"` | (adds to PATH end) |
+| `env_path_remove` | `env_path_remove "/path"` | `env_path_remove "/old/bin"` | (removes from PATH) |
+| `env_path_list` | `env_path_list` | `env_path_list` | (one path per line) |
+| `env_path_has` | `env_path_has "/path"` | `env_path_has "/usr/bin"` | (returns 0/1) |
+| `env_path_clean` | `env_path_clean` | `env_path_clean` | (removes duplicates) |
+| `env_path_persist_prepend` | `env_path_persist_prepend "/path"` | `env_path_persist_prepend "/opt/bin"` | (persists to config) |
+| `env_path_persist_append` | `env_path_persist_append "/path"` | `env_path_persist_append "/opt/bin"` | (persists to config) |
+
+### Dotenv Support
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `env_load_dotenv` | `env_load_dotenv [file]` | `env_load_dotenv ".env"` | (loads .env file) |
+| `env_save_dotenv` | `env_save_dotenv "file" VAR1 VAR2` | `env_save_dotenv "app.env" DB_HOST DB_PORT` | (saves to file) |
+| `env_export_from` | `env_export_from "file"` | `env_export_from "config.env"` | (exports from file) |
+
+### Validation
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `env_is_set` | `env_is_set "VAR"` | `env_is_set "HOME"` | (returns 0/1) |
+| `env_is_nonempty` | `env_is_nonempty "VAR"` | `env_is_nonempty "PATH"` | (returns 0/1) |
+| `env_require` | `env_require "VAR" [msg]` | `env_require "API_KEY" "API key required"` | (exits if missing) |
+| `env_require_all` | `env_require_all VAR1 VAR2` | `env_require_all DB_HOST DB_PORT` | (exits if any missing) |
+
+### Utilities
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `env_list` | `env_list [pattern]` | `env_list "MY_APP"` | (matching vars) |
+| `env_with` | `env_with "VAR=val" cmd args` | `env_with "DEBUG=1" ./script.sh` | (runs with temp env) |
+| `env_copy` | `env_copy "SRC" "DEST"` | `env_copy "PATH" "BACKUP_PATH"` | (copies variable) |
+| `env_swap` | `env_swap "VAR1" "VAR2"` | `env_swap "A" "B"` | (swaps values) |
+| `env_get_int` | `env_get_int "VAR" [default]` | `env_get_int "PORT" 8080` | `8080` |
+| `env_get_bool` | `env_get_bool "VAR" [default]` | `env_get_bool "DEBUG"` | (returns 0/1) |
+| `env_get_array` | `env_get_array "VAR" arr` | `env_get_array "PATH" paths` | (splits on :) |
+| `env_set_array` | `env_set_array "VAR" "${arr[@]}"` | `env_set_array "DIRS" "${dirs[@]}"` | (joins with :) |
+| `env_debug` | `env_debug "VAR"` | `env_debug "HOME"` | `HOME=/home/user` |
+| `env_diff` | `env_diff "file.env"` | `env_diff ".env"` | (shows differences) |
+| `env_expand` | `env_expand "string"` | `env_expand '$HOME/bin'` | `/home/user/bin` |
+| `env_summary` | `env_summary` | `env_summary` | (shell info summary) |
+| `env_backup` | `env_backup "file"` | `env_backup "env.bak"` | (saves all env vars) |
+| `env_restore` | `env_restore "file"` | `env_restore "env.bak"` | (loads env backup) |
+
+---
+
+## Quick Patterns (Environment)
+
+### Environment Variable Setup
+```bash
+# Require critical variables
+env_require "API_KEY" "API_KEY is required"
+env_require_all DB_HOST DB_PORT DB_USER
+
+# Get with defaults
+port=$(env_get "PORT" "8080")
+debug=$(env_get_bool "DEBUG" && echo "on" || echo "off")
+```
+
+### PATH Management
+```bash
+# Add to PATH (idempotent)
+env_path_prepend "/opt/myapp/bin"
+env_path_append "$HOME/.local/bin"
+
+# Clean up PATH
+env_path_clean  # Removes duplicates and non-existent dirs
+
+# Check before using
+if env_path_has "/usr/local/bin"; then
+    echo "Local bin available"
+fi
+```
+
+### Dotenv Workflow
+```bash
+# Load environment from file
+if [[ -f ".env" ]]; then
+    env_load_dotenv ".env"
+fi
+
+# Save current config
+env_save_dotenv "backup.env" DB_HOST DB_PORT API_KEY
+
+# Run with modified environment
+env_with "NODE_ENV=production" npm start
+```
+
+### Shell Detection
+```bash
+# Detect shell and config file
+shell=$(env_detect_shell)
+config=$(env_config_file)
+echo "Using $shell, config at $config"
+
+# Persist across sessions
+env_persist "MY_VAR" "my_value"
+env_path_persist_prepend "/opt/bin"
+```
+
+---
+
+*580+ functions | 20 libraries | Zero dependencies | 20-72x faster*
 
 **YO JOE!**
