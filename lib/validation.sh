@@ -126,7 +126,9 @@ validate_url() {
     scheme_pattern="(${schemes//,/|})"
 
     # URL pattern: scheme://domain[:port][/path][?query][#fragment]
-    [[ "$url" =~ ^${scheme_pattern}://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~:/?#\[\]@!$\&\'()*+,;=-]*)?$ ]]
+    # Use simpler path pattern for portability - allows common URL chars
+    local url_regex="^${scheme_pattern}://[A-Za-z0-9.-]+(:[0-9]+)?(/[^[:space:]]*)?$"
+    [[ "$url" =~ $url_regex ]]
 }
 
 # Validate domain name format
@@ -350,8 +352,7 @@ validate_path_safe() {
 
     [[ -z "$path" ]] && return 1
 
-    # Reject null bytes
-    [[ "$path" == *$'\0'* ]] && return 1
+    # Note: Null bytes cannot exist in bash strings, so no check needed
 
     # Reject obvious traversal patterns
     [[ "$path" == *".."* ]] && return 1
@@ -406,8 +407,7 @@ validate_filename() {
     # Reject special names
     [[ "$name" == "." || "$name" == ".." ]] && return 1
 
-    # Reject null bytes
-    [[ "$name" == *$'\0'* ]] && return 1
+    # Note: Null bytes cannot exist in bash strings, so no check needed
 
     # Reject names starting with dash (option injection)
     [[ "$name" == -* ]] && return 1
@@ -646,7 +646,7 @@ validate_command_safe() {
     [[ "$cmd" == *"\${"* ]] && return 1  # Variable expansion
     [[ "$cmd" == *"\$\$"* ]] && return 1 # Special variable
     [[ "$cmd" == *$'\n'* ]] && return 1  # Newline injection
-    [[ "$cmd" == *$'\0'* ]] && return 1  # Null byte
+    # Note: Null bytes cannot exist in bash strings, so no check needed
 
     return 0
 }
@@ -757,6 +757,10 @@ validate_json() {
     local i char
 
     [[ -z "${json//[[:space:]]/}" ]] && return 1
+
+    # JSON must start with { or [ (ignoring leading whitespace)
+    local trimmed="${json#"${json%%[![:space:]]*}"}"
+    [[ "$trimmed" != "{"* && "$trimmed" != "["* ]] && return 1
 
     for ((i=0; i<${#json}; i++)); do
         char="${json:i:1}"

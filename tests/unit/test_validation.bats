@@ -364,10 +364,9 @@ setup() {
     [ "$status" -eq 1 ]
 }
 
-@test "validate_path_safe: rejects null bytes" {
-    run validate_path_safe $'file\x00.txt'
-    [ "$status" -eq 1 ]
-}
+# Note: Null byte test removed - bash cannot store null bytes in variables,
+# so this check is not meaningful. The null byte gets stripped before reaching
+# the function.
 
 @test "validate_filename: accepts valid filenames" {
     run validate_filename "report.pdf"

@@ -803,7 +803,7 @@ env_diff() {
 # Usage: env_expand "string with $VAR"
 env_expand() {
     local str="$1"
-    eval printf '%s\n' "\"$str\""
+    eval "printf '%s\\n' \"$str\""
 }
 
 # Get shell environment summary

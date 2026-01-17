@@ -89,6 +89,9 @@ path_absolute() {
     # Handle tilde expansion first
     if [[ "$path" == "~"* ]]; then
         path="${path/#\~/$HOME}"
+        # After expansion, path is now absolute
+        path_normalize "$path"
+        return 0
     fi
 
     # Make relative path absolute
@@ -493,11 +496,14 @@ path_sanitize() {
     local name="$1"
     local replacement="${2:-_}"
 
-    # Replace common unsafe characters
-    name="${name//[<>:\"\\/|?*]/$replacement}"
+    # Use tr for reliable character replacement (handles special chars safely)
+    # Replace: < > : " \ | ? *
+    name=$(printf '%s' "$name" | tr '<>:"\|?*' "${replacement}${replacement}${replacement}${replacement}${replacement}${replacement}${replacement}${replacement}")
 
-    # Replace control characters and leading/trailing spaces
-    name="${name//[$'\x00'-$'\x1f']/$replacement}"
+    # Replace control characters
+    name=$(printf '%s' "$name" | tr '\000-\037' "$(printf '%0.s%s' {1..32} "$replacement" | cut -c1-32)")
+
+    # Trim leading/trailing spaces using parameter expansion
     name="${name#"${name%%[![:space:]]*}"}"
     name="${name%"${name##*[![:space:]]}"}"
 
