@@ -137,10 +137,16 @@ bash benchmarks/superpower_benchmarks.sh
 | **pure-file.sh** | 37 | File ops without cat/head/tail |
 | **json.sh** | 20 | JSON generation (no jq needed) |
 | **semver.sh** | 20 | Semantic versioning |
-| **ansi.sh** | 90 | Terminal colors & UI |
+| **ansi.sh** | 43 | Terminal colors & styling |
 | **async.sh** | 26 | Async/parallel execution |
 | **args.sh** | 18 | Argument parsing |
 | **config.sh** | 13 | Config file handling |
+| **datetime.sh** | 42 | Date/time arithmetic & formatting |
+| **http.sh** | 30 | HTTP client (GET/POST/PUT/DELETE) |
+| **csv.sh** | 26 | RFC 4180 CSV parsing & generation |
+| **git.sh** | 50 | Git workflow helpers |
+| **crypto.sh** | 25 | Hashing, encoding, secure random |
+| **proc.sh** | 35 | Process management & locks |
 
 ### Zero External Dependencies
 
@@ -219,6 +225,60 @@ timestamp                         # 2026-01-17 10:30:45
 is_valid_email "user@example.com" # returns 0 (valid)
 random_string 16                  # x7Kj9mNp2qRs4tUv
 semver_bump_minor "1.2.3"         # 1.3.0
+```
+
+### DateTime Operations (NEW in v2.0)
+```bash
+now                               # 1705312896 (Unix epoch)
+now_iso                           # 2026-01-17T10:30:00-0500
+format_relative $(($(now)-3600)) # "1 hour ago"
+date_add $(now) "2d"              # Add 2 days
+is_weekend                        # Check if Saturday/Sunday
+```
+
+### HTTP Requests (NEW in v2.0)
+```bash
+# Parse URLs
+url_parse "https://api.example.com:8080/users?page=1"
+echo "$URL_HOST"                  # api.example.com
+echo "$URL_PORT"                  # 8080
+
+# Build query strings
+query_string "api_key=abc" "format=json"  # api_key=abc&format=json
+```
+
+### CSV Processing (NEW in v2.0)
+```bash
+# Create CSV rows
+csv_row "John" "Doe" "john@example.com"  # John,Doe,john@example.com
+
+# Read and parse CSV
+csv_read "data.csv"
+csv_get 0 "name"                  # Get field by column name
+```
+
+### Git Helpers (NEW in v2.0)
+```bash
+git_branch                        # main
+git_commit_hash                   # abc1234
+git_is_dirty && echo "uncommitted changes"
+git_summary                       # main @ abc1234 [clean]
+```
+
+### Crypto & Hashing (NEW in v2.0)
+```bash
+sha256 "sensitive data"           # 2cf24dba5fb0a30e...
+random_token 32                   # Secure URL-safe token
+uuid                              # UUID v4
+checksum_verify "file.tar.gz" "$expected_hash"
+```
+
+### Process Management (NEW in v2.0)
+```bash
+proc_exists $pid                  # Check if PID exists
+proc_find_by_port 8080            # Find what's using port 8080
+proc_load                         # System load average
+with_lock "/tmp/app.lock" "run_exclusive_task"
 ```
 
 ---
@@ -314,6 +374,64 @@ bats tests/
 
 ---
 
+## Test It With Your AI
+
+**We encourage you to test MAINFRAME with your own AI coding assistant** and see the difference it makes.
+
+### Quick Test Challenge
+
+Give your AI (Claude Code, OpenCode, Cursor, Aider, etc.) this prompt:
+
+> "Using MAINFRAME (source ~/.mainframe/lib/common.sh), write a bash script that:
+> 1. Gets the current git branch and commit hash
+> 2. Generates a UUID session token
+> 3. Creates a JSON object with this data
+> 4. Shows a progress bar while 'processing'
+> 5. Outputs a success message"
+
+**Without MAINFRAME**, your AI will write 50+ lines of code, potentially using `jq`, `uuidgen`, and other external tools.
+
+**With MAINFRAME**, watch your AI write ~15 lines of clean, portable bash:
+
+```bash
+#!/usr/bin/env bash
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+
+header "Session Report"
+branch=$(git_branch)
+commit=$(git_commit_hash)
+token=$(uuid)
+
+for i in {1..100}; do
+    progress_bar "$i" 100
+    sleep 0.01
+done
+echo
+
+json_object "branch=$branch" "commit=$commit" "session=$token"
+success "Report generated!"
+```
+
+### Run the Demo Script
+
+We include a demo script you can run immediately:
+
+```bash
+bash ~/.mainframe/examples/mainframe_demo.sh
+```
+
+### Full Function Reference
+
+See [CHEATSHEET.md](CHEATSHEET.md) for complete function signatures - essential for getting your AI to use the correct syntax on the first try.
+
+### Share Your Results
+
+Did MAINFRAME improve your AI's bash scripts? We'd love to hear:
+- [Open an issue](https://github.com/gtwatts/mainframe/issues) with your experience
+- Star the repo if MAINFRAME helped you
+
+---
+
 ## Requirements
 
 - **Bash 4.0+** (for associative arrays, parameter expansion)
@@ -332,7 +450,64 @@ In 1986, Hasbro introduced **Mainframe** to the G.I. Joe team - the computer spe
 
 His filecard read: *"Mainframe can make a computer do anything short of tap dance."*
 
-That's what this toolkit does for AI coding assistants. **It makes bash dance.**
+**That's exactly what this toolkit does for AI coding assistants. It makes bash dance.**
+
+### How MAINFRAME Makes Bash Dance
+
+When Claude Code, OpenCode, or Cursor writes bash scripts, they face a fundamental problem: **bash is powerful but verbose**. Simple operations require arcane syntax that even experienced developers forget.
+
+**Without MAINFRAME**, your AI writes code like this:
+```bash
+# Trim whitespace - 4 lines of cryptic parameter expansion
+str="  hello  "
+str="${str#"${str%%[![:space:]]*}"}"
+str="${str%"${str##*[![:space:]]}"}"
+```
+
+**With MAINFRAME**, your AI writes this:
+```bash
+trim_string "  hello  "  # Done.
+```
+
+This isn't just cleaner - it's **transformative for agentic coding**:
+
+| Without MAINFRAME | With MAINFRAME |
+|-------------------|----------------|
+| AI generates 15-20 lines for simple ops | AI writes 1-2 lines that just work |
+| AI must remember arcane bash syntax | AI calls intuitive functions like `json_object`, `git_branch`, `sha256` |
+| Scripts fail on systems missing `jq`, `sed`, `awk` | Pure bash runs everywhere |
+| External tool calls spawn subshells (slow) | Built-in operations are 20-72x faster |
+| AI reinvents solutions every session | AI reuses battle-tested, documented functions |
+
+### Why This Matters for Agentic Coding
+
+**Agentic AI coding** means your AI assistant works autonomously - writing, testing, and iterating on code with minimal intervention. This requires:
+
+1. **Reliability** - Scripts must work the first time, on any system
+2. **Speed** - Faster execution means faster feedback loops
+3. **Clarity** - The AI must understand what it's writing
+4. **Consistency** - Same patterns, same results, every time
+
+MAINFRAME delivers all four:
+
+- **500+ tested functions** eliminate edge cases and bugs
+- **Zero dependencies** means no "is jq installed?" failures mid-script
+- **Intuitive naming** (`json_object`, `csv_row`, `git_branch`) lets AI write correct code immediately
+- **One source line** gives instant access to everything
+
+### The Result
+
+Your AI stops writing fragile, verbose bash and starts writing **production-quality scripts** that:
+
+- Generate JSON without jq
+- Parse CSV without awk
+- Manipulate dates without GNU date quirks
+- Make HTTP requests, hash data, manage processes
+- Work identically on macOS, Linux, containers, CI/CD
+
+**MAINFRAME transforms your AI from a bash novice into a bash expert** - instantly, reliably, every time.
+
+*"Knowing Your Shell is half the battle."* - G.I. Joe
 
 ---
 
