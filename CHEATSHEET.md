@@ -117,6 +117,11 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 | `get_os` | `get_os` | `get_os` | `linux` |
 | `cmd_exists` | `cmd_exists "cmd"` | `cmd_exists "git"` | (returns 0/1) |
 | `cmd_path` | `cmd_path "cmd"` | `cmd_path "bash"` | `/bin/bash` |
+| `format_bytes` | `format_bytes bytes` | `format_bytes 1048576` | `1.0MB` |
+| `format_bytes_int` | `format_bytes_int bytes` | `format_bytes_int 1048576` | `1MB` |
+| `format_duration` | `format_duration seconds` | `format_duration 3661` | `1h 1m 1s` |
+| `format_number` | `format_number n` | `format_number 1234567` | `1,234,567` |
+| `format_percent` | `format_percent val total` | `format_percent 75 100` | `75%` |
 
 ---
 

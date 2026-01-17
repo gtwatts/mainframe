@@ -491,3 +491,80 @@ cursor_hide() {
 cursor_show() {
     printf '\033[?25h'
 }
+
+# =============================================================================
+# FORMATTING
+# =============================================================================
+
+# Format bytes to human-readable (KB, MB, GB, TB)
+# Usage: format_bytes 1048576  # "1MB"
+format_bytes() {
+    local bytes=$1
+    if (( bytes >= 1099511627776 )); then
+        printf "%.1fTB" "$(echo "scale=1; $bytes / 1099511627776" | bc)"
+    elif (( bytes >= 1073741824 )); then
+        printf "%.1fGB" "$(echo "scale=1; $bytes / 1073741824" | bc)"
+    elif (( bytes >= 1048576 )); then
+        printf "%.1fMB" "$(echo "scale=1; $bytes / 1048576" | bc)"
+    elif (( bytes >= 1024 )); then
+        printf "%.1fKB" "$(echo "scale=1; $bytes / 1024" | bc)"
+    else
+        printf "%dB" "$bytes"
+    fi
+}
+
+# Format bytes (pure bash, integer only)
+# Usage: format_bytes_int 1048576  # "1MB"
+format_bytes_int() {
+    local bytes=$1
+    if (( bytes >= 1099511627776 )); then
+        echo "$((bytes / 1099511627776))TB"
+    elif (( bytes >= 1073741824 )); then
+        echo "$((bytes / 1073741824))GB"
+    elif (( bytes >= 1048576 )); then
+        echo "$((bytes / 1048576))MB"
+    elif (( bytes >= 1024 )); then
+        echo "$((bytes / 1024))KB"
+    else
+        echo "${bytes}B"
+    fi
+}
+
+# Format duration in seconds to human-readable
+# Usage: format_duration 3661  # "1h 1m 1s"
+format_duration() {
+    local seconds=$1
+    local result=""
+
+    if (( seconds >= 86400 )); then
+        result+="$((seconds / 86400))d "
+        seconds=$((seconds % 86400))
+    fi
+    if (( seconds >= 3600 )); then
+        result+="$((seconds / 3600))h "
+        seconds=$((seconds % 3600))
+    fi
+    if (( seconds >= 60 )); then
+        result+="$((seconds / 60))m "
+        seconds=$((seconds % 60))
+    fi
+    if (( seconds > 0 )) || [[ -z "$result" ]]; then
+        result+="${seconds}s"
+    fi
+
+    echo "${result% }"
+}
+
+# Format number with commas
+# Usage: format_number 1234567  # "1,234,567"
+format_number() {
+    printf "%'d" "$1"
+}
+
+# Format percentage
+# Usage: format_percent 75 100  # "75%"
+format_percent() {
+    local value=$1
+    local total=$2
+    echo "$((value * 100 / total))%"
+}
