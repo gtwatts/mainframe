@@ -608,6 +608,36 @@ if [[ -f "${_MAINFRAME_LIB_DIR}/pure-file.sh" ]]; then
     source "${_MAINFRAME_LIB_DIR}/pure-file.sh"
 fi
 
+# Source json.sh for JSON generation
+if [[ -f "${_MAINFRAME_LIB_DIR}/json.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/json.sh"
+fi
+
+# Source ansi.sh for terminal colors and UI
+if [[ -f "${_MAINFRAME_LIB_DIR}/ansi.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/ansi.sh"
+fi
+
+# Source async.sh for async/parallel operations
+if [[ -f "${_MAINFRAME_LIB_DIR}/async.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/async.sh"
+fi
+
+# Source semver.sh for semantic versioning
+if [[ -f "${_MAINFRAME_LIB_DIR}/semver.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/semver.sh"
+fi
+
+# Source args.sh for argument parsing
+if [[ -f "${_MAINFRAME_LIB_DIR}/args.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/args.sh"
+fi
+
+# Source config.sh for config file handling
+if [[ -f "${_MAINFRAME_LIB_DIR}/config.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/config.sh"
+fi
+
 # =============================================================================
 # MODULE EXPORTS
 # =============================================================================
