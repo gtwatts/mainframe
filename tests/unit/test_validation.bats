@@ -2,11 +2,16 @@
 # =============================================================================
 # MAINFRAME/tests/unit/test_validation.bats - Unit tests for validation.sh
 # =============================================================================
+# Run with: bats tests/unit/test_validation.bats
+# =============================================================================
 
-# Load test helpers
 setup() {
+    # Get the directory containing this test file
+    TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
+    PROJECT_ROOT="$(cd "$TEST_DIR/../.." && pwd)"
+
     # Source the validation library
-    source "${BATS_TEST_DIRNAME}/../../lib/validation.sh"
+    source "$PROJECT_ROOT/lib/validation.sh"
 }
 
 # =============================================================================
