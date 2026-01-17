@@ -17,6 +17,8 @@
 
 <div align="center">
 
+<img src="mainframe_hero.png" alt="MAINFRAME - Bash Superpowers for AI Coding Assistants" width="600">
+
 ### Give Your AI Coding Assistant **BASH SUPERPOWERS**
 
 **500+ Pure Bash Functions** | **Zero Dependencies** | **20-72x Faster**
