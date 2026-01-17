@@ -38,6 +38,7 @@ MAINFRAME provides **19 libraries** with **550+ functions**. Here's what's avail
 | **Path** | `path_normalize`, `path_join`, `path_is_safe`, `path_quote`, `path_relative` | Path manipulation |
 | **Validation** | `validate_int`, `validate_email`, `sanitize_html`, `validate_path_safe` | Input validation & security |
 | **Environment** | `env_set`, `env_get`, `env_path_prepend`, `env_load_dotenv`, `env_require` | Env var management |
+| **Docker** | `docker_running`, `docker_container_running`, `docker_exec`, `compose_up` | Docker/Compose helpers |
 
 ### Formatting Functions
 
@@ -201,6 +202,21 @@ env_copy "SRC" "DEST"        # Copy variable
 env_summary                  # Show shell info
 ```
 
+### Docker
+
+```bash
+docker_running                          # Check if daemon is running
+docker_container_running "nginx"        # Check if container is running
+docker_container_status "nginx"         # Get status: running, exited, etc.
+docker_exec "nginx" "cat /etc/nginx/nginx.conf"  # Execute in container
+docker_logs "nginx" 100                 # Get last 100 lines of logs
+docker_stats_json "nginx"               # Get CPU/memory stats as JSON
+docker_port_used 8080                   # Check if port used by Docker
+compose_running "web"                   # Check if compose service running
+compose_exec "web" "npm run migrate"    # Execute in compose service
+compose_up                              # Start compose services
+```
+
 ## Important Rules
 
 1. **Don't read MAINFRAME source into context** - just use the functions
@@ -210,4 +226,4 @@ env_summary                  # Show shell info
 
 ## Full Reference
 
-For all 580+ function signatures: [CHEATSHEET.md](CHEATSHEET.md)
+For all 650+ function signatures: [CHEATSHEET.md](CHEATSHEET.md)

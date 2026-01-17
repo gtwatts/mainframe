@@ -20,7 +20,7 @@
 
 ### Give Your AI Coding Assistant **BASH SUPERPOWERS**
 
-**500+ Pure Bash Functions** | **Zero Dependencies** | **20-72x Faster**
+**550+ Pure Bash Functions** | **Zero Dependencies** | **20-72x Faster**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Bash 4.0+](https://img.shields.io/badge/bash-4.0%2B-green.svg)](https://www.gnu.org/software/bash/)
@@ -44,7 +44,7 @@ When AI coding assistants like **Claude Code** or **OpenCode** write bash script
 
 ## The Solution: MAINFRAME
 
-One line of code gives your AI instant access to **500+ battle-tested functions**:
+One line of code gives your AI instant access to **550+ battle-tested functions**:
 
 ```bash
 source "${MAINFRAME_ROOT}/lib/common.sh"
