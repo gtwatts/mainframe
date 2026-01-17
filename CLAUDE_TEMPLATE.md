@@ -4,17 +4,43 @@ Copy the section below into your `~/.claude/CLAUDE.md` (for Claude Code) or equi
 
 ---
 
-## Recommended: Minimal Entry (~50 tokens)
+## Recommended: Compact Entry (~150 tokens)
 
 ```markdown
-## MAINFRAME (Bash)
+## MAINFRAME (Bash Superpowers)
 
-`source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"` — 400+ pure bash functions (strings, arrays, JSON, async, UI). Key: `trim_string`, `json_object`, `uuid`, `timestamp`, `array_unique`, `progress_bar`. Discover by trying; don't dump source into context.
+`source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"` — 500+ pure bash functions across 17 libraries:
+
+| Library | Functions |
+|---------|-----------|
+| Strings | `trim_string`, `to_lower`, `replace_all`, `split_string` |
+| Arrays | `array_unique`, `array_join`, `array_contains`, `array_sort` |
+| JSON | `json_object key=val`, `json_array`, `json_get`, `json_pretty` |
+| DateTime | `now`, `now_iso`, `date_add`, `date_diff`, `format_relative` |
+| HTTP | `http_get url`, `http_post url data`, `url_parse` |
+| CSV | `csv_row`, `csv_parse_line`, `csv_to_json` |
+| Git | `git_branch`, `git_is_dirty`, `git_commit_hash` |
+| Crypto | `sha256`, `md5`, `base64_encode`, `random_token` |
+| Process | `proc_exists`, `lockfile_acquire`, `with_timeout` |
+| Format | `format_bytes`, `format_duration`, `format_percent` |
+| Utils | `uuid`, `timestamp`, `progress_bar`, `is_valid_email` |
+
+Zero dependencies. Bash 4.0+. Don't read source into context.
 ```
 
 ---
 
-## Alternative: Extended Entry (~200 tokens)
+## Alternative: Minimal Entry (~50 tokens)
+
+```markdown
+## MAINFRAME (Bash)
+
+`source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"` — 500+ pure bash functions (strings, arrays, JSON, HTTP, DateTime, CSV, Git, Crypto, Process). Key: `json_object`, `now_iso`, `git_branch`, `sha256`, `format_bytes`. Discover by trying.
+```
+
+---
+
+## Alternative: Extended Entry (~300 tokens)
 
 Use this if you want your AI to know more function signatures upfront:
 
@@ -23,17 +49,25 @@ Use this if you want your AI to know more function signatures upfront:
 
 Source: `source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"`
 
-### Quick Reference
+### Core Functions
 | Category | Functions |
 |----------|-----------|
-| Strings | `trim_string str`, `to_lower str`, `to_upper str`, `replace_all str pattern replacement` |
-| Arrays | `array_unique arr`, `array_join delimiter arr`, `array_contains arr element` |
-| JSON | `json_object key=val key:number=num`, `json_array val1 val2`, `json_nested outer inner=val` |
-| Utils | `uuid`, `timestamp`, `random_string length`, `urlencode str`, `urldecode str` |
-| Validation | `is_valid_email str`, `is_valid_url str`, `is_valid_ip str` |
-| UI | `progress_bar current total width`, `success msg`, `failure msg`, `header msg` |
-| Semver | `semver_parse ver`, `semver_compare v1 v2`, `semver_bump_major ver` |
-| Async | `async_run cmd`, `async_wait pid`, `parallel_map cmd arr` |
+| Strings | `trim_string str`, `to_lower str`, `to_upper str`, `replace_all str old new` |
+| Arrays | `array_unique arr`, `array_join sep arr`, `array_contains val arr` |
+| JSON | `json_object key=val key:number=num`, `json_array v1 v2`, `json_get json key` |
+| Utils | `uuid`, `timestamp`, `random_string len`, `progress_bar cur total` |
+| Files | `file_exists path`, `file_size path`, `read_file path` |
+
+### v2.0 Functions (NEW)
+| Category | Functions |
+|----------|-----------|
+| DateTime | `now`, `now_iso`, `date_add epoch duration`, `date_diff e1 e2`, `format_relative epoch` |
+| HTTP | `http_get url`, `http_post url data`, `url_parse url`, `query_string k=v` |
+| CSV | `csv_row v1 v2`, `csv_parse_line line`, `csv_get line idx`, `csv_to_json` |
+| Git | `git_branch`, `git_is_dirty`, `git_commit_hash`, `git_changed_files` |
+| Crypto | `sha256 data`, `md5 data`, `base64_encode str`, `random_token len` |
+| Process | `proc_exists pid`, `proc_find_by_port port`, `lockfile_acquire file`, `with_timeout sec cmd` |
+| Format | `format_bytes bytes`, `format_duration secs`, `format_percent val total` |
 
 ### Key Patterns
 ```bash
@@ -41,12 +75,11 @@ Source: `source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"`
 json_object "name=John" "age:number=30" "active:bool=true"
 # Output: {"name":"John","age":30,"active":true}
 
-# Array operations
-arr=(a b c a b)
-array_unique arr  # Returns: a b c
+# Date math
+future=$(date_add $(now) "7d")  # 7 days from now
 
-# String manipulation
-trim_string "  hello  "  # Returns: hello
+# Git status as JSON
+git_summary  # {"branch":"main","commit":"abc123","dirty":false}
 ```
 
 Don't read MAINFRAME source into context. Just use functions.
