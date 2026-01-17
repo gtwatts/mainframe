@@ -1,8 +1,8 @@
 blank_issues_enabled: true
 contact_links:
   - name: Documentation
-    url: https://github.com/gordonwatts/basher/blob/main/CHEATSHEET.md
+    url: https://github.com/gtwatts/mainframe/blob/main/CHEATSHEET.md
     about: Check the full function reference first
   - name: Discussions
-    url: https://github.com/gordonwatts/basher/discussions
+    url: https://github.com/gtwatts/mainframe/discussions
     about: Ask questions and share ideas
