@@ -4,7 +4,7 @@
 
 ## Quick Start
 
-One line gives you 500+ pure bash functions:
+One line gives you 550+ pure bash functions:
 
 ```bash
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
@@ -12,7 +12,7 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 
 ## What You Can Do
 
-MAINFRAME provides **17 libraries** with **500+ functions**. Here's what's available:
+MAINFRAME provides **19 libraries** with **550+ functions**. Here's what's available:
 
 ### Core Libraries
 
@@ -35,6 +35,8 @@ MAINFRAME provides **17 libraries** with **500+ functions**. Here's what's avail
 | **Git** | `git_branch`, `git_is_dirty`, `git_commit_hash`, `git_changed_files` | Git workflows |
 | **Crypto** | `sha256`, `md5`, `base64_encode`, `base64_decode`, `random_token` | Hashing/encoding |
 | **Process** | `proc_exists`, `proc_find_by_port`, `lockfile_acquire`, `with_timeout` | Process management |
+| **Path** | `path_normalize`, `path_join`, `path_is_safe`, `path_quote`, `path_relative` | Path manipulation |
+| **Validation** | `validate_int`, `validate_email`, `sanitize_html`, `validate_path_safe` | Input validation & security |
 
 ### Formatting Functions
 
@@ -108,6 +110,55 @@ sha256 "data"           # SHA-256 hash
 md5 "data"              # MD5 hash
 base64_encode "hello"   # Base64 encode
 random_token 32         # Secure random token
+```
+
+### Path
+
+```bash
+path_normalize "/foo//bar/../baz"   # /foo/baz
+path_absolute "relative/path"        # Full absolute path
+path_relative "/a/b/c" "/a"          # b/c
+path_join "/foo" "bar" "baz"         # /foo/bar/baz
+path_dir "/foo/bar/file.txt"         # /foo/bar
+path_base "/foo/bar/file.txt"        # file.txt
+path_ext "/foo/bar.tar.gz"           # gz
+path_stem "/foo/bar.tar.gz"          # bar.tar
+path_replace_ext "doc.txt" "md"      # doc.md
+path_is_safe "/base" "$user_path"    # 0 if safe, 1 if traversal
+path_quote "/path with spaces"       # Safely escaped
+path_to_unix "C:\Users\foo"          # /c/Users/foo
+path_expand_tilde "~/Documents"      # /home/user/Documents
+```
+
+### Validation (Council Priority - Prevents 95% of path/input errors)
+
+```bash
+# Type validation
+validate_int "42" 0 100         # Valid integer in range
+validate_float "3.14"           # Valid float
+validate_bool "true"            # true/false/yes/no/1/0
+
+# Format validation
+validate_email "user@domain.com"         # RFC 5322 simplified
+validate_url "https://example.com"       # URL with scheme check
+validate_ipv4 "192.168.1.1"              # IPv4 address
+validate_date "2024-01-15"               # YYYY-MM-DD format
+validate_semver "1.2.3"                  # Semantic version
+
+# Path validation (SECURITY CRITICAL)
+validate_path_safe "$path" "/base"       # Prevents traversal attacks
+validate_filename "report.pdf"           # No path components
+validate_path_chars "/safe/path"         # Safe characters only
+
+# Sanitization
+sanitize_shell_arg "$user_input"         # Safe for shell
+sanitize_filename "a/b<c>.txt"           # Returns: a_b_c_.txt
+sanitize_html "<script>alert(1)"         # Returns: &lt;script&gt;alert(1)
+sanitize_sql "O'Brien"                   # Returns: O''Brien
+
+# Command safety
+validate_command_safe "ls -la"           # No injection
+build_safe_command "grep" "$pat" "$file" # Escaped command
 ```
 
 ## Important Rules

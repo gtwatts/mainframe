@@ -668,6 +668,16 @@ if [[ -f "${_MAINFRAME_LIB_DIR}/crypto.sh" ]]; then
     source "${_MAINFRAME_LIB_DIR}/crypto.sh"
 fi
 
+# Source path.sh for path manipulation
+if [[ -f "${_MAINFRAME_LIB_DIR}/path.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/path.sh"
+fi
+
+# Source validation.sh for input validation and sanitization
+if [[ -f "${_MAINFRAME_LIB_DIR}/validation.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/validation.sh"
+fi
+
 # =============================================================================
 # MODULE EXPORTS
 # =============================================================================
@@ -726,4 +736,24 @@ BASHER_COMMON_EXPORTS=(
     proc_signal proc_kill proc_kill_force proc_kill_tree
     proc_wait proc_wait_timeout proc_wait_start
     proc_count proc_load proc_uptime proc_uptime_human
+    # Path Manipulation (from path.sh)
+    path_normalize path_absolute path_relative
+    path_dir path_base path_ext path_ext_full path_stem path_stem_full
+    path_join path_replace_ext path_add_suffix
+    path_to_unix path_to_windows path_style
+    path_quote path_is_safe path_ensure_dir path_sanitize
+    path_expand_tilde path_common_prefix
+    path_is_absolute path_is_relative path_has_parent_ref path_is_hidden
+    path_equals path_depth path_split
+    path_unique path_resolve
+    # Validation (from validation.sh)
+    validate_int validate_float validate_bool validate_uuid validate_hex
+    validate_email validate_url validate_domain validate_ipv4 validate_ipv6
+    validate_date validate_time validate_semver
+    validate_path validate_path_safe validate_filename validate_path_chars
+    sanitize_shell_arg sanitize_filename sanitize_sql sanitize_html sanitize_json
+    validate_regex validate_length validate_enum validate_all
+    validate_command_safe build_safe_command
+    validate_port validate_mac validate_credit_card validate_phone
+    validate_json validate_alnum validate_slug validate_cidr validate_base64
 )

@@ -464,6 +464,43 @@ success "Complete!"
 
 ---
 
+## Path Functions (path.sh)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `path_normalize` | `path_normalize "path"` | `path_normalize "/foo//bar/../baz"` | `/foo/baz` |
+| `path_absolute` | `path_absolute "path"` | `path_absolute "relative/path"` | `/cwd/relative/path` |
+| `path_relative` | `path_relative "target" "base"` | `path_relative "/a/b/c" "/a"` | `b/c` |
+| `path_dir` | `path_dir "path"` | `path_dir "/foo/bar/baz.txt"` | `/foo/bar` |
+| `path_base` | `path_base "path"` | `path_base "/foo/bar/baz.txt"` | `baz.txt` |
+| `path_ext` | `path_ext "path"` | `path_ext "/foo/bar.tar.gz"` | `gz` |
+| `path_ext_full` | `path_ext_full "path"` | `path_ext_full "/foo/bar.tar.gz"` | `tar.gz` |
+| `path_stem` | `path_stem "path"` | `path_stem "/foo/bar.tar.gz"` | `bar.tar` |
+| `path_stem_full` | `path_stem_full "path"` | `path_stem_full "/foo/bar.tar.gz"` | `bar` |
+| `path_join` | `path_join p1 p2 ...` | `path_join "/foo" "bar" "baz"` | `/foo/bar/baz` |
+| `path_replace_ext` | `path_replace_ext "path" "ext"` | `path_replace_ext "/foo/bar.txt" "md"` | `/foo/bar.md` |
+| `path_add_suffix` | `path_add_suffix "path" "suffix"` | `path_add_suffix "/foo/bar.txt" "_bak"` | `/foo/bar_bak.txt` |
+| `path_to_unix` | `path_to_unix "path"` | `path_to_unix "C:\Users\foo"` | `/c/Users/foo` |
+| `path_to_windows` | `path_to_windows "path"` | `path_to_windows "/c/Users/foo"` | `C:\Users\foo` |
+| `path_style` | `path_style "path"` | `path_style "C:\foo"` | `windows` |
+| `path_quote` | `path_quote "path"` | `path_quote "/path with spaces"` | `'/path with spaces'` |
+| `path_is_safe` | `path_is_safe "base" "path"` | `path_is_safe "/base" "/base/sub"` | (returns 0/1) |
+| `path_ensure_dir` | `path_ensure_dir "path"` | `path_ensure_dir "/foo/bar/file.txt"` | (creates /foo/bar/) |
+| `path_sanitize` | `path_sanitize "name"` | `path_sanitize "file: <bad>.txt"` | `file_bad.txt` |
+| `path_expand_tilde` | `path_expand_tilde "path"` | `path_expand_tilde "~/Documents"` | `/home/user/Documents` |
+| `path_common_prefix` | `path_common_prefix p1 p2 ...` | `path_common_prefix "/a/b/c" "/a/b/d"` | `/a/b` |
+| `path_is_absolute` | `path_is_absolute "path"` | `path_is_absolute "/foo"` | (returns 0/1) |
+| `path_is_relative` | `path_is_relative "path"` | `path_is_relative "foo"` | (returns 0/1) |
+| `path_has_parent_ref` | `path_has_parent_ref "path"` | `path_has_parent_ref "../foo"` | (returns 0/1) |
+| `path_is_hidden` | `path_is_hidden "path"` | `path_is_hidden ".bashrc"` | (returns 0/1) |
+| `path_equals` | `path_equals "p1" "p2"` | `path_equals "/a/../b" "/b"` | (returns 0/1) |
+| `path_depth` | `path_depth "path"` | `path_depth "/foo/bar/baz"` | `3` |
+| `path_split` | `path_split "path" arr` | `path_split "/a/b" arr` | Sets arr=("a" "b") |
+| `path_unique` | `path_unique "path"` | `path_unique "/foo/bar.txt"` | `/foo/bar (1).txt` |
+| `path_resolve` | `path_resolve "path"` | `path_resolve "/link"` | (resolved symlink) |
+
+---
+
 ## Quick Patterns (NEW)
 
 ### DateTime Operations
@@ -546,8 +583,155 @@ pid=$(proc_find_by_port 8080)
 with_lock "/tmp/myapp.lock" "run_exclusive_task"
 ```
 
+### Path Manipulation
+```bash
+# Normalize and resolve paths
+clean=$(path_normalize "/foo//bar/../baz")  # /foo/baz
+abs=$(path_absolute "relative/path")        # /cwd/relative/path
+rel=$(path_relative "/a/b/c/d" "/a/b")      # c/d
+
+# Extract components
+dir=$(path_dir "/foo/bar/file.txt")         # /foo/bar
+base=$(path_base "/foo/bar/file.txt")       # file.txt
+ext=$(path_ext "/foo/bar.tar.gz")           # gz
+stem=$(path_stem "/foo/bar.tar.gz")         # bar.tar
+
+# Build paths safely
+full=$(path_join "/base" "sub" "file.txt")  # /base/sub/file.txt
+new=$(path_replace_ext "doc.txt" "md")      # doc.md
+
+# Safety checks
+if path_is_safe "/allowed" "$user_path"; then
+    process_file "$user_path"
+fi
+
+# Cross-platform
+unix=$(path_to_unix "C:\Users\foo")         # /c/Users/foo
+win=$(path_to_windows "/c/Users/foo")       # C:\Users\foo
+
+# Handle spaces safely
+safe=$(path_quote "/path with spaces/file") # properly escaped
+```
+
 ---
 
-*500+ functions | 17 libraries | Zero dependencies | 20-72x faster*
+## Validation Functions (validation.sh)
+
+### Type Validation
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `validate_int` | `validate_int "value" [min] [max]` | `validate_int "42" 0 100` | (returns 0/1) |
+| `validate_float` | `validate_float "value"` | `validate_float "3.14"` | (returns 0/1) |
+| `validate_bool` | `validate_bool "value"` | `validate_bool "true"` | (returns 0/1) |
+| `validate_uuid` | `validate_uuid "value"` | `validate_uuid "550e8400-..."` | (returns 0/1) |
+| `validate_hex` | `validate_hex "value" [length]` | `validate_hex "ff00ff" 6` | (returns 0/1) |
+
+### Format Validation
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `validate_email` | `validate_email "address"` | `validate_email "a@b.com"` | (returns 0/1) |
+| `validate_url` | `validate_url "url" [schemes]` | `validate_url "https://..."` | (returns 0/1) |
+| `validate_domain` | `validate_domain "domain"` | `validate_domain "example.com"` | (returns 0/1) |
+| `validate_ipv4` | `validate_ipv4 "address"` | `validate_ipv4 "192.168.1.1"` | (returns 0/1) |
+| `validate_ipv6` | `validate_ipv6 "address"` | `validate_ipv6 "::1"` | (returns 0/1) |
+| `validate_date` | `validate_date "YYYY-MM-DD"` | `validate_date "2024-01-15"` | (returns 0/1) |
+| `validate_time` | `validate_time "HH:MM:SS"` | `validate_time "14:30:00"` | (returns 0/1) |
+| `validate_semver` | `validate_semver "version"` | `validate_semver "1.2.3"` | (returns 0/1) |
+| `validate_port` | `validate_port "port"` | `validate_port "8080"` | (returns 0/1) |
+| `validate_mac` | `validate_mac "address"` | `validate_mac "00:1A:2B:..."` | (returns 0/1) |
+| `validate_phone` | `validate_phone "number"` | `validate_phone "+1234567890"` | (returns 0/1) |
+| `validate_cidr` | `validate_cidr "cidr"` | `validate_cidr "192.168.1.0/24"` | (returns 0/1) |
+| `validate_base64` | `validate_base64 "string"` | `validate_base64 "aGVsbG8="` | (returns 0/1) |
+| `validate_credit_card` | `validate_credit_card "num"` | `validate_credit_card "4111..."` | (returns 0/1) |
+
+### Path Validation
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `validate_path` | `validate_path "path" [type]` | `validate_path "/tmp" "dir"` | (returns 0/1) |
+| `validate_path_safe` | `validate_path_safe "path" [base]` | `validate_path_safe "f.txt" "/app"` | (returns 0/1) |
+| `validate_filename` | `validate_filename "name"` | `validate_filename "report.pdf"` | (returns 0/1) |
+| `validate_path_chars` | `validate_path_chars "path"` | `validate_path_chars "/safe/path"` | (returns 0/1) |
+
+### Sanitization
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `sanitize_shell_arg` | `sanitize_shell_arg "value"` | `sanitize_shell_arg "a; rm -rf"` | `a\;\ rm\ -rf` |
+| `sanitize_filename` | `sanitize_filename "name" [repl]` | `sanitize_filename "a/b<c>.txt"` | `a_b_c_.txt` |
+| `sanitize_sql` | `sanitize_sql "value"` | `sanitize_sql "O'Brien"` | `O''Brien` |
+| `sanitize_html` | `sanitize_html "value"` | `sanitize_html "<script>"` | `&lt;script&gt;` |
+| `sanitize_json` | `sanitize_json "value"` | `sanitize_json 'say "hi"'` | `say \"hi\"` |
+
+### Complex Validation
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `validate_regex` | `validate_regex "value" "pattern"` | `validate_regex "abc" "^[a-z]+$"` | (returns 0/1) |
+| `validate_length` | `validate_length "value" [min] [max]` | `validate_length "hello" 1 10` | (returns 0/1) |
+| `validate_enum` | `validate_enum "val" "opt1" "opt2"` | `validate_enum "a" "a" "b" "c"` | (returns 0/1) |
+| `validate_all` | `validate_all "func" "${arr[@]}"` | `validate_all validate_int 1 2 3` | (returns 0/1) |
+| `validate_json` | `validate_json "string"` | `validate_json '{"a":1}'` | (returns 0/1) |
+| `validate_alnum` | `validate_alnum "string" [allow_]` | `validate_alnum "abc123"` | (returns 0/1) |
+| `validate_slug` | `validate_slug "string"` | `validate_slug "my-slug"` | (returns 0/1) |
+
+### Command Safety
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `validate_command_safe` | `validate_command_safe "cmd"` | `validate_command_safe "ls -la"` | (returns 0/1) |
+| `build_safe_command` | `build_safe_command "cmd" args...` | `build_safe_command "grep" "pat" "file"` | Escaped command |
+
+---
+
+## Quick Patterns (Validation)
+
+### Input Validation
+```bash
+# Validate user input
+read -p "Enter age: " age
+if validate_int "$age" 1 120; then
+    echo "Valid age: $age"
+else
+    echo "Invalid age"
+fi
+```
+
+### Secure Path Handling
+```bash
+# Validate path stays within base directory
+if validate_path_safe "$user_input" "/var/www/uploads"; then
+    # Safe to use path
+    cat "$user_input"
+else
+    echo "Invalid path - access denied"
+fi
+```
+
+### Sanitize for Output
+```bash
+# Sanitize user input for HTML display
+username=$(sanitize_html "$raw_input")
+echo "<p>Welcome, $username</p>"
+
+# Build safe shell command
+cmd=$(build_safe_command "grep" "$pattern" "$file")
+eval "$cmd"
+```
+
+### Batch Validation
+```bash
+# Validate all items in array
+ports=(80 443 8080)
+if validate_all validate_port "${ports[@]}"; then
+    echo "All ports valid"
+fi
+```
+
+---
+
+*550+ functions | 19 libraries | Zero dependencies | 20-72x faster*
 
 **YO JOE!**
