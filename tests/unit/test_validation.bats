@@ -446,9 +446,6 @@ setup() {
 
 @test "sanitize_html: escapes HTML entities" {
     result=$(sanitize_html "<script>alert('xss')</script>")
-    # Debug output
-    echo "# DEBUG: result='$result'" >&3
-    echo "# DEBUG: length=${#result}" >&3
     [[ "$result" == *"&lt;"* ]]
     [[ "$result" == *"&gt;"* ]]
     [[ "$result" != *"<script>"* ]]

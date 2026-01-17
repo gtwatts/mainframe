@@ -517,11 +517,13 @@ sanitize_html() {
     [[ -z "$value" ]] && return 0
 
     # Order matters: ampersand first
-    value="${value//&/&amp;}"
-    value="${value//</&lt;}"
-    value="${value//>/&gt;}"
-    value="${value//\"/&quot;}"
-    value="${value//\'/&#39;}"
+    # Note: In bash replacement, & means "matched text", so we must escape it
+    local amp='&'
+    value="${value//&/${amp}amp;}"
+    value="${value//</\&lt;}"
+    value="${value//>/\&gt;}"
+    value="${value//\"/\&quot;}"
+    value="${value//\'/\&#39;}"
 
     printf '%s\n' "$value"
 }
