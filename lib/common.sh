@@ -688,6 +688,16 @@ if [[ -f "${_MAINFRAME_LIB_DIR}/docker.sh" ]]; then
     source "${_MAINFRAME_LIB_DIR}/docker.sh"
 fi
 
+# Source pipe.sh for Unix pipeline processing
+if [[ -f "${_MAINFRAME_LIB_DIR}/pipe.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/pipe.sh"
+fi
+
+# Source stream.sh for advanced streaming paradigms
+if [[ -f "${_MAINFRAME_LIB_DIR}/stream.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/stream.sh"
+fi
+
 # =============================================================================
 # MODULE EXPORTS
 # =============================================================================
