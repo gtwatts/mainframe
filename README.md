@@ -20,7 +20,7 @@
 
 ### Give Your AI Coding Assistant **BASH SUPERPOWERS**
 
-**550+ Pure Bash Functions** | **Zero Dependencies** | **20-72x Faster**
+**850+ Pure Bash Functions** | **Zero Dependencies** | **20-72x Faster**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Bash 4.0+](https://img.shields.io/badge/bash-4.0%2B-green.svg)](https://www.gnu.org/software/bash/)
@@ -44,7 +44,7 @@ When AI coding assistants like **Claude Code** or **OpenCode** write bash script
 
 ## The Solution: MAINFRAME
 
-One line of code gives your AI instant access to **550+ battle-tested functions**:
+One line of code gives your AI instant access to **850+ battle-tested functions**:
 
 ```bash
 source "${MAINFRAME_ROOT}/lib/common.sh"
@@ -127,27 +127,33 @@ bash benchmarks/superpower_benchmarks.sh
 
 ## What You Get
 
-### 17 Libraries, 500+ Functions
+### 23 Libraries, 850+ Functions
 
 | Library | Functions | What It Does |
 |---------|-----------|--------------|
 | **common.sh** | 51 | Logging, errors, validation, colors |
 | **pure-string.sh** | 34 | String ops without sed/awk |
 | **pure-array.sh** | 33 | Array ops without external tools |
-| **pure-util.sh** | 55 | UUID, timestamps, validation |
+| **pure-util.sh** | 60 | UUID, timestamps, validation |
 | **pure-file.sh** | 37 | File ops without cat/head/tail |
 | **json.sh** | 20 | JSON generation (no jq needed) |
 | **semver.sh** | 20 | Semantic versioning |
-| **ansi.sh** | 43 | Terminal colors & styling |
+| **ansi.sh** | 90 | Terminal colors & styling |
 | **async.sh** | 26 | Async/parallel execution |
 | **args.sh** | 18 | Argument parsing |
 | **config.sh** | 13 | Config file handling |
-| **datetime.sh** | 42 | Date/time arithmetic & formatting |
-| **http.sh** | 30 | HTTP client (GET/POST/PUT/DELETE) |
-| **csv.sh** | 26 | RFC 4180 CSV parsing & generation |
-| **git.sh** | 50 | Git workflow helpers |
-| **crypto.sh** | 25 | Hashing, encoding, secure random |
-| **proc.sh** | 35 | Process management & locks |
+| **datetime.sh** | 45 | Date/time arithmetic & formatting |
+| **http.sh** | 35 | HTTP client (GET/POST/PUT/DELETE) |
+| **csv.sh** | 34 | RFC 4180 CSV parsing & generation |
+| **git.sh** | 52 | Git workflow helpers |
+| **crypto.sh** | 17 | Hashing, encoding, secure random |
+| **proc.sh** | 40 | Process management & locks |
+| **docker.sh** | 57 | Docker/Compose container management |
+| **env.sh** | 36 | Environment variables & dotenv |
+| **path.sh** | 30 | Cross-platform path manipulation |
+| **validation.sh** | 34 | Input validation & sanitization |
+| **pipe.sh** | 39 | Unix pipeline processing |
+| **stream.sh** | 28 | Advanced stream paradigms |
 
 ### Zero External Dependencies
 
@@ -282,6 +288,52 @@ proc_load                         # System load average
 with_lock "/tmp/app.lock" "run_exclusive_task"
 ```
 
+### Docker & Containers (NEW in v2.1)
+```bash
+docker_is_running                 # Check Docker daemon
+docker_image_exists "nginx"       # Check if image exists
+docker_container_logs "app" 50    # Get last 50 log lines
+compose_up "docker-compose.yml"   # Start compose stack
+compose_status                    # Show running services
+```
+
+### Environment Variables (NEW in v2.1)
+```bash
+env_load_dotenv ".env"            # Load .env file
+env_path_prepend "/opt/bin"       # Add to PATH
+env_require "API_KEY"             # Error if not set
+env_get "PORT" "8080"             # Get with default
+env_is_set "DEBUG" && echo "on"   # Check if set
+```
+
+### Path Manipulation (NEW in v2.1)
+```bash
+path_normalize "/foo/../bar"      # /bar
+path_join "/a" "b" "c"            # /a/b/c
+path_is_safe "/base" "$input"     # Prevent traversal attacks
+path_ext "/file.tar.gz"           # gz
+path_replace_ext "doc.md" "html"  # doc.html
+```
+
+### Input Validation (NEW in v2.1)
+```bash
+validate_email "user@example.com" # Check email format
+validate_url "https://..." "http,https"  # URL with scheme
+validate_path_safe "$path" "/base"  # Prevent directory traversal
+sanitize_html "<script>..."       # Escape HTML entities
+sanitize_filename "a/b<c>.txt"    # Safe filename
+```
+
+### Unix Pipelines (NEW in v2.1)
+```bash
+# Functional pipeline processing
+echo -e "a\nb\nc" | pipe_map 'tr a-z A-Z'     # A B C
+echo -e "1\n2\n3" | pipe_filter '^[12]$'      # 1, 2
+echo -e "1\n2\n3" | pipe_sum                  # 6
+echo -e "a\nb\na" | pipe_unique               # a, b
+echo -e "a\nb\nc" | pipe_join ","             # a,b,c
+```
+
 ---
 
 ## For AI Coding Assistant Users
@@ -341,8 +393,8 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 
 ```
 mainframe/
-├── lib/                    # Core libraries (500+ functions)
-│   ├── common.sh          # Main entry point (auto-sources others)
+├── lib/                    # Core libraries (850+ functions)
+│   ├── common.sh          # Main entry point (auto-sources all)
 │   ├── pure-string.sh     # String manipulation
 │   ├── pure-array.sh      # Array operations
 │   ├── pure-util.sh       # Utilities
@@ -352,13 +404,21 @@ mainframe/
 │   ├── ansi.sh            # Terminal colors & UI
 │   ├── async.sh           # Async/parallel execution
 │   ├── args.sh            # Argument parsing
-│   └── config.sh          # Config file handling
+│   ├── config.sh          # Config file handling
+│   ├── datetime.sh        # Date/time operations
+│   ├── http.sh            # HTTP client
+│   ├── csv.sh             # CSV parsing
+│   ├── git.sh             # Git helpers
+│   ├── crypto.sh          # Hashing & encoding
+│   ├── proc.sh            # Process management
+│   ├── docker.sh          # Docker/Compose (v2.1)
+│   ├── env.sh             # Environment vars (v2.1)
+│   ├── path.sh            # Path manipulation (v2.1)
+│   ├── validation.sh      # Input validation (v2.1)
+│   ├── pipe.sh            # Unix pipelines (v2.1)
+│   └── stream.sh          # Stream processing (v2.1)
 ├── scripts/               # Ready-to-use scripts
-│   ├── env/              # Environment checks
-│   ├── validation/       # Input validation
-│   ├── debug/            # Debugging tools
-│   └── agent/            # AI agent utilities
-├── tests/                 # BATS test suite
+├── tests/                 # BATS test suite (295 tests)
 ├── benchmarks/            # Performance benchmarks
 └── docs/                  # Documentation
 ```
@@ -491,7 +551,7 @@ This isn't just cleaner - it's **transformative for agentic coding**:
 
 MAINFRAME delivers all four:
 
-- **500+ tested functions** eliminate edge cases and bugs
+- **850+ tested functions** eliminate edge cases and bugs
 - **Zero dependencies** means no "is jq installed?" failures mid-script
 - **Intuitive naming** (`json_object`, `csv_row`, `git_branch`) lets AI write correct code immediately
 - **One source line** gives instant access to everything
@@ -539,7 +599,7 @@ MIT License - Use freely in your projects. See [LICENSE](LICENSE).
 
 ---
 
-**500+ functions** | **Zero dependencies** | **20-72x faster** | **Pure Bash**
+**850+ functions** | **Zero dependencies** | **20-72x faster** | **Pure Bash**
 
 *Made with ❤️ for AI coding assistants everywhere*
 
