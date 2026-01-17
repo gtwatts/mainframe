@@ -23,9 +23,11 @@
 **850+ Pure Bash Functions** | **Zero Dependencies** | **20-72x Faster**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://img.shields.io/github/actions/workflow/status/gordonwatts/basher/test.yml?label=tests)](https://github.com/gordonwatts/basher/actions)
 [![Bash 4.0+](https://img.shields.io/badge/bash-4.0%2B-green.svg)](https://www.gnu.org/software/bash/)
-[![Pure Bash](https://img.shields.io/badge/dependencies-zero-blue.svg)](https://github.com/gtwatts/mainframe)
-[![YO JOE](https://img.shields.io/badge/YO-JOE!-red?style=flat)](https://github.com/gtwatts/mainframe)
+[![Pure Bash](https://img.shields.io/badge/dependencies-zero-blue.svg)](https://github.com/gordonwatts/basher)
+[![GitHub stars](https://img.shields.io/github/stars/gordonwatts/basher?style=social)](https://github.com/gordonwatts/basher)
+[![YO JOE](https://img.shields.io/badge/YO-JOE!-red?style=flat)](https://github.com/gordonwatts/basher)
 
 **Works with:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) • [OpenCode](https://github.com/opencode-ai/opencode) • [Aider](https://aider.chat/) • Any AI that writes bash
 
@@ -63,7 +65,7 @@ Now your AI can:
 
 ```bash
 # 1. Clone MAINFRAME
-git clone https://github.com/gtwatts/mainframe.git ~/.mainframe
+git clone https://github.com/gordonwatts/basher.git ~/.mainframe
 
 # 2. Add to your shell profile
 echo 'export MAINFRAME_ROOT="$HOME/.mainframe"' >> ~/.bashrc
@@ -488,7 +490,7 @@ See [CHEATSHEET.md](CHEATSHEET.md) for complete function signatures - essential 
 ### Share Your Results
 
 Did MAINFRAME improve your AI's bash scripts? We'd love to hear:
-- [Open an issue](https://github.com/gtwatts/mainframe/issues) with your experience
+- [Open an issue](https://github.com/gordonwatts/basher/issues) with your experience
 - Star the repo if MAINFRAME helped you
 
 ---
@@ -595,7 +597,7 @@ MIT License - Use freely in your projects. See [LICENSE](LICENSE).
 
 *"Knowing Your Shell is half the battle."*
 
-**[⬇️ Install Now](#quick-start-30-seconds)** • **[📖 Full Docs](INSTALL.md)** • **[🐛 Report Issues](https://github.com/gtwatts/mainframe/issues)**
+**[⬇️ Install Now](#quick-start-30-seconds)** • **[📖 Full Docs](INSTALL.md)** • **[🐛 Report Issues](https://github.com/gordonwatts/basher/issues)**
 
 ---
 
