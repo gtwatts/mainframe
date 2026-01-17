@@ -1,0 +1,29 @@
+# OS files
+.DS_Store
+Thumbs.db
+*~
+
+# Editor files
+*.swp
+*.swo
+*.bak
+.idea/
+.vscode/
+*.sublime-*
+
+# Test artifacts
+/tmp/
+*.log
+/coverage/
+
+# Benchmark results (keep the script, not results)
+benchmark_results/
+
+# Local config overrides
+*.local
+*.local.sh
+basher.conf
+
+# Temporary files
+*.tmp
+*.temp

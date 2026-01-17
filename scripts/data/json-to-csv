@@ -1,0 +1,244 @@
+#!/usr/bin/env bash
+# =============================================================================
+# json-to-csv - Convert JSON arrays to CSV format
+# =============================================================================
+# Description: Convert JSON arrays to CSV with header detection and nested object flattening
+# Category: data
+# =============================================================================
+
+set -euo pipefail
+
+# Initialize basher
+BASHER_ROOT="${BASHER_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+source "$BASHER_ROOT/lib/common.sh"
+source "$BASHER_ROOT/lib/args.sh"
+
+basher_init
+
+# =============================================================================
+# SCRIPT CONFIGURATION
+# =============================================================================
+
+args_script "json-to-csv" "1.0.0" "Convert JSON arrays to CSV format with automatic header detection"
+
+args_option "f" "fields"    "true"  "Comma-separated list of fields to include"
+args_option "F" "flatten"   "false" "Flatten nested objects with dot notation"
+args_option "d" "delimiter" "true"  "CSV delimiter character" ","
+args_option "H" "no-header" "false" "Omit header row"
+args_option "a" "array-path" "true" "JQ path to array (for non-root arrays)" "."
+args_option "o" "output"    "true"  "Output file (default: stdout)"
+args_option "p" "pretty"    "false" "Align columns for readability"
+
+args_common_options
+
+args_positional "input" "false" "Input JSON file (or stdin if omitted)"
+
+args_example "json-to-csv users.json"
+args_example "json-to-csv --fields name,email users.json"
+args_example "json-to-csv --flatten nested.json"
+args_example "cat data.json | json-to-csv"
+args_example "json-to-csv --array-path '.data.users' api-response.json"
+
+# =============================================================================
+# CORE FUNCTIONS
+# =============================================================================
+
+# Get all unique keys from JSON array
+get_json_keys() {
+    local json="$1"
+    local flatten="${2:-false}"
+    local array_path="${3:-.}"
+
+    if [[ "$flatten" == "true" ]]; then
+        # Get flattened keys with dot notation
+        jq -r "
+            $array_path |
+            if type == \"array\" then .[0] else . end |
+            [paths(scalars)] |
+            map(map(tostring) | join(\".\")) |
+            .[]
+        " <<< "$json" 2>/dev/null | sort -u
+    else
+        # Get top-level keys only
+        jq -r "
+            $array_path |
+            if type == \"array\" then .[0] else . end |
+            keys[]
+        " <<< "$json" 2>/dev/null | sort
+    fi
+}
+
+# Extract value from object using path
+get_value() {
+    local obj="$1"
+    local path="$2"
+    local flatten="${3:-false}"
+
+    if [[ "$flatten" == "true" && "$path" == *.* ]]; then
+        # Handle nested path
+        local jq_path
+        jq_path=$(printf '%s' "$path" | sed 's/\./]["/g; s/^/.["/; s/$/"]/')
+        jq -r "$jq_path // \"\"" <<< "$obj" 2>/dev/null
+    else
+        jq -r ".[\"$path\"] // \"\"" <<< "$obj" 2>/dev/null
+    fi
+}
+
+# Escape CSV value
+escape_csv() {
+    local value="$1"
+    local delimiter="${2:-,}"
+
+    # If value contains delimiter, newline, or quote, wrap in quotes
+    if [[ "$value" == *"$delimiter"* ]] || [[ "$value" == *$'\n'* ]] || [[ "$value" == *'"'* ]]; then
+        # Escape existing quotes by doubling them
+        value="${value//\"/\"\"}"
+        printf '"%s"' "$value"
+    else
+        printf '%s' "$value"
+    fi
+}
+
+# Convert JSON to CSV
+json_to_csv() {
+    local json="$1"
+    local fields="${2:-}"
+    local flatten="${3:-false}"
+    local delimiter="${4:-,}"
+    local no_header="${5:-false}"
+    local array_path="${6:-.}"
+
+    # Determine fields/columns
+    local -a columns
+    if [[ -n "$fields" ]]; then
+        IFS=',' read -ra columns <<< "$fields"
+    else
+        mapfile -t columns < <(get_json_keys "$json" "$flatten" "$array_path")
+    fi
+
+    if [[ ${#columns[@]} -eq 0 ]]; then
+        die "$EXIT_DATAERR" "No fields found in JSON"
+    fi
+
+    # Output header
+    if [[ "$no_header" != "true" ]]; then
+        local header=""
+        for col in "${columns[@]}"; do
+            [[ -n "$header" ]] && header+="$delimiter"
+            header+=$(escape_csv "$col" "$delimiter")
+        done
+        printf '%s\n' "$header"
+    fi
+
+    # Extract array
+    local array
+    array=$(jq -c "$array_path" <<< "$json")
+
+    # Handle single object (wrap in array)
+    if [[ $(jq -r 'type' <<< "$array") != "array" ]]; then
+        array="[$array]"
+    fi
+
+    # Process each row
+    local row_count
+    row_count=$(jq 'length' <<< "$array")
+
+    for ((i = 0; i < row_count; i++)); do
+        local obj
+        obj=$(jq -c ".[$i]" <<< "$array")
+
+        local row=""
+        for col in "${columns[@]}"; do
+            [[ -n "$row" ]] && row+="$delimiter"
+
+            local value
+            value=$(get_value "$obj" "$col" "$flatten")
+
+            # Handle arrays and objects
+            if [[ "$value" == "["* ]] || [[ "$value" == "{"* ]]; then
+                value=$(jq -c '.' <<< "$value" 2>/dev/null || printf '%s' "$value")
+            fi
+
+            row+=$(escape_csv "$value" "$delimiter")
+        done
+
+        printf '%s\n' "$row"
+    done
+}
+
+# Pretty print CSV with aligned columns
+pretty_print_csv() {
+    local csv="$1"
+    local delimiter="${2:-,}"
+
+    # Use column command if available
+    if command_exists column; then
+        column -t -s"$delimiter" <<< "$csv"
+    else
+        printf '%s\n' "$csv"
+    fi
+}
+
+# =============================================================================
+# MAIN
+# =============================================================================
+
+main() {
+    args_parse "$@"
+    args_apply_common
+
+    require_command jq "apt install jq"
+
+    local input
+    input=$(args_get "input")
+
+    local json
+
+    # Read input
+    if [[ -n "$input" && "$input" != "-" ]]; then
+        require_file "$input" "Input file"
+        json=$(cat "$input")
+    else
+        # Read from stdin
+        if [[ -t 0 ]]; then
+            die_usage "No input provided. Specify a file or pipe JSON data."
+        fi
+        json=$(cat)
+    fi
+
+    # Validate JSON
+    if ! is_valid_json "$json"; then
+        die "$EXIT_DATAERR" "Invalid JSON input"
+    fi
+
+    # Get options
+    local fields flatten delimiter no_header array_path pretty output
+    fields=$(args_get "fields")
+    flatten=$(args_get_bool "flatten" && echo "true" || echo "false")
+    delimiter=$(args_get "delimiter" ",")
+    no_header=$(args_get_bool "no-header" && echo "true" || echo "false")
+    array_path=$(args_get "array-path" ".")
+    pretty=$(args_get_bool "pretty" && echo "true" || echo "false")
+    output=$(args_get "output")
+
+    log_debug "Converting JSON to CSV: fields=$fields, flatten=$flatten, delimiter=$delimiter"
+
+    # Convert
+    local csv
+    csv=$(json_to_csv "$json" "$fields" "$flatten" "$delimiter" "$no_header" "$array_path")
+
+    # Pretty print if requested
+    if [[ "$pretty" == "true" ]]; then
+        csv=$(pretty_print_csv "$csv" "$delimiter")
+    fi
+
+    # Output
+    if [[ -n "$output" ]]; then
+        printf '%s\n' "$csv" > "$output"
+        success "Output written to: $output"
+    else
+        printf '%s\n' "$csv"
+    fi
+}
+
+main "$@"

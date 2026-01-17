@@ -1,0 +1,120 @@
+# =============================================================================
+# Basher Configuration File
+# =============================================================================
+# Copy this file to ~/.config/basher/basher.conf and customize as needed.
+# Environment variables override these settings (BASHER_<SECTION>_<KEY>)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# General Settings
+# -----------------------------------------------------------------------------
+[general]
+# Log level: debug, info, warn, error
+log_level = info
+
+# Log file (optional, leave empty to disable file logging)
+log_file =
+
+# Disable colored output
+no_color = false
+
+# -----------------------------------------------------------------------------
+# Hook Settings
+# -----------------------------------------------------------------------------
+[hooks]
+# Enable/disable hook system globally
+enabled = true
+
+# Maximum time (seconds) for a hook to execute
+timeout = 30
+
+# -----------------------------------------------------------------------------
+# Pre-Command Hooks
+# -----------------------------------------------------------------------------
+[pre-command]
+enabled = true
+# Comma-separated list of scripts to run (or empty for all)
+scripts =
+
+# -----------------------------------------------------------------------------
+# Post-Command Hooks
+# -----------------------------------------------------------------------------
+[post-command]
+enabled = true
+scripts =
+
+# -----------------------------------------------------------------------------
+# File Change Hooks
+# -----------------------------------------------------------------------------
+[file-change]
+enabled = true
+# File patterns to watch (comma-separated globs)
+patterns = *.json,*.yaml,*.yml,*.md
+
+# -----------------------------------------------------------------------------
+# Context Hooks
+# -----------------------------------------------------------------------------
+[context]
+enabled = true
+scripts =
+
+# -----------------------------------------------------------------------------
+# Data Transformation Settings
+# -----------------------------------------------------------------------------
+[data]
+# Default CSV delimiter
+default_delimiter = ,
+
+# Separator for flattening nested objects
+flatten_separator = .
+
+# Default JSON indent (spaces)
+json_indent = 2
+
+# Maximum file size to process (bytes, 0 = unlimited)
+max_file_size = 0
+
+# -----------------------------------------------------------------------------
+# Agent Orchestration Settings
+# -----------------------------------------------------------------------------
+[agent]
+# Maximum concurrent agents
+max_agents = 4
+
+# Default agent timeout (seconds)
+timeout = 300
+
+# Shared memory directory
+shared_dir = /tmp/basher-agents
+
+# -----------------------------------------------------------------------------
+# Git Settings
+# -----------------------------------------------------------------------------
+[git]
+# Default branch for comparisons
+default_branch = main
+
+# Commit message template
+commit_template =
+
+# Enable conventional commits
+conventional_commits = true
+
+# -----------------------------------------------------------------------------
+# API Settings
+# -----------------------------------------------------------------------------
+[api]
+# Default request timeout (seconds)
+timeout = 30
+
+# Maximum retries for failed requests
+max_retries = 3
+
+# Retry delay (seconds)
+retry_delay = 1
+
+# Cache directory
+cache_dir = ~/.cache/basher/api
+
+# Default cache TTL (seconds)
+cache_ttl = 3600

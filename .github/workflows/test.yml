@@ -1,0 +1,204 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run nightly at 3 AM UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+env:
+  TERM: xterm-256color
+  NO_COLOR: 1
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck on libraries
+        run: |
+          shellcheck -x lib/*.sh
+
+      - name: Run ShellCheck on scripts
+        run: |
+          find scripts -name '*.sh' -type f | xargs shellcheck -x
+
+      - name: Run ShellCheck on hooks
+        run: |
+          find hooks -name '*.sh' -type f | xargs shellcheck -x
+
+  test-unit:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        bash-version: ['5.0', '5.1', '5.2']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Bash ${{ matrix.bash-version }}
+        uses: actions/setup-bash@v1
+        with:
+          bash-version: ${{ matrix.bash-version }}
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq csvkit xmlstarlet
+
+      - name: Install BATS
+        run: |
+          git clone https://github.com/bats-core/bats-core.git tests/bats
+          git clone https://github.com/bats-core/bats-support.git tests/bats-support
+          git clone https://github.com/bats-core/bats-assert.git tests/bats-assert
+          git clone https://github.com/bats-core/bats-file.git tests/bats-file
+
+      - name: Run unit tests
+        run: |
+          ./tests/bats/bin/bats --formatter tap tests/unit/ | tee results.tap
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.bash-version }}
+          path: results.tap
+
+  test-integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: test-unit
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq csvkit xmlstarlet curl
+
+      - name: Install BATS
+        run: |
+          git clone https://github.com/bats-core/bats-core.git tests/bats
+          git clone https://github.com/bats-core/bats-support.git tests/bats-support
+          git clone https://github.com/bats-core/bats-assert.git tests/bats-assert
+          git clone https://github.com/bats-core/bats-file.git tests/bats-file
+
+      - name: Run integration tests
+        run: |
+          ./tests/bats/bin/bats --formatter tap tests/integration/ | tee integration-results.tap
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-results
+          path: integration-results.tap
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    needs: test-unit
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq kcov
+
+      - name: Install BATS
+        run: |
+          git clone https://github.com/bats-core/bats-core.git tests/bats
+          git clone https://github.com/bats-core/bats-support.git tests/bats-support
+          git clone https://github.com/bats-core/bats-assert.git tests/bats-assert
+          git clone https://github.com/bats-core/bats-file.git tests/bats-file
+
+      - name: Run tests with coverage
+        run: |
+          mkdir -p coverage
+          kcov --include-path=lib/,scripts/ coverage ./tests/bats/bin/bats tests/unit/
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          directory: ./coverage
+          fail_ci_if_error: false
+
+  test-macos:
+    name: macOS Compatibility
+    runs-on: macos-latest
+    needs: lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          brew install jq bash coreutils
+
+      - name: Install BATS
+        run: |
+          git clone https://github.com/bats-core/bats-core.git tests/bats
+          git clone https://github.com/bats-core/bats-support.git tests/bats-support
+          git clone https://github.com/bats-core/bats-assert.git tests/bats-assert
+          git clone https://github.com/bats-core/bats-file.git tests/bats-file
+
+      - name: Run tests
+        run: |
+          ./tests/bats/bin/bats tests/unit/
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: [test-unit, test-integration, test-macos]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for version bump
+        id: version
+        run: |
+          CURRENT_VERSION=$(grep -m1 'BASHER_VERSION=' lib/common.sh | cut -d'"' -f2)
+          PREVIOUS_VERSION=$(git show HEAD~1:lib/common.sh | grep -m1 'BASHER_VERSION=' | cut -d'"' -f2 || echo "0.0.0")
+          if [[ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]]; then
+            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        if: steps.version.outputs.changed == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Release v${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true

@@ -1,0 +1,30 @@
+[
+  {
+    "id": 1,
+    "user": {
+      "name": "Alice Johnson",
+      "contact": {
+        "email": "alice@example.com",
+        "phone": "555-0101"
+      }
+    },
+    "metadata": {
+      "created_at": "2024-01-15",
+      "tags": ["admin", "verified"]
+    }
+  },
+  {
+    "id": 2,
+    "user": {
+      "name": "Bob Smith",
+      "contact": {
+        "email": "bob@example.com",
+        "phone": "555-0102"
+      }
+    },
+    "metadata": {
+      "created_at": "2024-01-16",
+      "tags": ["user"]
+    }
+  }
+]
