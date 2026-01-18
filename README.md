@@ -129,7 +129,7 @@ bash benchmarks/superpower_benchmarks.sh
 
 ## What You Get
 
-### 25 Libraries, 920+ Functions
+### 26 Libraries, 950+ Functions
 
 | Library | Functions | What It Does |
 |---------|-----------|--------------|
@@ -159,6 +159,7 @@ bash benchmarks/superpower_benchmarks.sh
 | **stream.sh** | 28 | Advanced stream paradigms |
 | **error.sh** | 25 | Try/catch, stack traces, error context |
 | **compat.sh** | 45 | BSD/GNU cross-platform compatibility |
+| **log.sh** | 30 | Structured JSON logging with levels & rotation |
 
 ### Zero External Dependencies
 
@@ -406,6 +407,45 @@ compat::clipboard_copy "text"            # Copy to clipboard
 compat::open "https://example.com"       # Open with default app
 ```
 
+### Structured Logging (NEW in v2.4)
+```bash
+source "$MAINFRAME_ROOT/lib/log.sh"
+
+# Basic logging with levels
+log::debug "Debug message"
+log::info "Info message"
+log::warn "Warning message"
+log::error "Error message"
+log::fatal "Fatal error"              # Also exits
+
+# JSON structured logging
+log::json "info" "User logged in" user_id=123 ip="1.2.3.4" action="login"
+# Output: {"level":"info","msg":"User logged in","user_id":123,"ip":"1.2.3.4","action":"login","timestamp":"2026-01-18T14:30:00Z"}
+
+# Configure logging
+log::set_level "debug"                # debug, info, warn, error
+log::set_format "json"                # json, text, pretty
+log::set_output "/var/log/app.log"    # File or stdout
+log::set_context app="myapp" env="prod"  # Persistent fields
+
+# Timing/Performance
+log::time_start "operation"
+# ... do work ...
+log::time_end "operation"             # Logs duration automatically
+
+# Time a command directly
+log::time "api_call" curl -s https://api.example.com
+
+# Log rotation
+log::rotate "/var/log/app.log" --max-size 10M --keep 5
+log::needs_rotation "/var/log/app.log" 10M && log::rotate ...
+
+# Utility functions
+log::infof "User %s logged in from %s" "$user" "$ip"  # Printf-style
+log::trace "Something happened"       # Includes caller info
+log::env                              # Logs bash/user/pwd info
+```
+
 ---
 
 ## For AI Coding Assistant Users
@@ -489,7 +529,8 @@ mainframe/
 │   ├── validation.sh      # Input validation (v2.1)
 │   ├── pipe.sh            # Unix pipelines (v2.1)
 │   ├── stream.sh          # Stream processing (v2.1)
-│   └── error.sh           # Try/catch & stack traces (v2.2)
+│   ├── error.sh           # Try/catch & stack traces (v2.2)
+│   └── log.sh             # Structured JSON logging (v2.4)
 ├── scripts/               # Ready-to-use scripts
 ├── tests/                 # BATS test suite (295 tests)
 ├── benchmarks/            # Performance benchmarks
