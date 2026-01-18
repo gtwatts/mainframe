@@ -162,6 +162,7 @@ bash benchmarks/superpower_benchmarks.sh
 | **log.sh** | 30 | Structured JSON logging with levels & rotation |
 | **cli.sh** | 35 | Declarative CLI framework with auto-help |
 | **ci.sh** | 35 | CI/CD portability for GitHub, GitLab, Jenkins, CircleCI, Travis, Azure |
+| **template.sh** | 30 | Mustache-style template engine with conditionals & loops |
 
 ### Zero External Dependencies
 
@@ -294,6 +295,36 @@ proc_exists $pid                  # Check if PID exists
 proc_find_by_port 8080            # Find what's using port 8080
 proc_load                         # System load average
 with_lock "/tmp/app.lock" "run_exclusive_task"
+```
+
+### Template Engine (NEW in v2.2)
+```bash
+# Variable substitution
+template::render "Hello {{name}}!" name="World"  # Hello World!
+
+# With defaults
+template::render "Port: {{PORT:-8080}}"          # Port: 8080
+
+# Conditionals
+template::render '{{#if DEBUG}}[DEBUG]{{/if}} msg' DEBUG=true   # [DEBUG] msg
+template::render '{{#unless PROD}}DEV{{/unless}}' PROD=false    # DEV
+
+# Loops
+template::render '{{#each ITEMS}}[{{.}}]{{/each}}' ITEMS="a b c"  # [a][b][c]
+
+# Built-in helpers
+template::render '{{upper name}}' name="hello"        # HELLO
+template::render '{{lower name}}' name="HELLO"        # hello
+template::render '{{env HOME}}'                       # /home/user
+template::render '{{now}}'                            # 2026-01-18 09:30:00
+template::render '{{uuid}}'                           # 550e8400-e29b-...
+
+# Partials (reusable snippets)
+template::partial "header" '<h1>{{title}}</h1>'
+template::render '{{>header}}' title="Welcome"        # <h1>Welcome</h1>
+
+# Render from file
+template::render_file "config.tpl" HOST=localhost PORT=8080 > config.yaml
 ```
 
 ### Docker & Containers (NEW in v2.1)
