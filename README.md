@@ -161,6 +161,7 @@ bash benchmarks/superpower_benchmarks.sh
 | **compat.sh** | 45 | BSD/GNU cross-platform compatibility |
 | **log.sh** | 30 | Structured JSON logging with levels & rotation |
 | **cli.sh** | 35 | Declarative CLI framework with auto-help |
+| **ci.sh** | 35 | CI/CD portability for GitHub, GitLab, Jenkins, CircleCI, Travis, Azure |
 
 ### Zero External Dependencies
 
@@ -302,6 +303,39 @@ docker_image_exists "nginx"       # Check if image exists
 docker_container_logs "app" 50    # Get last 50 log lines
 compose_up "docker-compose.yml"   # Start compose stack
 compose_status                    # Show running services
+```
+
+### CI/CD Portability (NEW in v2.2)
+```bash
+# Detection - works on GitHub, GitLab, Jenkins, CircleCI, Travis, Azure
+ci::is_ci && echo "Running in CI"
+ci::detect                        # github, gitlab, jenkins, circleci, travis, azure, none
+ci::name                          # "GitHub Actions", "GitLab CI", etc.
+
+# Cross-platform output (works everywhere)
+ci::set_output "version" "1.2.3"  # Set step output
+ci::set_env "BUILD_TAG" "v1.2.3"  # Set env for next steps
+ci::add_path "/custom/bin"        # Add to PATH
+
+# Collapsible log groups
+ci::group_start "Running tests"
+  npm test
+ci::group_end
+
+# PR/MR detection
+ci::is_pull_request && echo "This is a PR"
+ci::pr_number                     # 123
+ci::pr_branch                     # feature/my-branch
+ci::pr_target                     # main
+
+# Git info in CI
+ci::commit_sha                    # Full SHA
+ci::commit_short                  # 7-char SHA
+ci::branch                        # Current branch
+ci::tag                           # Tag name (if tag build)
+
+# Artifacts with checksums
+ci::artifact_create "dist/" "my-build"  # Creates .tar.gz + .sha256
 ```
 
 ### Environment Variables (NEW in v2.1)
