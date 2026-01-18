@@ -451,8 +451,9 @@ cli::get_array() {
 # Get remaining (extra) positional arguments
 # Usage: cli::remaining arr
 cli::remaining() {
-    # shellcheck disable=SC2178,SC2034
+    # shellcheck disable=SC2178
     local -n result_ref="$1"
+    # shellcheck disable=SC2034
     result_ref=("${_CLI_REMAINING[@]}")
 }
 

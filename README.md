@@ -20,7 +20,7 @@
 
 ### Give Your AI Coding Assistant **BASH SUPERPOWERS**
 
-**850+ Pure Bash Functions** | **Zero Dependencies** | **20-72x Faster**
+**1000+ Pure Bash Functions** | **Zero Dependencies** | **20-72x Faster**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Tests](https://img.shields.io/github/actions/workflow/status/gtwatts/mainframe/test.yml?label=tests)](https://github.com/gtwatts/mainframe/actions)
@@ -46,7 +46,7 @@ When AI coding assistants like **Claude Code** or **OpenCode** write bash script
 
 ## The Solution: MAINFRAME
 
-One line of code gives your AI instant access to **850+ battle-tested functions**:
+One line of code gives your AI instant access to **1000+ battle-tested functions**:
 
 ```bash
 source "${MAINFRAME_ROOT}/lib/common.sh"
@@ -164,6 +164,7 @@ bash benchmarks/superpower_benchmarks.sh
 | **cli.sh** | 35 | Declarative CLI framework with auto-help |
 | **ci.sh** | 35 | CI/CD portability for GitHub, GitLab, Jenkins, CircleCI, Travis, Azure |
 | **template.sh** | 30 | Mustache-style template engine with conditionals & loops |
+| **health.sh** | 35 | Health check framework with HTTP server, monitoring & probes |
 
 ### Zero External Dependencies
 
@@ -725,7 +726,7 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 
 ```
 mainframe/
-├── lib/                    # Core libraries (850+ functions)
+├── lib/                    # Core libraries (1000+ functions)
 │   ├── common.sh          # Main entry point (auto-sources all)
 │   ├── pure-string.sh     # String manipulation
 │   ├── pure-array.sh      # Array operations
@@ -887,7 +888,7 @@ This isn't just cleaner - it's **transformative for agentic coding**:
 
 MAINFRAME delivers all four:
 
-- **850+ tested functions** eliminate edge cases and bugs
+- **1000+ tested functions** eliminate edge cases and bugs
 - **Zero dependencies** means no "is jq installed?" failures mid-script
 - **Intuitive naming** (`json_object`, `csv_row`, `git_branch`) lets AI write correct code immediately
 - **One source line** gives instant access to everything
@@ -935,7 +936,7 @@ MIT License - Use freely in your projects. See [LICENSE](LICENSE).
 
 ---
 
-**850+ functions** | **Zero dependencies** | **20-72x faster** | **Pure Bash**
+**1000+ functions** | **Zero dependencies** | **20-72x faster** | **Pure Bash**
 
 *Made with ❤️ for AI coding assistants everywhere*
 
