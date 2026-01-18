@@ -512,6 +512,58 @@ log::trace "Something happened"       # Includes caller info
 log::env                              # Logs bash/user/pwd info
 ```
 
+### Health Check Framework (NEW in v2.6)
+```bash
+source "$MAINFRAME_ROOT/lib/health.sh"
+
+# Register health checks
+health::register "database" 'pg_isready -h localhost'
+health::register "redis" 'redis-cli ping'
+health::register "api" 'curl -sf http://localhost:8080/health'
+health::register "disk" 'health::check_disk / 90'      # 90% threshold
+health::register "memory" 'health::check_memory 80'    # 80% threshold
+
+# Run health checks
+health::run_all                     # Run all registered checks
+health::run "database"              # Run specific check
+health::status                      # JSON status of all checks
+
+# Check health state
+health::is_ready && echo "All systems go!"   # All checks pass
+health::is_live && echo "At least one OK"    # Any check passes
+
+# Built-in checks
+health::check_http "http://localhost:8080/health"  # HTTP endpoint
+health::check_tcp "localhost" 5432                 # TCP connection
+health::check_disk "/" 90                          # Disk usage threshold
+health::check_memory 80                            # Memory usage threshold
+health::check_process "nginx"                      # Process running
+health::check_file_exists "/var/run/app.pid"       # File exists
+health::check_port_open 8080                       # Port listening
+health::check_command "docker"                     # Command available
+health::check_http_content "http://..." "OK"       # HTTP content match
+
+# JSON status output
+health::status
+# {"status":"healthy","checks":{"database":{"status":"healthy","message":"OK",...},...}}
+
+# Human-readable output
+health::print
+# CHECK                STATUS     MESSAGE
+# database             healthy    OK
+# redis                healthy    PONG
+# disk                 healthy    Disk 45% used (threshold: 90%)
+
+# Start HTTP health server (Kubernetes-ready)
+health::serve 8081  # Runs in foreground
+# GET /health       - Full JSON status
+# GET /health/live  - Liveness probe (200 if any check passes)
+# GET /health/ready - Readiness probe (200 if all checks pass)
+
+# Continuous monitoring
+health::watch --interval 30 --on-failure 'notify admin@example.com' --verbose
+```
+
 ### Declarative CLI Framework (NEW in v2.5)
 ```bash
 source "$MAINFRAME_ROOT/lib/cli.sh"
@@ -664,7 +716,8 @@ mainframe/
 │   ├── pipe.sh            # Unix pipelines (v2.1)
 │   ├── stream.sh          # Stream processing (v2.1)
 │   ├── error.sh           # Try/catch & stack traces (v2.2)
-│   └── log.sh             # Structured JSON logging (v2.4)
+│   ├── log.sh             # Structured JSON logging (v2.4)
+│   └── health.sh          # Health check framework (v2.6)
 ├── scripts/               # Ready-to-use scripts
 ├── tests/                 # BATS test suite (295 tests)
 ├── benchmarks/            # Performance benchmarks
