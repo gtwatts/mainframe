@@ -129,7 +129,7 @@ bash benchmarks/superpower_benchmarks.sh
 
 ## What You Get
 
-### 24 Libraries, 880+ Functions
+### 25 Libraries, 920+ Functions
 
 | Library | Functions | What It Does |
 |---------|-----------|--------------|
@@ -158,6 +158,7 @@ bash benchmarks/superpower_benchmarks.sh
 | **pipe.sh** | 39 | Unix pipeline processing |
 | **stream.sh** | 28 | Advanced stream paradigms |
 | **error.sh** | 25 | Try/catch, stack traces, error context |
+| **compat.sh** | 45 | BSD/GNU cross-platform compatibility |
 
 ### Zero External Dependencies
 
@@ -366,6 +367,43 @@ error::retry -n 5 -d 2 curl -f https://api.example.com
 
 # Register cleanup handlers
 error::on_exit "rm -f $tempfile"
+```
+
+### BSD/GNU Compatibility (NEW in v2.3)
+```bash
+source "$MAINFRAME_ROOT/lib/compat.sh"
+
+# OS detection (cached for performance)
+compat::get_os          # Returns: macos, linux, freebsd, etc.
+compat::is_macos && echo "macOS"
+compat::is_linux && echo "Linux"
+compat::is_bsd && echo "BSD variant"
+
+# Portable sed (works on macOS AND Linux)
+compat::sed_inplace file 's/old/new/g'   # In-place edit
+compat::sed_extended 's/(foo)/\1bar/'    # Extended regex
+
+# Portable grep
+compat::grep_extended '(foo|bar)' file   # ERE support
+compat::grep_perl '\bword\b' file        # PCRE with fallback
+
+# Portable date arithmetic
+compat::date_format '%Y-%m-%d' "$timestamp"
+compat::date_add_days 7                  # Add days
+compat::date_sub_days 3                  # Subtract days
+
+# Portable stat
+compat::stat_size file                   # File size in bytes
+compat::stat_mtime file                  # Modification time
+compat::stat_perms file                  # Permissions (644, 755)
+
+# Cross-platform utilities
+compat::realpath "./relative/path"       # Canonical path
+compat::base64_encode "data"             # Encode
+compat::base64_decode "$encoded"         # Decode
+compat::sha256 file                      # SHA256 hash
+compat::clipboard_copy "text"            # Copy to clipboard
+compat::open "https://example.com"       # Open with default app
 ```
 
 ---
