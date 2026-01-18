@@ -129,7 +129,7 @@ bash benchmarks/superpower_benchmarks.sh
 
 ## What You Get
 
-### 23 Libraries, 850+ Functions
+### 24 Libraries, 880+ Functions
 
 | Library | Functions | What It Does |
 |---------|-----------|--------------|
@@ -141,6 +141,7 @@ bash benchmarks/superpower_benchmarks.sh
 | **json.sh** | 20 | JSON generation (no jq needed) |
 | **semver.sh** | 20 | Semantic versioning |
 | **ansi.sh** | 90 | Terminal colors & styling |
+| **tui.sh** | 30 | Progress bars, spinners, prompts, boxes |
 | **async.sh** | 26 | Async/parallel execution |
 | **args.sh** | 18 | Argument parsing |
 | **config.sh** | 13 | Config file handling |
