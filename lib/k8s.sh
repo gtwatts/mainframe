@@ -43,6 +43,7 @@ _k8s_cmd() {
     local ns_flag
     ns_flag=$(_k8s_ns_flag)
     if [[ -n "$ns_flag" ]]; then
+        # shellcheck disable=SC2086  # ns_flag is intentionally unquoted for word splitting
         kubectl $ns_flag "$@"
     else
         kubectl "$@"
@@ -354,6 +355,7 @@ k8s::port_forward() {
     local ns_flag
     ns_flag=$(_k8s_ns_flag)
     if [[ -n "$ns_flag" ]]; then
+        # shellcheck disable=SC2086  # ns_flag is intentionally unquoted for word splitting
         kubectl $ns_flag port-forward "$resource" "$ports" &>/dev/null &
     else
         kubectl port-forward "$resource" "$ports" &>/dev/null &
@@ -952,6 +954,7 @@ k8s::cleanup_on_exit() {
 # MODULE EXPORTS
 # =============================================================================
 
+# shellcheck disable=SC2034  # MAINFRAME_K8S_EXPORTS is used by mainframe loader
 MAINFRAME_K8S_EXPORTS=(
     # Context/Namespace
     k8s::context

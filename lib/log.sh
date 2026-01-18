@@ -14,6 +14,7 @@ readonly _MAINFRAME_LOG_LOADED=1
 
 # Source JSON library for structured output
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/json.sh
 source "$SCRIPT_DIR/json.sh"
 
 # =============================================================================
@@ -600,6 +601,7 @@ log::trace() {
 
 # Log with printf-style formatting
 # Usage: log::infof "User %s logged in from %s" "$user" "$ip"
+# shellcheck disable=SC2059  # Variable format string is intentional for printf-style logging
 log::debugf() { local fmt="$1"; shift; local msg; printf -v msg "$fmt" "$@"; log::debug "$msg"; }
 log::infof()  { local fmt="$1"; shift; local msg; printf -v msg "$fmt" "$@"; log::info "$msg"; }
 log::warnf()  { local fmt="$1"; shift; local msg; printf -v msg "$fmt" "$@"; log::warn "$msg"; }

@@ -403,10 +403,11 @@ _cli_export_values() {
         printf -v "$var_name" '%s' "$value"
         
         # Export the variable
-        export "$var_name"
+        export "${var_name?}"
     done
     
     # Export remaining args as CLI_REMAINING array
+    # shellcheck disable=SC2034  # CLI_REMAINING is exported for external use
     CLI_REMAINING=("${_CLI_REMAINING[@]}")
 }
 
@@ -436,6 +437,7 @@ cli::is() {
 # Usage: cli::get_array "files" arr
 cli::get_array() {
     local name="$1"
+    # shellcheck disable=SC2034
     local -n result_ref="$2"
     local value="${_CLI_VALUES[$name]:-}"
     
@@ -449,6 +451,7 @@ cli::get_array() {
 # Get remaining (extra) positional arguments
 # Usage: cli::remaining arr
 cli::remaining() {
+    # shellcheck disable=SC2178,SC2034
     local -n result_ref="$1"
     result_ref=("${_CLI_REMAINING[@]}")
 }

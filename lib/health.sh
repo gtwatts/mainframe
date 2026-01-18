@@ -312,8 +312,10 @@ health::check_memory() {
         fi
     elif command -v vm_stat &>/dev/null; then
         # macOS
+        # shellcheck disable=SC2034  # These variables are set via eval from vm_stat output
         local pages_free pages_active pages_inactive pages_speculative pages_wired page_size
         page_size=$(pagesize 2>/dev/null || echo 4096)
+        # shellcheck disable=SC2046  # Word splitting is intentional for eval
         eval $(vm_stat | awk -v ps="$page_size" '
             /Pages free/ {free=$3}
             /Pages active/ {active=$3}
@@ -549,8 +551,9 @@ health::serve() {
                 [[ -z "$request" ]] && request="$line"
             done
             
-            # Parse method and path
-            local method path
+            # Parse method and path (method kept for logging/debugging)
+            local path method
+            # shellcheck disable=SC2034  # method kept for debugging/logging
             read -r method path _ <<< "$request"
             
             local status_code="200"
@@ -682,6 +685,7 @@ health::export_env() {
     
     for name in "${!_HEALTH_CHECKS[@]}"; do
         local var_name="${prefix}_${name^^}"
+        # shellcheck disable=SC2031  # var_name is not modified in subshell
         var_name="${var_name//[^A-Z0-9_]/_}"
         export "${var_name}=${_HEALTH_RESULTS[$name]:-unknown}"
     done

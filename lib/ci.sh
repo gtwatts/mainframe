@@ -230,6 +230,7 @@ ci::add_path() {
         gitlab)
             # GitLab CI - export with persistence
             if [[ -n "${CI_PROJECT_DIR:-}" ]]; then
+                # shellcheck disable=SC2016  # $PATH is intentionally literal for .env file
                 printf 'export PATH="%s:$PATH"\n' "$new_path" >> "${CI_PROJECT_DIR}/.env"
             fi
             export PATH="$new_path:$PATH"
@@ -242,6 +243,7 @@ ci::add_path() {
         circleci)
             # CircleCI - use $BASH_ENV
             if [[ -n "${BASH_ENV:-}" ]]; then
+                # shellcheck disable=SC2016  # $PATH is intentionally literal for BASH_ENV
                 printf 'export PATH="%s:$PATH"\n' "$new_path" >> "$BASH_ENV"
             fi
             export PATH="$new_path:$PATH"
@@ -936,6 +938,7 @@ ci::cache_key_prefix() {
 # MODULE EXPORTS
 # =============================================================================
 
+# shellcheck disable=SC2034  # MAINFRAME_CI_EXPORTS is used by mainframe loader
 MAINFRAME_CI_EXPORTS=(
     # Detection
     ci::is_ci

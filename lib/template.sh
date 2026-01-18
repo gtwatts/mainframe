@@ -32,6 +32,7 @@ declare -gA _TEMPLATE_VARS=()
 # Main render function
 # Usage: template::render "Hello {{name}}!" name="World"
 # Usage: echo "Hello {{name}}!" | template::render - name="World"
+# shellcheck disable=SC2329  # Function is invoked externally/indirectly
 template::render() {
     local template=""
     local -A vars=()
@@ -177,7 +178,7 @@ _template_process() {
         
         local tag_rest="${template:tag_start}"
         if [[ "$tag_rest" == *"$close_pattern"* ]]; then
-            local tag_content="${tag_rest%%$close_pattern*}"
+            local tag_content="${tag_rest%%"$close_pattern"*}"
             local tag_end=$((tag_start + ${#tag_content} + ${#close_pattern}))
             
             # Process the tag
@@ -199,6 +200,7 @@ _template_process() {
 # Process a single tag
 _template_process_tag() {
     local tag="$1"
+    # shellcheck disable=SC2034  # raw is used in conditional logic below
     local raw="${2:-false}"
     
     # Trim whitespace
@@ -515,7 +517,7 @@ _template_process_blocks() {
             local block_rest="${rest:match_len}"
             
             if [[ "$block_rest" == *"$end_tag"* ]]; then
-                local block_content="${block_rest%%$end_tag*}"
+                local block_content="${block_rest%%"$end_tag"*}"
                 local block_end=$((pos + match_len + ${#block_content} + ${#end_tag}))
                 
                 # Trim block_arg
@@ -648,6 +650,7 @@ _template_urlencode() {
 _template_base64_encode() {
     local str="$1"
     local b64="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    # shellcheck disable=SC2034  # pad is used for base64 padding logic
     local pad=""
     local out=""
     
@@ -715,7 +718,7 @@ template::from_env() {
     
     while IFS='=' read -r var value; do
         if [[ -z "$prefix" || "$var" == "$prefix"* ]]; then
-            local key="${var#$prefix}"
+            local key="${var#"$prefix"}"
             _TEMPLATE_VARS["$key"]="$value"
         fi
     done < <(env)

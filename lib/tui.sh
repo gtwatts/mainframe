@@ -20,6 +20,7 @@ _TUI_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source ansi.sh if not already loaded
 if [[ -z "${_MAINFRAME_ANSI_LOADED:-}" ]]; then
+    # shellcheck source=lib/ansi.sh
     source "$_TUI_LIB_DIR/ansi.sh"
 fi
 

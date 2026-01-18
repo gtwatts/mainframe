@@ -292,7 +292,7 @@ try() {
     if [[ "$-" == *e* ]]; then
         errexit_enabled=true
     fi
-    _ERROR_TRY_STATES[$_ERROR_TRY_DEPTH]="$errexit_enabled"
+    _ERROR_TRY_STATES[_ERROR_TRY_DEPTH]="$errexit_enabled"
     
     # Increment try depth
     ((_ERROR_TRY_DEPTH++))
