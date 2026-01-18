@@ -152,6 +152,7 @@ bash benchmarks/superpower_benchmarks.sh
 | **crypto.sh** | 17 | Hashing, encoding, secure random |
 | **proc.sh** | 40 | Process management & locks |
 | **docker.sh** | 57 | Docker/Compose container management |
+| **k8s.sh** | 52 | Kubernetes kubectl wrapper with sane defaults |
 | **env.sh** | 36 | Environment variables & dotenv |
 | **path.sh** | 30 | Cross-platform path manipulation |
 | **validation.sh** | 34 | Input validation & sanitization |
@@ -334,6 +335,39 @@ docker_image_exists "nginx"       # Check if image exists
 docker_container_logs "app" 50    # Get last 50 log lines
 compose_up "docker-compose.yml"   # Start compose stack
 compose_status                    # Show running services
+```
+
+### Kubernetes (NEW in v2.3)
+```bash
+# Context & namespace management
+k8s::context "prod-cluster"       # Switch cluster context
+k8s::namespace "my-app"           # Set namespace for commands
+k8s::current_context              # Get current context
+
+# Pod operations
+k8s::wait_ready "deployment/app" --timeout 300
+k8s::pods "app=my-app"            # List pods by selector
+k8s::logs "my-pod" --follow       # Stream pod logs
+k8s::exec "my-pod" -- bash        # Exec into pod
+
+# Port forwarding with cleanup
+k8s::port_forward "svc/api" 8080:80
+k8s::cleanup_on_exit              # Auto-cleanup on script exit
+
+# Secrets & ConfigMaps
+k8s::secret_get "my-secret" "password"
+k8s::secret_set "my-secret" "key" "value"
+k8s::configmap_get "my-config" "setting"
+
+# Rollout management
+k8s::rollout_restart "deployment/app"
+k8s::rollout_status "deployment/app"
+k8s::rollout_undo "deployment/app"
+
+# Resource queries
+k8s::get_image "deployment/app"   # Get container image
+k8s::get_replicas "deployment/app"
+k8s::scale "deployment/app" 5     # Scale to 5 replicas
 ```
 
 ### CI/CD Portability (NEW in v2.2)
@@ -710,6 +744,7 @@ mainframe/
 │   ├── crypto.sh          # Hashing & encoding
 │   ├── proc.sh            # Process management
 │   ├── docker.sh          # Docker/Compose (v2.1)
+│   ├── k8s.sh             # Kubernetes kubectl wrapper (v2.3)
 │   ├── env.sh             # Environment vars (v2.1)
 │   ├── path.sh            # Path manipulation (v2.1)
 │   ├── validation.sh      # Input validation (v2.1)

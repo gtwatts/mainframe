@@ -688,6 +688,11 @@ if [[ -f "${_MAINFRAME_LIB_DIR}/docker.sh" ]]; then
     source "${_MAINFRAME_LIB_DIR}/docker.sh"
 fi
 
+# Source k8s.sh for Kubernetes operations
+if [[ -f "${_MAINFRAME_LIB_DIR}/k8s.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/k8s.sh"
+fi
+
 # Source pipe.sh for Unix pipeline processing
 if [[ -f "${_MAINFRAME_LIB_DIR}/pipe.sh" ]]; then
     source "${_MAINFRAME_LIB_DIR}/pipe.sh"
