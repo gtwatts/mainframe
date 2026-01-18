@@ -156,6 +156,7 @@ bash benchmarks/superpower_benchmarks.sh
 | **validation.sh** | 34 | Input validation & sanitization |
 | **pipe.sh** | 39 | Unix pipeline processing |
 | **stream.sh** | 28 | Advanced stream paradigms |
+| **error.sh** | 25 | Try/catch, stack traces, error context |
 
 ### Zero External Dependencies
 
@@ -336,6 +337,36 @@ echo -e "a\nb\na" | pipe_unique               # a, b
 echo -e "a\nb\nc" | pipe_join ","             # a,b,c
 ```
 
+### Error Handling (NEW in v2.2)
+```bash
+source "$MAINFRAME_ROOT/lib/error.sh"
+
+# Try/catch pattern
+try
+(
+    risky_command
+    another_command
+)
+if catch; then
+    echo "Error caught: $ERROR_MESSAGE"
+    error::stack_trace  # Print call stack
+fi
+
+# Add context to errors
+error::context "parsing" "config.json"
+error::context "validating" "user section"
+parse_config  # If this fails, context is shown
+
+# Throw errors with context
+error::throw "Invalid configuration"  # Prints error, context, stack trace
+
+# Retry with backoff
+error::retry -n 5 -d 2 curl -f https://api.example.com
+
+# Register cleanup handlers
+error::on_exit "rm -f $tempfile"
+```
+
 ---
 
 ## For AI Coding Assistant Users
@@ -418,7 +449,8 @@ mainframe/
 │   ├── path.sh            # Path manipulation (v2.1)
 │   ├── validation.sh      # Input validation (v2.1)
 │   ├── pipe.sh            # Unix pipelines (v2.1)
-│   └── stream.sh          # Stream processing (v2.1)
+│   ├── stream.sh          # Stream processing (v2.1)
+│   └── error.sh           # Try/catch & stack traces (v2.2)
 ├── scripts/               # Ready-to-use scripts
 ├── tests/                 # BATS test suite (295 tests)
 ├── benchmarks/            # Performance benchmarks
