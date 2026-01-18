@@ -160,6 +160,7 @@ bash benchmarks/superpower_benchmarks.sh
 | **error.sh** | 25 | Try/catch, stack traces, error context |
 | **compat.sh** | 45 | BSD/GNU cross-platform compatibility |
 | **log.sh** | 30 | Structured JSON logging with levels & rotation |
+| **cli.sh** | 35 | Declarative CLI framework with auto-help |
 
 ### Zero External Dependencies
 
@@ -444,6 +445,74 @@ log::needs_rotation "/var/log/app.log" 10M && log::rotate ...
 log::infof "User %s logged in from %s" "$user" "$ip"  # Printf-style
 log::trace "Something happened"       # Includes caller info
 log::env                              # Logs bash/user/pwd info
+```
+
+### Declarative CLI Framework (NEW in v2.5)
+```bash
+source "$MAINFRAME_ROOT/lib/cli.sh"
+
+# Define your CLI declaratively
+cli::name "deploy"
+cli::version "1.0.0"
+cli::description "Deploy application to servers"
+
+# Flags (boolean options)
+cli::flag "verbose" "v" "Enable verbose output"
+cli::flag "dry-run" "n" "Show what would be done"
+
+# Options (with values)
+cli::option "env" "e" "Target environment" "staging"
+cli::option "replicas" "r" "Number of replicas" "3"
+
+# Positional arguments
+cli::positional "app" "Application name" required
+cli::positional "version" "Version to deploy" optional
+
+# Subcommands
+cli::subcommand "init" "Initialize deployment config"
+cli::subcommand "rollback" "Rollback to previous version"
+
+# Type validation
+cli::validate_type "replicas" positive
+
+# Examples for --help
+cli::example "deploy myapp 1.0.0 -e production"
+cli::example "deploy --dry-run myapp"
+
+# Parse and validate
+cli::parse "$@"
+cli::validate_required
+cli::validate
+
+# Access values via CLI_* variables or functions
+if cli::is "verbose"; then
+    echo "Deploying $CLI_app to $CLI_env"
+fi
+
+# Or use accessor functions
+env=$(cli::get env)
+replicas=$(cli::get replicas)
+
+# Check which subcommand was used
+if cli::is_subcommand "rollback"; then
+    rollback_deployment
+fi
+
+# Auto-generated help (--help / -h)
+# Usage: deploy <command> [options] <app> [version]
+#
+# Deploy application to servers
+#
+# Commands:
+#   init              Initialize deployment config
+#   rollback          Rollback to previous version
+#
+# Options:
+#   -v, --verbose     Enable verbose output
+#   -n, --dry-run     Show what would be done
+#   -e, --env <val>   Target environment (default: staging)
+#   -r, --replicas    Number of replicas (default: 3)
+#   -h, --help        Show this help message
 ```
 
 ---
