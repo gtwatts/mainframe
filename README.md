@@ -671,54 +671,163 @@ fi
 
 ## For AI Coding Assistant Users
 
-### Claude Code Integration
+### Claude Code Integration (Recommended)
 
-When Claude Code generates bash scripts, it sources MAINFRAME once and gains instant access to everything:
+Claude Code is the primary target for MAINFRAME. Here's how to set it up properly.
 
-```bash
-#!/usr/bin/env bash
-source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+#### Quick Setup (Copy & Paste This Prompt)
 
-# Generate JSON response (no jq needed!)
-response=$(json_object \
-    status="success" \
-    timestamp="$(timestamp)" \
-    id="$(uuid)"
-)
+**Paste this into Claude Code to auto-configure MAINFRAME:**
 
-# Validate input
-is_valid_email "$1" || die 1 "Invalid email: $1"
+```
+Install MAINFRAME bash library and configure Claude Code to use it:
 
-# Show progress
-for i in {1..100}; do
-    progress_bar "$i" 100
-    sleep 0.01
-done
+1. Clone to ~/.mainframe if not exists
+2. Add MAINFRAME_ROOT export to my shell profile (.bashrc or .zshrc)
+3. Create or update ~/.claude/CLAUDE.md with MAINFRAME instructions including:
+   - The source line to use in all bash scripts
+   - A table mapping external tools (jq, sed, awk) to MAINFRAME equivalents
+   - Common function examples (json_object, validate_email, progress_bar, log::json)
+   - A reminder to check ~/.mainframe/CHEATSHEET.md for the full function reference
+4. Verify the installation works by running: source ~/.mainframe/lib/common.sh && uuid
 
-success "Complete!"
+The MAINFRAME repo is: https://github.com/gtwatts/mainframe
 ```
 
-### OpenCode / Aider / Other AI Assistants
+That's it! Claude Code will handle the rest.
 
-The same pattern works with any AI that writes bash:
+---
 
-1. Install MAINFRAME (30 seconds)
-2. Tell your AI: *"Source MAINFRAME's common.sh for bash utilities"*
-3. Watch it write cleaner, faster bash code
+#### Manual Setup
 
-### Teaching Your AI (Important!)
+If you prefer to configure manually:
 
-**AI assistants don't automatically know about MAINFRAME** - you need to tell them once.
+#### Step 1: Add to Your CLAUDE.md
 
-**For Claude Code**, add to `~/.claude/CLAUDE.md`:
+Add this to `~/.claude/CLAUDE.md` (global) or your project's `CLAUDE.md`:
+
 ```markdown
-When writing bash scripts, source MAINFRAME:
+## Bash Scripting with MAINFRAME
+
+When writing bash scripts, ALWAYS source MAINFRAME first:
+
+\`\`\`bash
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+\`\`\`
+
+### Key Functions to Use Instead of External Tools
+
+| Instead of... | Use MAINFRAME |
+|---------------|---------------|
+| `jq` for JSON | `json_object`, `json_array`, `json_get` |
+| `sed` for strings | `trim_string`, `replace_all`, `to_lower` |
+| `awk` for arrays | `array_join`, `array_unique`, `array_filter` |
+| `cat`/`head`/`tail` | `read_file`, `file_head`, `file_tail` |
+| `date` arithmetic | `now`, `date_add`, `format_relative` |
+| `uuidgen` | `uuid` |
+| `curl` parsing | `url_parse`, `query_string` |
+
+### Common Patterns
+
+**Generate JSON (no jq):**
+\`\`\`bash
+json_object name="John" age:number=30 active:bool=true
+# {"name":"John","age":30,"active":true}
+\`\`\`
+
+**Validate input:**
+\`\`\`bash
+validate_email "$email" || die 1 "Invalid email"
+validate_path_safe "$path" "/base" || die 1 "Path traversal attempt"
+\`\`\`
+
+**Show progress:**
+\`\`\`bash
+progress_bar "$current" "$total"
+\`\`\`
+
+**Structured logging:**
+\`\`\`bash
+log::info "Starting process"
+log::json "info" "User action" user_id=123 action="login"
+\`\`\`
+
+For complete function reference, see: ~/.mainframe/CHEATSHEET.md
 ```
 
-**For other AIs**, add similar instructions to their config files (`.cursorrules`, `.aider.conf.yml`, etc.)
+#### Step 2: Reference the Cheatsheet
 
-📖 **[Full AI Setup Guide](INSTALL.md#teaching-your-ai-about-mainframe)**
+For complex scripts, tell Claude Code to check the cheatsheet:
+
+> "Check ~/.mainframe/CHEATSHEET.md for available MAINFRAME functions before writing custom bash logic."
+
+#### Step 3: Prompting Best Practices
+
+**Good prompts that leverage MAINFRAME:**
+
+```
+"Write a bash script using MAINFRAME to parse this CSV and output JSON"
+
+"Using MAINFRAME's json_object function, create an API response"
+
+"Write a deployment script with MAINFRAME - use progress_bar for feedback and log::json for structured logging"
+```
+
+**Even better - be specific:**
+
+```
+"Use MAINFRAME's ci.sh library to write a portable CI script that works on GitHub Actions and GitLab CI"
+
+"Use MAINFRAME's health.sh to create a health check endpoint for my service"
+```
+
+### Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| Claude doesn't use MAINFRAME functions | Add the CLAUDE.md snippet above; mention "use MAINFRAME" in your prompt |
+| Claude uses `jq` instead of `json_object` | Explicitly say "use MAINFRAME's json_object, not jq" |
+| Functions not found at runtime | Verify `MAINFRAME_ROOT` is set: `echo $MAINFRAME_ROOT` |
+| Claude writes verbose bash | Remind it: "MAINFRAME has 1000+ functions - check before writing custom code" |
+
+### OpenCode / Aider / Cursor / Other AI Assistants
+
+The same pattern works with any AI. Add MAINFRAME instructions to their config:
+
+**Cursor** (`.cursorrules`):
+```
+When writing bash scripts, always source MAINFRAME:
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+
+Use MAINFRAME functions instead of external tools:
+- json_object instead of jq
+- trim_string instead of sed
+- array_join instead of awk
+```
+
+**Aider** (`.aider.conf.yml`):
+```yaml
+extra-context:
+  - ~/.mainframe/CHEATSHEET.md
+```
+
+**Continue** (`.continue/config.json`):
+```json
+{
+  "systemMessage": "When writing bash, source MAINFRAME (~/.mainframe/lib/common.sh) and use its 1000+ functions instead of external tools like jq, sed, awk."
+}
+```
+
+### Full CLAUDE.md Template
+
+For maximum effectiveness, here's a complete template:
+
+📄 **[Download: mainframe-claude-template.md](docs/mainframe-claude-template.md)**
+
+Or copy from the repo:
+```bash
+cp ~/.mainframe/docs/mainframe-claude-template.md ~/.claude/CLAUDE.md
+```
 
 ---
 
