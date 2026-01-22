@@ -336,7 +336,7 @@ capture_stdout() {
 #   errors=$(capture_stderr "make build")
 capture_stderr() {
     local command="$1"
-    eval "$command" 2>&1 >/dev/null
+    eval "$command" >/dev/null 2>&1
 }
 
 # Capture combined stdout+stderr
