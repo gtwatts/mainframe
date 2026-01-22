@@ -456,3 +456,351 @@ json_write_pretty() {
     json_pretty "$2" > "$1"
 }
 
+# =============================================================================
+# NAMEREF VARIANTS (High-Performance)
+# =============================================================================
+# These _v variants use bash namerefs to avoid subshell overhead.
+# Instead of: result=$(json_object "name=John")  # Creates subshell
+# Use:        json_object_v result "name=John"   # No subshell
+# =============================================================================
+
+# Escape string for JSON into variable
+# Usage: json_escape_v result_var "hello\nworld"
+json_escape_v() {
+    local -n __jev_out=$1
+    local str="$2"
+    local i char
+
+    __jev_out=""
+    for ((i=0; i<${#str}; i++)); do
+        char="${str:i:1}"
+        case "$char" in
+            '"')  __jev_out+='\"' ;;
+            '\')  __jev_out+='\\' ;;
+            $'\b') __jev_out+='\b' ;;
+            $'\f') __jev_out+='\f' ;;
+            $'\n') __jev_out+='\n' ;;
+            $'\r') __jev_out+='\r' ;;
+            $'\t') __jev_out+='\t' ;;
+            *)
+                # Check for control characters
+                if [[ "$char" < $'\x20' ]]; then
+                    printf -v char '\\u%04x' "'$char"
+                fi
+                __jev_out+="$char"
+                ;;
+        esac
+    done
+}
+
+# Create JSON string into variable
+# Usage: json_string_v result_var "hello world"
+json_string_v() {
+    local -n __jsv_out=$1
+    local __jsv_escaped
+    json_escape_v __jsv_escaped "$2"
+    __jsv_out="\"${__jsv_escaped}\""
+}
+
+# Create JSON number into variable
+# Usage: json_number_v result_var 42
+json_number_v() {
+    local -n __jnv_out=$1
+    if [[ "$2" =~ ^-?[0-9]+\.?[0-9]*([eE][-+]?[0-9]+)?$ ]]; then
+        __jnv_out="$2"
+        return 0
+    else
+        __jnv_out="null"
+        return 1
+    fi
+}
+
+# Create JSON boolean into variable
+# Usage: json_bool_v result_var true
+json_bool_v() {
+    local -n __jbv_out=$1
+    case "${2,,}" in
+        true|1|yes|on)  __jbv_out='true'; return 0 ;;
+        false|0|no|off) __jbv_out='false'; return 0 ;;
+        *) __jbv_out='null'; return 1 ;;
+    esac
+}
+
+# Auto-detect type and create appropriate JSON value into variable
+# Usage: json_value_v result_var "hello" [type]
+json_value_v() {
+    local -n __jvv_out=$1
+    local val="$2"
+    local type="${3:-auto}"
+    local __jvv_temp
+
+    case "$type" in
+        string)
+            json_string_v __jvv_temp "$val"
+            __jvv_out="$__jvv_temp"
+            ;;
+        number)
+            json_number_v __jvv_temp "$val"
+            __jvv_out="$__jvv_temp"
+            ;;
+        bool)
+            json_bool_v __jvv_temp "$val"
+            __jvv_out="$__jvv_temp"
+            ;;
+        null)
+            __jvv_out='null'
+            ;;
+        raw)
+            __jvv_out="$val"
+            ;;
+        auto)
+            # Auto-detect type
+            if [[ "$val" == "null" ]]; then
+                __jvv_out='null'
+            elif [[ "$val" == "true" || "$val" == "false" ]]; then
+                __jvv_out="$val"
+            elif [[ "$val" =~ ^-?[0-9]+\.?[0-9]*([eE][-+]?[0-9]+)?$ ]]; then
+                json_number_v __jvv_temp "$val"
+                __jvv_out="$__jvv_temp"
+            else
+                json_string_v __jvv_temp "$val"
+                __jvv_out="$__jvv_temp"
+            fi
+            ;;
+    esac
+}
+
+# Create JSON array from arguments into variable
+# Usage: json_array_v result_var "a" "b" "c"
+json_array_v() {
+    local -n __jav_out=$1
+    shift
+    local first=true
+    local __jav_item
+
+    __jav_out='['
+    for item in "$@"; do
+        $first || __jav_out+=','
+        first=false
+        json_value_v __jav_item "$item"
+        __jav_out+="$__jav_item"
+    done
+    __jav_out+=']'
+}
+
+# Create JSON array with explicit types into variable
+# Usage: json_array_typed_v result_var string "a" "b" "c"
+json_array_typed_v() {
+    local -n __jatv_out=$1
+    local type="$2"
+    shift 2
+    local first=true
+    local __jatv_item
+
+    __jatv_out='['
+    for item in "$@"; do
+        $first || __jatv_out+=','
+        first=false
+        json_value_v __jatv_item "$item" "$type"
+        __jatv_out+="$__jatv_item"
+    done
+    __jatv_out+=']'
+}
+
+# Create JSON object from key=value pairs into variable
+# Usage: json_object_v result_var name="John" age:number=30 active:bool=true
+json_object_v() {
+    local -n __jov_out=$1
+    shift
+    local first=true
+    local __jov_key __jov_val
+
+    __jov_out='{'
+    for pair in "$@"; do
+        local key type value
+
+        # Parse key:type=value or key=value
+        if [[ "$pair" =~ ^([^:=]+):([^=]+)=(.*)$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            type="${BASH_REMATCH[2]}"
+            value="${BASH_REMATCH[3]}"
+        elif [[ "$pair" =~ ^([^=]+)=(.*)$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            type="auto"
+            value="${BASH_REMATCH[2]}"
+        else
+            continue
+        fi
+
+        $first || __jov_out+=','
+        first=false
+
+        json_escape_v __jov_key "$key"
+        json_value_v __jov_val "$value" "$type"
+        __jov_out+="\"${__jov_key}\":${__jov_val}"
+    done
+
+    __jov_out+='}'
+}
+
+# Create JSON object from associative array into variable
+# Usage: declare -A data=([name]="John" [age]="30"); json_from_assoc_v result_var data
+json_from_assoc_v() {
+    local -n __jfav_out=$1
+    local -n __jfav_arr="$2"
+    local first=true
+    local __jfav_key __jfav_val
+
+    __jfav_out='{'
+    for key in "${!__jfav_arr[@]}"; do
+        $first || __jfav_out+=','
+        first=false
+        json_escape_v __jfav_key "$key"
+        json_value_v __jfav_val "${__jfav_arr[$key]}"
+        __jfav_out+="\"${__jfav_key}\":${__jfav_val}"
+    done
+    __jfav_out+='}'
+}
+
+# Create nested object into variable
+# Usage: json_nested_v result_var "a.b.c" "value"
+json_nested_v() {
+    local -n __jnev_out=$1
+    local path="$2"
+    local value="$3"
+    local IFS='.'
+    local keys=($path)
+    local depth=${#keys[@]}
+    local i
+    local __jnev_key __jnev_val
+
+    __jnev_out=""
+    for ((i=0; i<depth; i++)); do
+        json_escape_v __jnev_key "${keys[i]}"
+        __jnev_out+="{\"${__jnev_key}\":"
+    done
+
+    json_value_v __jnev_val "$value"
+    __jnev_out+="$__jnev_val"
+
+    for ((i=0; i<depth; i++)); do
+        __jnev_out+='}'
+    done
+}
+
+# Extract value by key into variable (simple, top-level only)
+# Usage: json_get_v result_var '{"name":"John"}' "name"
+json_get_v() {
+    local -n __jgv_out=$1
+    local json="$2"
+    local key="$3"
+
+    # Simple regex extraction for top-level string values
+    if [[ "$json" =~ \"$key\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
+        __jgv_out="${BASH_REMATCH[1]}"
+        return 0
+    fi
+
+    # Try numeric value
+    if [[ "$json" =~ \"$key\"[[:space:]]*:[[:space:]]*([0-9.-]+) ]]; then
+        __jgv_out="${BASH_REMATCH[1]}"
+        return 0
+    fi
+
+    # Try boolean/null
+    if [[ "$json" =~ \"$key\"[[:space:]]*:[[:space:]]*(true|false|null) ]]; then
+        __jgv_out="${BASH_REMATCH[1]}"
+        return 0
+    fi
+
+    __jgv_out=""
+    return 1
+}
+
+# Merge multiple JSON objects into variable (simple, top-level only)
+# Usage: json_merge_v result_var '{"a":1}' '{"b":2}'
+json_merge_v() {
+    local -n __jmv_out=$1
+    shift
+    local first=true
+
+    __jmv_out="{"
+    for json in "$@"; do
+        # Strip outer braces and trim
+        local inner="${json#\{}"
+        inner="${inner%\}}"
+        inner="${inner#"${inner%%[![:space:]]*}"}"
+        inner="${inner%"${inner##*[![:space:]]}"}"
+
+        if [[ -n "$inner" ]]; then
+            $first || __jmv_out+=","
+            first=false
+            __jmv_out+="$inner"
+        fi
+    done
+
+    __jmv_out+="}"
+}
+
+# Pretty print JSON into variable
+# Usage: json_pretty_v result_var '{"a":1,"b":2}' [indent]
+json_pretty_v() {
+    local -n __jpv_out=$1
+    local json="$2"
+    local indent="${3:-  }"
+    local level=0
+    local in_string=false
+    local char prev_char=""
+    local i
+    local indent_str
+
+    __jpv_out=""
+    for ((i=0; i<${#json}; i++)); do
+        char="${json:i:1}"
+
+        if $in_string; then
+            __jpv_out+="$char"
+            if [[ "$char" == '"' && "$prev_char" != '\' ]]; then
+                in_string=false
+            fi
+        else
+            case "$char" in
+                '"')
+                    __jpv_out+="$char"
+                    in_string=true
+                    ;;
+                '{' | '[')
+                    ((level++)) || true
+                    printf -v indent_str '%*s' $((${#indent} * level)) ''
+                    # Replace spaces with indent pattern
+                    indent_str="${indent_str// /${indent:0:1}}"
+                    __jpv_out+="${char}"$'\n'"${indent_str:0:$((${#indent} * level))}"
+                    ;;
+                '}' | ']')
+                    ((level--)) || true
+                    printf -v indent_str '%*s' $((${#indent} * level)) ''
+                    indent_str="${indent_str// /${indent:0:1}}"
+                    __jpv_out+=$'\n'"${indent_str:0:$((${#indent} * level))}${char}"
+                    ;;
+                ',')
+                    printf -v indent_str '%*s' $((${#indent} * level)) ''
+                    indent_str="${indent_str// /${indent:0:1}}"
+                    __jpv_out+=','$'\n'"${indent_str:0:$((${#indent} * level))}"
+                    ;;
+                ':')
+                    __jpv_out+=': '
+                    ;;
+                ' ' | $'\t' | $'\n' | $'\r')
+                    # Skip whitespace outside strings
+                    ;;
+                *)
+                    __jpv_out+="$char"
+                    ;;
+            esac
+        fi
+
+        prev_char="$char"
+    done
+    __jpv_out+=$'\n'
+}
+

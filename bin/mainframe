@@ -1,0 +1,244 @@
+#!/usr/bin/env bash
+# =============================================================================
+# MAINFRAME CLI
+# =============================================================================
+# Provides: mainframe <command> [args]
+#
+# Commands:
+#   version     Show MAINFRAME version
+#   functions   List all available functions
+#   search      Search functions by name or description
+#   benchmark   Run performance benchmarks
+#   test        Run test suite
+#   doctor      Check MAINFRAME installation
+#   update      Update MAINFRAME (if installed via git)
+# =============================================================================
+
+set -euo pipefail
+
+# Determine MAINFRAME root directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export MAINFRAME_ROOT="${MAINFRAME_ROOT:-$SCRIPT_DIR}"
+
+# Source common library
+source "$MAINFRAME_ROOT/lib/common.sh"
+
+# =============================================================================
+# COMMANDS
+# =============================================================================
+
+show_help() {
+    cat << 'EOF'
+MAINFRAME - Bash Superpowers for AI Coding Assistants
+
+Usage: mainframe <command> [options]
+
+Commands:
+  version     Show MAINFRAME version and environment info
+  functions   List all available functions (pipe to grep for filtering)
+  search      Search functions by name pattern
+  count       Count total functions available
+  benchmark   Run performance benchmarks
+  test        Run test suite (requires bats)
+  doctor      Check MAINFRAME installation health
+  update      Update MAINFRAME (git-based installations only)
+
+Examples:
+  mainframe version
+  mainframe functions | grep json
+  mainframe search "array"
+  mainframe count
+  mainframe doctor
+
+Documentation: https://github.com/gtwatts/mainframe
+EOF
+}
+
+cmd_version() {
+    local func_count
+    func_count=$(declare -F | wc -l)
+
+    echo "MAINFRAME v${MAINFRAME_VERSION:-3.0.0}"
+    echo ""
+    echo "Environment:"
+    echo "  Bash version:    ${BASH_VERSION}"
+    echo "  MAINFRAME_ROOT:  ${MAINFRAME_ROOT}"
+    echo "  Functions:       ${func_count}"
+    echo "  OS:              $(uname -s) $(uname -m)"
+}
+
+cmd_functions() {
+    # List all functions, excluding internal ones (prefixed with _)
+    declare -F | awk '{print $3}' | grep -v '^_' | sort
+}
+
+cmd_search() {
+    local query="${1:-}"
+
+    if [[ -z "$query" ]]; then
+        echo "Usage: mainframe search <pattern>"
+        echo "Example: mainframe search array"
+        return 1
+    fi
+
+    local results
+    results=$(declare -F | awk '{print $3}' | grep -i "$query" | sort)
+
+    if [[ -z "$results" ]]; then
+        echo "No functions matching '$query'"
+        return 1
+    fi
+
+    echo "$results"
+}
+
+cmd_count() {
+    local total public internal
+    total=$(declare -F | wc -l)
+    public=$(declare -F | awk '{print $3}' | grep -v '^_' | wc -l)
+    internal=$(declare -F | awk '{print $3}' | grep '^_' | wc -l)
+
+    echo "Function count:"
+    echo "  Public:   ${public}"
+    echo "  Internal: ${internal}"
+    echo "  Total:    ${total}"
+}
+
+cmd_doctor() {
+    local errors=0
+
+    echo "MAINFRAME Doctor"
+    echo "================"
+    echo ""
+
+    # Check MAINFRAME_ROOT
+    echo -n "MAINFRAME_ROOT: "
+    if [[ -n "${MAINFRAME_ROOT:-}" ]]; then
+        echo "$MAINFRAME_ROOT"
+    else
+        echo "NOT SET (using script directory)"
+        ((errors++))
+    fi
+
+    # Check bash version
+    echo -n "Bash version:   "
+    if ((BASH_VERSINFO[0] >= 4)); then
+        echo "${BASH_VERSION} (OK)"
+    else
+        echo "${BASH_VERSION} (WARNING: Bash 4.0+ required)"
+        ((errors++))
+    fi
+
+    # Check OS
+    echo "OS:             $(uname -s) $(uname -m)"
+
+    # Check libraries loaded
+    echo -n "Libraries:      "
+    if declare -F json_object &>/dev/null; then
+        echo "Loaded (OK)"
+    else
+        echo "NOT LOADED (ERROR)"
+        ((errors++))
+    fi
+
+    # Count functions
+    local func_count
+    func_count=$(declare -F | awk '{print $3}' | grep -v '^_' | wc -l)
+    echo "Functions:      ${func_count}"
+
+    # Check common.sh exists
+    echo -n "common.sh:      "
+    if [[ -f "${MAINFRAME_ROOT}/lib/common.sh" ]]; then
+        echo "Found (OK)"
+    else
+        echo "NOT FOUND (ERROR)"
+        ((errors++))
+    fi
+
+    echo ""
+
+    if ((errors == 0)); then
+        echo "Status: All checks passed!"
+        return 0
+    else
+        echo "Status: ${errors} issue(s) found"
+        return 1
+    fi
+}
+
+cmd_benchmark() {
+    local benchmark_script="${MAINFRAME_ROOT}/benchmarks/superpower_benchmarks.sh"
+
+    if [[ -f "$benchmark_script" ]]; then
+        bash "$benchmark_script"
+    else
+        echo "Benchmark script not found: $benchmark_script"
+        return 1
+    fi
+}
+
+cmd_test() {
+    local bats="${MAINFRAME_ROOT}/tests/bats/bin/bats"
+    local tests_dir="${MAINFRAME_ROOT}/tests"
+
+    if [[ ! -x "$bats" ]]; then
+        echo "BATS not installed. Run: make test-deps"
+        echo ""
+        echo "Or install manually:"
+        echo "  cd ${MAINFRAME_ROOT}"
+        echo "  git clone https://github.com/bats-core/bats-core.git tests/bats"
+        return 1
+    fi
+
+    "$bats" "${tests_dir}/unit/" "${tests_dir}/integration/"
+}
+
+cmd_update() {
+    if [[ ! -d "${MAINFRAME_ROOT}/.git" ]]; then
+        echo "Update only works for git-based installations."
+        echo ""
+        echo "If installed via basher, run:"
+        echo "  basher upgrade gtwatts/mainframe"
+        return 1
+    fi
+
+    echo "Updating MAINFRAME..."
+    cd "$MAINFRAME_ROOT"
+    git pull --rebase origin main
+    echo ""
+    echo "Updated! Run 'mainframe doctor' to verify."
+}
+
+# =============================================================================
+# MAIN DISPATCH
+# =============================================================================
+
+case "${1:-help}" in
+    version|-v|--version)
+        cmd_version
+        ;;
+    functions|funcs|list)
+        cmd_functions
+        ;;
+    search|find|grep)
+        cmd_search "${2:-}"
+        ;;
+    count)
+        cmd_count
+        ;;
+    doctor|check|health)
+        cmd_doctor
+        ;;
+    benchmark|bench)
+        cmd_benchmark
+        ;;
+    test|tests)
+        cmd_test
+        ;;
+    update|upgrade)
+        cmd_update
+        ;;
+    help|-h|--help|*)
+        show_help
+        ;;
+esac

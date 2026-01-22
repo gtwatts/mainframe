@@ -703,6 +703,31 @@ if [[ -f "${_MAINFRAME_LIB_DIR}/stream.sh" ]]; then
     source "${_MAINFRAME_LIB_DIR}/stream.sh"
 fi
 
+# Source guard.sh for defensive programming guards (AI assistant error prevention)
+if [[ -f "${_MAINFRAME_LIB_DIR}/guard.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/guard.sh"
+fi
+
+# Source functional.sh for functional programming primitives
+if [[ -f "${_MAINFRAME_LIB_DIR}/functional.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/functional.sh"
+fi
+
+# Source meta.sh for metaprogramming and indirect references
+if [[ -f "${_MAINFRAME_LIB_DIR}/meta.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/meta.sh"
+fi
+
+# Source procsub.sh for process substitution utilities (subshell variable preservation)
+if [[ -f "${_MAINFRAME_LIB_DIR}/procsub.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/procsub.sh"
+fi
+
+# Source safe.sh for strict mode helpers and gotcha prevention
+if [[ -f "${_MAINFRAME_LIB_DIR}/safe.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/safe.sh"
+fi
+
 # =============================================================================
 # MODULE EXPORTS
 # =============================================================================
@@ -808,4 +833,56 @@ BASHER_COMMON_EXPORTS=(
     docker_volume_exists docker_volume_create docker_volume_remove docker_volumes
     docker_network_exists docker_network_create docker_network_remove docker_networks
     docker_prune_containers docker_prune_images docker_prune_volumes docker_prune_all
+    # Defensive Guards (from guard.sh) - AI coding assistant error prevention
+    guard_init guard_on_exit
+    guard_path_exists guard_path_safe guard_path_chars guard_symlink guard_destructive_path
+    guard_var_set guard_var_safe guard_array_bounds
+    guard_command guard_commands guard_os
+    guard_lock guard_unlock guard_with_lock
+    guard_disk_space guard_memory
+    guard_integer guard_filename
+    guard_file_op
+    # Functional Programming (from functional.sh)
+    is_even is_odd is_positive is_negative is_zero is_empty is_not_empty is_numeric is_alnum
+    double square increment decrement negate abs
+    sum product max min concat
+    fp_map fp_map_v fp_map_v_nr
+    fp_filter fp_filter_v
+    fp_reduce fp_reduce_v fp_reduce_v_nr
+    fp_find fp_find_v fp_find_index
+    fp_any fp_all fp_none
+    fp_compose fp_pipe fp_apply
+    fp_partition_v
+    fp_take fp_take_while fp_drop fp_drop_while
+    fp_zip fp_zip_with
+    fp_count fp_group_by identity fp_const
+    double_nr square_nr increment_nr decrement_nr
+    sum_nr product_nr max_nr min_nr
+    # Metaprogramming (from meta.sh)
+    var_get var_set var_exists var_nonempty var_unset
+    vars_with_prefix vars_matching vars_exported
+    var_copy var_swap
+    var_type var_is_array var_is_assoc var_is_readonly
+    const const_default
+    func_exists call_func func_def func_source funcs_with_prefix
+    var_ref var_ref_target
+    call_method method_exists call_or_default
+    var_incr var_decr var_append var_prepend
+    array_push_byname array_pop_byname array_len_byname
+    # Safe Execution (from safe.sh) - Strict mode and gotcha prevention
+    enable_strict_mode disable_strict_mode is_strict_mode
+    unsafe_run safe_exit_code
+    safe_source safe_source_all source_if_exists
+    capture_both capture_stdout capture_stderr capture_all
+    retry_backoff retry_backoff_jitter retry_with_callback
+    run_with_timeout timeout_cmd
+    lint_script check_syntax lint_scripts
+    enable_error_context disable_error_context
+    default require_var array_get safe_math
+    # Process Substitution (from procsub.sh) - subshell variable preservation
+    read_lines_from for_each_line diff_commands capture_output
+    process_file tee_to_var
+    map_lines_from filter_lines_from reduce_lines_from
+    commands_equal read_n_lines_from batch_lines_from
+    interleave_commands count_lines_from read_pairs_from
 )

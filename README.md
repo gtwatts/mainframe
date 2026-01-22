@@ -20,7 +20,7 @@
 
 ### Give Your AI Coding Assistant **BASH SUPERPOWERS**
 
-**1000+ Pure Bash Functions** | **Zero Dependencies** | **20-72x Faster**
+**1,100+ Pure Bash Functions** | **37 Libraries** | **Zero Dependencies** | **20-72x Faster**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Tests](https://img.shields.io/github/actions/workflow/status/gtwatts/mainframe/test.yml?label=tests)](https://github.com/gtwatts/mainframe/actions)
@@ -46,7 +46,7 @@ When AI coding assistants like **Claude Code** or **OpenCode** write bash script
 
 ## The Solution: MAINFRAME
 
-One line of code gives your AI instant access to **1000+ battle-tested functions**:
+One line of code gives your AI instant access to **1,100+ battle-tested functions**:
 
 ```bash
 source "${MAINFRAME_ROOT}/lib/common.sh"
@@ -129,7 +129,7 @@ bash benchmarks/superpower_benchmarks.sh
 
 ## What You Get
 
-### 26 Libraries, 950+ Functions
+### 37 Libraries, 1,100+ Functions
 
 | Library | Functions | What It Does |
 |---------|-----------|--------------|
@@ -138,7 +138,7 @@ bash benchmarks/superpower_benchmarks.sh
 | **pure-array.sh** | 33 | Array ops without external tools |
 | **pure-util.sh** | 60 | UUID, timestamps, validation |
 | **pure-file.sh** | 37 | File ops without cat/head/tail |
-| **json.sh** | 20 | JSON generation (no jq needed) |
+| **json.sh** | 34 | JSON generation with nameref variants (no jq needed) |
 | **semver.sh** | 20 | Semantic versioning |
 | **ansi.sh** | 90 | Terminal colors & styling |
 | **tui.sh** | 30 | Progress bars, spinners, prompts, boxes |
@@ -159,12 +159,17 @@ bash benchmarks/superpower_benchmarks.sh
 | **pipe.sh** | 39 | Unix pipeline processing |
 | **stream.sh** | 28 | Advanced stream paradigms |
 | **error.sh** | 25 | Try/catch, stack traces, error context |
-| **compat.sh** | 45 | BSD/GNU cross-platform compatibility |
+| **compat.sh** | 50 | BSD/GNU compatibility + WSL detection |
 | **log.sh** | 30 | Structured JSON logging with levels & rotation |
 | **cli.sh** | 35 | Declarative CLI framework with auto-help |
 | **ci.sh** | 35 | CI/CD portability for GitHub, GitLab, Jenkins, CircleCI, Travis, Azure |
 | **template.sh** | 30 | Mustache-style template engine with conditionals & loops |
 | **health.sh** | 35 | Health check framework with HTTP server, monitoring & probes |
+| **functional.sh** | 45 | Map/filter/reduce with nameref variants (v3.0) |
+| **meta.sh** | 32 | Metaprogramming & indirect reference helpers (v3.0) |
+| **guard.sh** | 21 | Defensive programming guards for AI scripts (v3.0) |
+| **procsub.sh** | 14 | Process substitution to avoid subshell variable loss (v3.0) |
+| **safe.sh** | 21 | Strict mode helpers & gotcha prevention (v3.0) |
 
 ### Zero External Dependencies
 
@@ -599,6 +604,104 @@ health::serve 8081  # Runs in foreground
 health::watch --interval 30 --on-failure 'notify admin@example.com' --verbose
 ```
 
+### AI-Optimized Utilities (NEW in v3.0)
+
+MAINFRAME v3.0 includes utilities specifically designed for AI coding assistants:
+
+```bash
+# Project Detection - AI understands any codebase instantly
+./scripts/project_detect.sh detect /path/to/project
+# Returns JSON: {"language":"python","framework":"fastapi","package_manager":"pip",...}
+
+# Atomic Multi-File Edits - Safe rollback if anything fails
+./scripts/atomic_edit.sh begin
+./scripts/atomic_edit.sh stage file1.py file2.py
+./scripts/atomic_edit.sh commit   # Or rollback if needed
+
+# Context Summary - Token-efficient project overview
+./scripts/context_summary.sh /path/to/project --max-tokens 2000
+# Generates compact summary for AI context windows
+
+# MAINFRAME CLI
+mainframe version    # Show version and function count
+mainframe functions  # List all available functions
+mainframe search json  # Find functions by name
+mainframe doctor     # Diagnose installation issues
+```
+
+### Functional Programming (NEW in v3.0)
+```bash
+source "$MAINFRAME_ROOT/lib/functional.sh"
+
+# Map with nameref (no subshell variable loss)
+double() { echo $(($1 * 2)); }
+fp_map_v result double 1 2 3 4 5
+echo "${result[*]}"  # 2 4 6 8 10
+
+# Filter with predicates
+fp_filter_v evens is_even 1 2 3 4 5 6
+echo "${evens[*]}"  # 2 4 6
+
+# Reduce/fold
+fp_reduce_v sum 'echo $(($1 + $2))' 0 1 2 3 4 5
+echo "$sum"  # 15
+
+# Built-in predicates
+is_even 4 && echo "yes"
+is_positive -5 || echo "no"
+is_empty "" && echo "empty"
+```
+
+### Defensive Guards (NEW in v3.0)
+```bash
+source "$MAINFRAME_ROOT/lib/guard.sh"
+
+# Initialize guard system
+guard_init
+
+# Path safety (prevents AI mistakes)
+guard_path_exists "/etc/passwd" || exit 1
+guard_path_safe "/base" "$user_input"  # Prevents directory traversal
+guard_destructive_path "/important"    # Blocks dangerous deletes
+
+# Variable guards
+guard_var_set "API_KEY" "API_KEY must be set"
+guard_integer "$count" "count must be a number"
+
+# Command guards
+guard_command "docker" "Docker is required"
+guard_commands "git" "curl" "jq"
+
+# Resource guards
+guard_disk_space "/var" 1024  # Require 1GB free
+guard_memory 512              # Require 512MB free
+
+# Lock guards (prevent concurrent execution)
+guard_lock "/tmp/deploy.lock" || exit 1
+# ... do work ...
+guard_unlock "/tmp/deploy.lock"
+```
+
+### Process Substitution Helpers (NEW in v3.0)
+```bash
+source "$MAINFRAME_ROOT/lib/procsub.sh"
+
+# Solve "variable lost in subshell" problem
+# BAD: count stays 0 because while runs in subshell
+count=0
+cat file | while read line; do ((count++)); done
+echo $count  # Still 0!
+
+# GOOD: Variables persist with process substitution
+count=0
+for_each_line "cat file" '((count++))'
+echo $count  # Correct value!
+
+# Read lines into array without subshell
+read_lines_from "ls -1" files
+echo "Found ${#files[@]} files"
+```
+
 ### Declarative CLI Framework (NEW in v2.5)
 ```bash
 source "$MAINFRAME_ROOT/lib/cli.sh"
@@ -788,7 +891,7 @@ For complex scripts, tell Claude Code to check the cheatsheet:
 | Claude doesn't use MAINFRAME functions | Add the CLAUDE.md snippet above; mention "use MAINFRAME" in your prompt |
 | Claude uses `jq` instead of `json_object` | Explicitly say "use MAINFRAME's json_object, not jq" |
 | Functions not found at runtime | Verify `MAINFRAME_ROOT` is set: `echo $MAINFRAME_ROOT` |
-| Claude writes verbose bash | Remind it: "MAINFRAME has 1000+ functions - check before writing custom code" |
+| Claude writes verbose bash | Remind it: "MAINFRAME has 1,100+ functions - check before writing custom code" |
 
 ### OpenCode / Aider / Cursor / Other AI Assistants
 
@@ -814,7 +917,7 @@ extra-context:
 **Continue** (`.continue/config.json`):
 ```json
 {
-  "systemMessage": "When writing bash, source MAINFRAME (~/.mainframe/lib/common.sh) and use its 1000+ functions instead of external tools like jq, sed, awk."
+  "systemMessage": "When writing bash, source MAINFRAME (~/.mainframe/lib/common.sh) and use its 1,100+ functions instead of external tools like jq, sed, awk."
 }
 ```
 
@@ -835,13 +938,15 @@ cp ~/.mainframe/docs/mainframe-claude-template.md ~/.claude/CLAUDE.md
 
 ```
 mainframe/
-├── lib/                    # Core libraries (1000+ functions)
+├── bin/                    # CLI tools
+│   └── mainframe          # MAINFRAME CLI (version, search, doctor)
+├── lib/                    # Core libraries (1,100+ functions)
 │   ├── common.sh          # Main entry point (auto-sources all)
 │   ├── pure-string.sh     # String manipulation
 │   ├── pure-array.sh      # Array operations
 │   ├── pure-util.sh       # Utilities
 │   ├── pure-file.sh       # File operations
-│   ├── json.sh            # JSON generation
+│   ├── json.sh            # JSON generation with nameref variants
 │   ├── semver.sh          # Semantic versioning
 │   ├── ansi.sh            # Terminal colors & UI
 │   ├── async.sh           # Async/parallel execution
@@ -862,8 +967,16 @@ mainframe/
 │   ├── stream.sh          # Stream processing (v2.1)
 │   ├── error.sh           # Try/catch & stack traces (v2.2)
 │   ├── log.sh             # Structured JSON logging (v2.4)
-│   └── health.sh          # Health check framework (v2.6)
-├── scripts/               # Ready-to-use scripts
+│   ├── health.sh          # Health check framework (v2.6)
+│   ├── functional.sh      # Map/filter/reduce with namerefs (v3.0)
+│   ├── meta.sh            # Metaprogramming helpers (v3.0)
+│   ├── guard.sh           # Defensive guards for AI (v3.0)
+│   ├── procsub.sh         # Process substitution helpers (v3.0)
+│   └── safe.sh            # Strict mode & gotcha prevention (v3.0)
+├── scripts/               # AI utility scripts
+│   ├── project_detect.sh  # Detect project type/framework (v3.0)
+│   ├── atomic_edit.sh     # Atomic multi-file edits (v3.0)
+│   └── context_summary.sh # Token-efficient summaries (v3.0)
 ├── tests/                 # BATS test suite (295 tests)
 ├── benchmarks/            # Performance benchmarks
 └── docs/                  # Documentation
@@ -997,7 +1110,7 @@ This isn't just cleaner - it's **transformative for agentic coding**:
 
 MAINFRAME delivers all four:
 
-- **1000+ tested functions** eliminate edge cases and bugs
+- **1,100+ tested functions** eliminate edge cases and bugs
 - **Zero dependencies** means no "is jq installed?" failures mid-script
 - **Intuitive naming** (`json_object`, `csv_row`, `git_branch`) lets AI write correct code immediately
 - **One source line** gives instant access to everything
@@ -1045,7 +1158,7 @@ MIT License - Use freely in your projects. See [LICENSE](LICENSE).
 
 ---
 
-**1000+ functions** | **Zero dependencies** | **20-72x faster** | **Pure Bash**
+**1,100+ functions** | **Zero dependencies** | **20-72x faster** | **Pure Bash**
 
 *Made with ❤️ for AI coding assistants everywhere*
 

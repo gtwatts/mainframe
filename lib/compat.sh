@@ -16,6 +16,40 @@
 readonly _MAINFRAME_COMPAT_LOADED=1
 
 # =============================================================================
+# BASH VERSION CHECK
+# =============================================================================
+# Verify minimum bash version
+# Called automatically when compat.sh is sourced
+_compat_check_bash_version() {
+    if [[ "${BASH_VERSINFO[0]:-0}" -lt 4 ]]; then
+        printf 'MAINFRAME requires bash 4.0+. Found: %s\n' "${BASH_VERSION:-unknown}" >&2
+        printf 'macOS users: brew install bash\n' >&2
+        printf 'Then: chsh -s /opt/homebrew/bin/bash\n' >&2
+        return 1
+    fi
+    return 0
+}
+_compat_check_bash_version || return 1
+
+# =============================================================================
+# FEATURE DETECTION FLAGS
+# =============================================================================
+# Feature flags based on bash version - check capabilities at source time
+declare -g BASH_HAS_ASSOC_ARRAYS=0
+declare -g BASH_HAS_NAMEREFS=0
+declare -g BASH_HAS_NEGATIVE_INDICES=0
+declare -g BASH_HAS_EPOCHREALTIME=0
+declare -g BASH_HAS_CURRENTSHELL_SUBST=0
+
+((BASH_VERSINFO[0] >= 4)) && BASH_HAS_ASSOC_ARRAYS=1
+((BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 3))) && {
+    BASH_HAS_NAMEREFS=1
+    BASH_HAS_NEGATIVE_INDICES=1
+}
+((BASH_VERSINFO[0] >= 5)) && BASH_HAS_EPOCHREALTIME=1
+((BASH_VERSINFO[0] > 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] >= 3))) && BASH_HAS_CURRENTSHELL_SUBST=1
+
+# =============================================================================
 # OS DETECTION (cached on first call)
 # =============================================================================
 
@@ -27,18 +61,24 @@ declare -g _COMPAT_OS_FAMILY=""
 # Internal function - called automatically on first use
 _compat_detect_os() {
     [[ -n "$_COMPAT_OS" ]] && return 0
-    
+
     local uname_s
     uname_s="$(uname -s 2>/dev/null)" || uname_s="unknown"
-    
+
     case "$uname_s" in
         Darwin)
             _COMPAT_OS="macos"
             _COMPAT_OS_FAMILY="bsd"
             ;;
         Linux)
-            _COMPAT_OS="linux"
-            _COMPAT_OS_FAMILY="gnu"
+            # Check for WSL before setting generic Linux
+            if [[ -f /proc/version ]] && grep -qi microsoft /proc/version 2>/dev/null; then
+                _COMPAT_OS="wsl"
+                _COMPAT_OS_FAMILY="gnu"
+            else
+                _COMPAT_OS="linux"
+                _COMPAT_OS_FAMILY="gnu"
+            fi
             ;;
         FreeBSD)
             _COMPAT_OS="freebsd"
@@ -86,11 +126,12 @@ compat::is_macos() {
     [[ "$_COMPAT_OS" == "macos" ]]
 }
 
-# Check if running on Linux
+# Check if running on Linux (includes WSL)
 # Usage: compat::is_linux && echo "Running on Linux"
+# Note: Returns true for both native Linux and WSL
 compat::is_linux() {
     _compat_detect_os
-    [[ "$_COMPAT_OS" == "linux" ]]
+    [[ "$_COMPAT_OS" == "linux" || "$_COMPAT_OS" == "wsl" ]]
 }
 
 # Check if running on any BSD variant
@@ -112,6 +153,56 @@ compat::is_freebsd() {
 compat::has_gnu() {
     _compat_detect_os
     [[ "$_COMPAT_OS_FAMILY" == "gnu" ]]
+}
+
+# =============================================================================
+# WSL DETECTION AND PATH CONVERSION
+# =============================================================================
+
+# Check if running in WSL (Windows Subsystem for Linux)
+# Usage: compat::is_wsl && echo "Running in WSL"
+compat::is_wsl() {
+    [[ -f /proc/version ]] && grep -qi microsoft /proc/version 2>/dev/null
+}
+
+# Convert WSL path to Windows path
+# Usage: compat::wsl_to_windows "/home/user/file"
+# Returns: Windows-style path (e.g., C:\Users\...)
+compat::wsl_to_windows() {
+    local path="$1"
+    if compat::is_wsl && command -v wslpath &>/dev/null; then
+        wslpath -w "$path" 2>/dev/null || printf '%s' "$path"
+    else
+        printf '%s' "$path"
+    fi
+}
+
+# Convert Windows path to WSL path
+# Usage: compat::windows_to_wsl "C:\Users\file"
+# Returns: WSL-style path (e.g., /mnt/c/Users/...)
+compat::windows_to_wsl() {
+    local path="$1"
+    if compat::is_wsl && command -v wslpath &>/dev/null; then
+        wslpath -u "$path" 2>/dev/null || printf '%s' "$path"
+    else
+        printf '%s' "$path"
+    fi
+}
+
+# =============================================================================
+# ALPINE/BUSYBOX DETECTION
+# =============================================================================
+
+# Check if running on Alpine Linux
+# Usage: compat::is_alpine && echo "Running on Alpine"
+compat::is_alpine() {
+    [[ -f /etc/alpine-release ]]
+}
+
+# Check if shell commands are BusyBox
+# Usage: compat::is_busybox && echo "Using BusyBox"
+compat::is_busybox() {
+    command -v busybox &>/dev/null && busybox --help 2>&1 | grep -q BusyBox
 }
 
 # =============================================================================
@@ -749,7 +840,7 @@ compat::md5() {
 # =============================================================================
 # CLIPBOARD WRAPPERS
 # =============================================================================
-# macOS uses pbcopy/pbpaste, Linux uses xclip/xsel
+# macOS uses pbcopy/pbpaste, Linux uses xclip/xsel, WSL uses Windows clipboard
 # =============================================================================
 
 # Copy to clipboard
@@ -757,12 +848,20 @@ compat::md5() {
 # Usage: compat::clipboard_copy "text"
 compat::clipboard_copy() {
     local text="${1:-$(cat)}"
-    
+
     _compat_detect_os
-    
+
     case "$_COMPAT_OS" in
         macos)
             printf '%s' "$text" | pbcopy
+            ;;
+        wsl)
+            # WSL: Use Windows clip.exe
+            if command -v clip.exe &>/dev/null; then
+                printf '%s' "$text" | clip.exe
+            else
+                return 1
+            fi
             ;;
         linux)
             if command -v xclip &>/dev/null; then
@@ -785,10 +884,18 @@ compat::clipboard_copy() {
 # Usage: text=$(compat::clipboard_paste)
 compat::clipboard_paste() {
     _compat_detect_os
-    
+
     case "$_COMPAT_OS" in
         macos)
             pbpaste
+            ;;
+        wsl)
+            # WSL: Use PowerShell to get clipboard content
+            if command -v powershell.exe &>/dev/null; then
+                powershell.exe -NoProfile -Command "Get-Clipboard" 2>/dev/null | tr -d '\r'
+            else
+                return 1
+            fi
             ;;
         linux)
             if command -v xclip &>/dev/null; then
@@ -810,7 +917,7 @@ compat::clipboard_paste() {
 # =============================================================================
 # OPEN/BROWSE WRAPPERS
 # =============================================================================
-# macOS uses 'open', Linux uses 'xdg-open'
+# macOS uses 'open', Linux uses 'xdg-open', WSL uses Windows explorer
 # =============================================================================
 
 # Open file/URL with default application
@@ -818,12 +925,26 @@ compat::clipboard_paste() {
 # Usage: compat::open document.pdf
 compat::open() {
     local target="$1"
-    
+
     _compat_detect_os
-    
+
     case "$_COMPAT_OS" in
         macos)
             open "$target"
+            ;;
+        wsl)
+            # WSL: Use Windows explorer.exe or cmd.exe /c start
+            if command -v explorer.exe &>/dev/null; then
+                # Convert path if it's a local file
+                if [[ -e "$target" ]]; then
+                    target="$(compat::wsl_to_windows "$target")"
+                fi
+                explorer.exe "$target" 2>/dev/null || cmd.exe /c start "" "$target" 2>/dev/null
+            elif command -v cmd.exe &>/dev/null; then
+                cmd.exe /c start "" "$target" 2>/dev/null
+            else
+                return 1
+            fi
             ;;
         linux)
             if command -v xdg-open &>/dev/null; then
@@ -851,12 +972,27 @@ compat::open() {
 # Usage: compat::info
 compat::info() {
     _compat_detect_os
-    
+
     printf 'OS: %s\n' "$_COMPAT_OS"
     printf 'Family: %s\n' "$_COMPAT_OS_FAMILY"
     printf 'Kernel: %s\n' "$(uname -r)"
     printf 'Arch: %s\n' "$(uname -m)"
-    
+    printf 'Bash: %s\n' "${BASH_VERSION:-unknown}"
+
+    # Environment detection
+    printf '\nEnvironment:\n'
+    compat::is_wsl && printf '  WSL: yes\n' || printf '  WSL: no\n'
+    compat::is_alpine && printf '  Alpine: yes\n' || printf '  Alpine: no\n'
+    compat::is_busybox && printf '  BusyBox: yes\n' || printf '  BusyBox: no\n'
+
+    # Feature flags
+    printf '\nBash features:\n'
+    printf '  Associative arrays (4.0+): %s\n' "$([[ $BASH_HAS_ASSOC_ARRAYS -eq 1 ]] && echo yes || echo no)"
+    printf '  Namerefs (4.3+): %s\n' "$([[ $BASH_HAS_NAMEREFS -eq 1 ]] && echo yes || echo no)"
+    printf '  Negative indices (4.3+): %s\n' "$([[ $BASH_HAS_NEGATIVE_INDICES -eq 1 ]] && echo yes || echo no)"
+    printf '  EPOCHREALTIME (5.0+): %s\n' "$([[ $BASH_HAS_EPOCHREALTIME -eq 1 ]] && echo yes || echo no)"
+    printf '  Current shell subst (5.3+): %s\n' "$([[ $BASH_HAS_CURRENTSHELL_SUBST -eq 1 ]] && echo yes || echo no)"
+
     # Check for key tools
     printf '\nTool availability:\n'
     command -v gsed &>/dev/null && printf '  gsed: available (GNU sed)\n' || printf '  gsed: not found\n'
