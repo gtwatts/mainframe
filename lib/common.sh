@@ -588,6 +588,150 @@ basher_init() {
 # Auto-source pure bash libraries if available
 _MAINFRAME_LIB_DIR="${BASH_SOURCE[0]%/*}"
 
+# =============================================================================
+# LAZY LOADING ENGINE
+# =============================================================================
+# Controls which libraries are loaded via MAINFRAME_LIBS or MAINFRAME_PROFILE.
+# When neither is set, all libraries load (backward compatible).
+#
+# Usage:
+#   MAINFRAME_LIBS='json,validation,git' source common.sh  # specific libs
+#   MAINFRAME_LIBS='core+standard' source common.sh        # tier loading
+#   MAINFRAME_LIBS='all' source common.sh                  # everything
+#   MAINFRAME_PROFILE='minimal' source common.sh           # preset profile
+#
+# Profiles: minimal, standard, full, ai
+# =============================================================================
+
+# --- Tier Definitions --------------------------------------------------------
+
+# Core tier: always loaded regardless of MAINFRAME_LIBS setting
+_MAINFRAME_TIER_CORE=(
+    pure-string pure-array pure-util pure-file
+    json ansi
+    output errors hints
+)
+
+# Standard tier: common day-to-day libraries
+_MAINFRAME_TIER_STANDARD=(
+    validation path env datetime http csv
+    git docker crypto proc args config
+    log error tui template ci health
+)
+
+# Extended tier: advanced/specialized libraries
+_MAINFRAME_TIER_EXTENDED=(
+    k8s semver functional stream pipe
+    procsub async meta cli
+    compat safe guard
+)
+
+# Phase 3 AI tier: agent-optimized modules
+_MAINFRAME_TIER_AI=(
+    idempotent atomic observe project
+    contract perf netscan parsers
+)
+
+# --- Profile Presets ---------------------------------------------------------
+
+# Resolve MAINFRAME_PROFILE to MAINFRAME_LIBS if profile is set
+if [[ -n "${MAINFRAME_PROFILE:-}" && -z "${MAINFRAME_LIBS:-}" ]]; then
+    case "${MAINFRAME_PROFILE}" in
+        minimal)  MAINFRAME_LIBS="core" ;;
+        standard) MAINFRAME_LIBS="core+standard" ;;
+        full)     MAINFRAME_LIBS="all" ;;
+        ai)       MAINFRAME_LIBS="core+ai" ;;
+        *)
+            log_warn "Unknown MAINFRAME_PROFILE '${MAINFRAME_PROFILE}', loading all"
+            MAINFRAME_LIBS="all"
+            ;;
+    esac
+fi
+
+# --- Loader Functions --------------------------------------------------------
+
+# Track which libraries have been loaded to prevent double-sourcing
+declare -gA _MAINFRAME_LOADED_LIBS 2>/dev/null || declare -A _MAINFRAME_LOADED_LIBS
+
+# Load a single library by name (without .sh extension)
+# Usage: _mainframe_load_library "json"
+_mainframe_load_library() {
+    local lib_name="$1"
+    local lib_file="${_MAINFRAME_LIB_DIR}/${lib_name}.sh"
+
+    # Skip if already loaded
+    [[ -n "${_MAINFRAME_LOADED_LIBS[${lib_name}]:-}" ]] && return 0
+
+    # Source if file exists
+    if [[ -f "$lib_file" ]]; then
+        source "$lib_file"
+        _MAINFRAME_LOADED_LIBS["${lib_name}"]=1
+    fi
+}
+
+# Load all libraries in a named tier
+# Usage: _mainframe_load_tier "core"
+_mainframe_load_tier() {
+    local tier_name="$1"
+    local tier_var="_MAINFRAME_TIER_${tier_name^^}[@]"
+    local lib
+
+    for lib in "${!tier_var}"; do
+        _mainframe_load_library "$lib"
+    done
+}
+
+# Parse MAINFRAME_LIBS value and load requested libraries
+# Supports: comma-separated names, tier names with +, 'all'
+_mainframe_load_selected() {
+    local libs_spec="$1"
+
+    # Always load core tier first
+    _mainframe_load_tier "core"
+
+    # Handle 'all' keyword
+    if [[ "$libs_spec" == "all" ]]; then
+        _mainframe_load_tier "standard"
+        _mainframe_load_tier "extended"
+        _mainframe_load_tier "ai"
+        return
+    fi
+
+    # Handle tier expressions (e.g., 'core+standard+ai')
+    if [[ "$libs_spec" == *"+"* ]]; then
+        local IFS='+'
+        local tier
+        for tier in $libs_spec; do
+            case "$tier" in
+                core)     _mainframe_load_tier "core" ;;
+                standard) _mainframe_load_tier "standard" ;;
+                extended) _mainframe_load_tier "extended" ;;
+                ai)       _mainframe_load_tier "ai" ;;
+                *)        log_warn "Unknown tier: $tier" ;;
+            esac
+        done
+        return
+    fi
+
+    # Handle comma-separated library names (e.g., 'json,validation,git')
+    local IFS=','
+    local lib
+    for lib in $libs_spec; do
+        # Trim whitespace
+        lib="${lib#"${lib%%[![:space:]]*}"}"
+        lib="${lib%"${lib##*[![:space:]]}"}"
+        [[ -n "$lib" ]] && _mainframe_load_library "$lib"
+    done
+}
+
+# --- Load Decision -----------------------------------------------------------
+
+if [[ -n "${MAINFRAME_LIBS:-}" ]]; then
+    # Selective loading: use lazy loading engine
+    _mainframe_load_selected "${MAINFRAME_LIBS}"
+else
+    # Full loading: backward-compatible, source everything
+
 # Source pure-string.sh for advanced string operations
 if [[ -f "${_MAINFRAME_LIB_DIR}/pure-string.sh" ]]; then
     source "${_MAINFRAME_LIB_DIR}/pure-string.sh"
@@ -611,6 +755,16 @@ fi
 # Source json.sh for JSON generation
 if [[ -f "${_MAINFRAME_LIB_DIR}/json.sh" ]]; then
     source "${_MAINFRAME_LIB_DIR}/json.sh"
+fi
+
+# Source output.sh for Universal Structured Output Protocol (USOP)
+if [[ -f "${_MAINFRAME_LIB_DIR}/output.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/output.sh"
+fi
+
+# Source errors.sh for standardized error codes and recovery suggestions
+if [[ -f "${_MAINFRAME_LIB_DIR}/errors.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/errors.sh"
 fi
 
 # Source ansi.sh for terminal colors and UI
@@ -753,6 +907,17 @@ fi
 if [[ -f "${_MAINFRAME_LIB_DIR}/parsers.sh" ]]; then
     source "${_MAINFRAME_LIB_DIR}/parsers.sh"
 fi
+if [[ -f "${_MAINFRAME_LIB_DIR}/cache.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/cache.sh"
+fi
+if [[ -f "${_MAINFRAME_LIB_DIR}/scope.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/scope.sh"
+fi
+if [[ -f "${_MAINFRAME_LIB_DIR}/hints.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/hints.sh"
+fi
+
+fi # End of full loading (backward-compatible path)
 
 # =============================================================================
 # MODULE EXPORTS
@@ -911,4 +1076,24 @@ BASHER_COMMON_EXPORTS=(
     map_lines_from filter_lines_from reduce_lines_from
     commands_equal read_n_lines_from batch_lines_from
     interleave_commands count_lines_from read_pairs_from
+    # Structured Output (from output.sh) - Universal Structured Output Protocol
+    output output_error output_timer_start output_timer_elapsed
+    output_string output_int output_bool output_float
+    output_json_object output_json_array output_file_path output_void
+    output_v output_is_json output_is_raw output_is_debug output_is_minimal
+    output_with_mode
+    # Scope Boundary Enforcement (from scope.sh) - AI agent safety
+    mainframe_scope_set mainframe_scope_check mainframe_scope_clear mainframe_scope_status
+    mainframe_scope_check_path mainframe_scope_check_host mainframe_scope_check_cmd
+    mainframe_scope_exec mainframe_scope_reload mainframe_scope_destroy
+    mainframe_scope_add_path mainframe_scope_add_host mainframe_scope_add_cmd
+    # Function Hints (from hints.sh) - Workflow discovery
+    mainframe_hint mainframe_hints_for mainframe_hints_chain
+    mainframe_hint_category mainframe_hint_categories mainframe_hints_count
+    # Caching and Memoization (from cache.sh)
+    memoize
+    cas_store cas_get cas_exists
+    session_cache_set session_cache_get session_cache_clear
+    cache_invalidate cache_clear cache_stats cache_evict_lru
+    cache_depends_on cache_check_deps
 )

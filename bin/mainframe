@@ -8,6 +8,7 @@
 #   version     Show MAINFRAME version
 #   functions   List all available functions
 #   search      Search functions by name or description
+#   quickref    Show compact function signatures for a library
 #   benchmark   Run performance benchmarks
 #   test        Run test suite
 #   doctor      Check MAINFRAME installation
@@ -38,6 +39,7 @@ Commands:
   functions   List all available functions (pipe to grep for filtering)
   search      Search functions by name pattern
   count       Count total functions available
+  quickref    Show compact function signatures for a library
   benchmark   Run performance benchmarks
   test        Run test suite (requires bats)
   doctor      Check MAINFRAME installation health
@@ -47,6 +49,9 @@ Examples:
   mainframe version
   mainframe functions | grep json
   mainframe search "array"
+  mainframe quickref json
+  mainframe quickref --list
+  mainframe quickref --all
   mainframe count
   mainframe doctor
 
@@ -210,6 +215,159 @@ cmd_update() {
 }
 
 # =============================================================================
+# QUICKREF - Compact function signatures for AI agents
+# =============================================================================
+
+# List available library names (derived from lib/*.sh filenames)
+_quickref_list_libraries() {
+    local lib_dir="${MAINFRAME_ROOT}/lib"
+    local f name
+    for f in "$lib_dir"/*.sh; do
+        [[ -f "$f" ]] || continue
+        name="$(basename "$f" .sh)"
+        # Skip common.sh as it is the loader, not a standalone library
+        [[ "$name" == "common" ]] && continue
+        printf '%s\n' "$name"
+    done | sort
+}
+
+# Extract compact signatures from a single library file
+# Parses function declarations and preceding Usage/returns comments
+_quickref_extract() {
+    local lib_file="$1"
+
+    # Use awk to pair Usage comments with function names
+    awk '
+    BEGIN { usage = ""; returns = "" }
+
+    # Capture "# Usage: ..." lines (last one before function wins)
+    /^# Usage:/ {
+        sub(/^# Usage: */, "")
+        usage = $0
+        next
+    }
+
+    # Capture "@returns:" or "@returns-type:" annotations
+    /^# @returns(-type)?:/ {
+        sub(/^# @returns(-type)?: */, "")
+        returns = $0
+        next
+    }
+
+    # Capture "# Returns: ..." lines (simpler format)
+    /^# Returns:/ {
+        sub(/^# Returns: */, "")
+        returns = $0
+        next
+    }
+
+    # Match function declarations: name() { or function name {
+    /^[a-zA-Z_][a-zA-Z0-9_]*\(\)/ {
+        fname = $0
+        sub(/\(\).*/, "", fname)
+        # Skip internal functions (prefixed with _)
+        if (fname ~ /^_/) { usage = ""; returns = ""; next }
+        _emit(fname)
+        next
+    }
+    /^function [a-zA-Z_][a-zA-Z0-9_]*/ {
+        fname = $2
+        if (fname ~ /^_/) { usage = ""; returns = ""; next }
+        _emit(fname)
+        next
+    }
+
+    # Reset on non-comment, non-blank lines that are not function defs
+    /^[^#]/ && !/^[[:space:]]*$/ && !/^[a-zA-Z_][a-zA-Z0-9_]*\(\)/ && !/^function / {
+        usage = ""
+        returns = ""
+    }
+
+    function _emit(name) {
+        if (usage != "") {
+            # Convert usage to compact sig: fname "arg1" "arg2" -> fname(arg1, arg2)
+            sig = usage
+            # Remove leading function name from usage if present
+            if (index(sig, name) == 1) {
+                sig = substr(sig, length(name) + 1)
+            }
+            # Trim leading whitespace
+            gsub(/^[[:space:]]+/, "", sig)
+            # Convert quoted args to compact form
+            gsub(/"/, "", sig)
+            # Wrap in parens if not already
+            if (substr(sig, 1, 1) != "(") {
+                gsub(/[[:space:]]+/, ", ", sig)
+                sig = "(" sig ")"
+            }
+            # Remove trailing empty parens for no-arg functions
+            if (sig == "()") sig = "()"
+        } else {
+            sig = "()"
+        }
+
+        if (returns != "") {
+            printf "%s%s -> %s\n", name, sig, returns
+        } else {
+            printf "%s%s\n", name, sig
+        }
+
+        usage = ""
+        returns = ""
+    }
+    ' "$lib_file"
+}
+
+cmd_quickref() {
+    local arg="${1:-}"
+    local lib_dir="${MAINFRAME_ROOT}/lib"
+
+    if [[ -z "$arg" ]]; then
+        echo "Usage: mainframe quickref <library>"
+        echo "       mainframe quickref --list    List available libraries"
+        echo "       mainframe quickref --all     Show all functions (compact)"
+        return 1
+    fi
+
+    case "$arg" in
+        --list|-l)
+            echo "Available libraries:"
+            _quickref_list_libraries
+            ;;
+        --all|-a)
+            local lib_name lib_file
+            while IFS= read -r lib_name; do
+                lib_file="${lib_dir}/${lib_name}.sh"
+                local output
+                output=$(_quickref_extract "$lib_file")
+                if [[ -n "$output" ]]; then
+                    printf '## %s\n' "$lib_name"
+                    printf '%s\n\n' "$output"
+                fi
+            done < <(_quickref_list_libraries)
+            ;;
+        *)
+            # Treat as library name
+            local lib_file="${lib_dir}/${arg}.sh"
+            if [[ ! -f "$lib_file" ]]; then
+                # Also check common.sh for core functions
+                if [[ "$arg" == "common" || "$arg" == "core" ]]; then
+                    lib_file="${lib_dir}/common.sh"
+                else
+                    echo "Library not found: $arg"
+                    echo ""
+                    echo "Available libraries:"
+                    _quickref_list_libraries
+                    return 1
+                fi
+            fi
+            printf '## %s\n' "$arg"
+            _quickref_extract "$lib_file"
+            ;;
+    esac
+}
+
+# =============================================================================
 # MAIN DISPATCH
 # =============================================================================
 
@@ -225,6 +383,9 @@ case "${1:-help}" in
         ;;
     count)
         cmd_count
+        ;;
+    quickref|qr|signatures|sigs)
+        cmd_quickref "${2:-}"
         ;;
     doctor|check|health)
         cmd_doctor

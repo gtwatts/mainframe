@@ -1694,131 +1694,383 @@ echo "Total: $(var_get "requests")"  # 6
 
 ---
 
+## v3.0 AI-Optimized Libraries
+
+---
+
 ## Idempotent Operations (idempotent.sh)
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `ensure_dir` | `ensure_dir "path" [mode]` | Create dir only if missing, optionally fix permissions |
-| `ensure_file` | `ensure_file "path" ["content"] [mode]` | Create/update file only if needed |
-| `ensure_line` | `ensure_line "file" "line" [marker]` | Add line if not present (marker for replacement) |
-| `ensure_symlink` | `ensure_symlink "target" "link" [force]` | Create/fix symlink atomically |
-| `ensure_command` | `ensure_command "cmd" [msg]` | Assert command exists or fail |
-| `ensure_dirs` | `ensure_dirs "dir1" "dir2" ...` | Create multiple directories |
-| `ensure_lines` | `ensure_lines "file" "line1" "line2" ...` | Add multiple lines if missing |
+**Purpose**: Check-before-act operations that produce the same result regardless of how many times executed. Essential for AI agents that re-run scripts after context loss.
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `ensure_dir` | `ensure_dir "path" [mode]` | `ensure_dir "/var/log/myapp" "0755"` | (returns 0, creates dir if missing) |
+| `ensure_file` | `ensure_file "path" ["content"] [mode]` | `ensure_file "/etc/myapp.conf" "key=value" "0644"` | (returns 0, writes only if differs) |
+| `ensure_line` | `ensure_line "file" "line" [marker]` | `ensure_line "/etc/hosts" "127.0.0.1 myapp.local"` | (returns 0, appends if not present) |
+| `ensure_symlink` | `ensure_symlink "target" "link" [force]` | `ensure_symlink "/opt/app-v2" "/opt/app-current"` | (returns 0, creates/fixes symlink) |
+| `ensure_command` | `ensure_command "cmd"` | `ensure_command "jq" \|\| exit 1` | (returns 0 if found, 1 if missing) |
+| `ensure_dirs` | `ensure_dirs "dir1" "dir2" ...` | `ensure_dirs "/var/log" "/var/run" "/var/data"` | (returns 0 if all created) |
+| `ensure_lines` | `ensure_lines "file" "line1" "line2"` | `ensure_lines "/etc/hosts" "127.0.0.1 a" "127.0.0.1 b"` | (returns 0 if all added) |
+| `ensure_mount` | `ensure_mount "device" "mountpoint" [opts]` | `ensure_mount "tmpfs" "/tmp/ramdisk" "-t tmpfs -o size=512m"` | (returns 0, mounts if not mounted) |
+| `ensure_service` | `ensure_service "name" [check_cmd]` | `ensure_service "nginx"` | (returns 0, starts if not running) |
+| `ensure_package` | `ensure_package "name"` | `ensure_package "jq"` | (returns 0, installs if missing) |
+
+### Quick Patterns (Idempotent)
+
+```bash
+# Setup project directories (safe to re-run)
+ensure_dirs "/opt/myapp/bin" "/opt/myapp/config" "/opt/myapp/logs"
+
+# Ensure config file with content
+ensure_file "/opt/myapp/config/app.conf" "port=8080
+host=0.0.0.0
+log_level=info" "0644"
+
+# Add lines to config (idempotent)
+ensure_line "/etc/hosts" "127.0.0.1 myapp.local"
+ensure_line "~/.bashrc" 'export PATH="/opt/bin:$PATH"' "MANAGED:opt-bin"
+
+# Symlink management
+ensure_symlink "/opt/app-v2.1" "/opt/app-current"
+
+# Verify dependencies
+ensure_command "git" || { echo "git required"; exit 1; }
+ensure_package "curl"
+ensure_service "redis" "redis-cli ping"
+```
 
 ---
 
 ## Atomic File Operations (atomic.sh)
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `atomic_write` | `atomic_write "path" "content" [mode]` | Write via temp+rename (no partial state) |
-| `atomic_append` | `atomic_append "path" "content"` | Append with flock (concurrent-safe) |
-| `atomic_replace` | `atomic_replace "path" "content" [verify_cmd]` | Replace with backup+verify+rollback |
-| `safe_remove` | `safe_remove "path"` | Move to trash (recoverable) |
-| `safe_restore` | `safe_restore "filename"` | Restore most recent trashed file |
-| `file_checkpoint` | `file_checkpoint "path" "name"` | Create named snapshot for rollback |
-| `file_rollback` | `file_rollback "path" "name"` | Restore file from named checkpoint |
-| `file_checkpoints` | `file_checkpoints ["path"]` | List available checkpoints |
-| `file_checkpoint_cleanup` | `file_checkpoint_cleanup [max_age_s]` | Remove old checkpoints (default: 24h) |
+**Purpose**: File write operations that prevent partial state through temp-file-then-rename patterns, flock for concurrent access, and checkpoint/rollback for safe recovery.
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `atomic_write` | `atomic_write "path" "content" [mode]` | `atomic_write "/etc/myapp.conf" "$config" "0644"` | (returns 0, file written atomically) |
+| `atomic_append` | `atomic_append "path" "content"` | `atomic_append "/var/log/app.log" "[$(date)] Event"` | (returns 0, appended with flock) |
+| `atomic_replace` | `atomic_replace "path" "content" [verify]` | `atomic_replace "/etc/nginx.conf" "$new_conf" "nginx -t"` | (returns 0, backup+verify+replace) |
+| `safe_remove` | `safe_remove "path"` | `safe_remove "/etc/old-config.conf"` | (returns 0, moved to trash) |
+| `safe_restore` | `safe_restore "filename"` | `safe_restore "old-config.conf"` | (returns 0, restored from trash) |
+| `file_checkpoint` | `file_checkpoint "path" "name"` | `file_checkpoint "/etc/nginx.conf" "before-ssl"` | (returns 0, snapshot saved) |
+| `file_rollback` | `file_rollback "path" "name"` | `file_rollback "/etc/nginx.conf" "before-ssl"` | (returns 0, file restored) |
+| `file_checkpoints` | `file_checkpoints ["path"]` | `file_checkpoints "/etc/nginx.conf"` | `before-ssl\t/etc/nginx.conf\t2048 bytes` |
+| `file_checkpoint_cleanup` | `file_checkpoint_cleanup [max_age_s]` | `file_checkpoint_cleanup 3600` | (returns 0, removes old checkpoints) |
+
+### Quick Patterns (Atomic)
+
+```bash
+# Write config atomically (readers never see partial content)
+config=$(generate_config)
+atomic_write "/etc/myapp/config.json" "$config" "0644"
+
+# Replace with verification and auto-rollback
+atomic_replace "/etc/nginx/nginx.conf" "$new_config" "nginx -t"
+# If nginx -t fails, original is automatically restored
+
+# Checkpoint before risky changes
+file_checkpoint "/etc/ssh/sshd_config" "before-hardening"
+# ... make changes ...
+# If something goes wrong:
+file_rollback "/etc/ssh/sshd_config" "before-hardening"
+
+# Safe deletion (recoverable)
+safe_remove "/etc/old-service.conf"
+# Oops, need it back:
+safe_restore "old-service.conf"
+
+# Concurrent-safe log appending
+atomic_append "/var/log/deploy.log" "[$(date)] Deployed v2.1"
+```
 
 ---
 
 ## Structured Observability (observe.sh)
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `trace_start` | `tid=$(trace_start "name")` | Begin named trace, returns trace ID |
-| `trace_step` | `trace_step "$tid" "step" [status] [detail]` | Record step within trace |
-| `trace_end` | `result=$(trace_end "$tid" [status])` | End trace, emit JSON summary |
-| `observe_command` | `result=$(observe_command cmd [args...])` | Execute cmd, capture stdout/stderr/exit/timing as JSON |
-| `stack_trace` | `trace=$(stack_trace)` | Current bash call stack as JSON |
-| `observe_error` | `observe_error code "msg" [context]` | Structured JSON error to stderr |
-| `observe_time` | `t=$(observe_time)` | High-resolution timestamp |
-| `observe_elapsed` | `elapsed=$(observe_elapsed "$start")` | Duration since timestamp |
+**Purpose**: Trace, timing, and structured error reporting that produces JSON output AI agents can parse for debugging, error recovery, and performance analysis.
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `trace_start` | `tid=$(trace_start "name")` | `tid=$(trace_start "deploy_config")` | `trace_a1b2c3d4e5f6` |
+| `trace_step` | `trace_step "$tid" "step" [status] [detail]` | `trace_step "$tid" "write_config" "ok" "3 keys"` | (JSON event to stderr) |
+| `trace_end` | `result=$(trace_end "$tid" [status])` | `result=$(trace_end "$tid" "success")` | `{"event":"trace_end","trace_id":"...","duration_s":1.23,...}` |
+| `observe_command` | `result=$(observe_command cmd [args])` | `result=$(observe_command ls -la /tmp)` | `{"cmd":"ls -la /tmp","exit_code":0,"duration_s":0.01,"stdout":"..."}` |
+| `stack_trace` | `trace=$(stack_trace)` | `trace=$(stack_trace)` | `{"stack":[{"func":"myfunc","file":"script.sh","line":42}],"depth":3}` |
+| `observe_error` | `observe_error code "msg" [context]` | `observe_error 2 "invalid port" "port=99999"` | `{"error":true,"code":2,"msg":"invalid port","context":"port=99999"}` |
+| `observe_time` | `t=$(observe_time)` | `start=$(observe_time)` | `1705312896.123456` |
+| `observe_elapsed` | `elapsed=$(observe_elapsed "$start")` | `elapsed=$(observe_elapsed "$start")` | `2.345678` |
+
+### Quick Patterns (Observability)
+
+```bash
+# Trace a multi-step operation
+tid=$(trace_start "deploy_application")
+trace_step "$tid" "pull_image" "ok" "nginx:latest"
+trace_step "$tid" "stop_old" "ok"
+trace_step "$tid" "start_new" "ok" "port 8080"
+summary=$(trace_end "$tid" "success")
+echo "$summary"  # Full JSON with duration and all steps
+
+# Observe a command (captures everything as JSON)
+result=$(observe_command npm test)
+echo "$result"  # {"cmd":"npm test","exit_code":0,"duration_s":12.5,...}
+
+# Time a section of code
+start=$(observe_time)
+# ... expensive work ...
+elapsed=$(observe_elapsed "$start")
+echo "Took ${elapsed}s"
+
+# Structured error for AI parsing
+observe_error 1 "config file missing" "path=/etc/myapp.conf"
+```
 
 ---
 
 ## Project Intelligence (project.sh)
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `project_detect` | `json=$(project_detect "dir")` | Detect language/framework/build from directory |
-| `project_commands` | `json=$(project_commands "dir")` | Return build/test/lint/dev commands |
-| `project_entry` | `json=$(project_entry "dir")` | Find main entry point files |
-| `project_deps` | `json=$(project_deps "dir")` | Count and list dependencies |
-| `project_structure` | `json=$(project_structure "dir")` | Directory tree with file counts |
+**Purpose**: Detect project types, frameworks, build systems, and entry points from directory structure. Gives AI agents instant context without reading dozens of files.
 
-Supported: TypeScript, Python, Rust, Go, Ruby, Java, PHP, C/C++, Elixir, Swift.
-Frameworks: Next.js, FastAPI, Django, Rails, Axum, Gin, Spring, Laravel, Phoenix, +10 more.
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `project_detect` | `json=$(project_detect [dir])` | `project_detect .` | `{"language":"typescript","framework":"nextjs","package_manager":"bun",...}` |
+| `project_commands` | `json=$(project_commands [dir])` | `project_commands .` | `{"install":"bun install","build":"bun run build","test":"bun run test",...}` |
+| `project_entry` | `json=$(project_entry [dir])` | `project_entry .` | `["src/index.ts","src/app.ts"]` |
+| `project_deps` | `json=$(project_deps [dir])` | `project_deps .` | `{"total":45,"production":12,"development":33,"notable":["react","next"]}` |
+| `project_structure` | `json=$(project_structure [dir] [depth])` | `project_structure . 2` | `{"directories":["src","tests","lib"],"file_count":87,"extensions":{".ts":42}}` |
+
+**Supported Languages**: TypeScript, JavaScript, Python, Rust, Go, Ruby, Java, PHP, C/C++, Elixir, Swift.
+
+**Detected Frameworks**: Next.js, Nuxt, SvelteKit, Astro, Remix, React, Vue, Angular, Express, Fastify, Django, FastAPI, Flask, Rails, Actix, Axum, Gin, Echo.
+
+**Package Managers**: bun, pnpm, yarn, npm, poetry, uv, pipenv, cargo, go-modules, bundler, composer.
+
+### Quick Patterns (Project Intelligence)
+
+```bash
+# Get instant project context
+info=$(project_detect .)
+echo "$info"
+# {"language":"typescript","framework":"nextjs","package_manager":"bun",
+#  "build_system":"vite","test_runner":"vitest","ci_provider":"github_actions",...}
+
+# Find the right commands
+cmds=$(project_commands .)
+echo "$cmds"
+# {"install":"bun install","build":"bun run build","test":"bun run test",
+#  "lint":"bun run lint","dev":"bun run dev","start":"bun run start"}
+
+# Discover entry points
+entries=$(project_entry .)
+echo "$entries"  # ["src/app/page.tsx","src/app/layout.tsx"]
+
+# Analyze dependencies
+deps=$(project_deps .)
+echo "$deps"  # {"total":45,"production":12,"development":33,"notable":["react","next","prisma"]}
+```
 
 ---
 
 ## Design-by-Contract (contract.sh)
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `mainframe_error` | `mainframe_error code "msg" [key=val...]` | Structured JSON error with context |
-| `contract_require` | `contract_require "expr" "msg"` | Assert precondition (input validation) |
-| `contract_ensure` | `contract_ensure "expr" "msg"` | Assert postcondition (output validation) |
-| `contract_invariant` | `contract_invariant "expr" "msg"` | Assert invariant (always true) |
-| `contract_type_check` | `contract_type_check "val" "type" "name"` | Validate type (int/float/bool/file/dir/nonempty) |
-| `contract_not_empty` | `contract_not_empty "arg1" "arg2" ...` | Assert all args non-empty |
-| `contract_is_file` | `contract_is_file "path" ["name"]` | Assert file exists |
-| `contract_is_dir` | `contract_is_dir "path" ["name"]` | Assert directory exists |
-| `contract_in_range` | `contract_in_range val min max ["name"]` | Assert integer in [min, max] |
-| `contracts_disable` | `contracts_disable` | Disable all checks (production) |
-| `contracts_enable` | `contracts_enable` | Re-enable checks |
+**Purpose**: Precondition/postcondition assertions, type checking, and structured JSON error reporting that AI agents can parse for automated debugging and recovery.
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `mainframe_error` | `mainframe_error code "msg" [key=val...]` | `mainframe_error 2 "invalid port" "port=99999" "range=1-65535"` | `{"error":true,"code":2,"msg":"invalid port","context":{"port":"99999"}}` |
+| `contract_require` | `contract_require "expr" "msg"` | `contract_require "[[ -n \$arg ]]" "argument required"` | (returns 0 if true, JSON error + 1 if false) |
+| `contract_ensure` | `contract_ensure "expr" "msg"` | `contract_ensure "[[ -f \$output ]]" "output not created"` | (returns 0 if true, JSON error + 1 if false) |
+| `contract_invariant` | `contract_invariant "expr" "msg"` | `contract_invariant "[[ \$count -ge 0 ]]" "count negative"` | (returns 0 if true, JSON error + 1 if false) |
+| `contract_type_check` | `contract_type_check "val" "type" "name"` | `contract_type_check "8080" "int" "port"` | (returns 0 if valid type) |
+| `contract_not_empty` | `contract_not_empty "arg1" "arg2" ...` | `contract_not_empty "$file" "$content"` | (returns 0 if all non-empty) |
+| `contract_is_file` | `contract_is_file "path" ["name"]` | `contract_is_file "/etc/config.json" "config"` | (returns 0 if file exists) |
+| `contract_is_dir` | `contract_is_dir "path" ["name"]` | `contract_is_dir "/var/data" "data directory"` | (returns 0 if dir exists) |
+| `contract_in_range` | `contract_in_range val min max ["name"]` | `contract_in_range "$port" 1 65535 "port"` | (returns 0 if in range) |
+| `contracts_disable` | `contracts_disable` | `contracts_disable` | (disables all checks) |
+| `contracts_enable` | `contracts_enable` | `contracts_enable` | (re-enables all checks) |
+
+**Supported Types** for `contract_type_check`: `int`, `float`, `bool`, `string`, `nonempty`, `file`, `dir`, `path`.
+
+### Quick Patterns (Contracts)
+
+```bash
+# Function with precondition/postcondition
+deploy_service() {
+    local config="$1" port="$2"
+
+    # Preconditions
+    contract_require "[[ -f '$config' ]]" "config file required" || return $?
+    contract_type_check "$port" "int" "port" || return $?
+    contract_in_range "$port" 1024 65535 "port" || return $?
+
+    # ... do work ...
+
+    # Postcondition
+    contract_ensure "[[ -f /var/run/service.pid ]]" "service not started" || return $?
+}
+
+# Type checking
+contract_type_check "$timeout" "int" "timeout"     # Is it an integer?
+contract_type_check "$enabled" "bool" "enabled"    # true/false/yes/no/0/1?
+contract_type_check "$output" "file" "output_file" # Does file exist?
+
+# Structured errors for AI parsing
+mainframe_error 1 "connection refused" "host=db.example.com" "port=5432"
+# stderr: {"error":true,"code":1,"msg":"connection refused","context":{"host":"db.example.com","port":"5432"}}
+
+# Disable in production for performance
+[[ "$ENV" == "production" ]] && contracts_disable
+```
 
 ---
 
 ## Performance & Feature Gates (perf.sh)
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `bash_version` | `ver=$(bash_version)` | Returns "major.minor.patch" |
-| `bash_version_major` | `major=$(bash_version_major)` | Returns major version number |
-| `bash_version_at_least` | `bash_version_at_least major [minor]` | Check minimum bash version |
-| `bash_has_feature` | `bash_has_feature "name"` | Check feature availability |
-| `bash_features` | `json=$(bash_features)` | JSON of all features with availability |
-| `perf_timer_start` | `perf_timer_start "name"` | Start named timer (no subshell) |
-| `perf_timer_elapsed` | `s=$(perf_timer_elapsed "name")` | Get elapsed seconds |
-| `perf_timer_stop` | `json=$(perf_timer_stop "name")` | Stop timer, return JSON result |
-| `perf_compare` | `json=$(perf_compare "cmd1" "cmd2" [N])` | Compare two approaches |
-| `perf_setvar` | `perf_setvar "varname" "value"` | Set variable without subshell |
-| `perf_benchmark` | `json=$(perf_benchmark "cmd" [N])` | Benchmark command with iterations |
+**Purpose**: Bash version detection, feature gating for modern Bash (5.0+/5.3+), and performance measurement utilities. Enables conditional use of fast-path features while maintaining Bash 4.0+ compatibility.
 
-Features: `namerefs`, `mapfile`, `associative_arrays`, `epochrealtime`, `epochseconds`, `wait_n`, `lastpipe`, `inherit_errexit`, `extglob`, `loadable_builtins`
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `bash_version` | `bash_version` | `echo "Bash $(bash_version)"` | `5.2.21` |
+| `bash_version_major` | `bash_version_major` | `echo "Major: $(bash_version_major)"` | `5` |
+| `bash_version_at_least` | `bash_version_at_least major [minor]` | `bash_version_at_least 5 0 && echo "5+"` | (returns 0/1) |
+| `bash_has_feature` | `bash_has_feature "name"` | `bash_has_feature "namerefs" && declare -n ref=var` | (returns 0/1) |
+| `bash_features` | `json=$(bash_features)` | `bash_features` | `{"namerefs":true,"epochrealtime":true,...}` |
+| `perf_timer_start` | `perf_timer_start "name"` | `perf_timer_start "database_query"` | (stores start time in variable) |
+| `perf_timer_elapsed` | `s=$(perf_timer_elapsed "name")` | `perf_timer_elapsed "database_query"` | `0.234567` |
+| `perf_timer_stop` | `json=$(perf_timer_stop "name")` | `perf_timer_stop "database_query"` | `{"timer":"database_query","duration_s":0.234567}` |
+| `perf_compare` | `json=$(perf_compare "cmd1" "cmd2" [N])` | `perf_compare "printf '%s' foo" "echo foo" 100` | `{"iterations":100,"cmd1_total_s":0.05,"cmd2_total_s":0.08,"winner":"cmd1"}` |
+| `perf_setvar` | `perf_setvar "varname" "value"` | `perf_setvar "result" "hello"` | (sets variable without subshell) |
+| `perf_capture` | `perf_capture "varname" cmd [args]` | `perf_capture "hostname" cat /etc/hostname` | (captures output without subshell) |
+| `perf_benchmark` | `json=$(perf_benchmark "cmd" [N])` | `perf_benchmark "sha256sum /dev/null" 50` | `{"cmd":"...","iterations":50,"total_s":0.5,"avg_s":0.01,"exit_code":0}` |
+
+**Available Features**: `namerefs` (4.3+), `mapfile` (4.0+), `associative_arrays` (4.0+), `epochrealtime` (5.0+), `epochseconds` (5.0+), `wait_n` (4.3+), `lastpipe` (4.2+), `globasciiranges` (4.3+), `inherit_errexit` (4.4+), `extglob` (4.0+), `loadable_builtins` (4.0+).
+
+### Quick Patterns (Performance)
+
+```bash
+# Feature-gated code paths
+if bash_has_feature "epochrealtime"; then
+    timestamp="$EPOCHREALTIME"  # No subshell, no fork
+else
+    timestamp=$(date +%s.%N)    # Fallback
+fi
+
+# Time operations
+perf_timer_start "migration"
+run_database_migration
+elapsed=$(perf_timer_elapsed "migration")
+echo "Migration took ${elapsed}s"
+
+# Benchmark alternatives
+result=$(perf_compare 'printf "%s" "$data"' 'echo "$data"' 1000)
+echo "$result"  # Shows which is faster
+
+# Full benchmark with stats
+perf_benchmark "json_object name=test age:number=30" 100
+
+# Avoid subshells in hot paths
+perf_setvar "result" "computed_value"  # vs result="computed_value" in dynamic cases
+```
 
 ---
 
 ## Network Scanning (netscan.sh)
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `port_check` | `port_check "host" port [timeout]` | Check if TCP port is open |
-| `host_alive` | `host_alive "host" [timeout]` | Check if host responds (ping/TCP) |
-| `banner_grab` | `banner=$(banner_grab "host" port [timeout])` | Grab service banner |
-| `http_headers` | `json=$(http_headers "url" [timeout])` | Extract HTTP headers as JSON |
-| `monitor_port` | `json=$(monitor_port "host" port [timeout])` | Port state as JSON with timestamp |
-| `scan_range` | `json=$(scan_range "host" "ports" [timeout])` | Scan port list/range |
-| `parse_nmap` | `json=$(parse_nmap < scan.gnmap)` | Parse nmap greppable output to JSON |
+**Purpose**: Pure-bash network utilities for port checking, host discovery, banner grabbing, and HTTP header extraction. Uses /dev/tcp with nc/ncat fallback.
 
-Port specs: `"22,80,443"` (comma list) or `"1-1024"` (range)
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `port_check` | `port_check "host" port [timeout]` | `port_check "localhost" 8080` | (returns 0 if open, 1 if closed) |
+| `host_alive` | `host_alive "host" [timeout]` | `host_alive "192.168.1.1" 5` | (returns 0 if reachable) |
+| `banner_grab` | `banner=$(banner_grab "host" port [timeout])` | `banner_grab "192.168.1.1" 22` | `SSH-2.0-OpenSSH_9.0` |
+| `http_headers` | `json=$(http_headers "url" [timeout])` | `http_headers "http://localhost:8080"` | `{"Content-Type":"text/html","Server":"nginx",...}` |
+| `monitor_port` | `json=$(monitor_port "host" port [timeout])` | `monitor_port "localhost" 5432` | `{"host":"localhost","port":5432,"state":"open","timestamp":1705312896}` |
+| `scan_range` | `json=$(scan_range "host" "ports" [timeout])` | `scan_range "localhost" "22,80,443,8080"` | `[{"port":22,"state":"open"},{"port":80,"state":"closed"},...]` |
+| `parse_nmap` | `json=$(parse_nmap < scan.gnmap)` | `nmap -oG - 192.168.1.0/24 \| parse_nmap` | `[{"ip":"192.168.1.1","ports":[{"port":22,"state":"open",...}]}]` |
+
+**Port Specifications**: `"22,80,443"` (comma-separated list) or `"1-1024"` (range).
+
+**Timeout**: Default 3 seconds, configurable via `MAINFRAME_NET_TIMEOUT` or per-call argument.
+
+### Quick Patterns (Network)
+
+```bash
+# Check if service is ready
+if port_check "localhost" 5432; then
+    echo "PostgreSQL is accepting connections"
+fi
+
+# Wait for service startup
+for i in {1..30}; do
+    port_check "localhost" 8080 1 && break
+    sleep 1
+done
+
+# Service discovery
+if host_alive "db.internal" 2; then
+    banner=$(banner_grab "db.internal" 5432 2)
+    echo "Database banner: $banner"
+fi
+
+# Quick security scan
+result=$(scan_range "server.example.com" "22,80,443,3306,5432,8080")
+echo "$result"
+
+# HTTP service check
+headers=$(http_headers "http://api.example.com/health")
+echo "$headers"  # JSON with all response headers
+
+# Monitor with JSON output
+status=$(monitor_port "localhost" 6379)
+echo "$status"  # {"host":"localhost","port":6379,"state":"open","timestamp":...}
+```
 
 ---
 
 ## Format Parsers (parsers.sh)
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `parse_csv_line` | `parse_csv_line "line"` | Parse CSV into PARSE_CSV_FIELDS array |
-| `parse_csv_json` | `json=$(parse_csv_json "line")` | Parse CSV line to JSON array |
-| `parse_key_value` | `json=$(parse_key_value < file)` | Parse key=value / key: value to JSON |
-| `parse_ini` | `json=$(parse_ini < file.ini)` | Parse INI file to nested JSON |
-| `parse_url` | `json=$(parse_url "url")` | Parse URL components to JSON |
-| `parse_semver` | `json=$(parse_semver "1.2.3-beta+build")` | Parse semver to JSON |
-| `semver_compare` | `cmp=$(semver_compare "v1" "v2")` | Compare versions: -1, 0, 1 |
+**Purpose**: Pure-bash parsers for common formats: CSV, key-value configs, INI files, URLs, and semantic versions. All output JSON for AI agent consumption.
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `parse_csv_line` | `parse_csv_line "line"` | `parse_csv_line '"John","30","NYC"'` | (populates `PARSE_CSV_FIELDS` array) |
+| `parse_csv_json` | `json=$(parse_csv_json "line")` | `parse_csv_json '"John","30","NYC"'` | `["John","30","NYC"]` |
+| `parse_key_value` | `json=$(parse_key_value < file)` | `echo "host=localhost" \| parse_key_value` | `{"host":"localhost"}` |
+| `parse_ini` | `json=$(parse_ini < file.ini)` | `parse_ini "[db]\nhost=localhost\nport=5432"` | `{"db":{"host":"localhost","port":"5432"}}` |
+| `parse_url` | `json=$(parse_url "url")` | `parse_url "https://user:pass@host.com:8080/path?q=1#frag"` | `{"scheme":"https","host":"host.com","port":8080,"path":"/path","query":"q=1","fragment":"frag","user":"user","password":"pass"}` |
+| `parse_semver` | `json=$(parse_semver "version")` | `parse_semver "1.2.3-beta.1+build.456"` | `{"major":1,"minor":2,"patch":3,"prerelease":"beta.1","build":"build.456","string":"1.2.3-beta.1+build.456"}` |
+| `semver_compare` | `cmp=$(semver_compare "v1" "v2")` | `semver_compare "1.2.3" "1.3.0"` | `-1` |
+
+### Quick Patterns (Parsers)
+
+```bash
+# Parse CSV data
+parse_csv_line '"John Doe","42","New York, NY"'
+echo "${PARSE_CSV_FIELDS[0]}"  # John Doe
+echo "${PARSE_CSV_FIELDS[2]}"  # New York, NY (handles commas in quotes)
+
+# Parse config file to JSON
+config=$(parse_key_value < /etc/myapp.conf)
+echo "$config"  # {"host":"localhost","port":"5432","debug":"true"}
+
+# Parse INI with sections
+result=$(parse_ini < /etc/config.ini)
+echo "$result"
+# {"database":{"host":"localhost","port":"5432"},"cache":{"ttl":"3600"}}
+
+# Parse and compare versions
+current=$(parse_semver "2.1.0-rc.1")
+echo "$current"  # {"major":2,"minor":1,"patch":0,"prerelease":"rc.1",...}
+
+cmp=$(semver_compare "1.9.0" "2.0.0")
+if [[ "$cmp" == "-1" ]]; then
+    echo "Upgrade available"
+fi
+
+# Parse URL components
+info=$(parse_url "https://api.example.com:8443/v2/users?page=1")
+echo "$info"  # {"scheme":"https","host":"api.example.com","port":8443,"path":"/v2/users","query":"page=1"}
+```
 
 ---
 
