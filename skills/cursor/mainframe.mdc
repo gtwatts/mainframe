@@ -98,6 +98,15 @@ progress_bar 75 100                  # [========  ] 75%
 header "Section"                     # formatted header
 ```
 
+### TypeScript Analysis (no tsc required)
+```bash
+ts_file_imports "src/index.ts"    # extract imports
+ts_import_graph "$dir"            # dependency graph
+ts_breaking_changes "v1" "v2"     # API break detection
+ts_import_cost "express" "$dir"   # package size (bytes)
+ts_api_summary "v1.d.ts" "v2.d.ts" # semver suggestion
+```
+
 ## Rules
 
 1. ALWAYS source `common.sh` at the top of bash scripts

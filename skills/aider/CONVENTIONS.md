@@ -81,6 +81,7 @@ success "Done in $(format_duration $SECONDS)"
 - **Git**: `git_branch`, `git_is_dirty`, `git_commit_hash`, `git_summary`
 - **Process**: `proc_find_by_port`, `with_lock`, `retry`, `parallel`
 - **Async**: `parallel`, `parallel_limit`, `set_timeout`, `debounce`
+- **TypeScript**: `ts_file_imports`, `ts_import_graph`, `ts_breaking_changes`, `ts_import_cost`
 
 ## Reference
 

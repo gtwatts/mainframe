@@ -12,7 +12,7 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 
 ## What You Can Do
 
-MAINFRAME provides **27 libraries** with **600+ functions**. Here's what's available:
+MAINFRAME provides **28 libraries** with **600+ functions**. Here's what's available:
 
 ### Core Libraries
 
@@ -52,6 +52,12 @@ MAINFRAME provides **27 libraries** with **600+ functions**. Here's what's avail
 | **Perf** | `bash_version_at_least`, `bash_has_feature`, `perf_timer_start`, `perf_benchmark` | Feature gates & timing |
 | **NetScan** | `port_check`, `host_alive`, `banner_grab`, `http_headers`, `scan_range` | Network scanning |
 | **Parsers** | `parse_csv_line`, `parse_key_value`, `parse_ini`, `parse_url`, `parse_semver` | Format parsers |
+
+### v4.0 Libraries (Language Analysis)
+
+| Library | Key Functions | Use For |
+|---------|--------------|---------|
+| **TypeScript** | `ts_file_imports`, `ts_import_graph`, `ts_breaking_changes`, `ts_import_cost` | TS project analysis |
 
 ### Formatting Functions
 
@@ -228,6 +234,33 @@ docker_port_used 8080                   # Check if port used by Docker
 compose_running "web"                   # Check if compose service running
 compose_exec "web" "npm run migrate"    # Execute in compose service
 compose_up                              # Start compose services
+```
+
+### TypeScript Analysis (no tsc required)
+
+```bash
+# Project detection
+ts_is_project "$dir"              # Check for tsconfig.json
+ts_source_dir "$dir"              # Get rootDir from tsconfig
+
+# TypeMiner - Import analysis
+ts_file_imports "src/index.ts"    # Extract imports from file
+ts_import_frequency "$dir"        # Most-used modules across project
+ts_import_graph "$dir"            # Dependency graph (file -> module)
+ts_circular_deps "$dir"           # Detect circular dependencies
+ts_type_only_imports "$dir"       # Imports that should use 'import type'
+
+# TypeDiff - API breaking changes
+ts_api_extract "api.d.ts"         # Extract public API from .d.ts
+ts_api_diff "v1.d.ts" "v2.d.ts"  # Show +added/-removed
+ts_breaking_changes "v1" "v2"     # Detect breaking changes
+ts_api_summary "v1" "v2"          # Suggest semver bump
+
+# ImportCost - Bundle size
+ts_import_cost "express" "$dir"       # Package disk size (bytes)
+ts_import_cost_js "express" "$dir"    # JS-only size
+ts_import_cost_file "index.ts" "$dir" # All imports by size
+ts_dep_count "express" "$dir"         # Transitive dep count
 ```
 
 ## Important Rules

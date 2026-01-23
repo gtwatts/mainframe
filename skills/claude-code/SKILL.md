@@ -25,6 +25,7 @@ Use MAINFRAME when:
 - Hashing and encoding (SHA-256, MD5, base64, HMAC)
 - Running parallel/async operations
 - Building CLI tools with progress bars, colored output, config files
+- Analyzing TypeScript projects (imports, API diffs, bundle size)
 
 ## Installation Check
 
@@ -403,6 +404,33 @@ docker_port_used 8080              # port taken by docker?
 compose_up                         # docker compose up -d
 compose_running "web"              # compose service alive?
 compose_exec "web" "npm run migrate"
+```
+
+### TypeScript Analysis (no tsc required)
+
+```bash
+# Project detection
+ts_is_project "$dir"              # has tsconfig.json?
+ts_source_dir "$dir"              # rootDir from tsconfig
+
+# Import analysis (TypeMiner)
+ts_file_imports "src/index.ts"    # extract imports from file
+ts_import_frequency "$dir"        # most-used modules
+ts_import_graph "$dir"            # dependency graph
+ts_circular_deps "$dir"           # detect circular deps
+ts_type_only_imports "$dir"       # should be 'import type'
+
+# API breaking changes (TypeDiff)
+ts_api_extract "api.d.ts"         # public API from .d.ts
+ts_api_diff "v1.d.ts" "v2.d.ts"  # +added/-removed
+ts_breaking_changes "v1" "v2"     # detect breaks
+ts_api_summary "v1" "v2"          # semver suggestion
+
+# Bundle size (ImportCost)
+ts_import_cost "express" "$dir"   # package size (bytes)
+ts_import_cost_js "pkg" "$dir"    # JS-only size
+ts_import_cost_file "f.ts" "$dir" # all imports by size
+ts_dep_count "express" "$dir"     # transitive dep count
 ```
 
 ### Utilities

@@ -100,6 +100,13 @@ MAINFRAME provides 1,100+ pure bash functions across 37 libraries. Zero external
 - `progress_bar 75 100` - Progress display
 - `die 1 "Fatal error"` - Print error and exit
 
+**TypeScript Analysis** (no tsc required):
+- `ts_file_imports "src/index.ts"` - Extract imports from file
+- `ts_import_graph "$dir"` - Build dependency graph
+- `ts_breaking_changes "v1.d.ts" "v2.d.ts"` - Detect API breaks
+- `ts_import_cost "express" "$dir"` - Package size in bytes
+- `ts_api_summary "v1.d.ts" "v2.d.ts"` - Suggest semver bump
+
 ### Rules
 
 1. ALWAYS `source common.sh` at the top of every bash script

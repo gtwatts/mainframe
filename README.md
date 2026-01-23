@@ -98,7 +98,7 @@ MAINFRAME resolves this by providing a **comprehensive standard library** that t
 | **Security by Default** | Input validation, path traversal prevention, sanitization. No eval anywhere. |
 | **Speed** | Built-in bash operations are 20-72x faster than spawning external processes. |
 
-MAINFRAME exists because the best code is the code your AI doesn't have to write. Instead of generating 15 lines of fragile parameter expansion, it generates one function call that's been tested 1,798 times and works everywhere.
+MAINFRAME exists because the best code is the code your AI doesn't have to write. Instead of generating 15 lines of fragile parameter expansion, it generates one function call that's been tested 1,832 times and works everywhere.
 
 *"Knowing Your Shell is half the battle."*
 
@@ -151,19 +151,19 @@ bash benchmarks/superpower_benchmarks.sh
 
 ## Test Results
 
-**1,798 tests passing** across all 37 libraries. Zero failures.
+**1,832 tests passing** across all 37 libraries. Zero failures.
 
 ```
 $ ./tests/bats/bin/bats tests/
 ok 1 - trim_string removes leading/trailing whitespace
 ok 2 - to_lower converts to lowercase
 ...
-ok 1798 - re-running workflow resets all statuses
+ok 1832 - ts_summary fails for non-TS project
 
-1798 tests, 0 failures, 4 skipped
+1832 tests, 0 failures, 4 skipped
 ```
 
-Tests cover: strings, arrays, JSON, files, utilities, semver, async, datetime, HTTP, CSV, git, crypto, process, path, validation, docker, environment, guards, errors, functional, pipes, streams, CLI framework, templates, CI portability, health checks, workflows, and more.
+Tests cover: strings, arrays, JSON, files, utilities, semver, async, datetime, HTTP, CSV, git, crypto, process, path, validation, docker, environment, guards, errors, functional, pipes, streams, CLI framework, templates, CI portability, health checks, workflows, TypeScript analysis, and more.
 
 Run the test suite:
 ```bash
@@ -216,6 +216,7 @@ Run the test suite:
 | **guard.sh** | 21 | Defensive programming guards for AI scripts (v3.0) |
 | **procsub.sh** | 14 | Process substitution to avoid subshell variable loss (v3.0) |
 | **safe.sh** | 21 | Strict mode helpers & gotcha prevention (v3.0) |
+| **typescript.sh** | 22 | TypeScript project analysis - imports, API diff, bundle size (v4.0) |
 
 ### Library Relationships
 
@@ -264,6 +265,10 @@ graph TD
         health["health.sh<br/>Health"]
     end
 
+    subgraph LangAnalysis["Language Analysis"]
+        typescript["typescript.sh<br/>TypeScript"]
+    end
+
     common --> string
     common --> array
     common --> file
@@ -285,6 +290,8 @@ graph TD
     health --> json
     template --> string
     async --> proc
+    typescript --> string
+    typescript --> path
 ```
 
 ### Zero External Dependencies
@@ -1105,7 +1112,8 @@ mainframe/
 │   ├── meta.sh            # Metaprogramming helpers (v3.0)
 │   ├── guard.sh           # Defensive guards for AI (v3.0)
 │   ├── procsub.sh         # Process substitution helpers (v3.0)
-│   └── safe.sh            # Strict mode & gotcha prevention (v3.0)
+│   ├── safe.sh            # Strict mode & gotcha prevention (v3.0)
+│   └── typescript.sh      # TypeScript analysis - imports, API diff, size (v4.0)
 ├── skills/                # AI platform integration files
 │   ├── claude-code/       # Claude Code skill (symlink to ~/.claude/skills/)
 │   ├── cursor/            # Cursor .mdc rules
@@ -1115,7 +1123,7 @@ mainframe/
 │   ├── project_detect.sh  # Detect project type/framework (v3.0)
 │   ├── atomic_edit.sh     # Atomic multi-file edits (v3.0)
 │   └── context_summary.sh # Token-efficient summaries (v3.0)
-├── tests/                 # BATS test suite (1,798 tests)
+├── tests/                 # BATS test suite (1,832 tests)
 ├── benchmarks/            # Performance benchmarks
 └── docs/                  # Documentation
 ```
@@ -1128,7 +1136,7 @@ mainframe/
 # bats-core is included as a git submodule
 git submodule update --init
 
-# Run all 1,798 tests
+# Run all 1,832 tests
 ./tests/bats/bin/bats tests/
 
 # Run a specific test file
