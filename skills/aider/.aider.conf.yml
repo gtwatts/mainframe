@@ -1,0 +1,6 @@
+# Aider configuration for MAINFRAME
+# Copy this file to your project root or ~/.aider.conf.yml
+# Also copy CONVENTIONS.md to your project root
+
+# Load MAINFRAME conventions as read-only context
+read: CONVENTIONS.md

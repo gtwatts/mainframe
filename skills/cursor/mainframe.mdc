@@ -1,0 +1,113 @@
+---
+description: Use MAINFRAME pure bash standard library (1,100+ functions) instead of external tools when writing bash scripts, shell automation, or CLI tools.
+globs: ["*.sh", "*.bash", "Makefile", "Dockerfile"]
+alwaysApply: false
+---
+
+# MAINFRAME - Pure Bash Standard Library
+
+When writing bash scripts, ALWAYS source MAINFRAME first:
+
+```bash
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+```
+
+This gives access to 1,100+ pure bash functions across 37 libraries. Zero external dependencies.
+
+## Use MAINFRAME Instead of External Tools
+
+| Instead of... | Use MAINFRAME |
+|---------------|---------------|
+| `jq` for JSON | `json_object`, `json_array`, `json_get`, `json_merge` |
+| `sed` for strings | `trim_string`, `replace_all`, `to_lower`, `to_upper` |
+| `awk` for arrays | `array_join`, `array_unique`, `array_filter`, `array_sort` |
+| `cat`/`head`/`tail` | `read_file`, `file_head`, `file_tail`, `file_line` |
+| `date` arithmetic | `now`, `now_iso`, `date_add`, `format_relative` |
+| `uuidgen` | `uuid` |
+| `curl` parsing | `url_parse`, `query_string`, `http_get` |
+| `md5sum`/`sha256sum` | `md5`, `sha256`, `checksum_verify` |
+
+## Key Functions by Category
+
+### JSON (no jq needed)
+```bash
+json_object "name=John" "age:number=30" "active:bool=true"
+json_array "a" "b" "c"
+json_get '{"name":"John"}' "name"
+json_merge '{"a":1}' '{"b":2}'
+```
+
+### Strings
+```bash
+trim_string "  hello  "              # "hello"
+to_lower "HELLO"                     # "hello"
+replace_all "foo bar foo" "foo" "x"  # "x bar x"
+urlencode "hello world"              # "hello%20world"
+contains "hello" "ell"               # returns 0 (true)
+starts_with "hello" "hel"            # returns 0
+```
+
+### Arrays
+```bash
+array_contains "val" "${arr[@]}"     # returns 0 if found
+array_join ", " "${arr[@]}"          # "a, b, c"
+array_unique "${arr[@]}"             # deduplicated
+array_sort "${arr[@]}"               # sorted
+array_sum "${nums[@]}"               # numeric sum
+```
+
+### Validation & Security
+```bash
+validate_email "user@domain.com"
+validate_url "https://example.com"
+validate_path_safe "$path" "/base"   # prevents traversal
+sanitize_html "<script>..."          # escapes HTML
+sanitize_shell_arg "$input"          # safe for shell
+```
+
+### DateTime
+```bash
+now                                  # Unix epoch
+now_iso                              # ISO 8601
+date_add $(now) "2d"                 # add 2 days
+format_relative $past                # "2 hours ago"
+```
+
+### Git
+```bash
+git_branch                           # current branch
+git_is_dirty                         # uncommitted changes?
+git_commit_hash                      # short hash
+git_summary                          # "main @ abc1234 [clean]"
+```
+
+### Process Management
+```bash
+proc_find_by_port 8080               # PID using port
+with_lock "/tmp/app.lock" "task"     # exclusive execution
+retry 5 "curl http://flaky.api"      # retry with backoff
+parallel "task1" "task2" "task3"     # run in parallel
+```
+
+### Logging & Output
+```bash
+log_info "Starting..."               # [INFO] Starting...
+log_error "Failed!"                  # [ERROR] Failed!
+success "Done!"                      # [OK] Done!
+progress_bar 75 100                  # [========  ] 75%
+header "Section"                     # formatted header
+```
+
+## Rules
+
+1. ALWAYS source `common.sh` at the top of bash scripts
+2. NEVER use jq, sed, awk, or cat when MAINFRAME has the function
+3. Check `~/.mainframe/CHEATSHEET.md` for exact function signatures
+4. All functions return 0 for success, non-zero for failure
+5. Use `$()` to capture function output
+6. All internal variables use `_MAINFRAME_*` prefix - don't conflict
+
+## Reference
+
+Full function signatures: `~/.mainframe/CHEATSHEET.md`
+Repository: https://github.com/gtwatts/mainframe

@@ -82,6 +82,28 @@ trim_string "  hello world  "   # Output: hello world
 
 ---
 
+## Philosophy
+
+**We built MAINFRAME because AI coding assistants deserve better tools.**
+
+When Claude Code, Cursor, or Aider writes bash, it faces a fundamental tension: bash is the universal scripting language — installed everywhere, runs everywhere — but its syntax is hostile to both humans and AI. Parameter expansion hell, external tool dependencies, platform inconsistencies, and a thousand ways to get string manipulation wrong.
+
+MAINFRAME resolves this by providing a **comprehensive standard library** that turns bash from a liability into a superpower:
+
+| Principle | What It Means |
+|-----------|---------------|
+| **Pure Bash** | Zero external dependencies. No jq, no sed, no awk. Works on any system with bash 4.0+. |
+| **One Source Line** | `source common.sh` gives instant access to 1,100+ functions. No setup, no imports. |
+| **Intuitive Naming** | `json_object`, `csv_row`, `git_branch` — AI writes correct code on the first attempt. |
+| **Security by Default** | Input validation, path traversal prevention, sanitization. No eval anywhere. |
+| **Speed** | Built-in bash operations are 20-72x faster than spawning external processes. |
+
+MAINFRAME exists because the best code is the code your AI doesn't have to write. Instead of generating 15 lines of fragile parameter expansion, it generates one function call that's been tested 1,798 times and works everywhere.
+
+*"Knowing Your Shell is half the battle."*
+
+---
+
 ## Before & After
 
 ### Without MAINFRAME
@@ -123,6 +145,30 @@ json_object name="John" age:number=30      # {"name":"John","age":30}
 Run benchmarks yourself:
 ```bash
 bash benchmarks/superpower_benchmarks.sh
+```
+
+---
+
+## Test Results
+
+**1,798 tests passing** across all 37 libraries. Zero failures.
+
+```
+$ ./tests/bats/bin/bats tests/
+ok 1 - trim_string removes leading/trailing whitespace
+ok 2 - to_lower converts to lowercase
+...
+ok 1798 - re-running workflow resets all statuses
+
+1798 tests, 0 failures, 4 skipped
+```
+
+Tests cover: strings, arrays, JSON, files, utilities, semver, async, datetime, HTTP, CSV, git, crypto, process, path, validation, docker, environment, guards, errors, functional, pipes, streams, CLI framework, templates, CI portability, health checks, workflows, and more.
+
+Run the test suite:
+```bash
+# Uses bats-core (included as git submodule)
+./tests/bats/bin/bats tests/
 ```
 
 ---
@@ -170,6 +216,76 @@ bash benchmarks/superpower_benchmarks.sh
 | **guard.sh** | 21 | Defensive programming guards for AI scripts (v3.0) |
 | **procsub.sh** | 14 | Process substitution to avoid subshell variable loss (v3.0) |
 | **safe.sh** | 21 | Strict mode helpers & gotcha prevention (v3.0) |
+
+### Library Relationships
+
+```mermaid
+graph TD
+    subgraph Core["Core Layer"]
+        common["common.sh<br/>Entry Point"]
+        ansi["ansi.sh<br/>Colors"]
+        args["args.sh<br/>Args"]
+    end
+
+    subgraph DataTypes["Data Types"]
+        string["pure-string.sh<br/>Strings"]
+        array["pure-array.sh<br/>Arrays"]
+        file["pure-file.sh<br/>Files"]
+        json["json.sh<br/>JSON"]
+        csv["csv.sh<br/>CSV"]
+    end
+
+    subgraph System["System Operations"]
+        proc["proc.sh<br/>Processes"]
+        path["path.sh<br/>Paths"]
+        env["env.sh<br/>Environment"]
+        docker["docker.sh<br/>Docker"]
+        k8s["k8s.sh<br/>Kubernetes"]
+    end
+
+    subgraph Network["Network & Crypto"]
+        http["http.sh<br/>HTTP"]
+        crypto["crypto.sh<br/>Crypto"]
+        git["git.sh<br/>Git"]
+    end
+
+    subgraph Safety["Safety Layer"]
+        validation["validation.sh<br/>Validation"]
+        guard["guard.sh<br/>Guards"]
+        error["error.sh<br/>Errors"]
+        safe["safe.sh<br/>Strict Mode"]
+    end
+
+    subgraph Advanced["Advanced"]
+        async["async.sh<br/>Async"]
+        functional["functional.sh<br/>FP"]
+        template["template.sh<br/>Templates"]
+        cli["cli.sh<br/>CLI Framework"]
+        health["health.sh<br/>Health"]
+    end
+
+    common --> string
+    common --> array
+    common --> file
+    common --> ansi
+    common --> args
+
+    json --> string
+    csv --> string
+    csv --> array
+    http --> crypto
+    git --> proc
+    docker --> proc
+    k8s --> docker
+    validation --> string
+    guard --> validation
+    cli --> args
+    cli --> ansi
+    health --> http
+    health --> json
+    template --> string
+    async --> proc
+```
 
 ### Zero External Dependencies
 
@@ -893,43 +1009,60 @@ For complex scripts, tell Claude Code to check the cheatsheet:
 | Functions not found at runtime | Verify `MAINFRAME_ROOT` is set: `echo $MAINFRAME_ROOT` |
 | Claude writes verbose bash | Remind it: "MAINFRAME has 1,100+ functions - check before writing custom code" |
 
-### OpenCode / Aider / Cursor / Other AI Assistants
+### Pre-Built Skills for Every Platform
 
-The same pattern works with any AI. Add MAINFRAME instructions to their config:
+MAINFRAME includes ready-to-use skill/instruction files for all major AI coding assistants in the [`skills/`](skills/) directory:
 
-**Cursor** (`.cursorrules`):
-```
-When writing bash scripts, always source MAINFRAME:
-source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+| Platform | File | Install |
+|----------|------|---------|
+| **Claude Code** | `skills/claude-code/SKILL.md` | `ln -s ~/.mainframe/skills/claude-code ~/.claude/skills/mainframe-bash` |
+| **Cursor** | `skills/cursor/mainframe.mdc` | `cp ~/.mainframe/skills/cursor/mainframe.mdc .cursor/rules/` |
+| **Aider** | `skills/aider/CONVENTIONS.md` | Add `read: CONVENTIONS.md` to `.aider.conf.yml` |
+| **Vercel AI SDK** | `skills/vercel-ai-sdk/system-prompt.md` | Load as system prompt in your agent |
+| **Any AI** | `CLAUDE.md` (in this repo) | Point your AI at this file |
 
-Use MAINFRAME functions instead of external tools:
-- json_object instead of jq
-- trim_string instead of sed
-- array_join instead of awk
-```
+Each skill file teaches the AI about MAINFRAME's 1,100+ functions so it uses them automatically instead of reinventing solutions.
 
-**Aider** (`.aider.conf.yml`):
-```yaml
-extra-context:
-  - ~/.mainframe/CHEATSHEET.md
-```
+#### Claude Code (Recommended)
 
-**Continue** (`.continue/config.json`):
-```json
-{
-  "systemMessage": "When writing bash, source MAINFRAME (~/.mainframe/lib/common.sh) and use its 1,100+ functions instead of external tools like jq, sed, awk."
-}
-```
-
-### Full CLAUDE.md Template
-
-For maximum effectiveness, here's a complete template:
-
-📄 **[Download: mainframe-claude-template.md](docs/mainframe-claude-template.md)**
-
-Or copy from the repo:
 ```bash
-cp ~/.mainframe/docs/mainframe-claude-template.md ~/.claude/CLAUDE.md
+# Symlink the skill into Claude Code's skills directory
+ln -s ~/.mainframe/skills/claude-code ~/.claude/skills/mainframe-bash
+```
+
+Claude Code will automatically activate the MAINFRAME skill when you write bash scripts.
+
+#### Cursor
+
+```bash
+# Copy the .mdc rule file into your project
+mkdir -p .cursor/rules
+cp ~/.mainframe/skills/cursor/mainframe.mdc .cursor/rules/
+```
+
+#### Aider
+
+```bash
+# Copy conventions and configure
+cp ~/.mainframe/skills/aider/CONVENTIONS.md .
+echo 'read: CONVENTIONS.md' >> .aider.conf.yml
+```
+
+#### Vercel AI SDK / Custom Agents
+
+```typescript
+import { readFileSync } from 'fs';
+
+const mainframePrompt = readFileSync(
+  `${process.env.HOME}/.mainframe/skills/vercel-ai-sdk/system-prompt.md`,
+  'utf-8'
+);
+
+// Use as system prompt in your agent
+const agent = new Agent({
+  system: mainframePrompt,
+  // ...
+});
 ```
 
 ---
@@ -973,11 +1106,16 @@ mainframe/
 │   ├── guard.sh           # Defensive guards for AI (v3.0)
 │   ├── procsub.sh         # Process substitution helpers (v3.0)
 │   └── safe.sh            # Strict mode & gotcha prevention (v3.0)
+├── skills/                # AI platform integration files
+│   ├── claude-code/       # Claude Code skill (symlink to ~/.claude/skills/)
+│   ├── cursor/            # Cursor .mdc rules
+│   ├── aider/             # Aider CONVENTIONS.md
+│   └── vercel-ai-sdk/     # Vercel AI SDK system prompt
 ├── scripts/               # AI utility scripts
 │   ├── project_detect.sh  # Detect project type/framework (v3.0)
 │   ├── atomic_edit.sh     # Atomic multi-file edits (v3.0)
 │   └── context_summary.sh # Token-efficient summaries (v3.0)
-├── tests/                 # BATS test suite (295 tests)
+├── tests/                 # BATS test suite (1,798 tests)
 ├── benchmarks/            # Performance benchmarks
 └── docs/                  # Documentation
 ```
@@ -987,9 +1125,14 @@ mainframe/
 ## Running Tests
 
 ```bash
-# Install bats-core first (https://github.com/bats-core/bats-core)
-# Then run:
-bats tests/
+# bats-core is included as a git submodule
+git submodule update --init
+
+# Run all 1,798 tests
+./tests/bats/bin/bats tests/
+
+# Run a specific test file
+./tests/bats/bin/bats tests/json.bats
 ```
 
 ---
