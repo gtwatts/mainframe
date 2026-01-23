@@ -4,7 +4,7 @@
 
 ## Quick Start
 
-One line gives you 550+ pure bash functions:
+One line gives you 600+ pure bash functions:
 
 ```bash
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
@@ -12,7 +12,7 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 
 ## What You Can Do
 
-MAINFRAME provides **19 libraries** with **550+ functions**. Here's what's available:
+MAINFRAME provides **27 libraries** with **600+ functions**. Here's what's available:
 
 ### Core Libraries
 
@@ -39,6 +39,19 @@ MAINFRAME provides **19 libraries** with **550+ functions**. Here's what's avail
 | **Validation** | `validate_int`, `validate_email`, `sanitize_html`, `validate_path_safe` | Input validation & security |
 | **Environment** | `env_set`, `env_get`, `env_path_prepend`, `env_load_dotenv`, `env_require` | Env var management |
 | **Docker** | `docker_running`, `docker_container_running`, `docker_exec`, `compose_up` | Docker/Compose helpers |
+
+### v3.0 Libraries (AI Agent Optimized)
+
+| Library | Key Functions | Use For |
+|---------|--------------|---------|
+| **Idempotent** | `ensure_dir`, `ensure_file`, `ensure_line`, `ensure_symlink`, `ensure_command` | Re-runnable operations |
+| **Atomic** | `atomic_write`, `atomic_replace`, `safe_remove`, `file_checkpoint`, `file_rollback` | Safe file operations |
+| **Observe** | `trace_start`, `trace_step`, `trace_end`, `observe_command`, `stack_trace` | Structured observability |
+| **Project** | `project_detect`, `project_commands`, `project_entry`, `project_deps` | Project intelligence |
+| **Contract** | `contract_require`, `contract_ensure`, `contract_type_check`, `mainframe_error` | Design-by-Contract |
+| **Perf** | `bash_version_at_least`, `bash_has_feature`, `perf_timer_start`, `perf_benchmark` | Feature gates & timing |
+| **NetScan** | `port_check`, `host_alive`, `banner_grab`, `http_headers`, `scan_range` | Network scanning |
+| **Parsers** | `parse_csv_line`, `parse_key_value`, `parse_ini`, `parse_url`, `parse_semver` | Format parsers |
 
 ### Formatting Functions
 
@@ -226,4 +239,4 @@ compose_up                              # Start compose services
 
 ## Full Reference
 
-For all 650+ function signatures: [CHEATSHEET.md](CHEATSHEET.md)
+For all 700+ function signatures: [CHEATSHEET.md](CHEATSHEET.md)

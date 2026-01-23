@@ -1694,6 +1694,134 @@ echo "Total: $(var_get "requests")"  # 6
 
 ---
 
-*850+ functions | 26 libraries | Zero dependencies | 20-72x faster*
+## Idempotent Operations (idempotent.sh)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `ensure_dir` | `ensure_dir "path" [mode]` | Create dir only if missing, optionally fix permissions |
+| `ensure_file` | `ensure_file "path" ["content"] [mode]` | Create/update file only if needed |
+| `ensure_line` | `ensure_line "file" "line" [marker]` | Add line if not present (marker for replacement) |
+| `ensure_symlink` | `ensure_symlink "target" "link" [force]` | Create/fix symlink atomically |
+| `ensure_command` | `ensure_command "cmd" [msg]` | Assert command exists or fail |
+| `ensure_dirs` | `ensure_dirs "dir1" "dir2" ...` | Create multiple directories |
+| `ensure_lines` | `ensure_lines "file" "line1" "line2" ...` | Add multiple lines if missing |
+
+---
+
+## Atomic File Operations (atomic.sh)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `atomic_write` | `atomic_write "path" "content" [mode]` | Write via temp+rename (no partial state) |
+| `atomic_append` | `atomic_append "path" "content"` | Append with flock (concurrent-safe) |
+| `atomic_replace` | `atomic_replace "path" "content" [verify_cmd]` | Replace with backup+verify+rollback |
+| `safe_remove` | `safe_remove "path"` | Move to trash (recoverable) |
+| `safe_restore` | `safe_restore "filename"` | Restore most recent trashed file |
+| `file_checkpoint` | `file_checkpoint "path" "name"` | Create named snapshot for rollback |
+| `file_rollback` | `file_rollback "path" "name"` | Restore file from named checkpoint |
+| `file_checkpoints` | `file_checkpoints ["path"]` | List available checkpoints |
+| `file_checkpoint_cleanup` | `file_checkpoint_cleanup [max_age_s]` | Remove old checkpoints (default: 24h) |
+
+---
+
+## Structured Observability (observe.sh)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `trace_start` | `tid=$(trace_start "name")` | Begin named trace, returns trace ID |
+| `trace_step` | `trace_step "$tid" "step" [status] [detail]` | Record step within trace |
+| `trace_end` | `result=$(trace_end "$tid" [status])` | End trace, emit JSON summary |
+| `observe_command` | `result=$(observe_command cmd [args...])` | Execute cmd, capture stdout/stderr/exit/timing as JSON |
+| `stack_trace` | `trace=$(stack_trace)` | Current bash call stack as JSON |
+| `observe_error` | `observe_error code "msg" [context]` | Structured JSON error to stderr |
+| `observe_time` | `t=$(observe_time)` | High-resolution timestamp |
+| `observe_elapsed` | `elapsed=$(observe_elapsed "$start")` | Duration since timestamp |
+
+---
+
+## Project Intelligence (project.sh)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `project_detect` | `json=$(project_detect "dir")` | Detect language/framework/build from directory |
+| `project_commands` | `json=$(project_commands "dir")` | Return build/test/lint/dev commands |
+| `project_entry` | `json=$(project_entry "dir")` | Find main entry point files |
+| `project_deps` | `json=$(project_deps "dir")` | Count and list dependencies |
+| `project_structure` | `json=$(project_structure "dir")` | Directory tree with file counts |
+
+Supported: TypeScript, Python, Rust, Go, Ruby, Java, PHP, C/C++, Elixir, Swift.
+Frameworks: Next.js, FastAPI, Django, Rails, Axum, Gin, Spring, Laravel, Phoenix, +10 more.
+
+---
+
+## Design-by-Contract (contract.sh)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `mainframe_error` | `mainframe_error code "msg" [key=val...]` | Structured JSON error with context |
+| `contract_require` | `contract_require "expr" "msg"` | Assert precondition (input validation) |
+| `contract_ensure` | `contract_ensure "expr" "msg"` | Assert postcondition (output validation) |
+| `contract_invariant` | `contract_invariant "expr" "msg"` | Assert invariant (always true) |
+| `contract_type_check` | `contract_type_check "val" "type" "name"` | Validate type (int/float/bool/file/dir/nonempty) |
+| `contract_not_empty` | `contract_not_empty "arg1" "arg2" ...` | Assert all args non-empty |
+| `contract_is_file` | `contract_is_file "path" ["name"]` | Assert file exists |
+| `contract_is_dir` | `contract_is_dir "path" ["name"]` | Assert directory exists |
+| `contract_in_range` | `contract_in_range val min max ["name"]` | Assert integer in [min, max] |
+| `contracts_disable` | `contracts_disable` | Disable all checks (production) |
+| `contracts_enable` | `contracts_enable` | Re-enable checks |
+
+---
+
+## Performance & Feature Gates (perf.sh)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `bash_version` | `ver=$(bash_version)` | Returns "major.minor.patch" |
+| `bash_version_major` | `major=$(bash_version_major)` | Returns major version number |
+| `bash_version_at_least` | `bash_version_at_least major [minor]` | Check minimum bash version |
+| `bash_has_feature` | `bash_has_feature "name"` | Check feature availability |
+| `bash_features` | `json=$(bash_features)` | JSON of all features with availability |
+| `perf_timer_start` | `perf_timer_start "name"` | Start named timer (no subshell) |
+| `perf_timer_elapsed` | `s=$(perf_timer_elapsed "name")` | Get elapsed seconds |
+| `perf_timer_stop` | `json=$(perf_timer_stop "name")` | Stop timer, return JSON result |
+| `perf_compare` | `json=$(perf_compare "cmd1" "cmd2" [N])` | Compare two approaches |
+| `perf_setvar` | `perf_setvar "varname" "value"` | Set variable without subshell |
+| `perf_benchmark` | `json=$(perf_benchmark "cmd" [N])` | Benchmark command with iterations |
+
+Features: `namerefs`, `mapfile`, `associative_arrays`, `epochrealtime`, `epochseconds`, `wait_n`, `lastpipe`, `inherit_errexit`, `extglob`, `loadable_builtins`
+
+---
+
+## Network Scanning (netscan.sh)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `port_check` | `port_check "host" port [timeout]` | Check if TCP port is open |
+| `host_alive` | `host_alive "host" [timeout]` | Check if host responds (ping/TCP) |
+| `banner_grab` | `banner=$(banner_grab "host" port [timeout])` | Grab service banner |
+| `http_headers` | `json=$(http_headers "url" [timeout])` | Extract HTTP headers as JSON |
+| `monitor_port` | `json=$(monitor_port "host" port [timeout])` | Port state as JSON with timestamp |
+| `scan_range` | `json=$(scan_range "host" "ports" [timeout])` | Scan port list/range |
+| `parse_nmap` | `json=$(parse_nmap < scan.gnmap)` | Parse nmap greppable output to JSON |
+
+Port specs: `"22,80,443"` (comma list) or `"1-1024"` (range)
+
+---
+
+## Format Parsers (parsers.sh)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `parse_csv_line` | `parse_csv_line "line"` | Parse CSV into PARSE_CSV_FIELDS array |
+| `parse_csv_json` | `json=$(parse_csv_json "line")` | Parse CSV line to JSON array |
+| `parse_key_value` | `json=$(parse_key_value < file)` | Parse key=value / key: value to JSON |
+| `parse_ini` | `json=$(parse_ini < file.ini)` | Parse INI file to nested JSON |
+| `parse_url` | `json=$(parse_url "url")` | Parse URL components to JSON |
+| `parse_semver` | `json=$(parse_semver "1.2.3-beta+build")` | Parse semver to JSON |
+| `semver_compare` | `cmp=$(semver_compare "v1" "v2")` | Compare versions: -1, 0, 1 |
+
+---
+
+*900+ functions | 34 libraries | Zero dependencies | 20-72x faster*
 
 **YO JOE!**
