@@ -88,7 +88,7 @@ py_source_dir() {
     local init
     init=$(find "$dir" -maxdepth 2 -name "__init__.py" ! -path "*/venv/*" ! -path "*/.venv/*" ! -path "*/__pycache__/*" ! -path "*/test*/*" 2>/dev/null | head -1)
     if [[ -n "$init" ]]; then
-        echo "$(dirname "$init")"
+        dirname "$init"
         return 0
     fi
     echo "$dir"
@@ -196,18 +196,20 @@ py_circular_deps() {
     done > "$tmp_graph"
 
     # Simple cycle detection: check if A->B and B->A exist
+    local tmp_lookup="${tmp_graph}.lookup"
+    cp "$tmp_graph" "$tmp_lookup"
     local found=0
     while IFS= read -r edge; do
         local from="${edge%% -> *}"
         local to="${edge##* -> }"
         # Check reverse edge
-        if grep -q "^${to} -> ${from}$" "$tmp_graph" 2>/dev/null; then
+        if grep -q "^${to} -> ${from}$" "$tmp_lookup" 2>/dev/null; then
             echo "CIRCULAR: $from <-> $to"
             found=1
         fi
     done < "$tmp_graph"
 
-    rm -f "$tmp_graph"
+    rm -f "$tmp_graph" "$tmp_lookup"
     [[ $found -eq 0 ]] && echo "No circular dependencies detected"
     return 0
 }
@@ -256,7 +258,7 @@ py_framework_detect() {
 
     # Collect all imports
     local all_imports
-    all_imports=$(find "$dir" -name "*.py" ! -path "*/venv/*" ! -path "*/.venv/*" ! -path "*/__pycache__/*" 2>/dev/null -exec grep -h "^\(import\|from\)" {} \; 2>/dev/null)
+    all_imports=$(find "$dir" -name "*.py" ! -path "*/venv/*" ! -path "*/.venv/*" ! -path "*/__pycache__/*" -exec grep -h "^\(import\|from\)" {} \; 2>/dev/null)
 
     # Check for known frameworks
     echo "$all_imports" | grep -q "django" && frameworks="${frameworks}django "
@@ -494,7 +496,7 @@ py_function_count() {
     if [[ -f "$target" ]]; then
         grep -c '^[[:space:]]*def[[:space:]]' "$target" 2>/dev/null || echo "0"
     elif [[ -d "$target" ]]; then
-        find "$target" -name "*.py" ! -path "*/venv/*" ! -path "*/.venv/*" ! -path "*/__pycache__/*" 2>/dev/null -exec grep -h '^[[:space:]]*def[[:space:]]' {} \; 2>/dev/null | wc -l | tr -d ' '
+        find "$target" -name "*.py" ! -path "*/venv/*" ! -path "*/.venv/*" ! -path "*/__pycache__/*" -exec grep -h '^[[:space:]]*def[[:space:]]' {} \; 2>/dev/null | wc -l | tr -d ' '
     else
         echo "0"
     fi
@@ -507,7 +509,7 @@ py_class_count() {
     if [[ -f "$target" ]]; then
         grep -c '^[[:space:]]*class[[:space:]]' "$target" 2>/dev/null || echo "0"
     elif [[ -d "$target" ]]; then
-        find "$target" -name "*.py" ! -path "*/venv/*" ! -path "*/.venv/*" ! -path "*/__pycache__/*" 2>/dev/null -exec grep -h '^[[:space:]]*class[[:space:]]' {} \; 2>/dev/null | wc -l | tr -d ' '
+        find "$target" -name "*.py" ! -path "*/venv/*" ! -path "*/.venv/*" ! -path "*/__pycache__/*" -exec grep -h '^[[:space:]]*class[[:space:]]' {} \; 2>/dev/null | wc -l | tr -d ' '
     else
         echo "0"
     fi
