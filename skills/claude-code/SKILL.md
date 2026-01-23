@@ -433,6 +433,35 @@ ts_import_cost_file "f.ts" "$dir" # all imports by size
 ts_dep_count "express" "$dir"     # transitive dep count
 ```
 
+### Python Analysis (no Python runtime required)
+
+```bash
+# Project detection
+py_is_project "$dir"              # has setup.py/pyproject.toml?
+py_source_dir "$dir"              # detect src layout vs flat
+
+# Import analysis (PyMiner)
+py_file_imports "app/main.py"     # extract imports (multiline)
+py_import_graph "$dir"            # dependency graph
+py_circular_deps "$dir"           # detect circular imports
+py_import_classify "requests"     # stdlib/third-party/local
+py_framework_detect "$dir"        # django/flask/fastapi/pytest
+
+# Dependency management (PyDeps)
+py_parse_requirements "req.txt"   # packages + version specs
+py_detect_venv "$dir"             # find venv path
+py_python_version "$dir"          # required Python version
+py_detect_manager "$dir"          # pip/poetry/pipenv/uv
+
+# Code quality (PyMetrics)
+py_loc "$dir"                     # lines of code
+py_function_count "$dir"          # count functions
+py_class_count "$dir"             # count classes
+py_docstring_coverage "$dir"      # docstring coverage %
+py_type_hint_coverage "$dir"      # type hint coverage %
+py_summary "$dir"                 # project health overview
+```
+
 ### Utilities
 
 ```bash

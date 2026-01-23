@@ -58,6 +58,7 @@ MAINFRAME provides **28 libraries** with **600+ functions**. Here's what's avail
 | Library | Key Functions | Use For |
 |---------|--------------|---------|
 | **TypeScript** | `ts_file_imports`, `ts_import_graph`, `ts_breaking_changes`, `ts_import_cost` | TS project analysis |
+| **Python** | `py_file_imports`, `py_import_graph`, `py_parse_requirements`, `py_summary` | Python project analysis |
 
 ### Formatting Functions
 
@@ -261,6 +262,37 @@ ts_import_cost "express" "$dir"       # Package disk size (bytes)
 ts_import_cost_js "express" "$dir"    # JS-only size
 ts_import_cost_file "index.ts" "$dir" # All imports by size
 ts_dep_count "express" "$dir"         # Transitive dep count
+```
+
+### Python Analysis (no Python runtime required)
+
+```bash
+# Project detection
+py_is_project "$dir"              # Check for setup.py/pyproject.toml/.py files
+py_source_dir "$dir"              # Detect src layout vs flat
+
+# PyMiner - Import analysis
+py_file_imports "app/main.py"     # Extract imports (handles multiline)
+py_import_frequency "$dir"        # Most-used modules across project
+py_import_graph "$dir"            # Dependency graph (file -> module)
+py_circular_deps "$dir"           # Detect circular imports
+py_import_classify "requests"     # "stdlib" / "third-party" / "local"
+py_framework_detect "$dir"        # Detect django/flask/fastapi/pytest
+
+# PyDeps - Dependency management
+py_parse_requirements "req.txt"   # Parse packages + version specs
+py_detect_venv "$dir"             # Find virtual environment path
+py_python_version "$dir"          # Infer required Python version
+py_detect_manager "$dir"          # pip/poetry/pipenv/uv/conda
+py_dep_count "$dir"               # Total dependency count
+
+# PyMetrics - Code quality
+py_loc "$dir"                     # Lines of code (no blanks/comments)
+py_function_count "$dir"          # Count function definitions
+py_class_count "$dir"             # Count class definitions
+py_docstring_coverage "$dir"      # "covered/total percent%"
+py_type_hint_coverage "$dir"      # "annotated/total percent%"
+py_summary "$dir"                 # Quick project health overview
 ```
 
 ## Important Rules

@@ -82,6 +82,7 @@ success "Done in $(format_duration $SECONDS)"
 - **Process**: `proc_find_by_port`, `with_lock`, `retry`, `parallel`
 - **Async**: `parallel`, `parallel_limit`, `set_timeout`, `debounce`
 - **TypeScript**: `ts_file_imports`, `ts_import_graph`, `ts_breaking_changes`, `ts_import_cost`
+- **Python**: `py_file_imports`, `py_import_graph`, `py_parse_requirements`, `py_framework_detect`, `py_summary`
 
 ## Reference
 

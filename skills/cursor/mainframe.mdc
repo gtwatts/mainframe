@@ -107,6 +107,15 @@ ts_import_cost "express" "$dir"   # package size (bytes)
 ts_api_summary "v1.d.ts" "v2.d.ts" # semver suggestion
 ```
 
+### Python Analysis (no Python required)
+```bash
+py_file_imports "app/main.py"     # extract imports (multiline)
+py_import_graph "$dir"            # dependency graph
+py_parse_requirements "req.txt"   # parse packages + versions
+py_framework_detect "$dir"        # django/flask/fastapi
+py_summary "$dir"                 # project health overview
+```
+
 ## Rules
 
 1. ALWAYS source `common.sh` at the top of bash scripts

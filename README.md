@@ -151,19 +151,19 @@ bash benchmarks/superpower_benchmarks.sh
 
 ## Test Results
 
-**1,832 tests passing** across all 37 libraries. Zero failures.
+**1,875 tests passing** across all 37 libraries. Zero failures.
 
 ```
 $ ./tests/bats/bin/bats tests/
 ok 1 - trim_string removes leading/trailing whitespace
 ok 2 - to_lower converts to lowercase
 ...
-ok 1832 - ts_summary fails for non-TS project
+ok 1875 - py_summary fails for non-Python project
 
-1832 tests, 0 failures, 4 skipped
+1875 tests, 0 failures, 4 skipped
 ```
 
-Tests cover: strings, arrays, JSON, files, utilities, semver, async, datetime, HTTP, CSV, git, crypto, process, path, validation, docker, environment, guards, errors, functional, pipes, streams, CLI framework, templates, CI portability, health checks, workflows, TypeScript analysis, and more.
+Tests cover: strings, arrays, JSON, files, utilities, semver, async, datetime, HTTP, CSV, git, crypto, process, path, validation, docker, environment, guards, errors, functional, pipes, streams, CLI framework, templates, CI portability, health checks, workflows, TypeScript analysis, Python analysis, and more.
 
 Run the test suite:
 ```bash
@@ -217,6 +217,7 @@ Run the test suite:
 | **procsub.sh** | 14 | Process substitution to avoid subshell variable loss (v3.0) |
 | **safe.sh** | 21 | Strict mode helpers & gotcha prevention (v3.0) |
 | **typescript.sh** | 22 | TypeScript project analysis - imports, API diff, bundle size (v4.0) |
+| **python.sh** | 17 | Python project analysis - imports, deps, code quality (v4.0) |
 
 ### Library Relationships
 
@@ -267,6 +268,7 @@ graph TD
 
     subgraph LangAnalysis["Language Analysis"]
         typescript["typescript.sh<br/>TypeScript"]
+        python["python.sh<br/>Python"]
     end
 
     common --> string
@@ -292,6 +294,8 @@ graph TD
     async --> proc
     typescript --> string
     typescript --> path
+    python --> string
+    python --> path
 ```
 
 ### Zero External Dependencies
@@ -1113,7 +1117,8 @@ mainframe/
 │   ├── guard.sh           # Defensive guards for AI (v3.0)
 │   ├── procsub.sh         # Process substitution helpers (v3.0)
 │   ├── safe.sh            # Strict mode & gotcha prevention (v3.0)
-│   └── typescript.sh      # TypeScript analysis - imports, API diff, size (v4.0)
+│   ├── typescript.sh      # TypeScript analysis - imports, API diff, size (v4.0)
+│   └── python.sh          # Python analysis - imports, deps, metrics (v4.0)
 ├── skills/                # AI platform integration files
 │   ├── claude-code/       # Claude Code skill (symlink to ~/.claude/skills/)
 │   ├── cursor/            # Cursor .mdc rules
@@ -1123,7 +1128,7 @@ mainframe/
 │   ├── project_detect.sh  # Detect project type/framework (v3.0)
 │   ├── atomic_edit.sh     # Atomic multi-file edits (v3.0)
 │   └── context_summary.sh # Token-efficient summaries (v3.0)
-├── tests/                 # BATS test suite (1,832 tests)
+├── tests/                 # BATS test suite (1,875 tests)
 ├── benchmarks/            # Performance benchmarks
 └── docs/                  # Documentation
 ```
@@ -1136,7 +1141,7 @@ mainframe/
 # bats-core is included as a git submodule
 git submodule update --init
 
-# Run all 1,832 tests
+# Run all 1,875 tests
 ./tests/bats/bin/bats tests/
 
 # Run a specific test file
