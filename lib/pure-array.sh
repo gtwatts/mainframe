@@ -79,7 +79,7 @@ array_index_of() {
         ((i++))
     done
     printf '%d\n' "-1"
-    return 1
+    return 0
 }
 
 # Count occurrences of element
@@ -354,6 +354,7 @@ array_diff() {
     for item in "${a1[@]}"; do
         [[ -z "${seen[$item]:-}" ]] && printf '%s\n' "$item"
     done
+    return 0
 }
 
 # Get union of two arrays

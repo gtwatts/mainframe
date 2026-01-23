@@ -19,9 +19,9 @@ readonly _MAINFRAME_PURE_STRING_LOADED=1
 # Trim leading and trailing whitespace
 # Usage: trim_string "  hello world  "
 trim_string() {
-    : "${1#"${1%%[![:space:]]*}"}"
-    : "${_%"${_##*[![:space:]]}"}"
-    printf '%s\n' "$_"
+    local var="${1#"${1%%[![:space:]]*}"}"
+    var="${var%"${var##*[![:space:]]}"}"
+    printf '%s\n' "$var"
 }
 
 # Trim leading whitespace
@@ -294,8 +294,8 @@ urlencode() {
 # URL decode
 # Usage: urldecode "hello%20world"
 urldecode() {
-    : "${1//+/ }"
-    printf '%b\n' "${_//%/\\x}"
+    local var="${1//+/ }"
+    printf '%b\n' "${var//%/\\x}"
 }
 
 # =============================================================================
