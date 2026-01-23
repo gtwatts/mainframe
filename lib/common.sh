@@ -728,6 +728,32 @@ if [[ -f "${_MAINFRAME_LIB_DIR}/safe.sh" ]]; then
     source "${_MAINFRAME_LIB_DIR}/safe.sh"
 fi
 
+# v3.0 AI-optimized libraries
+if [[ -f "${_MAINFRAME_LIB_DIR}/idempotent.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/idempotent.sh"
+fi
+if [[ -f "${_MAINFRAME_LIB_DIR}/atomic.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/atomic.sh"
+fi
+if [[ -f "${_MAINFRAME_LIB_DIR}/observe.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/observe.sh"
+fi
+if [[ -f "${_MAINFRAME_LIB_DIR}/project.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/project.sh"
+fi
+if [[ -f "${_MAINFRAME_LIB_DIR}/contract.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/contract.sh"
+fi
+if [[ -f "${_MAINFRAME_LIB_DIR}/perf.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/perf.sh"
+fi
+if [[ -f "${_MAINFRAME_LIB_DIR}/netscan.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/netscan.sh"
+fi
+if [[ -f "${_MAINFRAME_LIB_DIR}/parsers.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/parsers.sh"
+fi
+
 # =============================================================================
 # MODULE EXPORTS
 # =============================================================================
