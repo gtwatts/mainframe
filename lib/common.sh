@@ -630,6 +630,7 @@ _MAINFRAME_TIER_EXTENDED=(
 _MAINFRAME_TIER_AI=(
     idempotent atomic observe project
     contract perf netscan parsers
+    risk dryrun undo
 )
 
 # --- Profile Presets ---------------------------------------------------------
@@ -915,6 +916,15 @@ if [[ -f "${_MAINFRAME_LIB_DIR}/scope.sh" ]]; then
 fi
 if [[ -f "${_MAINFRAME_LIB_DIR}/hints.sh" ]]; then
     source "${_MAINFRAME_LIB_DIR}/hints.sh"
+fi
+if [[ -f "${_MAINFRAME_LIB_DIR}/risk.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/risk.sh"
+fi
+if [[ -f "${_MAINFRAME_LIB_DIR}/dryrun.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/dryrun.sh"
+fi
+if [[ -f "${_MAINFRAME_LIB_DIR}/undo.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/undo.sh"
 fi
 
 fi # End of full loading (backward-compatible path)
