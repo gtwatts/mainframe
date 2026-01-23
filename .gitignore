@@ -16,6 +16,10 @@ Thumbs.db
 *.log
 /coverage/
 
+# BATS test framework (install via package manager)
+tests/bats/
+tests/bats-support/
+
 # Benchmark results (keep the script, not results)
 benchmark_results/
 

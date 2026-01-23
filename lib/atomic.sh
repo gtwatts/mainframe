@@ -259,7 +259,8 @@ safe_remove() {
     # Generate trash filename with timestamp and original path info
     local basename
     basename="${path##*/}"
-    local trash_name="${basename}.$(date +%s).$$"
+    local trash_name
+    trash_name="${basename}.$(date +%s).$$"
     local trash_path="${MAINFRAME_TRASH_DIR}/${trash_name}"
 
     # Store original path for restore

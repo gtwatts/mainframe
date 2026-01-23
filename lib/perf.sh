@@ -201,6 +201,7 @@ perf_timer_start() {
     local now
     now=$(_perf_now)
     printf -v "$varname" '%s' "$now"
+    # shellcheck disable=SC2163 # Dynamic variable name export is intentional
     export "$varname"
 }
 
