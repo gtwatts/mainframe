@@ -818,7 +818,14 @@ agent_barrier() {
         sleep 0.05 2>/dev/null || sleep 1
     done
 
-    _agent_log error "agent_barrier: timeout waiting for barrier '$barrier_name' (got $(ls "$barrier_dir" 2>/dev/null | grep -cv '^\.' || echo 0)/$count)"
+    local _barrier_arrived=0
+    if [[ -d "$barrier_dir" ]]; then
+        local _bf
+        for _bf in "$barrier_dir"/*; do
+            [[ -e "$_bf" ]] && _barrier_arrived=$(( _barrier_arrived + 1 ))
+        done
+    fi
+    _agent_log error "agent_barrier: timeout waiting for barrier '$barrier_name' (got $_barrier_arrived/$count)"
     return 1
 }
 
