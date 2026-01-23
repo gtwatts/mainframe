@@ -31,7 +31,7 @@ _MAINFRAME_CONFIRM_THRESHOLD="${_MAINFRAME_CONFIRM_THRESHOLD:-5}"
 
 # History storage (file-backed to survive subshell boundaries)
 # Use a temp file so that `run` (subshell) writes are visible to parent
-_MAINFRAME_CONFIRM_HISTORY_FILE="${_MAINFRAME_CONFIRM_HISTORY_FILE:-$(mktemp /tmp/mainframe-confirm-history.XXXXXX)}"
+_MAINFRAME_CONFIRM_HISTORY_FILE="${_MAINFRAME_CONFIRM_HISTORY_FILE:-$(mktemp "${TMPDIR:-/tmp}/mainframe-confirm-history.XXXXXX")}"
 
 # =============================================================================
 # INTERNAL HELPERS

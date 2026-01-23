@@ -623,10 +623,12 @@ error::on_exit() {
     fi
 }
 
-# Internal: Run all cleanup handlers in reverse order
+# Internal: Run all cleanup handlers in reverse order (eval-free)
 _error_run_cleanup() {
     local i
+    local -a _cmd_parts
     for ((i = ${#_ERROR_CLEANUP_HANDLERS[@]} - 1; i >= 0; i--)); do
-        eval "${_ERROR_CLEANUP_HANDLERS[$i]}" || true
+        read -ra _cmd_parts <<< "${_ERROR_CLEANUP_HANDLERS[$i]}"
+        "${_cmd_parts[@]}" 2>/dev/null || true
     done
 }

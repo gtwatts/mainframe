@@ -17,19 +17,19 @@ readonly _MAINFRAME_ASYNC_LOADED=1
 # =============================================================================
 
 # Array to track background jobs
-declare -a ASYNC_JOBS=()
+declare -a _MAINFRAME_ASYNC_JOBS=()
 
 # Register a job
 _async_register_job() {
     local pid="$1"
     local description="${2:-background job}"
-    ASYNC_JOBS+=("$pid:$description")
+    _MAINFRAME_ASYNC_JOBS+=("$pid:$description")
 }
 
 # Get all running job PIDs
 async_jobs() {
     local job
-    for job in "${ASYNC_JOBS[@]}"; do
+    for job in "${_MAINFRAME_ASYNC_JOBS[@]}"; do
         local pid="${job%%:*}"
         if kill -0 "$pid" 2>/dev/null; then
             printf '%s\n' "$job"
@@ -54,11 +54,11 @@ async_kill_all() {
     local signal="${1:-TERM}"
     local job
 
-    for job in "${ASYNC_JOBS[@]}"; do
+    for job in "${_MAINFRAME_ASYNC_JOBS[@]}"; do
         local pid="${job%%:*}"
         kill "-$signal" "$pid" 2>/dev/null || true
     done
-    ASYNC_JOBS=()
+    _MAINFRAME_ASYNC_JOBS=()
 }
 
 # Wait for a specific job
@@ -71,10 +71,43 @@ async_wait() {
 # Wait for all jobs
 async_wait_all() {
     local job
-    for job in "${ASYNC_JOBS[@]}"; do
+    for job in "${_MAINFRAME_ASYNC_JOBS[@]}"; do
         local pid="${job%%:*}"
         wait "$pid" 2>/dev/null || true
     done
+}
+
+# =============================================================================
+# SAFE COMMAND DISPATCH (replaces eval)
+# =============================================================================
+
+# Internal: Execute a command string safely by word-splitting.
+# Handles: function names, commands with args (space-separated).
+# Does NOT handle: pipes, redirections, or quoted args with spaces.
+# For those cases, wrap in a function: my_pipe() { cmd1 | cmd2; }
+_async_exec() {
+    local -a _cmd_parts
+    read -ra _cmd_parts <<< "$1"
+    "${_cmd_parts[@]}"
+}
+
+# Internal: Execute a command string with additional arguments appended.
+_async_exec_with_args() {
+    local _cmd_str="$1"
+    shift
+    local -a _cmd_parts
+    read -ra _cmd_parts <<< "$_cmd_str"
+    "${_cmd_parts[@]}" "$@"
+}
+
+# Internal: Wait for any background job (version-gated).
+# Bash 4.3+ supports wait -n; older versions fall back to polling.
+_async_wait_any() {
+    if ((BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 3))); then
+        _async_wait_any
+    else
+        sleep 0.2
+    fi
 }
 
 # =============================================================================
@@ -90,7 +123,7 @@ set_timeout() {
 
     {
         sleep "$delay"
-        eval "$command"
+        _async_exec "$command"
     } &
 
     local pid=$!
@@ -107,7 +140,7 @@ set_interval() {
 
     {
         while sleep "$interval"; do
-            eval "$command"
+            _async_exec "$command"
         done
     } &
 
@@ -137,7 +170,7 @@ clear_interval() {
 async() {
     local command="$1"
 
-    eval "$command" &
+    _async_exec "$command" &
     local pid=$!
 
     _async_register_job "$pid" "async: $command"
@@ -153,10 +186,10 @@ async_callback() {
 
     {
         local output
-        if output=$(eval "$command" 2>&1); then
-            eval "$on_success" '"$output"'
+        if output=$(_async_exec "$command" 2>&1); then
+            _async_exec_with_args "$on_success" "$output"
         else
-            eval "$on_failure" '"$output"'
+            _async_exec_with_args "$on_failure" "$output"
         fi
     } &
 
@@ -176,7 +209,7 @@ promise() {
         local result
         local status
 
-        result=$(eval "$command" 2>&1)
+        result=$(_async_exec "$command" 2>&1)
         status=$?
 
         if [[ $status -eq 0 ]]; then
@@ -201,7 +234,7 @@ parallel() {
     local pids=()
 
     for cmd in "$@"; do
-        eval "$cmd" &
+        _async_exec "$cmd" &
         pids+=($!)
     done
 
@@ -232,7 +265,7 @@ parallel_limit() {
     while [[ $i -lt ${#commands[@]} ]] || [[ $running -gt 0 ]]; do
         # Start new jobs up to limit
         while [[ $running -lt $limit ]] && [[ $i -lt ${#commands[@]} ]]; do
-            eval "${commands[$i]}" &
+            _async_exec "${commands[$i]}" &
             pids+=($!)
             ((running++)) || true
             ((i++)) || true
@@ -240,7 +273,7 @@ parallel_limit() {
 
         # Wait for any job to finish
         if [[ $running -gt 0 ]]; then
-            wait -n 2>/dev/null || sleep 0.1
+            _async_wait_any
             ((running--)) || true
         fi
     done
@@ -285,7 +318,7 @@ parallel_map_limit() {
         done
 
         if [[ $running -gt 0 ]]; then
-            wait -n 2>/dev/null || sleep 0.1
+            _async_wait_any
             ((running--)) || true
         fi
     done
@@ -302,7 +335,7 @@ parallel_map_limit() {
 # Note: Use ${COPROC[0]} to read, ${COPROC[1]} to write
 coproc_start() {
     local command="$1"
-    coproc MAINFRAME_COPROC { eval "$command"; }
+    coproc MAINFRAME_COPROC { _async_exec "$command"; }
     printf '%d\n' "$MAINFRAME_COPROC_PID"
 }
 
@@ -337,7 +370,7 @@ coproc_stop() {
 
 # Debounce: execute only after delay without new calls
 # Usage: debounce "my_func" 2  (wait 2 seconds)
-declare -A _DEBOUNCE_PIDS=()
+declare -A _MAINFRAME_DEBOUNCE_PIDS=()
 
 debounce() {
     local func="$1"
@@ -345,22 +378,22 @@ debounce() {
     local key="${3:-$func}"
 
     # Cancel previous timer if exists
-    if [[ -n "${_DEBOUNCE_PIDS[$key]:-}" ]]; then
-        kill "${_DEBOUNCE_PIDS[$key]}" 2>/dev/null || true
+    if [[ -n "${_MAINFRAME_DEBOUNCE_PIDS[$key]:-}" ]]; then
+        kill "${_MAINFRAME_DEBOUNCE_PIDS[$key]}" 2>/dev/null || true
     fi
 
     # Set new timer
     {
         sleep "$delay"
-        eval "$func"
+        _async_exec "$func"
     } &
 
-    _DEBOUNCE_PIDS[$key]=$!
+    _MAINFRAME_DEBOUNCE_PIDS[$key]=$!
 }
 
 # Throttle: execute at most once per interval
 # Usage: throttle "my_func" 2
-declare -A _THROTTLE_LAST=()
+declare -A _MAINFRAME_THROTTLE_LAST=()
 
 throttle() {
     local func="$1"
@@ -369,12 +402,12 @@ throttle() {
     local now
     now=$(date +%s)
 
-    local last="${_THROTTLE_LAST[$key]:-0}"
+    local last="${_MAINFRAME_THROTTLE_LAST[$key]:-0}"
     local diff=$((now - last))
 
     if [[ $diff -ge $interval ]]; then
-        _THROTTLE_LAST[$key]=$now
-        eval "$func"
+        _MAINFRAME_THROTTLE_LAST[$key]=$now
+        _async_exec "$func"
         return 0
     fi
     return 1
@@ -393,7 +426,7 @@ retry() {
     local attempt=1
 
     while [[ $attempt -le $max_attempts ]]; do
-        if eval "$command"; then
+        if _async_exec "$command"; then
             return 0
         fi
 
@@ -418,7 +451,7 @@ retry_callback() {
     local attempt=1
 
     while [[ $attempt -le $max_attempts ]]; do
-        if eval "$command"; then
+        if _async_exec "$command"; then
             return 0
         fi
 

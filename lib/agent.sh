@@ -20,7 +20,7 @@ _MAINFRAME_AGENT_LOADED=1
 # =============================================================================
 
 # Base directory for all agent IPC
-_MAINFRAME_AGENT_BASE="${MAINFRAME_AGENT_DIR:-/tmp/mainframe/agents}"
+_MAINFRAME_AGENT_BASE="${MAINFRAME_AGENT_DIR:-${TMPDIR:-/tmp}/mainframe-${UID:-$(id -u)}/agents}"
 
 # Current agent name (set by agent_register)
 _MAINFRAME_AGENT_NAME=""
@@ -135,11 +135,12 @@ agent_register() {
     local agent_dir
     agent_dir="$(_agent_dir "$name")"
 
-    # Create directory structure
+    # Create directory structure with restricted permissions
     mkdir -p "$agent_dir/inbox" "$agent_dir/outbox" || {
         _agent_log error "agent_register: failed to create directories for '$name'"
         return 1
     }
+    chmod 700 "$_MAINFRAME_AGENT_BASE" 2>/dev/null
 
     # Write registration timestamp
     _agent_timestamp > "$agent_dir/registered"

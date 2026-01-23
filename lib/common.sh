@@ -184,36 +184,67 @@ die_usage() {
 }
 
 # Assert condition or die
+# Usage: assert "test -f file" "message"
+# Usage: assert test -f "$file"  (preferred: pass command as separate args)
 assert() {
-    local condition="$1"
-    local message="${2:-Assertion failed}"
+    if [[ $# -eq 0 ]]; then
+        die "$EXIT_SOFTWARE" "assert: no condition provided"
+    fi
 
-    if ! eval "$condition"; then
+    local message="Assertion failed"
+
+    # Two-arg legacy form: assert "condition string" "message"
+    if [[ $# -eq 2 && "$1" == *" "* ]]; then
+        message="$2"
+        local -a _cond_parts
+        read -ra _cond_parts <<< "$1"
+        if ! "${_cond_parts[@]}" 2>/dev/null; then
+            die "$EXIT_SOFTWARE" "$message"
+        fi
+        return
+    fi
+
+    # Multi-arg form: assert cmd arg1 arg2...
+    if ! "$@" 2>/dev/null; then
         die "$EXIT_SOFTWARE" "$message"
     fi
 }
 
-# Trap handler for cleanup
-_basher_cleanup_handlers=()
+# Trap handler for cleanup (eval-free for safety)
+_mainframe_cleanup_files=()
+_mainframe_cleanup_dirs=()
+_mainframe_cleanup_funcs=()
 
-# Register a cleanup handler
+# Register a cleanup function (called by name, no eval)
+# Usage: on_exit my_cleanup_function
 on_exit() {
-    _basher_cleanup_handlers+=("$1")
+    _mainframe_cleanup_funcs+=("$1")
 }
 
-# Execute all cleanup handlers
-_basher_run_cleanup() {
+# Execute all cleanup handlers safely
+_mainframe_run_cleanup() {
     local exit_code=$?
-    for handler in "${_basher_cleanup_handlers[@]}"; do
-        eval "$handler" || true
+    # Remove tracked temp files
+    local f
+    for f in "${_mainframe_cleanup_files[@]}"; do
+        rm -f "$f" 2>/dev/null || true
+    done
+    # Remove tracked temp dirs
+    for f in "${_mainframe_cleanup_dirs[@]}"; do
+        rm -rf "$f" 2>/dev/null || true
+    done
+    # Call registered cleanup functions by name (no eval)
+    local func
+    for func in "${_mainframe_cleanup_funcs[@]}"; do
+        "$func" 2>/dev/null || true
     done
     exit $exit_code
 }
 
 # Set up trap (only if not already set)
-if [[ -z "${_BASHER_TRAP_SET:-}" ]]; then
-    trap _basher_run_cleanup EXIT
-    readonly _BASHER_TRAP_SET=1
+if [[ -z "${_MAINFRAME_TRAP_SET:-}" ]]; then
+    trap _mainframe_run_cleanup EXIT
+    readonly _MAINFRAME_TRAP_SET=1
 fi
 
 # =============================================================================
@@ -262,20 +293,7 @@ spinner() {
     printf "\r%*s\r" $((${#message} + 3)) ""
 }
 
-# Progress bar
-progress_bar() {
-    local current=$1
-    local total=$2
-    local width="${3:-40}"
-    local percent=$((current * 100 / total))
-    local filled=$((current * width / total))
-    local empty=$((width - filled))
-
-    printf "\r[%b%*s%b%*s] %3d%%" \
-        "$CLR_GREEN" "$filled" '' "$CLR_RESET" "$empty" '' "$percent"
-
-    [[ "$current" -eq "$total" ]] && printf "\n"
-}
+# Progress bar (provided by pure-util.sh core tier)
 
 # Print table row
 table_row() {
@@ -354,76 +372,14 @@ is_valid_url() {
 # STRING UTILITIES
 # =============================================================================
 
-# Trim whitespace from string
-trim() {
-    local str="$*"
-    str="${str#"${str%%[![:space:]]*}"}"
-    str="${str%"${str##*[![:space:]]}"}"
-    printf '%s' "$str"
-}
+# Backward-compatible wrappers (canonical implementations in pure-string.sh)
+trim() { trim_string "$@"; }
+lowercase() { to_lower "$1"; }
+uppercase() { to_upper "$1"; }
 
-# Convert to lowercase
-lowercase() {
-    printf '%s' "${1,,}"
-}
+# contains, starts_with, ends_with, random_string provided by core tier libs
 
-# Convert to uppercase
-uppercase() {
-    printf '%s' "${1^^}"
-}
-
-# Check if string contains substring
-contains() {
-    local string="$1"
-    local substring="$2"
-    [[ "$string" == *"$substring"* ]]
-}
-
-# Check if string starts with prefix
-starts_with() {
-    local string="$1"
-    local prefix="$2"
-    [[ "$string" == "$prefix"* ]]
-}
-
-# Check if string ends with suffix
-ends_with() {
-    local string="$1"
-    local suffix="$2"
-    [[ "$string" == *"$suffix" ]]
-}
-
-# Generate random string
-random_string() {
-    local length="${1:-16}"
-    local charset="${2:-a-zA-Z0-9}"
-    tr -dc "$charset" </dev/urandom | head -c "$length"
-}
-
-# =============================================================================
-# ARRAY UTILITIES
-# =============================================================================
-
-# Check if array contains element
-array_contains() {
-    local needle="$1"
-    shift
-    local element
-    for element in "$@"; do
-        [[ "$element" == "$needle" ]] && return 0
-    done
-    return 1
-}
-
-# Join array elements with delimiter
-array_join() {
-    local delimiter="$1"
-    shift
-    local first="$1"
-    shift
-    printf '%s' "$first"
-    printf '%s' "${@/#/$delimiter}"
-}
+# array_contains, array_join provided by pure-array.sh core tier
 
 # =============================================================================
 # FILE UTILITIES
@@ -431,19 +387,19 @@ array_join() {
 
 # Create temporary file with automatic cleanup
 temp_file() {
-    local prefix="${1:-basher}"
+    local prefix="${1:-mainframe}"
     local tmpfile
-    tmpfile=$(mktemp "/tmp/${prefix}.XXXXXX")
-    on_exit "rm -f '$tmpfile'"
+    tmpfile=$(mktemp "${TMPDIR:-/tmp}/${prefix}.XXXXXX")
+    _mainframe_cleanup_files+=("$tmpfile")
     printf '%s' "$tmpfile"
 }
 
 # Create temporary directory with automatic cleanup
 temp_dir() {
-    local prefix="${1:-basher}"
+    local prefix="${1:-mainframe}"
     local tmpdir
-    tmpdir=$(mktemp -d "/tmp/${prefix}.XXXXXX")
-    on_exit "rm -rf '$tmpdir'"
+    tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/${prefix}.XXXXXX")
+    _mainframe_cleanup_dirs+=("$tmpdir")
     printf '%s' "$tmpdir"
 }
 
@@ -660,6 +616,10 @@ declare -gA _MAINFRAME_LOADED_LIBS 2>/dev/null || declare -A _MAINFRAME_LOADED_L
 # Usage: _mainframe_load_library "json"
 _mainframe_load_library() {
     local lib_name="$1"
+
+    # Sanitize: only allow alphanumeric, underscore, hyphen (prevent path traversal)
+    [[ "$lib_name" =~ ^[a-zA-Z0-9_-]+$ ]] || return 1
+
     local lib_file="${_MAINFRAME_LIB_DIR}/${lib_name}.sh"
 
     # Skip if already loaded

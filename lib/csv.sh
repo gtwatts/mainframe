@@ -66,7 +66,7 @@ csv_parse_line() {
                 # Check for escaped quote (doubled)
                 if [[ "$next_char" == "$CSV_QUOTE" ]]; then
                     field+="$CSV_QUOTE"
-                    ((i++))
+                    ((i++)) || true
                 else
                     # End of quoted section
                     in_quotes=false
@@ -84,7 +84,7 @@ csv_parse_line() {
                 field+="$char"
             fi
         fi
-        ((i++))
+        ((i++)) || true
     done
 
     # Add final field
@@ -112,7 +112,7 @@ csv_parse_multiline() {
             if [[ "$char" == "$CSV_QUOTE" ]]; then
                 if [[ "$next_char" == "$CSV_QUOTE" ]]; then
                     line+="$char$next_char"
-                    ((i++))
+                    ((i++)) || true
                 else
                     in_quotes=false
                     line+="$char"
@@ -138,7 +138,7 @@ csv_parse_multiline() {
                 line+="$char"
             fi
         fi
-        ((i++))
+        ((i++)) || true
     done
 
     # Add final line if not empty
@@ -385,6 +385,7 @@ csv_filter() {
 # Sort CSV by column (lexicographic)
 # Usage: csv_sort "file.csv" "name"
 # Outputs: Sorted CSV to stdout
+# Performance: O(n log n) via system sort with extracted keys
 csv_sort() {
     local file="$1"
     local col_name="$2"
@@ -397,39 +398,25 @@ csv_sort() {
     # Output header first
     csv_row "${CSV_HEADERS[@]}"
 
-    # Build array of (key, row) pairs for sorting
-    local -a sort_keys=()
-    local -a sort_rows=()
-
-    for row in "${CSV_ROWS[@]}"; do
-        csv_parse_line "$row"
-        sort_keys+=("${CSV_FIELDS[$col_idx]}")
-        sort_rows+=("$row")
+    # Extract sort keys paired with row indices, delegate to system sort
+    local -a sort_pairs=()
+    local i
+    for i in "${!CSV_ROWS[@]}"; do
+        csv_parse_line "${CSV_ROWS[$i]}"
+        sort_pairs+=("${CSV_FIELDS[$col_idx]}"$'\t'"$i")
     done
 
-    # Bubble sort by keys (pure bash)
-    local n=${#sort_keys[@]}
-    for ((i=0; i<n; i++)); do
-        for ((j=0; j<n-i-1; j++)); do
-            if [[ "${sort_keys[j]}" > "${sort_keys[j+1]}" ]]; then
-                local tmp_key="${sort_keys[j]}"
-                local tmp_row="${sort_rows[j]}"
-                sort_keys[j]="${sort_keys[j+1]}"
-                sort_rows[j]="${sort_rows[j+1]}"
-                sort_keys[j+1]="$tmp_key"
-                sort_rows[j+1]="$tmp_row"
-            fi
-        done
-    done
-
-    # Output sorted rows
-    for row in "${sort_rows[@]}"; do
-        printf '%s\n' "$row"
-    done
+    # Sort key-index pairs, then output rows in sorted order
+    local sorted idx
+    sorted=$(printf '%s\n' "${sort_pairs[@]}" | LC_ALL=C sort -t$'\t' -k1,1)
+    while IFS=$'\t' read -r _ idx; do
+        printf '%s\n' "${CSV_ROWS[$idx]}"
+    done <<< "$sorted"
 }
 
 # Sort CSV by column (numeric)
 # Usage: csv_sort_num "file.csv" "age"
+# Performance: O(n log n) via system sort with extracted keys
 csv_sort_num() {
     local file="$1"
     local col_name="$2"
@@ -442,35 +429,20 @@ csv_sort_num() {
     # Output header first
     csv_row "${CSV_HEADERS[@]}"
 
-    # Build arrays
-    local -a sort_keys=()
-    local -a sort_rows=()
-
-    for row in "${CSV_ROWS[@]}"; do
-        csv_parse_line "$row"
-        sort_keys+=("${CSV_FIELDS[$col_idx]}")
-        sort_rows+=("$row")
+    # Extract sort keys paired with row indices, delegate to system sort
+    local -a sort_pairs=()
+    local i
+    for i in "${!CSV_ROWS[@]}"; do
+        csv_parse_line "${CSV_ROWS[$i]}"
+        sort_pairs+=("${CSV_FIELDS[$col_idx]}"$'\t'"$i")
     done
 
-    # Bubble sort numerically
-    local n=${#sort_keys[@]}
-    for ((i=0; i<n; i++)); do
-        for ((j=0; j<n-i-1; j++)); do
-            if ((sort_keys[j] > sort_keys[j+1])); then
-                local tmp_key="${sort_keys[j]}"
-                local tmp_row="${sort_rows[j]}"
-                sort_keys[j]="${sort_keys[j+1]}"
-                sort_rows[j]="${sort_rows[j+1]}"
-                sort_keys[j+1]="$tmp_key"
-                sort_rows[j+1]="$tmp_row"
-            fi
-        done
-    done
-
-    # Output sorted rows
-    for row in "${sort_rows[@]}"; do
-        printf '%s\n' "$row"
-    done
+    # Sort key-index pairs numerically, then output rows in sorted order
+    local sorted idx
+    sorted=$(printf '%s\n' "${sort_pairs[@]}" | LC_ALL=C sort -t$'\t' -k1,1n)
+    while IFS=$'\t' read -r _ idx; do
+        printf '%s\n' "${CSV_ROWS[$idx]}"
+    done <<< "$sorted"
 }
 
 # Select specific columns
@@ -551,12 +523,14 @@ csv_to_json() {
                 printf ','
             fi
             local value="${CSV_FIELDS[$i]:-}"
-            # Escape JSON special characters
+            # Escape JSON special characters (RFC 8259 compliant)
             value="${value//\\/\\\\}"
             value="${value//\"/\\\"}"
             value="${value//$'\n'/\\n}"
             value="${value//$'\r'/\\r}"
             value="${value//$'\t'/\\t}"
+            value="${value//$'\b'/\\b}"
+            value="${value//$'\f'/\\f}"
             printf '"%s":"%s"' "${CSV_HEADERS[$i]}" "$value"
         done
 

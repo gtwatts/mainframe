@@ -21,7 +21,7 @@ readonly _MAINFRAME_UNDO_LOADED=1
 # =============================================================================
 
 MAINFRAME_UNDO_ENABLED="${MAINFRAME_UNDO_ENABLED:-1}"           # Enable undo recording
-MAINFRAME_UNDO_DIR="${MAINFRAME_UNDO_DIR:-/tmp/mainframe_undo_$$}"  # Backup storage
+MAINFRAME_UNDO_DIR="${MAINFRAME_UNDO_DIR:-${TMPDIR:-/tmp}/mainframe_undo_${UID:-$(id -u)}_$$}"  # Backup storage
 MAINFRAME_UNDO_MAX_STEPS="${MAINFRAME_UNDO_MAX_STEPS:-50}"      # Max undo history
 MAINFRAME_UNDO_MAX_SIZE="${MAINFRAME_UNDO_MAX_SIZE:-52428800}"   # Max backup size (50MB)
 
@@ -175,6 +175,7 @@ mainframe_undo_init() {
         _undo_log error "Failed to create undo directory: ${MAINFRAME_UNDO_DIR}"
         MAINFRAME_UNDO_ENABLED=0; return 1
     }
+    chmod 700 "${MAINFRAME_UNDO_DIR}" 2>/dev/null
     trap 'rm -rf "${MAINFRAME_UNDO_DIR}" 2>/dev/null' EXIT
     _MAINFRAME_UNDO_INITIALIZED=1
 }

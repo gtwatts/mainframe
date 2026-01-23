@@ -109,10 +109,12 @@ _guard_cleanup_handler() {
         guard_unlock "$lockfile" 2>/dev/null || true
     done
 
-    # Run registered cleanup handlers in reverse order
+    # Run registered cleanup handlers in reverse order (eval-free)
+    local -a _cmd_parts
     for ((i=${#_GUARD_CLEANUP_HANDLERS[@]}-1; i>=0; i--)); do
         handler="${_GUARD_CLEANUP_HANDLERS[$i]}"
-        eval "$handler" 2>/dev/null || true
+        read -ra _cmd_parts <<< "$handler"
+        "${_cmd_parts[@]}" 2>/dev/null || true
     done
 }
 

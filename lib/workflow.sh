@@ -21,7 +21,7 @@ _MAINFRAME_WORKFLOW_LOADED=1
 # =============================================================================
 
 # Base directory for workflow state
-MAINFRAME_WORKFLOW_DIR="${MAINFRAME_WORKFLOW_DIR:-/tmp/mainframe/workflows}"
+MAINFRAME_WORKFLOW_DIR="${MAINFRAME_WORKFLOW_DIR:-${TMPDIR:-/tmp}/mainframe-${UID:-$(id -u)}/workflows}"
 
 # Default parallelism (max concurrent background jobs)
 _MAINFRAME_WF_DEFAULT_PARALLEL=4
@@ -128,6 +128,7 @@ _wf_write_step() {
     local steps_dir
     steps_dir="$(_wf_steps_dir "$name")"
     mkdir -p "$steps_dir"
+    chmod 700 "$MAINFRAME_WORKFLOW_DIR" 2>/dev/null
 
     local deps_json="[]"
     if [[ ${#depends[@]} -gt 0 ]]; then
