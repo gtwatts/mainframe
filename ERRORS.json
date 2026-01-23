@@ -1,0 +1,855 @@
+{
+  "version": "1.0.0",
+  "description": "MAINFRAME Structured Error Catalog - All modules",
+  "total_errors": 72,
+  "errors": {
+    "E_FILE_NOT_FOUND": {
+      "code": "E_FILE_NOT_FOUND",
+      "module": "files",
+      "severity": "error",
+      "message": "File not found: {path}",
+      "suggestion": "Use file_exists to check before accessing, or ensure_file to create with defaults",
+      "recovery": ["file_exists", "ensure_file", "atomic_write"]
+    },
+    "E_FILE_EXISTS": {
+      "code": "E_FILE_EXISTS",
+      "module": "files",
+      "severity": "warning",
+      "message": "File already exists: {path}",
+      "suggestion": "Use ensure_file for idempotent creation, or atomic_replace for overwrite",
+      "recovery": ["ensure_file", "atomic_replace", "file_checkpoint"]
+    },
+    "E_PERMISSION_DENIED": {
+      "code": "E_PERMISSION_DENIED",
+      "module": "files",
+      "severity": "error",
+      "message": "Permission denied: {path} (requires {required_mode})",
+      "suggestion": "Check file permissions with stat or guard_file_op before access",
+      "recovery": ["guard_file_op", "guard_path_exists"]
+    },
+    "E_WRITE_FAILED": {
+      "code": "E_WRITE_FAILED",
+      "module": "files",
+      "severity": "error",
+      "message": "Failed to write file: {path}",
+      "suggestion": "Verify directory exists and is writable. Use ensure_dir for parent directory",
+      "recovery": ["ensure_dir", "guard_disk_space", "atomic_write"]
+    },
+    "E_READ_FAILED": {
+      "code": "E_READ_FAILED",
+      "module": "files",
+      "severity": "error",
+      "message": "Failed to read file: {path}",
+      "suggestion": "Check file exists and has read permissions",
+      "recovery": ["file_exists", "guard_path_exists"]
+    },
+    "E_DIR_NOT_FOUND": {
+      "code": "E_DIR_NOT_FOUND",
+      "module": "files",
+      "severity": "error",
+      "message": "Directory not found: {path}",
+      "suggestion": "Use ensure_dir to create directory if missing",
+      "recovery": ["ensure_dir", "ensure_dirs", "dir_exists"]
+    },
+    "E_DIR_NOT_EMPTY": {
+      "code": "E_DIR_NOT_EMPTY",
+      "module": "files",
+      "severity": "warning",
+      "message": "Directory not empty: {path}",
+      "suggestion": "Use safe_remove for recoverable deletion or verify contents first",
+      "recovery": ["safe_remove", "guard_destructive_path"]
+    },
+    "E_DISK_FULL": {
+      "code": "E_DISK_FULL",
+      "module": "files",
+      "severity": "critical",
+      "message": "Insufficient disk space at {path} (available: {available}, required: {required})",
+      "suggestion": "Check disk space before write operations with guard_disk_space",
+      "recovery": ["guard_disk_space", "cache_clear"]
+    },
+    "E_PATH_TRAVERSAL": {
+      "code": "E_PATH_TRAVERSAL",
+      "module": "path",
+      "severity": "critical",
+      "message": "Path traversal detected: {path} escapes base {base}",
+      "suggestion": "Use validate_path_safe or path_is_safe to prevent directory traversal attacks",
+      "recovery": ["validate_path_safe", "path_is_safe", "guard_path_safe", "path_normalize"]
+    },
+    "E_PATH_UNSAFE": {
+      "code": "E_PATH_UNSAFE",
+      "module": "path",
+      "severity": "error",
+      "message": "Unsafe characters in path: {path}",
+      "suggestion": "Use validate_path_chars to check or path_sanitize to clean the path",
+      "recovery": ["validate_path_chars", "path_sanitize", "sanitize_filename"]
+    },
+    "E_PATH_NOT_ABSOLUTE": {
+      "code": "E_PATH_NOT_ABSOLUTE",
+      "module": "path",
+      "severity": "warning",
+      "message": "Expected absolute path, got relative: {path}",
+      "suggestion": "Use path_absolute to resolve relative paths",
+      "recovery": ["path_absolute", "path_normalize", "path_is_absolute"]
+    },
+    "E_PATH_SYMLINK": {
+      "code": "E_PATH_SYMLINK",
+      "module": "path",
+      "severity": "warning",
+      "message": "Symlink detected at {path}, target: {target}",
+      "suggestion": "Use guard_symlink with reject policy or path_resolve to follow safely",
+      "recovery": ["guard_symlink", "path_resolve"]
+    },
+    "E_INVALID_EMAIL": {
+      "code": "E_INVALID_EMAIL",
+      "module": "validation",
+      "severity": "error",
+      "message": "Invalid email address: {value}",
+      "suggestion": "Use validate_email before processing email input",
+      "recovery": ["validate_email", "is_valid_email"]
+    },
+    "E_INVALID_INT": {
+      "code": "E_INVALID_INT",
+      "module": "validation",
+      "severity": "error",
+      "message": "Invalid integer: {value} (expected range: {min}-{max})",
+      "suggestion": "Use validate_int with min/max bounds or guard_integer for range check",
+      "recovery": ["validate_int", "guard_integer", "is_int"]
+    },
+    "E_INVALID_FLOAT": {
+      "code": "E_INVALID_FLOAT",
+      "module": "validation",
+      "severity": "error",
+      "message": "Invalid float value: {value}",
+      "suggestion": "Use validate_float to verify numeric format",
+      "recovery": ["validate_float", "is_float"]
+    },
+    "E_INVALID_URL": {
+      "code": "E_INVALID_URL",
+      "module": "validation",
+      "severity": "error",
+      "message": "Invalid URL: {value}",
+      "suggestion": "Use validate_url with scheme check before HTTP operations",
+      "recovery": ["validate_url", "is_valid_url", "parse_url"]
+    },
+    "E_INVALID_IP": {
+      "code": "E_INVALID_IP",
+      "module": "validation",
+      "severity": "error",
+      "message": "Invalid IP address: {value}",
+      "suggestion": "Use validate_ipv4 or validate_ipv6 to check address format",
+      "recovery": ["validate_ipv4", "validate_ipv6", "is_ip"]
+    },
+    "E_INVALID_PORT": {
+      "code": "E_INVALID_PORT",
+      "module": "validation",
+      "severity": "error",
+      "message": "Invalid port number: {value} (must be 1-65535)",
+      "suggestion": "Use validate_port to verify port is in valid range",
+      "recovery": ["validate_port", "validate_int"]
+    },
+    "E_INVALID_DATE": {
+      "code": "E_INVALID_DATE",
+      "module": "validation",
+      "severity": "error",
+      "message": "Invalid date format: {value} (expected YYYY-MM-DD)",
+      "suggestion": "Use validate_date to verify format before date operations",
+      "recovery": ["validate_date", "parse_date"]
+    },
+    "E_INVALID_SEMVER": {
+      "code": "E_INVALID_SEMVER",
+      "module": "validation",
+      "severity": "error",
+      "message": "Invalid semantic version: {value}",
+      "suggestion": "Use validate_semver or parse_semver for version strings",
+      "recovery": ["validate_semver", "parse_semver", "semver_valid"]
+    },
+    "E_INVALID_UUID": {
+      "code": "E_INVALID_UUID",
+      "module": "validation",
+      "severity": "error",
+      "message": "Invalid UUID format: {value}",
+      "suggestion": "Use validate_uuid to check format, or uuid to generate valid UUID",
+      "recovery": ["validate_uuid", "uuid"]
+    },
+    "E_INVALID_BOOL": {
+      "code": "E_INVALID_BOOL",
+      "module": "validation",
+      "severity": "error",
+      "message": "Invalid boolean value: {value} (expected true/false/yes/no/0/1)",
+      "suggestion": "Use validate_bool to check valid boolean representations",
+      "recovery": ["validate_bool"]
+    },
+    "E_INVALID_JSON": {
+      "code": "E_INVALID_JSON",
+      "module": "validation",
+      "severity": "error",
+      "message": "Invalid JSON syntax: {value}",
+      "suggestion": "Use validate_json or json_valid to check JSON before parsing",
+      "recovery": ["validate_json", "json_valid"]
+    },
+    "E_LENGTH_VIOLATION": {
+      "code": "E_LENGTH_VIOLATION",
+      "module": "validation",
+      "severity": "error",
+      "message": "String length {actual} outside bounds [{min}, {max}]",
+      "suggestion": "Use validate_length to verify string length constraints",
+      "recovery": ["validate_length"]
+    },
+    "E_ENUM_VIOLATION": {
+      "code": "E_ENUM_VIOLATION",
+      "module": "validation",
+      "severity": "error",
+      "message": "Value {value} not in allowed set: [{allowed}]",
+      "suggestion": "Use validate_enum to check against permitted values",
+      "recovery": ["validate_enum"]
+    },
+    "E_INJECTION_DETECTED": {
+      "code": "E_INJECTION_DETECTED",
+      "module": "validation",
+      "severity": "critical",
+      "message": "Potential injection detected in input: {context}",
+      "suggestion": "Use sanitize_shell_arg for shell, sanitize_sql for SQL, or sanitize_html for HTML",
+      "recovery": ["sanitize_shell_arg", "sanitize_sql", "sanitize_html", "guard_var_safe", "validate_command_safe"]
+    },
+    "E_JSON_PARSE": {
+      "code": "E_JSON_PARSE",
+      "module": "json",
+      "severity": "error",
+      "message": "Failed to parse JSON: {input}",
+      "suggestion": "Verify JSON syntax with json_valid before parsing with json_get",
+      "recovery": ["json_valid", "validate_json"]
+    },
+    "E_JSON_KEY_NOT_FOUND": {
+      "code": "E_JSON_KEY_NOT_FOUND",
+      "module": "json",
+      "severity": "warning",
+      "message": "Key not found in JSON object: {key}",
+      "suggestion": "Use json_keys to list available keys before accessing",
+      "recovery": ["json_keys", "json_get"]
+    },
+    "E_JSON_TYPE_MISMATCH": {
+      "code": "E_JSON_TYPE_MISMATCH",
+      "module": "json",
+      "severity": "error",
+      "message": "JSON type mismatch: expected {expected}, got {actual} for key {key}",
+      "suggestion": "Use json_object type modifiers (key:number=, key:bool=) for typed output",
+      "recovery": ["json_object", "json_number", "json_bool"]
+    },
+    "E_RISK_BLOCKED": {
+      "code": "E_RISK_BLOCKED",
+      "module": "risk",
+      "severity": "critical",
+      "message": "Operation blocked: risk score {score}/10 exceeds threshold {threshold}",
+      "suggestion": "Use mainframe_risk_assess to understand why. Lower risk by targeting safer paths or removing dangerous flags",
+      "recovery": ["mainframe_risk_assess", "mainframe_risk_label", "file_checkpoint"]
+    },
+    "E_RISK_THRESHOLD": {
+      "code": "E_RISK_THRESHOLD",
+      "module": "risk",
+      "severity": "warning",
+      "message": "Operation requires confirmation: risk score {score}/10 at confirm threshold {threshold}",
+      "suggestion": "Use mainframe_risk_assess for details, then confirm or use atomic operations for safety",
+      "recovery": ["mainframe_risk_assess", "atomic_replace", "file_checkpoint"]
+    },
+    "E_RISK_CATASTROPHIC": {
+      "code": "E_RISK_CATASTROPHIC",
+      "module": "risk",
+      "severity": "critical",
+      "message": "Catastrophic risk detected (score 10/10): {command} targeting {target}",
+      "suggestion": "ABORT immediately. This operation could destroy system data. Use sandboxed environment",
+      "recovery": ["mainframe_risk_assess"]
+    },
+    "E_SCOPE_VIOLATION": {
+      "code": "E_SCOPE_VIOLATION",
+      "module": "scope",
+      "severity": "error",
+      "message": "Scope violation ({scope_type}): {target} not in allowed scope [{allowed}]",
+      "suggestion": "Check scope with mainframe_scope_check or expand scope with mainframe_scope_set",
+      "recovery": ["mainframe_scope_check", "mainframe_scope_set", "mainframe_scope_get"]
+    },
+    "E_SCOPE_NOT_SET": {
+      "code": "E_SCOPE_NOT_SET",
+      "module": "scope",
+      "severity": "warning",
+      "message": "No scope defined for type: {scope_type}. All operations allowed (open scope)",
+      "suggestion": "Set explicit scope boundaries with mainframe_scope_set for safety",
+      "recovery": ["mainframe_scope_set"]
+    },
+    "E_SCOPE_INVALID_TYPE": {
+      "code": "E_SCOPE_INVALID_TYPE",
+      "module": "scope",
+      "severity": "error",
+      "message": "Invalid scope type: {type} (valid: filesystem, network, commands)",
+      "suggestion": "Use one of the valid scope types: filesystem, network, commands",
+      "recovery": ["mainframe_scope_set"]
+    },
+    "E_LIMIT_EXCEEDED": {
+      "code": "E_LIMIT_EXCEEDED",
+      "module": "limit",
+      "severity": "error",
+      "message": "Resource limit exceeded: {resource} (current: {current}, max: {max})",
+      "suggestion": "Review resource usage and reduce operations or increase limits",
+      "recovery": ["cache_clear", "file_checkpoint_cleanup"]
+    },
+    "E_LIMIT_FILES": {
+      "code": "E_LIMIT_FILES",
+      "module": "limit",
+      "severity": "error",
+      "message": "File operation limit exceeded: {count} files (max: {max})",
+      "suggestion": "Batch operations or increase MAINFRAME_LIMIT_FILES",
+      "recovery": []
+    },
+    "E_LIMIT_WRITES": {
+      "code": "E_LIMIT_WRITES",
+      "module": "limit",
+      "severity": "error",
+      "message": "Write operation limit exceeded: {count} writes (max: {max})",
+      "suggestion": "Use atomic operations to combine writes, or increase MAINFRAME_LIMIT_WRITES",
+      "recovery": ["atomic_write", "atomic_replace"]
+    },
+    "E_LIMIT_TIME": {
+      "code": "E_LIMIT_TIME",
+      "module": "limit",
+      "severity": "error",
+      "message": "Time limit exceeded: {elapsed}s (max: {max}s)",
+      "suggestion": "Optimize operations or use run_with_timeout for controlled execution",
+      "recovery": ["run_with_timeout", "timeout_cmd"]
+    },
+    "E_LIMIT_SIZE": {
+      "code": "E_LIMIT_SIZE",
+      "module": "limit",
+      "severity": "error",
+      "message": "Size limit exceeded: {size} bytes (max: {max} bytes)",
+      "suggestion": "Reduce data volume or increase MAINFRAME_UNDO_MAX_SIZE / MAINFRAME_CACHE_MAX_SIZE_MB",
+      "recovery": ["cache_evict_lru", "file_checkpoint_cleanup"]
+    },
+    "E_CONFIRM_DENIED": {
+      "code": "E_CONFIRM_DENIED",
+      "module": "confirm",
+      "severity": "info",
+      "message": "Operation denied by user: {operation}",
+      "suggestion": "User chose not to proceed. Review the operation or lower its risk level",
+      "recovery": ["mainframe_risk_assess", "mainframe_plan_show"]
+    },
+    "E_CONFIRM_TIMEOUT": {
+      "code": "E_CONFIRM_TIMEOUT",
+      "module": "confirm",
+      "severity": "warning",
+      "message": "Confirmation timed out after {timeout}s for: {operation}",
+      "suggestion": "Increase timeout or use non-interactive mode for automated workflows",
+      "recovery": ["run_with_timeout"]
+    },
+    "E_UNDO_EMPTY": {
+      "code": "E_UNDO_EMPTY",
+      "module": "undo",
+      "severity": "warning",
+      "message": "Undo stack is empty - no operations to reverse",
+      "suggestion": "Record operations with mainframe_undo_record before attempting undo",
+      "recovery": ["mainframe_undo_record", "mainframe_undo_init"]
+    },
+    "E_UNDO_FAILED": {
+      "code": "E_UNDO_FAILED",
+      "module": "undo",
+      "severity": "error",
+      "message": "Undo operation failed for step {step}: {operation} on {target}",
+      "suggestion": "Check file permissions and existence. Manual recovery may be needed",
+      "recovery": ["file_exists", "guard_path_exists"]
+    },
+    "E_UNDO_NO_BACKUP": {
+      "code": "E_UNDO_NO_BACKUP",
+      "module": "undo",
+      "severity": "error",
+      "message": "Backup not found for undo: hash={hash}, target={target}",
+      "suggestion": "Backup may have been cleaned. Check MAINFRAME_UNDO_DIR for backup files",
+      "recovery": ["file_checkpoint", "file_rollback"]
+    },
+    "E_UNDO_SIZE_LIMIT": {
+      "code": "E_UNDO_SIZE_LIMIT",
+      "module": "undo",
+      "severity": "warning",
+      "message": "Undo backup storage limit reached: {current} bytes (max: {max} bytes)",
+      "suggestion": "Increase MAINFRAME_UNDO_MAX_SIZE or reduce number of tracked operations",
+      "recovery": ["mainframe_undo_init"]
+    },
+    "E_UNDO_DISABLED": {
+      "code": "E_UNDO_DISABLED",
+      "module": "undo",
+      "severity": "info",
+      "message": "Undo system is disabled (MAINFRAME_UNDO_ENABLED=0)",
+      "suggestion": "Set MAINFRAME_UNDO_ENABLED=1 to enable operation tracking",
+      "recovery": ["mainframe_undo_init"]
+    },
+    "E_STATE_EMPTY": {
+      "code": "E_STATE_EMPTY",
+      "module": "dryrun",
+      "severity": "warning",
+      "message": "Plan is empty - no steps to execute or display",
+      "suggestion": "Add steps with mainframe_plan_add before showing or executing",
+      "recovery": ["mainframe_plan_add"]
+    },
+    "E_PLAN_FAILED": {
+      "code": "E_PLAN_FAILED",
+      "module": "dryrun",
+      "severity": "error",
+      "message": "Plan execution failed at step {step}: {command} (exit code: {exit_code})",
+      "suggestion": "Review the failed step with mainframe_plan_show. Use file_checkpoint before risky plans",
+      "recovery": ["mainframe_plan_show", "file_checkpoint", "mainframe_undo"]
+    },
+    "E_PLAN_RISK_HIGH": {
+      "code": "E_PLAN_RISK_HIGH",
+      "module": "dryrun",
+      "severity": "warning",
+      "message": "Plan contains high-risk step {step}: {command} (risk: {risk}/10)",
+      "suggestion": "Review with mainframe_plan_show. Consider dry-run mode first (MAINFRAME_DRY_RUN=1)",
+      "recovery": ["mainframe_plan_show", "mainframe_risk_assess"]
+    },
+    "E_ARG_MISSING": {
+      "code": "E_ARG_MISSING",
+      "module": "contract",
+      "severity": "error",
+      "message": "Required argument missing: {name}",
+      "suggestion": "Provide all required arguments. Use contract_not_empty to validate",
+      "recovery": ["contract_not_empty", "contract_require"]
+    },
+    "E_ARG_INVALID": {
+      "code": "E_ARG_INVALID",
+      "module": "contract",
+      "severity": "error",
+      "message": "Invalid argument value: {name}={value}",
+      "suggestion": "Check argument constraints with contract_type_check or contract_in_range",
+      "recovery": ["contract_type_check", "contract_in_range", "validate_enum"]
+    },
+    "E_AGENT_NOT_FOUND": {
+      "code": "E_AGENT_NOT_FOUND",
+      "module": "agent",
+      "severity": "error",
+      "message": "Agent not found: {agent_id}",
+      "suggestion": "Verify agent ID exists. List registered agents before sending messages",
+      "recovery": []
+    },
+    "E_AGENT_TIMEOUT": {
+      "code": "E_AGENT_TIMEOUT",
+      "module": "agent",
+      "severity": "error",
+      "message": "Agent communication timeout after {timeout}s: {agent_id}",
+      "suggestion": "Increase timeout or check if agent process is still running",
+      "recovery": ["proc_exists", "proc_find_by_name"]
+    },
+    "E_AGENT_QUEUE_FULL": {
+      "code": "E_AGENT_QUEUE_FULL",
+      "module": "agent",
+      "severity": "warning",
+      "message": "Agent message queue full: {agent_id} (max: {max})",
+      "suggestion": "Process pending messages or increase queue capacity",
+      "recovery": []
+    },
+    "E_QUEUE_EMPTY": {
+      "code": "E_QUEUE_EMPTY",
+      "module": "agent",
+      "severity": "info",
+      "message": "Work queue is empty - no items to process",
+      "suggestion": "Push work items before attempting to pop from queue",
+      "recovery": []
+    },
+    "E_BARRIER_TIMEOUT": {
+      "code": "E_BARRIER_TIMEOUT",
+      "module": "agent",
+      "severity": "error",
+      "message": "Agent barrier timeout: {arrived}/{expected} agents arrived in {timeout}s",
+      "suggestion": "Check if all agents are running. Increase barrier timeout",
+      "recovery": ["proc_exists"]
+    },
+    "E_WF_CYCLE": {
+      "code": "E_WF_CYCLE",
+      "module": "workflow",
+      "severity": "error",
+      "message": "Cycle detected in workflow DAG: {path}",
+      "suggestion": "Remove circular dependencies between workflow steps",
+      "recovery": []
+    },
+    "E_WF_DEP_MISSING": {
+      "code": "E_WF_DEP_MISSING",
+      "module": "workflow",
+      "severity": "error",
+      "message": "Workflow dependency not found: step {step} depends on {dependency}",
+      "suggestion": "Define all dependencies before referencing them in workflow steps",
+      "recovery": []
+    },
+    "E_WF_STEP_FAILED": {
+      "code": "E_WF_STEP_FAILED",
+      "module": "workflow",
+      "severity": "error",
+      "message": "Workflow step failed: {step} (exit code: {exit_code})",
+      "suggestion": "Check step output and retry, or define error handler in workflow",
+      "recovery": ["retry_backoff", "mainframe_undo"]
+    },
+    "E_WF_NOT_FOUND": {
+      "code": "E_WF_NOT_FOUND",
+      "module": "workflow",
+      "severity": "error",
+      "message": "Workflow not found: {workflow_id}",
+      "suggestion": "Define workflow before running. Check workflow ID is correct",
+      "recovery": []
+    },
+    "E_WF_ALREADY_RUNNING": {
+      "code": "E_WF_ALREADY_RUNNING",
+      "module": "workflow",
+      "severity": "warning",
+      "message": "Workflow already running: {workflow_id}",
+      "suggestion": "Wait for current execution to complete or use a different workflow instance",
+      "recovery": ["with_lock"]
+    },
+    "E_CACHE_MISS": {
+      "code": "E_CACHE_MISS",
+      "module": "cache",
+      "severity": "info",
+      "message": "Cache miss for key: {key} (function: {function})",
+      "suggestion": "Normal behavior on first call. Function will be executed and result cached",
+      "recovery": ["memoize", "session_cache_set"]
+    },
+    "E_CACHE_EXPIRED": {
+      "code": "E_CACHE_EXPIRED",
+      "module": "cache",
+      "severity": "info",
+      "message": "Cache entry expired: {key} (TTL: {ttl}s, age: {age}s)",
+      "suggestion": "Increase TTL with --ttl flag on memoize, or re-invoke function",
+      "recovery": ["memoize", "cache_invalidate"]
+    },
+    "E_CACHE_FULL": {
+      "code": "E_CACHE_FULL",
+      "module": "cache",
+      "severity": "warning",
+      "message": "Cache storage limit reached: {size_mb}MB (max: {max_mb}MB)",
+      "suggestion": "Run cache_evict_lru to remove old entries, or increase MAINFRAME_CACHE_MAX_SIZE_MB",
+      "recovery": ["cache_evict_lru", "cache_clear", "cache_invalidate"]
+    },
+    "E_CACHE_LOCK_FAILED": {
+      "code": "E_CACHE_LOCK_FAILED",
+      "module": "cache",
+      "severity": "error",
+      "message": "Failed to acquire cache lock for key: {key} (timeout after 10s)",
+      "suggestion": "Another process may be computing this value. Wait and retry",
+      "recovery": ["retry_backoff"]
+    },
+    "E_CACHE_HASH_FAILED": {
+      "code": "E_CACHE_HASH_FAILED",
+      "module": "cache",
+      "severity": "error",
+      "message": "SHA-256 hash computation failed (no sha256sum, shasum, or openssl available)",
+      "suggestion": "Install sha256sum (coreutils) or openssl for cache operations",
+      "recovery": ["ensure_command"]
+    },
+    "E_NET_TIMEOUT": {
+      "code": "E_NET_TIMEOUT",
+      "module": "network",
+      "severity": "error",
+      "message": "Network connection timed out: {host}:{port} after {timeout}s",
+      "suggestion": "Increase timeout, check network connectivity, or verify host/port",
+      "recovery": ["port_check", "host_alive", "retry_backoff"]
+    },
+    "E_NET_REFUSED": {
+      "code": "E_NET_REFUSED",
+      "module": "network",
+      "severity": "error",
+      "message": "Connection refused: {host}:{port}",
+      "suggestion": "Verify service is running on target host and port",
+      "recovery": ["port_check", "monitor_port", "proc_find_by_port"]
+    },
+    "E_HOST_UNREACHABLE": {
+      "code": "E_HOST_UNREACHABLE",
+      "module": "network",
+      "severity": "error",
+      "message": "Host unreachable: {host}",
+      "suggestion": "Check network connectivity, DNS resolution, and firewall rules",
+      "recovery": ["host_alive", "retry_backoff"]
+    },
+    "E_HTTP_ERROR": {
+      "code": "E_HTTP_ERROR",
+      "module": "network",
+      "severity": "error",
+      "message": "HTTP error {status_code}: {url}",
+      "suggestion": "Check URL, authentication, and request parameters",
+      "recovery": ["http_is_success", "http_status", "retry_backoff"]
+    },
+    "E_DNS_FAILED": {
+      "code": "E_DNS_FAILED",
+      "module": "network",
+      "severity": "error",
+      "message": "DNS resolution failed for: {hostname}",
+      "suggestion": "Verify hostname spelling, DNS server availability, and /etc/resolv.conf",
+      "recovery": ["host_alive"]
+    },
+    "E_DOCKER_NOT_RUNNING": {
+      "code": "E_DOCKER_NOT_RUNNING",
+      "module": "docker",
+      "severity": "error",
+      "message": "Docker daemon is not running",
+      "suggestion": "Start Docker daemon with 'systemctl start docker' or 'dockerd'",
+      "recovery": ["docker_running", "ensure_service"]
+    },
+    "E_CONTAINER_NOT_FOUND": {
+      "code": "E_CONTAINER_NOT_FOUND",
+      "module": "docker",
+      "severity": "error",
+      "message": "Container not found: {name}",
+      "suggestion": "Check container name with docker_containers_all. Container may need to be created",
+      "recovery": ["docker_container_exists", "docker_containers_all"]
+    },
+    "E_CONTAINER_NOT_RUNNING": {
+      "code": "E_CONTAINER_NOT_RUNNING",
+      "module": "docker",
+      "severity": "warning",
+      "message": "Container exists but is not running: {name} (status: {status})",
+      "suggestion": "Start container with docker_container_start",
+      "recovery": ["docker_container_start", "docker_container_status"]
+    },
+    "E_DOCKER_PORT_CONFLICT": {
+      "code": "E_DOCKER_PORT_CONFLICT",
+      "module": "docker",
+      "severity": "error",
+      "message": "Port {port} already in use by container: {container}",
+      "suggestion": "Stop conflicting container or use a different port",
+      "recovery": ["docker_port_used", "docker_port_container", "docker_container_stop"]
+    },
+    "E_COMPOSE_FAILED": {
+      "code": "E_COMPOSE_FAILED",
+      "module": "docker",
+      "severity": "error",
+      "message": "Docker Compose operation failed for service: {service}",
+      "suggestion": "Check compose file syntax and service logs with compose_logs",
+      "recovery": ["compose_logs", "compose_services"]
+    },
+    "E_IMAGE_NOT_FOUND": {
+      "code": "E_IMAGE_NOT_FOUND",
+      "module": "docker",
+      "severity": "error",
+      "message": "Docker image not found: {image}",
+      "suggestion": "Pull the image with docker_image_pull or check image name/tag",
+      "recovery": ["docker_image_pull", "docker_image_exists"]
+    },
+    "E_CONTRACT_VIOLATED": {
+      "code": "E_CONTRACT_VIOLATED",
+      "module": "contract",
+      "severity": "error",
+      "message": "Contract violation ({contract_type}): {message}",
+      "suggestion": "Fix the calling code to satisfy the contract precondition/postcondition",
+      "recovery": ["contract_require", "contract_ensure", "contract_invariant"]
+    },
+    "E_TYPE_MISMATCH": {
+      "code": "E_TYPE_MISMATCH",
+      "module": "contract",
+      "severity": "error",
+      "message": "Type mismatch: {name} expected {expected_type}, got {actual_value}",
+      "suggestion": "Use contract_type_check to validate types: int, float, bool, string, file, dir, path",
+      "recovery": ["contract_type_check", "var_type"]
+    },
+    "E_PRECONDITION_FAILED": {
+      "code": "E_PRECONDITION_FAILED",
+      "module": "contract",
+      "severity": "error",
+      "message": "Precondition failed: {expression} - {message}",
+      "suggestion": "Ensure all inputs satisfy preconditions before calling function",
+      "recovery": ["contract_require", "contract_not_empty", "contract_is_file"]
+    },
+    "E_POSTCONDITION_FAILED": {
+      "code": "E_POSTCONDITION_FAILED",
+      "module": "contract",
+      "severity": "error",
+      "message": "Postcondition failed: {expression} - {message}",
+      "suggestion": "Function completed but output invariant was violated. Debug implementation",
+      "recovery": ["contract_ensure"]
+    },
+    "E_OBSERVE_TIMEOUT": {
+      "code": "E_OBSERVE_TIMEOUT",
+      "module": "observe",
+      "severity": "warning",
+      "message": "Observed command timed out after {timeout}s: {command}",
+      "suggestion": "Increase timeout or optimize the command",
+      "recovery": ["run_with_timeout", "observe_command"]
+    },
+    "E_TRACE_NOT_FOUND": {
+      "code": "E_TRACE_NOT_FOUND",
+      "module": "observe",
+      "severity": "warning",
+      "message": "Trace ID not found: {trace_id}",
+      "suggestion": "Ensure trace_start was called and ID was captured correctly",
+      "recovery": ["trace_start"]
+    },
+    "E_ENV_NOT_SET": {
+      "code": "E_ENV_NOT_SET",
+      "module": "environment",
+      "severity": "error",
+      "message": "Required environment variable not set: {variable}",
+      "suggestion": "Set the variable with env_set or export, or add to .env file",
+      "recovery": ["env_set", "env_require", "env_load_dotenv"]
+    },
+    "E_ENV_INVALID": {
+      "code": "E_ENV_INVALID",
+      "module": "environment",
+      "severity": "error",
+      "message": "Environment variable has invalid value: {variable}={value}",
+      "suggestion": "Check variable format. Use env_get_int or env_get_bool for typed access",
+      "recovery": ["env_get_int", "env_get_bool", "env_set"]
+    },
+    "E_LOCK_TIMEOUT": {
+      "code": "E_LOCK_TIMEOUT",
+      "module": "process",
+      "severity": "error",
+      "message": "Failed to acquire lock: {lockfile} (timeout: {timeout}s)",
+      "suggestion": "Another process holds the lock. Wait or check for stale lock files",
+      "recovery": ["lockfile_acquire", "guard_lock", "proc_find_by_name"]
+    },
+    "E_LOCK_STALE": {
+      "code": "E_LOCK_STALE",
+      "module": "process",
+      "severity": "warning",
+      "message": "Stale lock file detected: {lockfile} (owner PID {pid} not running)",
+      "suggestion": "Remove stale lock with lockfile_release and retry",
+      "recovery": ["lockfile_release", "proc_exists"]
+    },
+    "E_PROCESS_NOT_FOUND": {
+      "code": "E_PROCESS_NOT_FOUND",
+      "module": "process",
+      "severity": "error",
+      "message": "Process not found: PID {pid}",
+      "suggestion": "Process may have exited. Use proc_find_by_name or proc_find_by_port",
+      "recovery": ["proc_exists", "proc_find_by_name", "proc_find_by_port"]
+    },
+    "E_TIMEOUT": {
+      "code": "E_TIMEOUT",
+      "module": "safe",
+      "severity": "error",
+      "message": "Operation timed out after {timeout}s: {command}",
+      "suggestion": "Increase timeout value or optimize the operation",
+      "recovery": ["run_with_timeout", "timeout_cmd"]
+    },
+    "E_RETRY_EXHAUSTED": {
+      "code": "E_RETRY_EXHAUSTED",
+      "module": "safe",
+      "severity": "error",
+      "message": "All {attempts} retry attempts failed for: {command}",
+      "suggestion": "Check underlying failure cause. Consider longer backoff or alternative approach",
+      "recovery": ["retry_backoff", "retry_backoff_jitter"]
+    },
+    "E_STRICT_MODE": {
+      "code": "E_STRICT_MODE",
+      "module": "safe",
+      "severity": "error",
+      "message": "Command failed in strict mode (set -e): {command} at {file}:{line}",
+      "suggestion": "Use unsafe_run for commands that may fail non-fatally, or handle error explicitly",
+      "recovery": ["unsafe_run", "safe_exit_code"]
+    },
+    "E_SOURCE_FAILED": {
+      "code": "E_SOURCE_FAILED",
+      "module": "safe",
+      "severity": "error",
+      "message": "Failed to source file: {path}",
+      "suggestion": "Check file exists and has valid bash syntax. Use safe_source for graceful handling",
+      "recovery": ["safe_source", "source_if_exists", "check_syntax"]
+    },
+    "E_COMMAND_NOT_FOUND": {
+      "code": "E_COMMAND_NOT_FOUND",
+      "module": "guard",
+      "severity": "error",
+      "message": "Required command not found: {command}",
+      "suggestion": "Install the missing command. Use guard_command with install hint",
+      "recovery": ["guard_command", "guard_commands", "ensure_command", "ensure_package"]
+    },
+    "E_OS_UNSUPPORTED": {
+      "code": "E_OS_UNSUPPORTED",
+      "module": "guard",
+      "severity": "error",
+      "message": "Unsupported operating system: {detected} (required: {required})",
+      "suggestion": "This script requires a specific OS. Check compatibility",
+      "recovery": ["guard_os", "get_os"]
+    },
+    "E_MEMORY_LOW": {
+      "code": "E_MEMORY_LOW",
+      "module": "guard",
+      "severity": "warning",
+      "message": "Insufficient memory: {available} bytes available (required: {required} bytes)",
+      "suggestion": "Free memory by stopping unnecessary processes or reduce operation scope",
+      "recovery": ["guard_memory"]
+    },
+    "E_CONFIG_NOT_FOUND": {
+      "code": "E_CONFIG_NOT_FOUND",
+      "module": "config",
+      "severity": "error",
+      "message": "Configuration file not found: {path}",
+      "suggestion": "Create config file or specify correct path with config_load",
+      "recovery": ["config_load", "ensure_file"]
+    },
+    "E_CONFIG_PARSE": {
+      "code": "E_CONFIG_PARSE",
+      "module": "config",
+      "severity": "error",
+      "message": "Failed to parse configuration: {path} at line {line}",
+      "suggestion": "Check config file syntax. Use parse_key_value or parse_ini for structured parsing",
+      "recovery": ["parse_key_value", "parse_ini", "config_load"]
+    },
+    "E_CSV_PARSE": {
+      "code": "E_CSV_PARSE",
+      "module": "csv",
+      "severity": "error",
+      "message": "Failed to parse CSV: {context} (line: {line})",
+      "suggestion": "Check CSV format: proper quoting, consistent delimiters. Use csv_validate first",
+      "recovery": ["csv_validate", "csv_parse_line", "csv_delimiter"]
+    },
+    "E_CRYPTO_NO_TOOL": {
+      "code": "E_CRYPTO_NO_TOOL",
+      "module": "crypto",
+      "severity": "error",
+      "message": "No cryptographic tool available (need sha256sum, shasum, or openssl)",
+      "suggestion": "Install coreutils (sha256sum) or openssl package",
+      "recovery": ["ensure_command", "ensure_package"]
+    },
+    "E_PERF_TIMER_NOT_STARTED": {
+      "code": "E_PERF_TIMER_NOT_STARTED",
+      "module": "perf",
+      "severity": "warning",
+      "message": "Timer not started: {name}",
+      "suggestion": "Call perf_timer_start before perf_timer_elapsed or perf_timer_stop",
+      "recovery": ["perf_timer_start"]
+    },
+    "E_BASH_VERSION": {
+      "code": "E_BASH_VERSION",
+      "module": "perf",
+      "severity": "error",
+      "message": "Bash version too old: {current} (required: {required}+)",
+      "suggestion": "Upgrade bash or use feature-gated code paths with bash_has_feature",
+      "recovery": ["bash_version_at_least", "bash_has_feature"]
+    },
+    "E_ATOMIC_VERIFY_FAILED": {
+      "code": "E_ATOMIC_VERIFY_FAILED",
+      "module": "atomic",
+      "severity": "error",
+      "message": "Atomic replace verification failed: {verify_cmd} returned non-zero",
+      "suggestion": "The verification command rejected the new content. Original file was preserved",
+      "recovery": ["atomic_replace", "file_checkpoint"]
+    },
+    "E_CHECKPOINT_NOT_FOUND": {
+      "code": "E_CHECKPOINT_NOT_FOUND",
+      "module": "atomic",
+      "severity": "error",
+      "message": "Checkpoint not found: {name} for file {path}",
+      "suggestion": "List available checkpoints with file_checkpoints before rollback",
+      "recovery": ["file_checkpoints", "file_checkpoint"]
+    },
+    "E_PROJECT_NOT_DETECTED": {
+      "code": "E_PROJECT_NOT_DETECTED",
+      "module": "project",
+      "severity": "warning",
+      "message": "Could not detect project type in: {path}",
+      "suggestion": "Ensure project has standard files (package.json, Cargo.toml, go.mod, etc.)",
+      "recovery": ["project_detect", "project_structure"]
+    },
+    "E_FUNCTIONAL_EMPTY_INPUT": {
+      "code": "E_FUNCTIONAL_EMPTY_INPUT",
+      "module": "functional",
+      "severity": "warning",
+      "message": "Empty input to functional operation: {function}",
+      "suggestion": "Provide at least one element for map/filter/reduce operations",
+      "recovery": ["fp_map", "fp_filter", "fp_reduce"]
+    }
+  }
+}

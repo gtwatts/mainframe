@@ -631,6 +631,8 @@ _MAINFRAME_TIER_AI=(
     idempotent atomic observe project
     contract perf netscan parsers
     risk dryrun undo
+    limits confirm safewrap safecontext
+    agent workflow
 )
 
 # --- Profile Presets ---------------------------------------------------------
@@ -925,6 +927,24 @@ if [[ -f "${_MAINFRAME_LIB_DIR}/dryrun.sh" ]]; then
 fi
 if [[ -f "${_MAINFRAME_LIB_DIR}/undo.sh" ]]; then
     source "${_MAINFRAME_LIB_DIR}/undo.sh"
+fi
+if [[ -f "${_MAINFRAME_LIB_DIR}/limits.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/limits.sh"
+fi
+if [[ -f "${_MAINFRAME_LIB_DIR}/confirm.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/confirm.sh"
+fi
+if [[ -f "${_MAINFRAME_LIB_DIR}/safewrap.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/safewrap.sh"
+fi
+if [[ -f "${_MAINFRAME_LIB_DIR}/safecontext.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/safecontext.sh"
+fi
+if [[ -f "${_MAINFRAME_LIB_DIR}/agent.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/agent.sh"
+fi
+if [[ -f "${_MAINFRAME_LIB_DIR}/workflow.sh" ]]; then
+    source "${_MAINFRAME_LIB_DIR}/workflow.sh"
 fi
 
 fi # End of full loading (backward-compatible path)
