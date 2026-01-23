@@ -585,7 +585,7 @@ ts_file_count() {
     local dir="${1:-.}"
     find "$dir" -name "*.ts" -o -name "*.tsx" 2>/dev/null | \
         grep -v "node_modules" | \
-        grep -v "\.d\.ts$" | wc -l
+        grep -vc "\.d\.ts$"
 }
 
 # Count lines of TypeScript code
