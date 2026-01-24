@@ -203,7 +203,6 @@ report_results() {
     log_info "Results: $RESULT_DIR"
 }
 
-# shellcheck disable=SC2329
 cleanup() {
     # Kill remaining workers
     for pid in "${!WORKER_PIDS[@]}"; do
