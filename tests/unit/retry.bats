@@ -416,16 +416,20 @@ teardown() {
 }
 
 @test "circuit_breaker_call: half-open failure reopens circuit" {
-    circuit_breaker_init "test_svc" --threshold 2 --timeout 1 --half-open-max 1
+    # Use longer timeout to avoid race condition in state check
+    # (circuit_breaker_state reports half-open if elapsed >= timeout)
+    circuit_breaker_init "test_svc" --threshold 2 --timeout 3 --half-open-max 1
     circuit_breaker_call "test_svc" false || true
     circuit_breaker_call "test_svc" false || true
 
-    # Wait for timeout
-    sleep 2
+    # Wait for timeout to transition to half-open
+    sleep 4
 
-    # Failure in half-open should reopen
+    # Failure in half-open should reopen with new opened_at timestamp
     circuit_breaker_call "test_svc" false || true
 
+    # State check must happen immediately - if it takes >= 3 seconds
+    # the state would show as half-open again
     local state
     state=$(circuit_breaker_state "test_svc")
     [[ "$state" == "open" ]]
