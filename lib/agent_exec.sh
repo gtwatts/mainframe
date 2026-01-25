@@ -803,7 +803,7 @@ agent_exec() {
             _agent_emit_result "$json_output" "$final_status" "$label" \
                 "$start_ms" "" "" "$_AGENT_EXIT_GUARD_FAILED" \
                 "$guard_status" "$contract_status" "$idempotent_status" "$undo_status"
-            return $_AGENT_EXIT_GUARD_FAILED
+            return "$_AGENT_EXIT_GUARD_FAILED"
         fi
         guard_status="passed"
         _agent_log debug "guard check passed"
@@ -826,7 +826,7 @@ agent_exec() {
             _agent_emit_result "$json_output" "$final_status" "$label" \
                 "$start_ms" "" "" "$_AGENT_EXIT_CONTRACT_FAILED" \
                 "$guard_status" "$contract_status" "$idempotent_status" "$undo_status"
-            return $_AGENT_EXIT_CONTRACT_FAILED
+            return "$_AGENT_EXIT_CONTRACT_FAILED"
         fi
         contract_status="passed"
         _agent_log debug "contract validation passed"
@@ -960,11 +960,11 @@ agent_exec() {
 
     case "$final_status" in
         success)         return 0 ;;
-        guard_failed)    return $_AGENT_EXIT_GUARD_FAILED ;;
-        contract_failed) return $_AGENT_EXIT_CONTRACT_FAILED ;;
-        rolled_back|exec_failed) return $_AGENT_EXIT_EXEC_FAILED ;;
-        verify_failed)   return $_AGENT_EXIT_VERIFY_FAILED ;;
-        *)               return $exit_code ;;
+        guard_failed)    return "$_AGENT_EXIT_GUARD_FAILED" ;;
+        contract_failed) return "$_AGENT_EXIT_CONTRACT_FAILED" ;;
+        rolled_back|exec_failed) return "$_AGENT_EXIT_EXEC_FAILED" ;;
+        verify_failed)   return "$_AGENT_EXIT_VERIFY_FAILED" ;;
+        *)               return "$exit_code" ;;
     esac
 }
 

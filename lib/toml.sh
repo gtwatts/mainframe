@@ -231,7 +231,7 @@ toml_parse() {
             local aidx=0
             for ((aidx=0; aidx<${#array_table_counts[@]}; aidx+=2)); do
                 if [[ "${array_table_counts[$aidx]}" == "$section" ]]; then
-                    array_table_counts[$((aidx+1))]=$(( ${array_table_counts[$((aidx+1))]} + 1 ))
+                    array_table_counts[aidx+1]=$(( ${array_table_counts[aidx+1]} + 1 ))
                     found=1
                     current_section="${section}[${array_table_counts[$((aidx+1))]}]"
                     break
