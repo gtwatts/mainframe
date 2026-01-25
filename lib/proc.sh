@@ -461,6 +461,9 @@ pidfile_kill() {
 # LOCK FILES
 # =============================================================================
 
+# Associative array for tracking lock file descriptors (Security: avoid eval)
+declare -gA _MAINFRAME_LOCKFILE_FDS
+
 # Acquire lock (with optional timeout)
 # Usage: lockfile_acquire "/tmp/myapp.lock" [timeout_secs]
 # Returns: 0 if acquired, 1 if timeout/failure
@@ -486,9 +489,9 @@ lockfile_acquire() {
         local result=$?
 
         if [[ $result -eq 0 ]]; then
-            # Store FD for later release
+            # Store FD for later release (Security: use associative array instead of eval)
             printf '%d\n' "$$" > "$lockfile"
-            eval "_LOCKFILE_FD_${fd}='$lockfile'"
+            _MAINFRAME_LOCKFILE_FDS[$fd]="$lockfile"
             return 0
         fi
         exec {fd}>&-
@@ -575,7 +578,8 @@ with_lock() {
     local timeout="${3:-0}"
 
     if lockfile_acquire "$lockfile" "$timeout"; then
-        eval "$command"
+        # Security: Use bash -c instead of eval for better isolation
+        bash -c "$command"
         local result=$?
         lockfile_release "$lockfile"
         return $result

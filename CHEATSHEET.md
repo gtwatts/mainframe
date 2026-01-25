@@ -88,6 +88,116 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 
 ---
 
+## Universal Structured Output Protocol (output.sh)
+
+**Purpose**: Enables MAINFRAME functions to output structured JSON envelopes for AI agents. Supports multiple output modes: `raw` (default), `json`, `minimal`, `debug`.
+
+### Mode Control
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `output_init` | `output_init` | `output_init` | Initializes output system |
+| `output_mode` | `output_mode [mode]` | `output_mode "json"` | Gets/sets mode |
+| `output_is_json` | `output_is_json` | `output_is_json && echo "JSON mode"` | (returns 0/1) |
+| `output_is_raw` | `output_is_raw` | `output_is_raw && echo "Raw mode"` | (returns 0/1) |
+| `output_is_minimal` | `output_is_minimal` | `output_is_minimal` | (returns 0/1) |
+| `output_is_debug` | `output_is_debug` | `output_is_debug` | (returns 0/1) |
+| `output_format` | `output_format` | `echo "Mode: $(output_format)"` | Current mode name |
+| `output_with_mode` | `output_with_mode "mode" cmd` | `output_with_mode "json" output_success "data"` | Temp mode change |
+
+### Core Output Functions
+
+| Function | Signature | Example | Output (json mode) |
+|----------|-----------|---------|--------|
+| `output_success` | `output_success "data" ["hint"]` | `output_success "result" "next_func"` | `{"ok":true,"data":"result","hint":"next_func"}` |
+| `output_error` | `output_error "code" "msg" ["suggestion"]` | `output_error "E_NOT_FOUND" "File missing" "check path"` | `{"ok":false,"error":{"code":"E_NOT_FOUND","msg":"File missing","suggestion":"check path"}}` |
+| `output_raw` | `output_raw "text"` | `output_raw "plain"` | `plain` (bypasses envelope) |
+| `output_json` | `output_json '{"custom":1}'` | `output_json '{"a":1}'` | `{"a":1}` (unchanged) |
+
+### Type-Specific Helpers
+
+| Function | Signature | Example | Output (json mode) |
+|----------|-----------|---------|--------|
+| `output_string` | `output_string "text"` | `output_string "hello"` | `{"ok":true,"data":"hello"}` |
+| `output_int` | `output_int number` | `output_int 42` | `{"ok":true,"data":42}` |
+| `output_float` | `output_float number` | `output_float 3.14` | `{"ok":true,"data":3.14}` |
+| `output_bool` | `output_bool value` | `output_bool true` | `{"ok":true,"data":true}` |
+| `output_json_object` | `output_json_object '{"k":"v"}'` | `output_json_object '{"id":1}'` | `{"ok":true,"data":{"id":1}}` |
+| `output_json_array` | `output_json_array '["a","b"]'` | `output_json_array '[1,2,3]'` | `{"ok":true,"data":[1,2,3]}` |
+| `output_file_path` | `output_file_path "/path"` | `output_file_path "/tmp/f.txt"` | `{"ok":true,"data":"/tmp/f.txt"}` |
+| `output_void` | `output_void` | `output_void` | `{"ok":true,"data":null}` |
+
+### Timing Functions
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `output_timer_start` | `output_timer_start` | `output_timer_start` | Records start time |
+| `output_timer_elapsed` | `output_timer_elapsed` | `elapsed=$(output_timer_elapsed)` | Milliseconds elapsed |
+
+### Function Wrapping
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `output_wrap` | `output_wrap func [args...]` | `output_wrap my_func arg1` | Wraps result in envelope |
+| `mainframe_call` | `mainframe_call func [args...]` | `mainframe_call git_branch` | Legacy wrapper (status format) |
+
+### Nameref Variant (Performance)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `output_v` | `output_v result_var "data"` | `output_v result "hello"` | Sets result var (no subshell) |
+
+### Quick Patterns (Output)
+
+```bash
+# Set JSON output mode
+export MAINFRAME_OUTPUT=json
+
+# Simple success response
+output_success "operation completed" "check_status"
+# {"ok":true,"data":"operation completed","hint":"check_status"}
+
+# Error with suggestion
+output_error "E_FILE_NOT_FOUND" "Config file missing" "run init first"
+# {"ok":false,"error":{"code":"E_FILE_NOT_FOUND","msg":"Config file missing","suggestion":"run init first"}}
+
+# Typed outputs
+output_int 42              # {"ok":true,"data":42}
+output_bool true           # {"ok":true,"data":true}
+output_json_object '{"name":"John","age":30}'
+# {"ok":true,"data":{"name":"John","age":30}}
+
+# Timing
+output_timer_start
+do_expensive_operation
+output_success "done"  # Includes meta.elapsed_ms
+
+# Wrap existing function
+my_func() { echo "result"; }
+output_wrap my_func
+# {"ok":true,"data":"result","meta":{"elapsed_ms":2}}
+
+# Performance: avoid subshell with nameref
+output_v result "computed value"
+echo "$result"  # {"ok":true,"data":"computed value"}
+
+# Temporarily change mode
+export MAINFRAME_OUTPUT=raw
+result=$(output_with_mode "json" output_success "data")
+# result contains JSON, but mode returns to raw
+```
+
+### Output Modes
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| `raw` | Plain text (default) | Human-readable scripts |
+| `json` | Full envelope with meta/hint | AI agent consumption |
+| `minimal` | Compact JSON (ok+data only) | Low-bandwidth scenarios |
+| `debug` | JSON + timestamp + caller | Debugging agent behavior |
+
+---
+
 ## Utility Functions (pure-util.sh)
 
 | Function | Signature | Example | Output |
@@ -2359,6 +2469,222 @@ diff_replace_range "script.sh" 10 15 "# replaced block"
 
 ---
 
-*900+ functions | 37 libraries | Zero dependencies | 20-72x faster*
+## Agent Communication Protocol (agent.sh)
+
+**Purpose**: Multi-agent coordination through file-based IPC. Provides agent registration, discovery, messaging (point-to-point, broadcast, pub/sub), work queues, synchronization primitives, and leader election.
+
+### Registration & Discovery
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `agent_init` | `agent_init` | `agent_init` | (creates directories) |
+| `agent_register` | `agent_register "name" [capabilities...]` | `agent_register "worker1" "compute" "storage"` | (returns 0/1) |
+| `agent_unregister` | `agent_unregister [name]` | `agent_unregister "worker1"` | (returns 0/1) |
+| `agent_list` | `agent_list` | `agent_list` | JSON array of agents |
+| `agent_list_v` | `agent_list_v result_array` | `agent_list_v agents` | (fills array) |
+| `agent_status` | `agent_status [name]` | `agent_status "worker1"` | JSON status object |
+| `agent_info` | `agent_info [name]` | `agent_info "worker1"` | JSON (alias for status) |
+| `agent_info_v` | `agent_info_v result_var [name]` | `agent_info_v info "worker1"` | (stores in var) |
+| `agent_discover` | `agent_discover "capability"` | `agent_discover "compute"` | Agent names (one/line) |
+| `agent_find_by_capability` | `agent_find_by_capability "cap"` | `agent_find_by_capability "http"` | (alias for discover) |
+| `agent_heartbeat` | `agent_heartbeat` | `agent_heartbeat` | (updates timestamp) |
+| `agent_prune` | `agent_prune [--older-than SECS]` | `agent_prune --older-than 300` | (removes stale agents) |
+| `agent_cleanup` | `agent_cleanup` | `agent_cleanup` | (removes all resources) |
+| `agent_elect_leader` | `agent_elect_leader "group"` | `leader=$(agent_elect_leader "workers")` | Elected agent name |
+
+### Messaging (Point-to-Point)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `agent_send` | `agent_send "target" "message"` | `agent_send "worker2" "task_payload"` | (returns 0/1) |
+| `agent_receive` | `agent_receive [timeout_secs]` | `msg=$(agent_receive 10)` | JSON envelope |
+| `agent_receive_async` | `agent_receive_async` | `msg=$(agent_receive_async)` | JSON or empty |
+| `agent_peek` | `agent_peek` | `next=$(agent_peek)` | JSON (doesn't consume) |
+| `agent_inbox_count` | `agent_inbox_count` | `count=$(agent_inbox_count)` | Number of messages |
+| `agent_clear_inbox` | `agent_clear_inbox` | `agent_clear_inbox` | (removes all messages) |
+| `agent_broadcast` | `agent_broadcast "message"` | `agent_broadcast "shutdown"` | (sends to all agents) |
+
+### Pub/Sub (Topic-Based)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `agent_subscribe` | `agent_subscribe "topic"` | `agent_subscribe "news"` | (returns 0/1) |
+| `agent_unsubscribe` | `agent_unsubscribe "topic"` | `agent_unsubscribe "news"` | (returns 0/1) |
+| `agent_publish` | `agent_publish "topic" "message"` | `agent_publish "news" "headline"` | (returns 0/1) |
+
+### Work Queues
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `agent_work_queue` | `agent_work_queue "name"` | `agent_work_queue "tasks"` | (creates queue) |
+| `agent_work_push` | `agent_work_push "queue" "item"` | `agent_work_push "tasks" "job_data"` | (returns 0/1) |
+| `agent_work_push_tracked` | `agent_work_push_tracked "queue" "item"` | `id=$(agent_work_push_tracked "tasks" "job")` | Returns task_id |
+| `agent_work_pop` | `agent_work_pop "queue"` | `item=$(agent_work_pop "tasks")` | JSON item |
+| `agent_work_pop_tracked` | `agent_work_pop_tracked "queue"` | `item=$(agent_work_pop_tracked "tasks")` | JSON (marks in-progress) |
+| `agent_work_complete` | `agent_work_complete "queue" "id"` | `agent_work_complete "tasks" "$id"` | (marks complete) |
+| `agent_work_fail` | `agent_work_fail "queue" "id" "reason"` | `agent_work_fail "tasks" "$id" "timeout"` | (marks failed) |
+| `agent_work_count` | `agent_work_count "queue"` | `count=$(agent_work_count "tasks")` | Item count |
+| `agent_work_stats` | `agent_work_stats "queue"` | `agent_work_stats "tasks"` | JSON stats |
+| `agent_work_clear` | `agent_work_clear "queue"` | `agent_work_clear "tasks"` | (empties queue) |
+
+### Synchronization
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `agent_barrier` | `agent_barrier "name" count [timeout]` | `agent_barrier "phase1" 3 30` | (waits for N agents) |
+| `agent_signal` | `agent_signal "name"` | `agent_signal "data_ready"` | (raises signal) |
+| `agent_wait` | `agent_wait "name" [timeout]` | `agent_wait "data_ready" 60` | (waits for signal) |
+| `agent_lock` | `agent_lock "resource"` | `agent_lock "database"` | (blocks until acquired) |
+| `agent_unlock` | `agent_unlock "resource"` | `agent_unlock "database"` | (releases lock) |
+| `agent_trylock` | `agent_trylock "resource"` | `agent_trylock "database"` | (returns 0=acquired, 1=busy) |
+
+### Quick Patterns (Agent)
+
+```bash
+# Initialize and register
+agent_init
+agent_register "worker-1" "compute" "http"
+
+# Send/receive messages
+agent_send "coordinator" '{"task":"analyze","id":123}'
+msg=$(agent_receive 30)
+
+# Pub/sub workflow
+agent_subscribe "updates"
+# ... elsewhere ...
+agent_publish "updates" '{"version":"2.0"}'
+
+# Work queue pattern
+agent_work_queue "jobs"
+task_id=$(agent_work_push_tracked "jobs" '{"url":"http://example.com"}')
+item=$(agent_work_pop_tracked "jobs")
+# process item...
+agent_work_complete "jobs" "$task_id"
+
+# Barrier synchronization (wait for all workers)
+agent_barrier "phase_complete" 4 60
+
+# Mutual exclusion
+if agent_trylock "shared_resource"; then
+    # ... critical section ...
+    agent_unlock "shared_resource"
+fi
+
+# Leader election
+leader=$(agent_elect_leader "workers")
+[[ "$leader" == "$_MAINFRAME_AGENT_NAME" ]] && echo "I am the leader"
+
+# Cleanup stale agents
+agent_prune --older-than 300
+```
+
+---
+
+## Caching & Memoization Functions (cache.sh)
+
+**Purpose**: High-performance caching with function memoization, content-addressable storage, session cache, and LRU eviction. Designed for AI agent workflows with <0.1ms cache hits.
+
+### Function Memoization
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `memoize` | `memoize [--ttl SECS] [--invalidate-on FILE] FUNC [ARGS]` | `memoize --ttl 300 http_get "https://api.com/data"` | Cached result |
+| `memoize_clear` | `memoize_clear [PATTERN]` | `memoize_clear "http_get"` | Removed count |
+| `memoize_stats` | `memoize_stats [--json]` | `memoize_stats --json` | Hit/miss stats |
+
+### Content-Addressable Store (CAS)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `cas_store` | `cas_store "content"` | `hash=$(cas_store "config data")` | SHA-256 hash |
+| `cas_get` | `cas_get "hash"` | `content=$(cas_get "$hash")` | Stored content |
+| `cas_exists` | `cas_exists "hash"` | `if cas_exists "$hash"; then ...` | (returns 0/1) |
+| `cas_gc` | `cas_gc [--older-than DAYS]` | `cas_gc --older-than 30` | Removed count |
+
+### Session Cache (In-Memory)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `session_cache_set` | `session_cache_set KEY VALUE` | `session_cache_set "user" "Gordon"` | (returns 0/1) |
+| `session_cache_get` | `session_cache_get KEY [DEFAULT]` | `session_cache_get "user" "unknown"` | Stored value |
+| `session_cache_has` | `session_cache_has KEY` | `if session_cache_has "user"; then ...` | (returns 0/1) |
+| `session_cache_clear` | `session_cache_clear` | `session_cache_clear` | (clears all) |
+| `session_cache_stats` | `session_cache_stats [--json]` | `session_cache_stats --json` | Entry count, bytes |
+
+### Cache Management
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `cache_invalidate` | `cache_invalidate PATTERN` | `cache_invalidate "expensive_*"` | Removed count |
+| `cache_clear` | `cache_clear --force` | `cache_clear --force` | (clears all) |
+| `cache_stats` | `cache_stats [--json]` | `cache_stats --json` | Full statistics |
+| `cache_max_size` | `cache_max_size SIZE` | `cache_max_size "256MB"` | (sets limit) |
+| `cache_evict_lru` | `cache_evict_lru [MAX_MB]` | `cache_evict_lru 100` | Evicted count |
+| `cache_warm` | `cache_warm PROJECT_TYPE [DIR]` | `cache_warm "project-type=node"` | (preloads) |
+
+### Dependency-Aware Invalidation
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `cache_depends_on` | `cache_depends_on KEY FILE...` | `cache_depends_on "$key" "config.json"` | (registers deps) |
+| `cache_check_deps` | `cache_check_deps KEY` | `if cache_check_deps "$key"; then ...` | (returns 0/1) |
+
+### Quick Patterns (Cache)
+
+```bash
+# Basic memoization (cache expensive function)
+result=$(memoize expensive_compute "arg1" "arg2")
+
+# Memoize with TTL (5 minute expiration)
+api_data=$(memoize --ttl 300 curl_json "https://api.example.com/data")
+
+# Dependency-aware caching (invalidate when file changes)
+config=$(memoize --invalidate-on config.json parse_config)
+
+# Content-addressable storage (automatic deduplication)
+hash=$(cas_store "$(cat large_file.txt)")
+content=$(cas_get "$hash")
+
+# Session cache for fast repeated lookups (zero disk I/O)
+session_cache_set "parsed_config" "$config_json"
+config=$(session_cache_get "parsed_config")
+
+# Cache warming for project
+cache_warm "project-type=node" "/path/to/project"
+
+# LRU eviction to stay under size limit
+cache_max_size "512MB"
+
+# Check cache statistics
+cache_stats --json
+# {"hits":150,"misses":23,"hit_ratio_pct":86,...}
+
+# Clear memoized entries by function name
+memoize_clear "http_get"
+
+# Garbage collect old CAS entries
+cas_gc --older-than 7
+```
+
+### Performance Targets
+
+| Operation | Target Latency |
+|-----------|----------------|
+| Cache hit | <0.1ms |
+| Cache miss + compute | compute time + <1ms |
+| Session cache (in-memory) | ~0.01ms (zero disk I/O) |
+
+### Storage Location
+
+Default: `${MAINFRAME_CACHE_ROOT:-$HOME/.mainframe/cache}/`
+
+Structure:
+- `memo/` - Memoized function results
+- `cas/` - Content-addressable store (sharded by hash prefix)
+- `locks/` - Concurrency lock files
+
+---
+
+*900+ functions | 39 libraries | Zero dependencies | 20-72x faster*
 
 **YO JOE!**

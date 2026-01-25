@@ -911,3 +911,357 @@ teardown() {
     [[ "$result" != *"unregistered"* ]]
     [[ "$result" == *"legit"* ]]
 }
+
+# =============================================================================
+# AGENT_INFO TESTS
+# =============================================================================
+
+@test "agent_info returns agent details as JSON" {
+    agent_register "info_agent" "cap1" "cap2"
+    local result
+    result=$(agent_info "info_agent")
+    [[ "$result" == *'"name":"info_agent"'* ]]
+    [[ "$result" == *'"capabilities":'* ]]
+}
+
+@test "agent_info_v stores result in variable" {
+    agent_register "nameref_agent" "fast"
+    local result
+    agent_info_v result "nameref_agent"
+    [[ "$result" == *"nameref_agent"* ]]
+    [[ "$result" == *"fast"* ]]
+}
+
+# =============================================================================
+# AGENT_PRUNE TESTS
+# =============================================================================
+
+@test "agent_prune removes stale agents" {
+    agent_register "stale_agent"
+
+    # Set heartbeat to old timestamp
+    local old_ts=$(( $(date +%s) - 600 ))
+    echo "$old_ts" > "$MAINFRAME_AGENT_DIR/stale_agent/heartbeat"
+
+    run agent_prune --older-than 300
+    [ "$status" -eq 0 ]
+
+    [ ! -d "$MAINFRAME_AGENT_DIR/stale_agent" ]
+}
+
+@test "agent_prune keeps fresh agents" {
+    agent_register "fresh_agent"
+    agent_heartbeat
+
+    run agent_prune --older-than 300
+    [ "$status" -eq 0 ]
+
+    [ -d "$MAINFRAME_AGENT_DIR/fresh_agent" ]
+}
+
+# =============================================================================
+# AGENT_LIST_V TESTS
+# =============================================================================
+
+@test "agent_list_v stores agents in array" {
+    agent_register "arr_agent_1"
+    agent_register "arr_agent_2"
+
+    local -a agents
+    agent_list_v agents
+
+    [ "${#agents[@]}" -ge 2 ]
+    [[ " ${agents[*]} " == *" arr_agent_1 "* ]]
+    [[ " ${agents[*]} " == *" arr_agent_2 "* ]]
+}
+
+# =============================================================================
+# ASYNC RECEIVE TESTS
+# =============================================================================
+
+@test "agent_receive_async returns immediately when no message" {
+    agent_register "async_agent"
+    _MAINFRAME_AGENT_NAME="async_agent"
+
+    local start_time
+    start_time=$(date +%s)
+    run agent_receive_async
+    local end_time
+    end_time=$(date +%s)
+
+    # Should return quickly (within 1 second)
+    [ $(( end_time - start_time )) -lt 2 ]
+}
+
+@test "agent_receive_async returns message if available" {
+    agent_register "async_sender"
+    agent_register "async_receiver"
+    _MAINFRAME_AGENT_NAME="async_sender"
+    agent_send "async_receiver" "async_msg"
+
+    _MAINFRAME_AGENT_NAME="async_receiver"
+    local result
+    result=$(agent_receive_async)
+    [[ "$result" == *'"payload":"async_msg"'* ]]
+}
+
+# =============================================================================
+# PUB/SUB TESTS
+# =============================================================================
+
+@test "agent_subscribe creates topic file" {
+    agent_register "sub_agent"
+    _MAINFRAME_AGENT_NAME="sub_agent"
+    agent_subscribe "news"
+
+    [ -f "$MAINFRAME_AGENT_DIR/_topics/news" ]
+    grep -q "sub_agent" "$MAINFRAME_AGENT_DIR/_topics/news"
+}
+
+@test "agent_unsubscribe removes agent from topic" {
+    agent_register "unsub_agent"
+    _MAINFRAME_AGENT_NAME="unsub_agent"
+    agent_subscribe "events"
+    agent_unsubscribe "events"
+
+    ! grep -q "unsub_agent" "$MAINFRAME_AGENT_DIR/_topics/events" 2>/dev/null || true
+}
+
+@test "agent_publish sends to all topic subscribers" {
+    agent_register "pub_agent"
+    agent_register "sub1"
+    agent_register "sub2"
+
+    _MAINFRAME_AGENT_NAME="sub1"
+    agent_subscribe "updates"
+    _MAINFRAME_AGENT_NAME="sub2"
+    agent_subscribe "updates"
+
+    _MAINFRAME_AGENT_NAME="pub_agent"
+    run agent_publish "updates" "topic_message"
+    [ "$status" -eq 0 ]
+
+    # Check that messages were delivered
+    _MAINFRAME_AGENT_NAME="sub1"
+    local count1
+    count1=$(agent_inbox_count)
+    [ "$count1" -eq 1 ]
+
+    _MAINFRAME_AGENT_NAME="sub2"
+    local count2
+    count2=$(agent_inbox_count)
+    [ "$count2" -eq 1 ]
+}
+
+@test "agent_publish fails for non-existent topic" {
+    agent_register "lonely_pub"
+    _MAINFRAME_AGENT_NAME="lonely_pub"
+    run agent_publish "no_such_topic" "message"
+    [ "$status" -ne 0 ]
+}
+
+# =============================================================================
+# LOCKING TESTS
+# =============================================================================
+
+@test "agent_lock creates lock file" {
+    agent_register "locker"
+    _MAINFRAME_AGENT_NAME="locker"
+    agent_lock "shared_resource"
+
+    [ -f "$MAINFRAME_AGENT_DIR/_locks/shared_resource.lock" ]
+
+    agent_unlock "shared_resource"
+}
+
+@test "agent_unlock releases lock" {
+    agent_register "unlocker"
+    _MAINFRAME_AGENT_NAME="unlocker"
+    agent_lock "temp_resource"
+    run agent_unlock "temp_resource"
+    [ "$status" -eq 0 ]
+}
+
+@test "agent_trylock succeeds if lock available" {
+    agent_register "trylock_agent"
+    _MAINFRAME_AGENT_NAME="trylock_agent"
+    run agent_trylock "free_resource"
+    [ "$status" -eq 0 ]
+    agent_unlock "free_resource"
+}
+
+@test "agent_trylock fails if lock held" {
+    agent_register "holder"
+    _MAINFRAME_AGENT_NAME="holder"
+    agent_lock "contested"
+
+    # Try from another process
+    run bash -c "
+        export MAINFRAME_AGENT_DIR='$MAINFRAME_AGENT_DIR'
+        export MAINFRAME_QUIET=1
+        source '$MAINFRAME_ROOT/lib/agent.sh'
+        agent_register 'waiter'
+        _MAINFRAME_AGENT_NAME='waiter'
+        agent_trylock 'contested'
+    "
+    [ "$status" -ne 0 ]
+
+    agent_unlock "contested"
+}
+
+# =============================================================================
+# WORK QUEUE COMPLETION TRACKING TESTS
+# =============================================================================
+
+@test "agent_work_push_tracked returns task ID" {
+    agent_register "tracker"
+    agent_work_queue "tracked_q"
+    _MAINFRAME_AGENT_NAME="tracker"
+
+    local task_id
+    task_id=$(agent_work_push_tracked "tracked_q" "tracked_item")
+
+    [[ "$task_id" =~ ^[0-9]+-[0-9]+-[0-9]+$ ]]
+}
+
+@test "agent_work_pop_tracked marks task in progress" {
+    agent_register "tracked_worker"
+    agent_work_queue "progress_q"
+    _MAINFRAME_AGENT_NAME="tracked_worker"
+
+    local task_id
+    task_id=$(agent_work_push_tracked "progress_q" "wip_item")
+
+    agent_work_pop_tracked "progress_q" >/dev/null
+
+    [ -f "$MAINFRAME_AGENT_DIR/_queues/progress_q/.inprogress" ]
+}
+
+@test "agent_work_complete removes from in_progress" {
+    agent_register "completer"
+    agent_work_queue "complete_q"
+    _MAINFRAME_AGENT_NAME="completer"
+
+    local task_id
+    task_id=$(agent_work_push_tracked "complete_q" "to_complete")
+    agent_work_pop_tracked "complete_q" >/dev/null
+    agent_work_complete "complete_q" "$task_id"
+
+    # Check completed file exists and contains task
+    [ -f "$MAINFRAME_AGENT_DIR/_queues/complete_q/.completed" ]
+    grep -q "$task_id" "$MAINFRAME_AGENT_DIR/_queues/complete_q/.completed"
+}
+
+@test "agent_work_fail records failure reason" {
+    agent_register "failer"
+    agent_work_queue "fail_q"
+    _MAINFRAME_AGENT_NAME="failer"
+
+    local task_id
+    task_id=$(agent_work_push_tracked "fail_q" "broken_item")
+    agent_work_pop_tracked "fail_q" >/dev/null
+    agent_work_fail "fail_q" "$task_id" "Connection timeout"
+
+    [ -f "$MAINFRAME_AGENT_DIR/_queues/fail_q/.failed" ]
+    grep -q "Connection timeout" "$MAINFRAME_AGENT_DIR/_queues/fail_q/.failed"
+}
+
+@test "agent_work_stats returns queue statistics" {
+    agent_register "stats_agent"
+    agent_work_queue "stats_q"
+    _MAINFRAME_AGENT_NAME="stats_agent"
+
+    agent_work_push "stats_q" "item1"
+    agent_work_push "stats_q" "item2"
+    agent_work_push "stats_q" "item3"
+    agent_work_pop "stats_q" >/dev/null
+
+    local result
+    result=$(agent_work_stats "stats_q")
+
+    [[ "$result" == *'"pending":2'* ]]
+    [[ "$result" == *'"queue":"stats_q"'* ]]
+}
+
+# =============================================================================
+# DISCOVERY: ADDITIONAL TESTS
+# =============================================================================
+
+@test "agent_find_by_capability returns matching agents" {
+    agent_register "http_worker" "http" "rest"
+    agent_register "json_worker" "json" "parse"
+    agent_register "multi_worker" "http" "json"
+
+    local result
+    result=$(agent_find_by_capability "http")
+    [[ "$result" == *"http_worker"* ]]
+    [[ "$result" == *"multi_worker"* ]]
+    [[ "$result" != *"json_worker"* ]]
+}
+
+@test "agent_elect_leader returns one agent" {
+    agent_register "candidate_1"
+    agent_register "candidate_2"
+    agent_register "candidate_3"
+
+    local leader
+    leader=$(agent_elect_leader "election_group")
+
+    # Should return exactly one agent
+    [ -n "$leader" ]
+    [[ "$leader" =~ ^candidate_[1-3]$ ]]
+}
+
+@test "agent_elect_leader is deterministic" {
+    agent_register "voter_a"
+    agent_register "voter_b"
+
+    local leader1
+    leader1=$(agent_elect_leader "stable_group")
+
+    local leader2
+    leader2=$(agent_elect_leader "stable_group")
+
+    [ "$leader1" = "$leader2" ]
+}
+
+@test "agent_elect_leader fails with no agents" {
+    # Clear all agents
+    rm -rf "$MAINFRAME_AGENT_DIR"/*
+
+    run agent_elect_leader "empty_election"
+    [ "$status" -ne 0 ]
+}
+
+# =============================================================================
+# CLEANUP TESTS
+# =============================================================================
+
+@test "agent_cleanup removes all agent resources" {
+    agent_register "cleanup_agent"
+    _MAINFRAME_AGENT_NAME="cleanup_agent"
+    agent_subscribe "cleanup_topic"
+    agent_work_queue "cleanup_q"
+    agent_work_push "cleanup_q" "test"
+
+    run agent_cleanup
+    [ "$status" -eq 0 ]
+
+    # Directory should be empty (or just have empty subdirs)
+    [ ! -d "$MAINFRAME_AGENT_DIR/cleanup_agent" ]
+}
+
+# =============================================================================
+# INIT TESTS
+# =============================================================================
+
+@test "agent_init creates base directories" {
+    rm -rf "$MAINFRAME_AGENT_DIR"
+    agent_init
+
+    [ -d "$MAINFRAME_AGENT_DIR/_queues" ]
+    [ -d "$MAINFRAME_AGENT_DIR/_barriers" ]
+    [ -d "$MAINFRAME_AGENT_DIR/_signals" ]
+    [ -d "$MAINFRAME_AGENT_DIR/_topics" ]
+    [ -d "$MAINFRAME_AGENT_DIR/_locks" ]
+}

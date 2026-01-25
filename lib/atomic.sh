@@ -41,12 +41,28 @@ _atomic_log() {
 
 # Generate a unique temporary filename in the same directory as target
 # This ensures rename is atomic (same filesystem)
+# Security: Uses mktemp with proper umask for unpredictable filenames
 _atomic_tmpfile() {
     local target="$1"
     local dir
     dir="${target%/*}"
     [[ "$dir" == "$target" ]] && dir="."
-    printf '%s/.mainframe_atomic_%s_%s' "$dir" "$$" "$RANDOM"
+
+    # Security: Set restrictive umask and use mktemp for unpredictable names
+    local old_umask
+    old_umask=$(umask)
+    umask 077
+
+    local tmpfile
+    if tmpfile=$(mktemp "${dir}/.mainframe_atomic.XXXXXXXXXX" 2>/dev/null); then
+        umask "$old_umask"
+        printf '%s' "$tmpfile"
+        return 0
+    fi
+
+    # Fallback for systems without mktemp (add more entropy)
+    umask "$old_umask"
+    printf '%s/.mainframe_atomic_%s_%s_%s_%s' "$dir" "$$" "$RANDOM" "$RANDOM" "$(date +%N 2>/dev/null || echo $RANDOM)"
 }
 
 # Generate checkpoint ID from filename
@@ -211,8 +227,9 @@ atomic_replace() {
     fi
 
     # Run verification command if provided
+    # Security: Use bash -c instead of eval for better isolation
     if [[ -n "$verify_cmd" ]]; then
-        if ! eval "$verify_cmd" &>/dev/null; then
+        if ! bash -c "$verify_cmd" &>/dev/null; then
             _atomic_log error "atomic_replace: verification failed, rolling back"
             if [[ -n "$backup" ]] && [[ -f "$backup" ]]; then
                 mv -f "$backup" "$target"

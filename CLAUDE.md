@@ -66,6 +66,7 @@ MAINFRAME provides **77 libraries** with **1,900+ functions**. Here's what's ava
 |---------|--------------|---------|
 | **Context** | `context_estimate_tokens`, `context_budget_init`, `context_truncate`, `context_read_plan` | Token estimation & budget |
 | **Diff** | `diff_replace`, `diff_apply`, `diff_strings`, `diff_validate_unique`, `diff_insert_after` | Surgical file editing |
+| **Cache** | `memoize`, `cas_store`, `cas_get`, `session_cache_set`, `cache_warm`, `cache_evict_lru` | Caching & memoization |
 
 ### Formatting Functions
 
@@ -366,6 +367,43 @@ diff_validate_unique "file" "text"           # 0=unique, 1=missing, 2=multi
 diff_stats "$diff"                           # {"additions":N,"deletions":N,...}
 diff_changed_lines "$diff"                   # Only +/- lines
 diff_affected_lines "$diff"                  # Line numbers
+```
+
+### Caching & Memoization
+
+```bash
+# Memoize expensive function calls
+result=$(memoize expensive_func "arg1" "arg2")
+result=$(memoize --ttl 300 http_get "https://api.com/data")
+result=$(memoize --invalidate-on config.json parse_config)
+
+# Memoization management
+memoize_clear "http_get"                     # Clear by function name pattern
+memoize_stats --json                         # {"hits":50,"misses":10,...}
+
+# Content-Addressable Store (deduplication)
+hash=$(cas_store "large content")            # Returns SHA-256 hash
+content=$(cas_get "$hash")                   # Retrieve by hash
+cas_exists "$hash" && echo "found"           # Check existence
+cas_gc --older-than 30                       # Garbage collect old entries
+
+# Session cache (in-memory, zero disk I/O)
+session_cache_set "key" "value"              # Store in memory
+val=$(session_cache_get "key" "default")     # Retrieve with fallback
+session_cache_has "key" && echo "exists"     # Check existence
+session_cache_clear                          # Clear all
+session_cache_stats --json                   # {"entries":5,"estimated_bytes":128}
+
+# Cache management
+cache_stats --json                           # Full statistics
+cache_max_size "512MB"                       # Set max size
+cache_evict_lru 256                          # Evict to stay under N MB
+cache_clear --force                          # Clear all caches
+cache_warm "project-type=node" "$dir"        # Preload for project type
+
+# Dependency-aware invalidation
+cache_depends_on "$key" "config.json" "env.json"
+cache_check_deps "$key" && echo "still valid"
 ```
 
 ## Important Rules

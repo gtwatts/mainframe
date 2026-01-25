@@ -4,7 +4,8 @@
 # =============================================================================
 # Description: Parses all lib/*.sh files and extracts library metadata, public
 #              function signatures, parameter info, and behavioral heuristics
-#              into a structured JSON registry.
+#              into a structured JSON registry for AI agent function discovery.
+# Token Savings: ~80,000 tokens of source code -> ~5,000 tokens of metadata
 # =============================================================================
 set -euo pipefail
 
@@ -28,6 +29,86 @@ PROJECT_VERSION="5.0.0"
 # Output defaults
 OUTPUT_PATH="$PROJECT_ROOT/FUNCTIONS.json"
 COMPACT=0
+
+# =============================================================================
+# LIBRARY CATEGORY MAPPINGS
+# =============================================================================
+declare -A LIB_CATEGORIES=(
+    [pure-string]="strings"
+    [pure-array]="arrays"
+    [pure-util]="utilities"
+    [pure-file]="files"
+    [json]="data"
+    [ansi]="output"
+    [output]="output"
+    [errors]="errors"
+    [hints]="discovery"
+    [common]="core"
+    [validation]="validation"
+    [path]="files"
+    [env]="environment"
+    [datetime]="datetime"
+    [http]="network"
+    [csv]="data"
+    [git]="vcs"
+    [docker]="containers"
+    [crypto]="crypto"
+    [proc]="process"
+    [args]="cli"
+    [config]="config"
+    [log]="logging"
+    [error]="errors"
+    [tui]="output"
+    [template]="templating"
+    [ci]="ci"
+    [health]="monitoring"
+    [device]="system"
+    [sysinfo]="system"
+    [service]="system"
+    [retry]="reliability"
+    [toml]="data"
+    [yaml]="data"
+    [k8s]="containers"
+    [semver]="versioning"
+    [functional]="fp"
+    [stream]="streaming"
+    [pipe]="streaming"
+    [procsub]="process"
+    [async]="async"
+    [meta]="metaprogramming"
+    [cli]="cli"
+    [fzf]="interactive"
+    [compat]="compatibility"
+    [safe]="safety"
+    [guard]="safety"
+    [idempotent]="ai"
+    [atomic]="ai"
+    [observe]="ai"
+    [project]="ai"
+    [contract]="ai"
+    [perf]="performance"
+    [netscan]="network"
+    [parsers]="parsing"
+    [risk]="ai"
+    [dryrun]="ai"
+    [undo]="ai"
+    [limits]="ai"
+    [confirm]="ai"
+    [safewrap]="ai"
+    [safecontext]="ai"
+    [agent]="ai"
+    [workflow]="ai"
+    [taskstate]="ai"
+    [context]="ai"
+    [diff]="ai"
+    [parse_output]="ai"
+    [symbols]="ai"
+    [agent_exec]="ai"
+    [cache]="caching"
+    [scope]="security"
+    [typescript]="analysis"
+    [python]="analysis"
+)
 
 # =============================================================================
 # ARGUMENT PARSING
@@ -523,6 +604,88 @@ _func_returns_status() {
 }
 
 # =============================================================================
+# HEURISTIC FUNCTIONS
+# =============================================================================
+
+# Determine if a function is pure (no side effects) based on name patterns
+_is_pure_function() {
+    local fname="$1"
+    # Pure function name patterns
+    if [[ "$fname" =~ ^(is_|validate_|format_|json_|array_|trim_|to_|contains|starts_with|ends_with|strlen|substring|parse_|semver_|get_|has_|check_) ]]; then
+        echo "true"
+    else
+        echo "false"
+    fi
+}
+
+# Determine if a function is idempotent based on name patterns
+_is_idempotent_function() {
+    local fname="$1"
+    local is_pure="$2"
+    # Idempotent patterns: ensure_*, atomic_*, or pure functions
+    if [[ "$is_pure" == "true" || "$fname" =~ ^(ensure_|atomic_|idempotent_|set_|config_) ]]; then
+        echo "true"
+    else
+        echo "false"
+    fi
+}
+
+# Extract Usage: line as function signature
+_extract_func_signature() {
+    local file="$1"
+    local func_line_num="$2"
+    local fname="$3"
+    local sig=""
+
+    # Read file lines
+    local -a file_lines=()
+    mapfile -t file_lines < "$file"
+
+    local idx=$((func_line_num - 2))  # Start 1 line above function
+    while [[ $idx -ge 0 && $idx -ge $((func_line_num - 10)) ]]; do
+        local line="${file_lines[$idx]}"
+        if [[ "$line" =~ ^#[[:space:]]*Usage:[[:space:]]*(.+) ]]; then
+            sig="${BASH_REMATCH[1]}"
+            break
+        fi
+        # Stop if we hit a section divider
+        if [[ "$line" =~ ^#[[:space:]]*=+ ]]; then
+            break
+        fi
+        idx=$((idx - 1))
+    done
+
+    # Default to function name if no signature found
+    [[ -z "$sig" ]] && sig="$fname"
+    printf '%s' "$sig"
+}
+
+# Extract Example: lines from comment block
+_extract_func_examples() {
+    local file="$1"
+    local func_line_num="$2"
+    local -a examples=()
+
+    local -a file_lines=()
+    mapfile -t file_lines < "$file"
+
+    local idx=$((func_line_num - 2))
+    while [[ $idx -ge 0 && $idx -ge $((func_line_num - 15)) ]]; do
+        local line="${file_lines[$idx]}"
+        if [[ "$line" =~ ^#[[:space:]]*Example:[[:space:]]*(.+) ]]; then
+            examples+=("${BASH_REMATCH[1]}")
+        fi
+        if [[ "$line" =~ ^#[[:space:]]*=+ ]]; then
+            break
+        fi
+        idx=$((idx - 1))
+    done
+
+    # Output as newline-separated
+    printf '%s\n' "${examples[@]}"
+}
+
+# =============================================================================
 # MAIN GENERATION LOGIC
 # =============================================================================
 
@@ -531,6 +694,7 @@ generate_json() {
     local total_functions=0
     local generated
     generated="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    local -A categories_seen
 
     # Collect all library files (excluding common.sh loader)
     local -a lib_files=()
@@ -550,7 +714,34 @@ generate_json() {
     done < <(printf '%s\n' "${lib_files[@]}" | sort)
     lib_files=("${sorted_files[@]}")
 
-    # Start building JSON output
+    # First pass: count totals and collect categories
+    for lib_file in "${lib_files[@]}"; do
+        local lib_basename lib_name
+        lib_basename="$(basename "$lib_file")"
+        lib_name="${lib_basename%.sh}"
+
+        local func_count
+        func_count=$(grep -cE '^[a-zA-Z][a-zA-Z0-9_]*[[:space:]]*\(\)[[:space:]]*\{?[[:space:]]*$' "$lib_file" 2>/dev/null || echo 0)
+
+        if [[ $func_count -gt 0 ]]; then
+            total_functions=$((total_functions + func_count))
+            total_libraries=$((total_libraries + 1))
+            local cat="${LIB_CATEGORIES[$lib_name]:-other}"
+            categories_seen["$cat"]=1
+        fi
+    done
+
+    # Build categories JSON array
+    local categories_json="["
+    local first_cat=1
+    for cat in "${!categories_seen[@]}"; do
+        [[ $first_cat -eq 0 ]] && categories_json+=", "
+        first_cat=0
+        categories_json+="\"$cat\""
+    done
+    categories_json+="]"
+
+    # Start building JSON output with stats section
     printf '{'
     _push_indent
     _nl
@@ -560,8 +751,27 @@ generate_json() {
     printf '"generated":'; _sep; _json_str "$generated"
     printf ','
     _nl
+    printf '"stats":'; _sep; printf '{'
+    _push_indent
+    _nl
+    printf '"total_functions":'; _sep; printf '%d' "$total_functions"
+    printf ','
+    _nl
+    printf '"total_libraries":'; _sep; printf '%d' "$total_libraries"
+    printf ','
+    _nl
+    printf '"categories":'; _sep; printf '%s' "$categories_json"
+    _pop_indent
+    _nl
+    printf '}'
+    printf ','
+    _nl
     printf '"libraries":'; _sep; printf '{'
     _push_indent
+
+    # Reset counters for actual processing
+    total_libraries=0
+    total_functions=0
 
     local first_lib=1
     for lib_file in "${lib_files[@]}"; do
@@ -573,6 +783,7 @@ generate_json() {
         lib_desc="$(_extract_description "$lib_file")"
         local lib_version
         lib_version="$(_extract_version "$lib_file")"
+        local lib_category="${LIB_CATEGORIES[$lib_name]:-other}"
 
         # Find all public functions (not starting with _)
         local -a func_names=()
@@ -602,6 +813,9 @@ generate_json() {
         _json_str "$lib_name"; printf ':'; _sep; printf '{'
         _push_indent
         _nl
+        printf '"file":'; _sep; _json_str "lib/${lib_basename}"
+        printf ','
+        _nl
         printf '"description":'; _sep
         if [[ -n "$lib_desc" ]]; then
             _json_str "$lib_desc"
@@ -610,15 +824,7 @@ generate_json() {
         fi
         printf ','
         _nl
-        printf '"version":'; _sep
-        if [[ -n "$lib_version" ]]; then
-            _json_str "$lib_version"
-        else
-            printf 'null'
-        fi
-        printf ','
-        _nl
-        printf '"file":'; _sep; _json_str "lib/${lib_basename}"
+        printf '"category":'; _sep; _json_str "$lib_category"
         printf ','
         _nl
         printf '"functions":'; _sep; printf '{'
@@ -641,17 +847,32 @@ generate_json() {
             local fdesc
             fdesc="$(_extract_func_description "$lib_file" "$fline")"
 
+            local fsig
+            fsig="$(_extract_func_signature "$lib_file" "$fline" "$fname")"
+
             local outputs
             outputs="$(_func_outputs_stdout "$lib_file" "$fline")"
 
             local returns_status
             returns_status="$(_func_returns_status "$lib_file" "$fline")"
 
+            # Determine pure/idempotent
+            local is_pure
+            is_pure="$(_is_pure_function "$fname")"
+            local is_idempotent
+            is_idempotent="$(_is_idempotent_function "$fname" "$is_pure")"
+
             # Extract parameters
             local -a param_data=()
             while IFS= read -r pline; do
                 [[ -n "$pline" ]] && param_data+=("$pline")
             done < <(_extract_func_params "$lib_file" "$fline")
+
+            # Extract examples
+            local -a examples=()
+            while IFS= read -r ex; do
+                [[ -n "$ex" ]] && examples+=("$ex")
+            done < <(_extract_func_examples "$lib_file" "$fline")
 
             _nl
             _json_str "$fname"; printf ':'; _sep; printf '{'
@@ -663,6 +884,9 @@ generate_json() {
             else
                 printf 'null'
             fi
+            printf ','
+            _nl
+            printf '"signature":'; _sep; _json_str "$fsig"
             printf ','
             _nl
             printf '"params":'; _sep; printf '['
@@ -708,10 +932,35 @@ generate_json() {
             printf ']'
             printf ','
             _nl
-            printf '"outputs":'; _sep; printf '%s' "$outputs"
+            printf '"returns":'; _sep
+            if [[ "$outputs" == "true" ]]; then
+                printf '"stdout"'
+            elif [[ "$returns_status" == "true" ]]; then
+                printf '"exit_code"'
+            else
+                printf '"void"'
+            fi
             printf ','
             _nl
-            printf '"returns_status":'; _sep; printf '%s' "$returns_status"
+            printf '"idempotent":'; _sep; printf '%s' "$is_idempotent"
+            printf ','
+            _nl
+            printf '"pure":'; _sep; printf '%s' "$is_pure"
+
+            # Add examples if present
+            if [[ ${#examples[@]} -gt 0 ]]; then
+                printf ','
+                _nl
+                printf '"examples":'; _sep; printf '['
+                local first_ex=1
+                for ex in "${examples[@]}"; do
+                    [[ $first_ex -eq 0 ]] && printf ', '
+                    first_ex=0
+                    _json_str "$ex"
+                done
+                printf ']'
+            fi
+
             _pop_indent
             _nl
             printf '}'
@@ -728,12 +977,6 @@ generate_json() {
     _pop_indent
     _nl
     printf '}'  # end libraries
-    printf ','
-    _nl
-    printf '"total_libraries":'; _sep; printf '%d' "$total_libraries"
-    printf ','
-    _nl
-    printf '"total_functions":'; _sep; printf '%d' "$total_functions"
     _pop_indent
     _nl
     printf '}'  # end root

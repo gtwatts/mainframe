@@ -5,7 +5,7 @@
 # Description: Function memoization with TTL, content-addressable store,
 #              session cache, dependency-aware invalidation, LRU eviction,
 #              and concurrency-safe operations for AI agent workflows.
-# Version: 1.0.0
+# Version: 2.0.0
 # Requires: Bash 4.0+, sha256sum/shasum/openssl
 # =============================================================================
 # "Mainframe can make a computer do anything short of tap dance."
@@ -482,6 +482,87 @@ memoize() {
     return $exit_code
 }
 
+# @pre: none
+# @post: matching memoized entries removed from disk
+# @returns: 0 on success, number of removed entries printed
+#
+# Clear memoized cache entries, optionally matching a pattern.
+# Without pattern, clears all memoized entries.
+#
+# Usage: memoize_clear [PATTERN]
+# Example: memoize_clear "expensive_*"
+# Example: memoize_clear  # clears all
+memoize_clear() {
+    local pattern="${1:-}"
+    local count=0
+
+    local memo_dir="${MAINFRAME_CACHE_ROOT}/memo"
+    if [[ ! -d "$memo_dir" ]]; then
+        printf '0'
+        return 0
+    fi
+
+    if [[ -z "$pattern" ]]; then
+        # Clear all memoized entries
+        local file
+        while IFS= read -r -d '' file; do
+            local basename="${file##*/}"
+            [[ "$basename" == *.meta ]] && continue
+            [[ "$basename" == *.deps ]] && continue
+            rm -f "$file" "${file}.meta" "${file}.deps" 2>/dev/null
+            count=$((count + 1))
+        done < <(find "$memo_dir" -type f -print0 2>/dev/null)
+
+        printf '%s' "$count"
+        return 0
+    fi
+
+    # Use cache_invalidate for pattern matching
+    count=$(cache_invalidate "$pattern")
+    printf '%s' "$count"
+    return 0
+}
+
+# @pre: none
+# @post: memoization statistics printed to stdout
+# @returns: 0
+#
+# Display memoization statistics: hit/miss counts, hit ratio.
+#
+# Usage: memoize_stats [--json]
+# Example: memoize_stats --json
+memoize_stats() {
+    local json_output=false
+
+    if [[ "${1:-}" == "--json" ]]; then
+        json_output=true
+    fi
+
+    local total_requests=$((_MAINFRAME_CACHE_HITS + _MAINFRAME_CACHE_MISSES))
+    local hit_ratio=0
+    if [[ $total_requests -gt 0 ]]; then
+        hit_ratio=$(( (_MAINFRAME_CACHE_HITS * 100) / total_requests ))
+    fi
+
+    local memo_count=0
+    if [[ -d "${MAINFRAME_CACHE_ROOT}/memo" ]]; then
+        memo_count=$(find "${MAINFRAME_CACHE_ROOT}/memo" -type f ! -name "*.meta" ! -name "*.deps" 2>/dev/null | wc -l)
+    fi
+
+    if [[ "$json_output" == true ]]; then
+        printf '{"hits":%d,"misses":%d,"hit_ratio_pct":%d,"cached_entries":%d}' \
+            "$_MAINFRAME_CACHE_HITS" "$_MAINFRAME_CACHE_MISSES" "$hit_ratio" "$memo_count"
+    else
+        printf 'Memoization Statistics:\n'
+        printf '  Hits:           %d\n' "$_MAINFRAME_CACHE_HITS"
+        printf '  Misses:         %d\n' "$_MAINFRAME_CACHE_MISSES"
+        printf '  Hit Ratio:      %d%%\n' "$hit_ratio"
+        printf '  Cached Entries: %d\n' "$memo_count"
+    fi
+
+    return 0
+}
+
 # =============================================================================
 # CONTENT-ADDRESSABLE STORE (CAS)
 # =============================================================================
@@ -577,6 +658,52 @@ cas_exists() {
     [[ -f "$cas_file" ]]
 }
 
+# @pre: MAINFRAME_CACHE_ROOT/cas exists
+# @post: old CAS entries removed from disk
+# @returns: 0 on success, number of removed entries printed
+#
+# Garbage collect old CAS entries based on modification time.
+#
+# Usage: cas_gc [--older-than DAYS]
+# Example: cas_gc --older-than 30
+cas_gc() {
+    local days=30
+
+    # Parse options
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --older-than)
+                days="$2"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    local cas_dir="${MAINFRAME_CACHE_ROOT}/cas"
+    if [[ ! -d "$cas_dir" ]]; then
+        printf '0'
+        return 0
+    fi
+
+    local count=0
+    local file
+
+    # Find files older than specified days and remove them
+    while IFS= read -r -d '' file; do
+        rm -f "$file" 2>/dev/null
+        count=$((count + 1))
+    done < <(find "$cas_dir" -type f -mtime +"$days" -print0 2>/dev/null)
+
+    # Clean up empty prefix directories
+    find "$cas_dir" -type d -empty -delete 2>/dev/null
+
+    printf '%s' "$count"
+    return 0
+}
+
 # =============================================================================
 # SESSION CACHE (IN-MEMORY)
 # =============================================================================
@@ -638,6 +765,59 @@ session_cache_get() {
 # Usage: session_cache_clear
 session_cache_clear() {
     _MAINFRAME_SESSION_CACHE=()
+    return 0
+}
+
+# @pre: KEY is a non-empty string
+# @post: none (read-only check)
+# @returns: 0 if key exists, 1 if not
+#
+# Check if a key exists in the session cache.
+#
+# Usage: session_cache_has KEY
+# Example: if session_cache_has "user_name"; then echo "exists"; fi
+session_cache_has() {
+    local key="$1"
+
+    if [[ -z "$key" ]]; then
+        return 1
+    fi
+
+    [[ -v "_MAINFRAME_SESSION_CACHE[$key]" ]]
+}
+
+# @pre: none
+# @post: statistics printed to stdout (plain text or JSON)
+# @returns: 0
+#
+# Display session cache statistics: entry count, estimated memory usage.
+#
+# Usage: session_cache_stats [--json]
+# Example: session_cache_stats --json
+session_cache_stats() {
+    local json_output=false
+
+    if [[ "${1:-}" == "--json" ]]; then
+        json_output=true
+    fi
+
+    local entry_count=${#_MAINFRAME_SESSION_CACHE[@]}
+    local total_bytes=0
+
+    # Estimate memory usage (key length + value length)
+    local key
+    for key in "${!_MAINFRAME_SESSION_CACHE[@]}"; do
+        total_bytes=$((total_bytes + ${#key} + ${#_MAINFRAME_SESSION_CACHE[$key]}))
+    done
+
+    if [[ "$json_output" == true ]]; then
+        printf '{"entries":%d,"estimated_bytes":%d}' "$entry_count" "$total_bytes"
+    else
+        printf 'Session Cache Statistics:\n'
+        printf '  Entries:         %d\n' "$entry_count"
+        printf '  Estimated bytes: %d\n' "$total_bytes"
+    fi
+
     return 0
 }
 
@@ -808,6 +988,57 @@ cache_stats() {
     return 0
 }
 
+# @pre: SIZE is a valid size specification (e.g., "256MB", "1GB", or numeric MB)
+# @post: MAINFRAME_CACHE_MAX_SIZE_MB updated, LRU eviction triggered if over limit
+# @returns: 0 on success
+#
+# Set the maximum cache size. Triggers eviction if current size exceeds new limit.
+#
+# Usage: cache_max_size SIZE
+# Example: cache_max_size "256MB"
+# Example: cache_max_size 512
+cache_max_size() {
+    local size_spec="$1"
+
+    if [[ -z "$size_spec" ]]; then
+        _cache_log error "cache_max_size: size required"
+        return 1
+    fi
+
+    local size_mb
+
+    # Parse size specification
+    case "$size_spec" in
+        *GB|*gb)
+            size_mb=$(( ${size_spec%[Gg][Bb]} * 1024 ))
+            ;;
+        *MB|*mb)
+            size_mb=${size_spec%[Mm][Bb]}
+            ;;
+        *KB|*kb)
+            size_mb=$(( ${size_spec%[Kk][Bb]} / 1024 ))
+            [[ $size_mb -eq 0 ]] && size_mb=1
+            ;;
+        *)
+            # Assume numeric MB
+            size_mb="$size_spec"
+            ;;
+    esac
+
+    # Validate numeric
+    if ! [[ "$size_mb" =~ ^[0-9]+$ ]]; then
+        _cache_log error "cache_max_size: invalid size format"
+        return 1
+    fi
+
+    MAINFRAME_CACHE_MAX_SIZE_MB="$size_mb"
+
+    # Trigger eviction if over limit
+    cache_evict_lru "$size_mb" >/dev/null
+
+    return 0
+}
+
 # @pre: MAX_SIZE_MB is a positive integer (defaults to MAINFRAME_CACHE_MAX_SIZE_MB)
 # @post: least-recently-used entries evicted until cache is under limit
 # @returns: 0 on success, number of evicted entries
@@ -958,25 +1189,151 @@ cache_check_deps() {
 }
 
 # =============================================================================
+# SMART PRELOADING
+# =============================================================================
+
+# @pre: PROJECT_TYPE is a recognized type (bash, node, python, etc.)
+# @post: common operations for project type are pre-cached
+# @returns: 0 on success
+#
+# Warm the cache by preloading common operations for a project type.
+# Useful for speeding up first-time operations in a new session.
+#
+# Usage: cache_warm PROJECT_TYPE [PROJECT_DIR]
+# Example: cache_warm "project-type=node" "/path/to/project"
+# Example: cache_warm "project-type=python"
+cache_warm() {
+    local spec="$1"
+    local project_dir="${2:-.}"
+
+    if [[ -z "$spec" ]]; then
+        _cache_log error "cache_warm: specification required (e.g., project-type=node)"
+        return 1
+    fi
+
+    _cache_ensure_dirs
+
+    local project_type=""
+
+    # Parse specification
+    case "$spec" in
+        project-type=*)
+            project_type="${spec#project-type=}"
+            ;;
+        *)
+            project_type="$spec"
+            ;;
+    esac
+
+    # Preload based on project type
+    case "$project_type" in
+        node|nodejs|npm)
+            # Node.js project preloading
+            if [[ -f "${project_dir}/package.json" ]]; then
+                # Cache package.json hash for dependency detection
+                local pkg_hash
+                pkg_hash=$(_cache_sha256_file "${project_dir}/package.json")
+                session_cache_set "_warm_node_pkg_hash" "$pkg_hash"
+
+                # Pre-cache common node patterns
+                session_cache_set "_warm_project_type" "node"
+            fi
+            ;;
+
+        python|py)
+            # Python project preloading
+            if [[ -f "${project_dir}/requirements.txt" ]]; then
+                local req_hash
+                req_hash=$(_cache_sha256_file "${project_dir}/requirements.txt")
+                session_cache_set "_warm_py_req_hash" "$req_hash"
+            fi
+
+            if [[ -f "${project_dir}/pyproject.toml" ]]; then
+                local pyp_hash
+                pyp_hash=$(_cache_sha256_file "${project_dir}/pyproject.toml")
+                session_cache_set "_warm_py_pyproject_hash" "$pyp_hash"
+            fi
+
+            session_cache_set "_warm_project_type" "python"
+            ;;
+
+        bash|shell)
+            # Bash project preloading
+            session_cache_set "_warm_project_type" "bash"
+
+            # Cache shell detection info
+            session_cache_set "_warm_bash_version" "${BASH_VERSION:-unknown}"
+            ;;
+
+        go|golang)
+            # Go project preloading
+            if [[ -f "${project_dir}/go.mod" ]]; then
+                local mod_hash
+                mod_hash=$(_cache_sha256_file "${project_dir}/go.mod")
+                session_cache_set "_warm_go_mod_hash" "$mod_hash"
+            fi
+
+            session_cache_set "_warm_project_type" "go"
+            ;;
+
+        rust|cargo)
+            # Rust project preloading
+            if [[ -f "${project_dir}/Cargo.toml" ]]; then
+                local cargo_hash
+                cargo_hash=$(_cache_sha256_file "${project_dir}/Cargo.toml")
+                session_cache_set "_warm_rust_cargo_hash" "$cargo_hash"
+            fi
+
+            session_cache_set "_warm_project_type" "rust"
+            ;;
+
+        *)
+            # Generic preloading - detect project type
+            if [[ -f "${project_dir}/package.json" ]]; then
+                cache_warm "project-type=node" "$project_dir"
+            elif [[ -f "${project_dir}/requirements.txt" ]] || [[ -f "${project_dir}/pyproject.toml" ]]; then
+                cache_warm "project-type=python" "$project_dir"
+            elif [[ -f "${project_dir}/go.mod" ]]; then
+                cache_warm "project-type=go" "$project_dir"
+            elif [[ -f "${project_dir}/Cargo.toml" ]]; then
+                cache_warm "project-type=rust" "$project_dir"
+            else
+                session_cache_set "_warm_project_type" "unknown"
+            fi
+            ;;
+    esac
+
+    _cache_log debug "Cache warmed for project type: ${project_type}"
+    return 0
+}
+
+# =============================================================================
 # MODULE EXPORTS
 # =============================================================================
 
 MAINFRAME_CACHE_EXPORTS=(
     # Memoization
     memoize
+    memoize_clear
+    memoize_stats
     # Content-Addressable Store
     cas_store
     cas_get
     cas_exists
+    cas_gc
     # Session Cache
     session_cache_set
     session_cache_get
+    session_cache_has
     session_cache_clear
+    session_cache_stats
     # Cache Management
     cache_invalidate
     cache_clear
     cache_stats
+    cache_max_size
     cache_evict_lru
+    cache_warm
     # Dependency-Aware Invalidation
     cache_depends_on
     cache_check_deps

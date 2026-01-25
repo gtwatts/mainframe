@@ -5,8 +5,15 @@
 # Description: Enables all MAINFRAME functions to output structured JSON
 #              envelopes instead of raw text, making the toolkit machine-readable
 #              for AI coding agents. Provides mode detection, envelope functions,
-#              and the mainframe_call meta-wrapper for automatic USOP wrapping.
-# Version: 1.0.0
+#              timing helpers, and the output_wrap meta-wrapper.
+#
+# Modes:
+#   raw     - Plain text output (default, backward compatible)
+#   json    - Full JSON envelope with ok, data, meta, hint
+#   minimal - Compact JSON envelope (ok, data only)
+#   debug   - JSON envelope with extra debugging info (timestamp, caller)
+#
+# Version: 2.0.0
 # Requires: Bash 4.0+
 # =============================================================================
 # "Mainframe can make a computer do anything short of tap dance."
@@ -20,254 +27,91 @@ readonly _MAINFRAME_OUTPUT_LOADED=1
 # CONFIGURATION
 # =============================================================================
 
-# Environment variable to enable JSON output globally
+# Valid output modes
+readonly _OUTPUT_MODES="raw json minimal debug"
+
+# Environment variable to control output mode globally
 # Set MAINFRAME_OUTPUT=json to activate structured output
-MAINFRAME_OUTPUT="${MAINFRAME_OUTPUT:-text}"
+MAINFRAME_OUTPUT="${MAINFRAME_OUTPUT:-raw}"
+
+# Timer state (global to support timing across calls)
+_MAINFRAME_OUTPUT_START_MS=""
 
 # =============================================================================
-# OUTPUT MODE DETECTION
+# OUTPUT MODE MANAGEMENT
 # =============================================================================
 
-# Check if JSON output is requested
-# Returns 0 if MAINFRAME_OUTPUT=json
-# Usage: output_is_json && echo "JSON mode active"
-output_is_json() {
-    [[ "${MAINFRAME_OUTPUT:-text}" == "json" ]]
+# Initialize output system
+# Sets default mode if not already set via environment
+# Usage: output_init
+output_init() {
+    MAINFRAME_OUTPUT="${MAINFRAME_OUTPUT:-raw}"
+    return 0
 }
 
-# Returns the current output format: "json" or "text"
-# Usage: fmt=$(output_format)
-output_format() {
-    if output_is_json; then
-        printf 'json'
-    else
-        printf 'text'
+# Get or set output mode
+# Without args: returns current mode
+# With arg: sets mode if valid, returns 1 if invalid
+# Usage: output_mode              # Get mode
+# Usage: output_mode "json"       # Set mode
+output_mode() {
+    if [[ $# -eq 0 ]]; then
+        printf '%s' "${MAINFRAME_OUTPUT:-raw}"
+        return 0
     fi
-}
 
-# =============================================================================
-# JSON HELPERS
-# =============================================================================
-
-# Escape a string for safe JSON embedding
-# Handles: quotes, backslashes, newlines, tabs, carriage returns,
-#           backspace, form feed, and all control characters (< 0x20)
-# Usage: escaped=$(output_json_escape "hello \"world\"")
-output_json_escape() {
-    local str="$1"
-    local result=""
-    local i char
-
-    for ((i=0; i<${#str}; i++)); do
-        char="${str:i:1}"
-        case "$char" in
-            '"')   result+='\"' ;;
-            '\')   result+='\\' ;;
-            $'\b') result+='\b' ;;
-            $'\f') result+='\f' ;;
-            $'\n') result+='\n' ;;
-            $'\r') result+='\r' ;;
-            $'\t') result+='\t' ;;
-            *)
-                # Check for control characters (< 0x20)
-                if [[ "$char" < $'\x20' ]]; then
-                    printf -v char '\\u%04x' "'$char"
-                fi
-                result+="$char"
-                ;;
-        esac
-    done
-
-    printf '%s' "$result"
-}
-
-# Emit a JSON key-value pair with string value
-# Usage: output_json_string "key" "value"
-# Output: "key":"value"
-output_json_string() {
-    local key="$1"
-    local value="$2"
-    printf '"%s":"%s"' "$(output_json_escape "$key")" "$(output_json_escape "$value")"
-}
-
-# Emit a JSON key-value pair with number value
-# Usage: output_json_number "key" 42
-# Output: "key":42
-output_json_number() {
-    local key="$1"
-    local value="$2"
-    # Validate number format (integer, float, or scientific notation)
-    if [[ "$value" =~ ^-?[0-9]+\.?[0-9]*([eE][-+]?[0-9]+)?$ ]]; then
-        printf '"%s":%s' "$(output_json_escape "$key")" "$value"
-    else
-        printf '"%s":null' "$(output_json_escape "$key")"
-        return 1
-    fi
-}
-
-# Emit a JSON key-value pair with boolean value
-# Usage: output_json_bool "key" true
-# Output: "key":true
-output_json_bool() {
-    local key="$1"
-    local value="$2"
-    case "${value,,}" in
-        true|1|yes|on)  printf '"%s":true' "$(output_json_escape "$key")" ;;
-        false|0|no|off) printf '"%s":false' "$(output_json_escape "$key")" ;;
-        *) printf '"%s":null' "$(output_json_escape "$key")"; return 1 ;;
+    local new_mode="$1"
+    case " $_OUTPUT_MODES " in
+        *" $new_mode "*)
+            MAINFRAME_OUTPUT="$new_mode"
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
     esac
 }
 
-# Emit a JSON key-value pair with null value
-# Usage: output_json_null "key"
-# Output: "key":null
-output_json_null() {
-    local key="$1"
-    printf '"%s":null' "$(output_json_escape "$key")"
+# =============================================================================
+# MODE CHECK FUNCTIONS
+# =============================================================================
+
+# Check if JSON output mode is active
+# Returns 0 if MAINFRAME_OUTPUT=json
+# Usage: output_is_json && echo "JSON mode active"
+output_is_json() {
+    [[ "${MAINFRAME_OUTPUT:-raw}" == "json" ]]
 }
 
-# Read stdin lines and output a JSON array of strings
-# Usage: echo -e "line1\nline2" | output_json_array_from_lines
-# Output: ["line1","line2"]
-output_json_array_from_lines() {
-    local first=true
-    printf '['
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        $first || printf ','
-        first=false
-        printf '"%s"' "$(output_json_escape "$line")"
-    done
-    printf ']'
+# Check if raw output mode is active
+# Returns 0 if MAINFRAME_OUTPUT=raw or unset
+# Usage: output_is_raw && echo "Raw mode active"
+output_is_raw() {
+    [[ "${MAINFRAME_OUTPUT:-raw}" == "raw" ]]
+}
+
+# Check if minimal output mode is active
+# Returns 0 if MAINFRAME_OUTPUT=minimal
+# Usage: output_is_minimal && echo "Minimal mode active"
+output_is_minimal() {
+    [[ "${MAINFRAME_OUTPUT:-raw}" == "minimal" ]]
+}
+
+# Check if debug output mode is active
+# Returns 0 if MAINFRAME_OUTPUT=debug
+# Usage: output_is_debug && echo "Debug mode active"
+output_is_debug() {
+    [[ "${MAINFRAME_OUTPUT:-raw}" == "debug" ]]
+}
+
+# Returns the current output format (backward compat alias)
+# Usage: fmt=$(output_format)
+output_format() {
+    printf '%s' "${MAINFRAME_OUTPUT:-raw}"
 }
 
 # =============================================================================
-# USOP ENVELOPE FUNCTIONS
-# =============================================================================
-
-# Emit a success envelope
-# Usage: output_success "result_data" ["message"]
-# Output: {"status":"success","data":"result_data","message":"Operation completed"}
-output_success() {
-    local data="$1"
-    local message="${2:-}"
-
-    printf '{"status":"success","data":"%s"' "$(output_json_escape "$data")"
-    if [[ -n "$message" ]]; then
-        printf ',"message":"%s"' "$(output_json_escape "$message")"
-    fi
-    printf '}\n'
-}
-
-# Emit an error envelope
-# Usage: output_error "error message" [exit_code] ["context"]
-# Output: {"status":"error","error":"error message","code":1,"context":"..."}
-output_error() {
-    local error_msg="$1"
-    local exit_code="${2:-1}"
-    local context="${3:-}"
-
-    printf '{"status":"error","error":"%s","code":%d' "$(output_json_escape "$error_msg")" "$exit_code"
-    if [[ -n "$context" ]]; then
-        printf ',"context":"%s"' "$(output_json_escape "$context")"
-    fi
-    printf '}\n'
-}
-
-# Emit a list/array envelope
-# Usage: output_list item1 item2 item3
-# Output: {"status":"success","data":["item1","item2","item3"],"count":3}
-output_list() {
-    local count=$#
-    local first=true
-
-    printf '{"status":"success","data":['
-    for item in "$@"; do
-        $first || printf ','
-        first=false
-        printf '"%s"' "$(output_json_escape "$item")"
-    done
-    printf '],"count":%d}\n' "$count"
-}
-
-# Emit a key-value object envelope
-# Supports typed values via key:type=value syntax
-# Types: number, bool, null, raw (default: string)
-#
-# Usage: output_object "key1=val1" "key2=val2" "key3:number=42"
-# Output: {"status":"success","data":{"key1":"val1","key2":"val2","key3":42}}
-output_object() {
-    local first=true
-
-    printf '{"status":"success","data":{'
-    for pair in "$@"; do
-        local key type value
-
-        # Parse key:type=value or key=value
-        if [[ "$pair" =~ ^([^:=]+):([^=]+)=(.*)$ ]]; then
-            key="${BASH_REMATCH[1]}"
-            type="${BASH_REMATCH[2]}"
-            value="${BASH_REMATCH[3]}"
-        elif [[ "$pair" =~ ^([^=]+)=(.*)$ ]]; then
-            key="${BASH_REMATCH[1]}"
-            type="string"
-            value="${BASH_REMATCH[2]}"
-        else
-            continue
-        fi
-
-        $first || printf ','
-        first=false
-
-        printf '"%s":' "$(output_json_escape "$key")"
-        case "$type" in
-            number)
-                if [[ "$value" =~ ^-?[0-9]+\.?[0-9]*([eE][-+]?[0-9]+)?$ ]]; then
-                    printf '%s' "$value"
-                else
-                    printf 'null'
-                fi
-                ;;
-            bool)
-                case "${value,,}" in
-                    true|1|yes|on)  printf 'true' ;;
-                    false|0|no|off) printf 'false' ;;
-                    *) printf 'null' ;;
-                esac
-                ;;
-            null)
-                printf 'null'
-                ;;
-            raw)
-                printf '%s' "$value"
-                ;;
-            *)
-                # Default: string
-                printf '"%s"' "$(output_json_escape "$value")"
-                ;;
-        esac
-    done
-    printf '}}\n'
-}
-
-# Emit a progress envelope for streaming/long operations
-# Usage: output_progress "step_name" current total ["message"]
-# Output: {"status":"progress","step":"step_name","current":3,"total":10,"message":"..."}
-output_progress() {
-    local step="$1"
-    local current="$2"
-    local total="$3"
-    local message="${4:-}"
-
-    printf '{"status":"progress","step":"%s","current":%d,"total":%d' \
-        "$(output_json_escape "$step")" "$current" "$total"
-    if [[ -n "$message" ]]; then
-        printf ',"message":"%s"' "$(output_json_escape "$message")"
-    fi
-    printf '}\n'
-}
-
-# =============================================================================
-# mainframe_call META-WRAPPER
+# TIMING FUNCTIONS
 # =============================================================================
 
 # Get current time in milliseconds for duration measurement
@@ -295,18 +139,760 @@ _output_now_ms() {
     fi
 }
 
+# Start timing for output operations
+# Usage: output_timer_start
+output_timer_start() {
+    _MAINFRAME_OUTPUT_START_MS=$(_output_now_ms)
+}
+
+# Get elapsed time since timer_start in milliseconds
+# Returns 0 if timer was not started
+# Usage: elapsed=$(output_timer_elapsed)
+output_timer_elapsed() {
+    if [[ -z "${_MAINFRAME_OUTPUT_START_MS:-}" ]]; then
+        printf '0'
+        return 0
+    fi
+
+    local end_ms elapsed
+    end_ms=$(_output_now_ms)
+    elapsed=$((end_ms - _MAINFRAME_OUTPUT_START_MS))
+
+    # Guard against negative duration (clock skew / fallback timer issues)
+    if [[ $elapsed -lt 0 ]]; then
+        elapsed=0
+    fi
+
+    printf '%d' "$elapsed"
+}
+
+# =============================================================================
+# JSON ESCAPE HELPER
+# =============================================================================
+
+# Escape a string for safe JSON embedding
+# Handles: quotes, backslashes, newlines, tabs, carriage returns,
+#          backspace, form feed, and all control characters (< 0x20)
+# Usage: escaped=$(_output_escape "hello \"world\"")
+_output_escape() {
+    local str="$1"
+    local result=""
+    local i char
+
+    for ((i=0; i<${#str}; i++)); do
+        char="${str:i:1}"
+        case "$char" in
+            '"')   result+='\"' ;;
+            '\')   result+='\\' ;;
+            $'\b') result+='\b' ;;
+            $'\f') result+='\f' ;;
+            $'\n') result+='\n' ;;
+            $'\r') result+='\r' ;;
+            $'\t') result+='\t' ;;
+            *)
+                # Check for control characters (< 0x20)
+                if [[ "$char" < $'\x20' ]]; then
+                    printf -v char '\\u%04x' "'$char"
+                fi
+                result+="$char"
+                ;;
+        esac
+    done
+
+    printf '%s' "$result"
+}
+
+# Nameref variant for performance (avoids subshell)
+# Usage: _output_escape_v result_var "hello \"world\""
+_output_escape_v() {
+    local -n __oev_out=$1
+    local str="$2"
+    local i char
+
+    __oev_out=""
+    for ((i=0; i<${#str}; i++)); do
+        char="${str:i:1}"
+        case "$char" in
+            '"')   __oev_out+='\"' ;;
+            '\')   __oev_out+='\\' ;;
+            $'\b') __oev_out+='\b' ;;
+            $'\f') __oev_out+='\f' ;;
+            $'\n') __oev_out+='\n' ;;
+            $'\r') __oev_out+='\r' ;;
+            $'\t') __oev_out+='\t' ;;
+            *)
+                # Check for control characters (< 0x20)
+                if [[ "$char" < $'\x20' ]]; then
+                    printf -v char '\\u%04x' "'$char"
+                fi
+                __oev_out+="$char"
+                ;;
+        esac
+    done
+}
+
+# Public alias for backward compatibility
+output_json_escape() {
+    _output_escape "$@"
+}
+
+# =============================================================================
+# CORE ENVELOPE FUNCTIONS - USOP FORMAT
+# =============================================================================
+
+# Build meta object based on mode and timer state
+# Usage: meta=$(_output_build_meta)
+_output_build_meta() {
+    local mode="${MAINFRAME_OUTPUT:-raw}"
+    local meta=""
+
+    # Check if timer was started
+    if [[ -n "${_MAINFRAME_OUTPUT_START_MS:-}" ]]; then
+        local elapsed
+        elapsed=$(output_timer_elapsed)
+        meta="\"elapsed_ms\":$elapsed"
+    fi
+
+    # Debug mode adds extra info
+    if [[ "$mode" == "debug" ]]; then
+        local timestamp caller_info
+        timestamp=$(_output_now_ms)
+
+        # Get caller function name (skip internal frames)
+        local frame=1
+        local line func file
+        while caller $frame 2>/dev/null | read -r line func file; do
+            if [[ "$func" != _output_* && "$func" != output_* ]]; then
+                caller_info="$func"
+                break
+            fi
+            ((frame++))
+        done
+
+        [[ -n "$meta" ]] && meta+=","
+        meta+="\"timestamp\":$timestamp"
+        if [[ -n "${caller_info:-}" ]]; then
+            meta+=",\"caller\":\"$caller_info\""
+        fi
+    fi
+
+    printf '%s' "$meta"
+}
+
+# Emit a success envelope
+# Format depends on MAINFRAME_OUTPUT mode:
+#   raw:     plain data
+#   json:    {"ok":true,"data":"...","meta":{...},"hint":"..."}
+#   minimal: {"ok":true,"data":"..."}
+#   debug:   json + timestamp + caller
+#
+# Usage: output_success "result_data" ["hint"]
+output_success() {
+    local data="$1"
+    local hint="${2:-}"
+    local mode="${MAINFRAME_OUTPUT:-raw}"
+
+    case "$mode" in
+        raw)
+            printf '%s' "$data"
+            ;;
+        minimal)
+            printf '{"ok":true,"data":"%s"}' "$(_output_escape "$data")"
+            ;;
+        json|debug)
+            local escaped_data meta
+            escaped_data=$(_output_escape "$data")
+            meta=$(_output_build_meta)
+
+            printf '{"ok":true,"data":"%s"' "$escaped_data"
+
+            if [[ -n "$meta" ]]; then
+                printf ',"meta":{%s}' "$meta"
+            fi
+
+            if [[ -n "$hint" ]]; then
+                printf ',"hint":"%s"' "$(_output_escape "$hint")"
+            fi
+
+            printf '}'
+            ;;
+    esac
+}
+
+# Emit an error envelope
+# Format depends on MAINFRAME_OUTPUT mode:
+#   raw:     plain message to stderr
+#   json:    {"ok":false,"error":{"code":"...","msg":"...","suggestion":"..."}}
+#   minimal: {"ok":false,"error":{"code":"...","msg":"..."}}
+#   debug:   json + timestamp + caller
+#
+# Usage: output_error "code" "message" ["suggestion"]
+output_error() {
+    local code="$1"
+    local msg="$2"
+    local suggestion="${3:-}"
+    local mode="${MAINFRAME_OUTPUT:-raw}"
+
+    case "$mode" in
+        raw)
+            printf '%s\n' "$msg" >&2
+            ;;
+        minimal)
+            printf '{"ok":false,"error":{"code":"%s","msg":"%s"}}' \
+                "$(_output_escape "$code")" \
+                "$(_output_escape "$msg")"
+            ;;
+        json|debug)
+            local meta
+            meta=$(_output_build_meta)
+
+            printf '{"ok":false,"error":{"code":"%s","msg":"%s"' \
+                "$(_output_escape "$code")" \
+                "$(_output_escape "$msg")"
+
+            if [[ -n "$suggestion" ]]; then
+                printf ',"suggestion":"%s"' "$(_output_escape "$suggestion")"
+            fi
+
+            printf '}'
+
+            if [[ -n "$meta" ]]; then
+                printf ',"meta":{%s}' "$meta"
+            fi
+
+            printf '}'
+            ;;
+    esac
+}
+
+# =============================================================================
+# RAW OUTPUT (MODE-INDEPENDENT)
+# =============================================================================
+
+# Emit raw text regardless of output mode
+# Always bypasses envelope formatting
+# Usage: output_raw "plain text"
+output_raw() {
+    printf '%s' "$1"
+}
+
+# Emit JSON string unchanged regardless of output mode
+# Useful for custom JSON that shouldn't be wrapped
+# Usage: output_json '{"custom":"data"}'
+output_json() {
+    printf '%s' "$1"
+}
+
+# =============================================================================
+# TYPE-SPECIFIC OUTPUT HELPERS
+# =============================================================================
+
+# Emit string data
+# Usage: output_string "hello"
+output_string() {
+    local data="$1"
+    local hint="${2:-}"
+    local mode="${MAINFRAME_OUTPUT:-raw}"
+
+    case "$mode" in
+        raw)
+            printf '%s' "$data"
+            ;;
+        *)
+            output_success "$data" "$hint"
+            ;;
+    esac
+}
+
+# Emit integer data
+# Usage: output_int 42
+output_int() {
+    local data="$1"
+    local hint="${2:-}"
+    local mode="${MAINFRAME_OUTPUT:-raw}"
+
+    case "$mode" in
+        raw)
+            printf '%s' "$data"
+            ;;
+        minimal)
+            printf '{"ok":true,"data":%d}' "$data"
+            ;;
+        json|debug)
+            local meta
+            meta=$(_output_build_meta)
+            printf '{"ok":true,"data":%d' "$data"
+            if [[ -n "$meta" ]]; then
+                printf ',"meta":{%s}' "$meta"
+            fi
+            if [[ -n "$hint" ]]; then
+                printf ',"hint":"%s"' "$(_output_escape "$hint")"
+            fi
+            printf '}'
+            ;;
+    esac
+}
+
+# Emit float data
+# Usage: output_float 3.14
+output_float() {
+    local data="$1"
+    local hint="${2:-}"
+    local mode="${MAINFRAME_OUTPUT:-raw}"
+
+    case "$mode" in
+        raw)
+            printf '%s' "$data"
+            ;;
+        minimal)
+            printf '{"ok":true,"data":%s}' "$data"
+            ;;
+        json|debug)
+            local meta
+            meta=$(_output_build_meta)
+            printf '{"ok":true,"data":%s' "$data"
+            if [[ -n "$meta" ]]; then
+                printf ',"meta":{%s}' "$meta"
+            fi
+            if [[ -n "$hint" ]]; then
+                printf ',"hint":"%s"' "$(_output_escape "$hint")"
+            fi
+            printf '}'
+            ;;
+    esac
+}
+
+# Emit boolean data
+# Usage: output_bool true
+output_bool() {
+    local data="$1"
+    local hint="${2:-}"
+    local mode="${MAINFRAME_OUTPUT:-raw}"
+    local bool_val
+
+    # Normalize to true/false
+    case "${data,,}" in
+        true|1|yes|on) bool_val="true" ;;
+        *)             bool_val="false" ;;
+    esac
+
+    case "$mode" in
+        raw)
+            printf '%s' "$bool_val"
+            ;;
+        minimal)
+            printf '{"ok":true,"data":%s}' "$bool_val"
+            ;;
+        json|debug)
+            local meta
+            meta=$(_output_build_meta)
+            printf '{"ok":true,"data":%s' "$bool_val"
+            if [[ -n "$meta" ]]; then
+                printf ',"meta":{%s}' "$meta"
+            fi
+            if [[ -n "$hint" ]]; then
+                printf ',"hint":"%s"' "$(_output_escape "$hint")"
+            fi
+            printf '}'
+            ;;
+    esac
+}
+
+# Emit JSON object data (already formatted JSON)
+# Usage: output_json_object '{"key":"value"}'
+output_json_object() {
+    local data="$1"
+    local hint="${2:-}"
+    local mode="${MAINFRAME_OUTPUT:-raw}"
+
+    case "$mode" in
+        raw)
+            printf '%s' "$data"
+            ;;
+        minimal)
+            printf '{"ok":true,"data":%s}' "$data"
+            ;;
+        json|debug)
+            local meta
+            meta=$(_output_build_meta)
+            printf '{"ok":true,"data":%s' "$data"
+            if [[ -n "$meta" ]]; then
+                printf ',"meta":{%s}' "$meta"
+            fi
+            if [[ -n "$hint" ]]; then
+                printf ',"hint":"%s"' "$(_output_escape "$hint")"
+            fi
+            printf '}'
+            ;;
+    esac
+}
+
+# Emit JSON array data (already formatted JSON)
+# Usage: output_json_array '["a","b","c"]'
+output_json_array() {
+    local data="$1"
+    local hint="${2:-}"
+    local mode="${MAINFRAME_OUTPUT:-raw}"
+
+    case "$mode" in
+        raw)
+            printf '%s' "$data"
+            ;;
+        minimal)
+            printf '{"ok":true,"data":%s}' "$data"
+            ;;
+        json|debug)
+            local meta
+            meta=$(_output_build_meta)
+            printf '{"ok":true,"data":%s' "$data"
+            if [[ -n "$meta" ]]; then
+                printf ',"meta":{%s}' "$meta"
+            fi
+            if [[ -n "$hint" ]]; then
+                printf ',"hint":"%s"' "$(_output_escape "$hint")"
+            fi
+            printf '}'
+            ;;
+    esac
+}
+
+# Emit file path data
+# Usage: output_file_path "/tmp/test.txt"
+output_file_path() {
+    output_string "$@"
+}
+
+# Emit void/null data
+# Usage: output_void
+output_void() {
+    local hint="${1:-}"
+    local mode="${MAINFRAME_OUTPUT:-raw}"
+
+    case "$mode" in
+        raw)
+            # No output for void in raw mode
+            ;;
+        minimal)
+            printf '{"ok":true,"data":null}'
+            ;;
+        json|debug)
+            local meta
+            meta=$(_output_build_meta)
+            printf '{"ok":true,"data":null'
+            if [[ -n "$meta" ]]; then
+                printf ',"meta":{%s}' "$meta"
+            fi
+            if [[ -n "$hint" ]]; then
+                printf ',"hint":"%s"' "$(_output_escape "$hint")"
+            fi
+            printf '}'
+            ;;
+    esac
+}
+
+# =============================================================================
+# NAMEREF VARIANT (HIGH PERFORMANCE)
+# =============================================================================
+
+# Store output in variable (avoids subshell)
+# Usage: output_v result_var "data" ["hint"]
+output_v() {
+    local -n __ov_out=$1
+    local data="$2"
+    local hint="${3:-}"
+    local mode="${MAINFRAME_OUTPUT:-raw}"
+    local __ov_escaped meta
+
+    case "$mode" in
+        raw)
+            __ov_out="$data"
+            ;;
+        minimal)
+            _output_escape_v __ov_escaped "$data"
+            __ov_out="{\"ok\":true,\"data\":\"${__ov_escaped}\"}"
+            ;;
+        json|debug)
+            _output_escape_v __ov_escaped "$data"
+            meta=$(_output_build_meta)
+
+            __ov_out="{\"ok\":true,\"data\":\"${__ov_escaped}\""
+
+            if [[ -n "$meta" ]]; then
+                __ov_out+=",\"meta\":{${meta}}"
+            fi
+
+            if [[ -n "$hint" ]]; then
+                local __ov_hint_escaped
+                _output_escape_v __ov_hint_escaped "$hint"
+                __ov_out+=",\"hint\":\"${__ov_hint_escaped}\""
+            fi
+
+            __ov_out+="}"
+            ;;
+    esac
+}
+
+# =============================================================================
+# OUTPUT WRAPPING
+# =============================================================================
+
+# Wrap any function call with automatic USOP envelope
+# Captures stdout, exit code, and timing
+#
+# Usage: output_wrap function_name [args...]
+output_wrap() {
+    local func_name="$1"
+    shift
+    local mode="${MAINFRAME_OUTPUT:-raw}"
+
+    # Start timing
+    local start_ms end_ms duration_ms
+    start_ms=$(_output_now_ms)
+
+    # Execute function, capturing output
+    local func_output func_exit_code
+    func_output=$("$func_name" "$@" 2>&1)
+    func_exit_code=$?
+
+    # Calculate duration
+    end_ms=$(_output_now_ms)
+    duration_ms=$((end_ms - start_ms))
+    [[ $duration_ms -lt 0 ]] && duration_ms=0
+
+    case "$mode" in
+        raw)
+            printf '%s' "$func_output"
+            return $func_exit_code
+            ;;
+        minimal)
+            if [[ $func_exit_code -eq 0 ]]; then
+                printf '{"ok":true,"data":"%s"}' "$(_output_escape "$func_output")"
+            else
+                printf '{"ok":false,"error":{"code":"E_FUNC_FAILED","msg":"%s"}}' \
+                    "$(_output_escape "$func_output")"
+            fi
+            return $func_exit_code
+            ;;
+        json|debug)
+            local escaped_output meta
+            escaped_output=$(_output_escape "$func_output")
+
+            # Build meta with elapsed time
+            meta="\"elapsed_ms\":$duration_ms"
+            if [[ "$mode" == "debug" ]]; then
+                meta+=",\"timestamp\":$start_ms,\"function\":\"$func_name\""
+            fi
+
+            if [[ $func_exit_code -eq 0 ]]; then
+                printf '{"ok":true,"data":"%s","meta":{%s}}' "$escaped_output" "$meta"
+            else
+                printf '{"ok":false,"error":{"code":"E_FUNC_FAILED","msg":"%s"},"meta":{%s}}' \
+                    "$escaped_output" "$meta"
+            fi
+            return $func_exit_code
+            ;;
+    esac
+}
+
+# =============================================================================
+# TEMPORARY MODE CHANGE
+# =============================================================================
+
+# Execute command with temporary output mode
+# Restores original mode after execution
+#
+# Usage: output_with_mode "json" output_success "data"
+output_with_mode() {
+    local temp_mode="$1"
+    shift
+    local original_mode="${MAINFRAME_OUTPUT:-raw}"
+
+    MAINFRAME_OUTPUT="$temp_mode"
+    "$@"
+    local exit_code=$?
+    MAINFRAME_OUTPUT="$original_mode"
+
+    return $exit_code
+}
+
+# =============================================================================
+# BACKWARD COMPATIBILITY - Legacy Functions
+# =============================================================================
+
+# Legacy output_success (old format)
+# Kept for backward compatibility with existing code
+# Usage: output_success_legacy "data" ["message"]
+output_success_legacy() {
+    local data="$1"
+    local message="${2:-}"
+
+    printf '{"status":"success","data":"%s"' "$(_output_escape "$data")"
+    if [[ -n "$message" ]]; then
+        printf ',"message":"%s"' "$(_output_escape "$message")"
+    fi
+    printf '}\n'
+}
+
+# Legacy output_error (old format)
+# Usage: output_error_legacy "message" [exit_code] ["context"]
+output_error_legacy() {
+    local error_msg="$1"
+    local exit_code="${2:-1}"
+    local context="${3:-}"
+
+    printf '{"status":"error","error":"%s","code":%d' "$(_output_escape "$error_msg")" "$exit_code"
+    if [[ -n "$context" ]]; then
+        printf ',"context":"%s"' "$(_output_escape "$context")"
+    fi
+    printf '}\n'
+}
+
+# Emit a JSON key-value pair with string value
+# Usage: output_json_string "key" "value"
+# Output: "key":"value"
+output_json_string_kv() {
+    local key="$1"
+    local value="$2"
+    printf '"%s":"%s"' "$(_output_escape "$key")" "$(_output_escape "$value")"
+}
+
+# Emit a JSON key-value pair with number value
+# Usage: output_json_number "key" 42
+# Output: "key":42
+output_json_number() {
+    local key="$1"
+    local value="$2"
+    if [[ "$value" =~ ^-?[0-9]+\.?[0-9]*([eE][-+]?[0-9]+)?$ ]]; then
+        printf '"%s":%s' "$(_output_escape "$key")" "$value"
+    else
+        printf '"%s":null' "$(_output_escape "$key")"
+        return 1
+    fi
+}
+
+# Emit a JSON key-value pair with boolean value
+# Usage: output_json_bool "key" true
+# Output: "key":true
+output_json_bool() {
+    local key="$1"
+    local value="$2"
+    case "${value,,}" in
+        true|1|yes|on)  printf '"%s":true' "$(_output_escape "$key")" ;;
+        false|0|no|off) printf '"%s":false' "$(_output_escape "$key")" ;;
+        *) printf '"%s":null' "$(_output_escape "$key")"; return 1 ;;
+    esac
+}
+
+# Emit a JSON key-value pair with null value
+# Usage: output_json_null "key"
+# Output: "key":null
+output_json_null() {
+    local key="$1"
+    printf '"%s":null' "$(_output_escape "$key")"
+}
+
+# Read stdin lines and output a JSON array of strings
+# Usage: echo -e "line1\nline2" | output_json_array_from_lines
+# Output: ["line1","line2"]
+output_json_array_from_lines() {
+    local first=true
+    printf '['
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        $first || printf ','
+        first=false
+        printf '"%s"' "$(_output_escape "$line")"
+    done
+    printf ']'
+}
+
+# Emit a list/array envelope (legacy format)
+# Usage: output_list item1 item2 item3
+# Output: {"status":"success","data":["item1","item2","item3"],"count":3}
+output_list() {
+    local count=$#
+    local first=true
+
+    printf '{"status":"success","data":['
+    for item in "$@"; do
+        $first || printf ','
+        first=false
+        printf '"%s"' "$(_output_escape "$item")"
+    done
+    printf '],"count":%d}\n' "$count"
+}
+
+# Emit a key-value object envelope (legacy format)
+# Usage: output_object "key1=val1" "key2=val2" "key3:number=42"
+output_object() {
+    local first=true
+
+    printf '{"status":"success","data":{'
+    for pair in "$@"; do
+        local key type value
+
+        if [[ "$pair" =~ ^([^:=]+):([^=]+)=(.*)$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            type="${BASH_REMATCH[2]}"
+            value="${BASH_REMATCH[3]}"
+        elif [[ "$pair" =~ ^([^=]+)=(.*)$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            type="string"
+            value="${BASH_REMATCH[2]}"
+        else
+            continue
+        fi
+
+        $first || printf ','
+        first=false
+
+        printf '"%s":' "$(_output_escape "$key")"
+        case "$type" in
+            number)
+                if [[ "$value" =~ ^-?[0-9]+\.?[0-9]*([eE][-+]?[0-9]+)?$ ]]; then
+                    printf '%s' "$value"
+                else
+                    printf 'null'
+                fi
+                ;;
+            bool)
+                case "${value,,}" in
+                    true|1|yes|on)  printf 'true' ;;
+                    false|0|no|off) printf 'false' ;;
+                    *) printf 'null' ;;
+                esac
+                ;;
+            null)   printf 'null' ;;
+            raw)    printf '%s' "$value" ;;
+            *)      printf '"%s"' "$(_output_escape "$value")" ;;
+        esac
+    done
+    printf '}}\n'
+}
+
+# Emit a progress envelope for streaming/long operations
+# Usage: output_progress "step_name" current total ["message"]
+output_progress() {
+    local step="$1"
+    local current="$2"
+    local total="$3"
+    local message="${4:-}"
+
+    printf '{"status":"progress","step":"%s","current":%d,"total":%d' \
+        "$(_output_escape "$step")" "$current" "$total"
+    if [[ -n "$message" ]]; then
+        printf ',"message":"%s"' "$(_output_escape "$message")"
+    fi
+    printf '}\n'
+}
+
+# =============================================================================
+# mainframe_call META-WRAPPER (Legacy)
+# =============================================================================
+
 # Invoke any MAINFRAME function with automatic USOP wrapping
 # Captures stdout, stderr, exit code, and wraps in JSON envelope
 #
 # Usage: mainframe_call function_name [args...]
-# Output: {
-#   "status": "success|error",
-#   "function": "function_name",
-#   "data": "stdout content",
-#   "stderr": "stderr content",
-#   "exit_code": 0,
-#   "duration_ms": 42
-# }
 mainframe_call() {
     local func_name="$1"
     shift
@@ -314,8 +900,8 @@ mainframe_call() {
     # Validate function exists
     if ! declare -F "$func_name" &>/dev/null; then
         printf '{"status":"error","function":"%s","error":"Function not found: %s","exit_code":127,"duration_ms":0}\n' \
-            "$(output_json_escape "$func_name")" \
-            "$(output_json_escape "$func_name")"
+            "$(_output_escape "$func_name")" \
+            "$(_output_escape "$func_name")"
         return 127
     fi
 
@@ -335,10 +921,8 @@ mainframe_call() {
     end_ms=$(_output_now_ms)
     duration_ms=$((end_ms - start_ms))
 
-    # Guard against negative duration (clock skew / fallback timer issues)
-    if [[ $duration_ms -lt 0 ]]; then
-        duration_ms=0
-    fi
+    # Guard against negative duration
+    [[ $duration_ms -lt 0 ]] && duration_ms=0
 
     # Read captured output
     local stdout_content stderr_content
@@ -359,28 +943,19 @@ mainframe_call() {
     # Build JSON envelope
     printf '{"status":"%s","function":"%s","data":"%s"' \
         "$status" \
-        "$(output_json_escape "$func_name")" \
-        "$(output_json_escape "$stdout_content")"
+        "$(_output_escape "$func_name")" \
+        "$(_output_escape "$stdout_content")"
 
     if [[ -n "$stderr_content" ]]; then
-        printf ',"stderr":"%s"' "$(output_json_escape "$stderr_content")"
+        printf ',"stderr":"%s"' "$(_output_escape "$stderr_content")"
     fi
 
     printf ',"exit_code":%d,"duration_ms":%d}\n' "$func_exit_code" "$duration_ms"
     return $func_exit_code
 }
 
-# =============================================================================
-# CONDITIONAL OUTPUT HELPER
-# =============================================================================
-
-# Auto-detect output mode and emit appropriate format
-# If MAINFRAME_OUTPUT=json, outputs json_data; otherwise outputs text_output
-#
+# Auto-detect output mode and emit appropriate format (legacy)
 # Usage: output_auto "plain text result" '{"status":"success","data":"value"}'
-# Usage inside functions:
-#   local result="computed value"
-#   output_auto "$result" "$(output_success "$result" "done")"
 output_auto() {
     local text_output="$1"
     local json_data="$2"
@@ -392,16 +967,11 @@ output_auto() {
 }
 
 # =============================================================================
-# STRUCTURED ERROR OBJECTS
+# STRUCTURED ERROR OBJECTS (Legacy)
 # =============================================================================
 
 # Create a rich error object with context for AI agent consumption
-# Produces valid JSON with error code, message, optional suggestion,
-# stack trace (caller chain), and arbitrary context key-value pairs.
-#
 # Usage: output_structured_error CODE "message" ["suggestion"] ["context_key=val"...]
-# Example: output_structured_error "FILE_NOT_FOUND" "Cannot read config" "Check path exists" "path=/etc/app.conf"
-# Returns: always returns 1 (error status)
 output_structured_error() {
     local code="${1:?error code required}"
     local message="${2:?error message required}"
@@ -410,12 +980,11 @@ output_structured_error() {
 
     local result
     result='{"status":"error"'
-    result+=',"code":"'"$(output_json_escape "$code")"'"'
-    result+=',"message":"'"$(output_json_escape "$message")"'"'
+    result+=',"code":"'"$(_output_escape "$code")"'"'
+    result+=',"message":"'"$(_output_escape "$message")"'"'
 
-    # Add suggestion if provided
     if [[ -n "$suggestion" ]]; then
-        result+=',"suggestion":"'"$(output_json_escape "$suggestion")"'"'
+        result+=',"suggestion":"'"$(_output_escape "$suggestion")"'"'
     fi
 
     # Add stack trace (caller chain)
@@ -440,7 +1009,7 @@ output_structured_error() {
             local val="${pair#*=}"
             $first || result+=','
             first=false
-            result+='"'"$(output_json_escape "$key")"'":"'"$(output_json_escape "$val")"'"'
+            result+='"'"$(_output_escape "$key")"'":"'"$(_output_escape "$val")"'"'
         done
         result+='}'
     fi
@@ -451,12 +1020,7 @@ output_structured_error() {
 }
 
 # Wrap a command and produce structured error on failure
-# On success: outputs stdout normally, returns 0
-# On failure: outputs structured error JSON with captured stderr, returns original exit code
-#
 # Usage: output_try command [args...]
-# Example: output_try ls /nonexistent
-# Example: result=$(output_try grep "pattern" file.txt)
 output_try() {
     local cmd_str="$*"
     local stdout_file stderr_file
@@ -474,7 +1038,6 @@ output_try() {
         local stderr_content
         stderr_content=$(<"$stderr_file")
         rm -f "$stdout_file" "$stderr_file"
-        # Provide default message if stderr is empty
         [[ -z "$stderr_content" ]] && stderr_content="Command exited with code $exit_code"
         output_structured_error \
             "COMMAND_FAILED" \
@@ -485,3 +1048,51 @@ output_try() {
         return $exit_code
     fi
 }
+
+# =============================================================================
+# MODULE EXPORTS
+# =============================================================================
+
+# List of public functions for documentation
+_OUTPUT_EXPORTS=(
+    # Mode management
+    output_init
+    output_mode
+    output_is_json
+    output_is_raw
+    output_is_minimal
+    output_is_debug
+    output_format
+    # Timing
+    output_timer_start
+    output_timer_elapsed
+    # Core USOP
+    output_success
+    output_error
+    output_raw
+    output_json
+    # Type helpers
+    output_string
+    output_int
+    output_float
+    output_bool
+    output_json_object
+    output_json_array
+    output_file_path
+    output_void
+    # Nameref variant
+    output_v
+    # Wrapping
+    output_wrap
+    output_with_mode
+    # Legacy
+    mainframe_call
+    output_auto
+    output_list
+    output_object
+    output_progress
+    output_structured_error
+    output_try
+    output_json_escape
+    output_json_array_from_lines
+)

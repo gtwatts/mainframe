@@ -199,7 +199,8 @@ docker_exec() {
     [[ -z "$name" || -z "$cmd" ]] && return 1
     docker_container_running "$name" || return 1
 
-    docker exec "$name" sh -c "$cmd"
+    # Security: use -- separator to prevent option injection
+    docker exec -- "$name" sh -c "$cmd"
 }
 
 # Execute command interactively in container
@@ -213,7 +214,8 @@ docker_exec_it() {
     [[ -z "$name" || -z "$cmd" ]] && return 1
     docker_container_running "$name" || return 1
 
-    docker exec -it "$name" sh -c "$cmd"
+    # Security: use -- separator to prevent option injection
+    docker exec -it -- "$name" sh -c "$cmd"
 }
 
 # =============================================================================
@@ -514,7 +516,8 @@ compose_exec() {
     [[ -z "$service" || -z "$cmd" ]] && return 1
     _docker_has_compose || return 1
 
-    _docker_compose_cmd -f "$compose_file" exec -T "$service" sh -c "$cmd"
+    # Security: use -- separator to prevent option injection
+    _docker_compose_cmd -f "$compose_file" exec -T -- "$service" sh -c "$cmd"
 }
 
 # Start compose services

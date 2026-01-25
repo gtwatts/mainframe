@@ -615,10 +615,24 @@ fi
 # Track which libraries have been loaded to prevent double-sourcing
 declare -gA _MAINFRAME_LOADED_LIBS 2>/dev/null || declare -A _MAINFRAME_LOADED_LIBS
 
+# Initialize lazy loading state
+# Called automatically during sourcing, but can be called again safely
+# Usage: _mainframe_lazy_init
+_mainframe_lazy_init() {
+    # Ensure associative array exists (idempotent)
+    if ! declare -p _MAINFRAME_LOADED_LIBS &>/dev/null 2>&1; then
+        declare -gA _MAINFRAME_LOADED_LIBS 2>/dev/null || declare -A _MAINFRAME_LOADED_LIBS
+    fi
+}
+
 # Load a single library by name (without .sh extension)
 # Usage: _mainframe_load_library "json"
+# Returns: 0 on success, 1 on failure (invalid name or file not found)
 _mainframe_load_library() {
     local lib_name="$1"
+
+    # Reject empty or whitespace-only names
+    [[ -z "${lib_name// /}" ]] && return 1
 
     # Sanitize: only allow alphanumeric, underscore, hyphen (prevent path traversal)
     [[ "$lib_name" =~ ^[a-zA-Z0-9_-]+$ ]] || return 1
@@ -628,11 +642,14 @@ _mainframe_load_library() {
     # Skip if already loaded
     [[ -n "${_MAINFRAME_LOADED_LIBS[${lib_name}]:-}" ]] && return 0
 
-    # Source if file exists
+    # Source if file exists, otherwise return failure
     if [[ -f "$lib_file" ]]; then
         source "$lib_file"
         _MAINFRAME_LOADED_LIBS["${lib_name}"]=1
+        return 0
     fi
+
+    return 1
 }
 
 # Load all libraries in a named tier
@@ -697,220 +714,143 @@ if [[ -n "${MAINFRAME_LIBS:-}" ]]; then
     _mainframe_load_selected "${MAINFRAME_LIBS}"
 else
     # Full loading: backward-compatible, source everything
+    # Uses _mainframe_load_library to track what's loaded
 
-# Source pure-string.sh for advanced string operations
-if [[ -f "${_MAINFRAME_LIB_DIR}/pure-string.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/pure-string.sh"
-fi
+    # Core tier libraries
+    _mainframe_load_library "pure-string"
+    _mainframe_load_library "pure-array"
+    _mainframe_load_library "pure-util"
+    _mainframe_load_library "pure-file"
+    _mainframe_load_library "json"
+    _mainframe_load_library "output"
+    _mainframe_load_library "errors"
+    _mainframe_load_library "ansi"
+    _mainframe_load_library "hints"
 
-# Source pure-array.sh for advanced array operations
-if [[ -f "${_MAINFRAME_LIB_DIR}/pure-array.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/pure-array.sh"
-fi
+    # Standard tier libraries
+    _mainframe_load_library "validation"
+    _mainframe_load_library "path"
+    _mainframe_load_library "env"
+    _mainframe_load_library "datetime"
+    _mainframe_load_library "http"
+    _mainframe_load_library "csv"
+    _mainframe_load_library "git"
+    _mainframe_load_library "docker"
+    _mainframe_load_library "crypto"
+    _mainframe_load_library "proc"
+    _mainframe_load_library "args"
+    _mainframe_load_library "config"
+    _mainframe_load_library "log"
+    _mainframe_load_library "error"
+    _mainframe_load_library "tui"
+    _mainframe_load_library "template"
+    _mainframe_load_library "ci"
+    _mainframe_load_library "health"
+    _mainframe_load_library "device"
+    _mainframe_load_library "sysinfo"
+    _mainframe_load_library "service"
+    _mainframe_load_library "retry"
+    _mainframe_load_library "toml"
+    _mainframe_load_library "yaml"
 
-# Source pure-util.sh for utilities
-if [[ -f "${_MAINFRAME_LIB_DIR}/pure-util.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/pure-util.sh"
-fi
+    # Extended tier libraries
+    _mainframe_load_library "k8s"
+    _mainframe_load_library "semver"
+    _mainframe_load_library "functional"
+    _mainframe_load_library "stream"
+    _mainframe_load_library "pipe"
+    _mainframe_load_library "procsub"
+    _mainframe_load_library "async"
+    _mainframe_load_library "meta"
+    _mainframe_load_library "cli"
+    _mainframe_load_library "fzf"
+    _mainframe_load_library "compat"
+    _mainframe_load_library "safe"
+    _mainframe_load_library "guard"
 
-# Source pure-file.sh for file operations
-if [[ -f "${_MAINFRAME_LIB_DIR}/pure-file.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/pure-file.sh"
-fi
-
-# Source json.sh for JSON generation
-if [[ -f "${_MAINFRAME_LIB_DIR}/json.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/json.sh"
-fi
-
-# Source output.sh for Universal Structured Output Protocol (USOP)
-if [[ -f "${_MAINFRAME_LIB_DIR}/output.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/output.sh"
-fi
-
-# Source errors.sh for standardized error codes and recovery suggestions
-if [[ -f "${_MAINFRAME_LIB_DIR}/errors.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/errors.sh"
-fi
-
-# Source ansi.sh for terminal colors and UI
-if [[ -f "${_MAINFRAME_LIB_DIR}/ansi.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/ansi.sh"
-fi
-
-# Source async.sh for async/parallel operations
-if [[ -f "${_MAINFRAME_LIB_DIR}/async.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/async.sh"
-fi
-
-# Source semver.sh for semantic versioning
-if [[ -f "${_MAINFRAME_LIB_DIR}/semver.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/semver.sh"
-fi
-
-# Source args.sh for argument parsing
-if [[ -f "${_MAINFRAME_LIB_DIR}/args.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/args.sh"
-fi
-
-# Source config.sh for config file handling
-if [[ -f "${_MAINFRAME_LIB_DIR}/config.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/config.sh"
-fi
-
-# Source git.sh for git helper functions
-if [[ -f "${_MAINFRAME_LIB_DIR}/git.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/git.sh"
-fi
-
-# Source datetime.sh for date/time operations
-if [[ -f "${_MAINFRAME_LIB_DIR}/datetime.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/datetime.sh"
-fi
-
-# Source http.sh for HTTP client operations
-if [[ -f "${_MAINFRAME_LIB_DIR}/http.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/http.sh"
-fi
-
-# Source proc.sh for process management
-if [[ -f "${_MAINFRAME_LIB_DIR}/proc.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/proc.sh"
-fi
-
-# Source csv.sh for CSV parsing
-if [[ -f "${_MAINFRAME_LIB_DIR}/csv.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/csv.sh"
-fi
-
-# Source crypto.sh for hashing and encoding
-if [[ -f "${_MAINFRAME_LIB_DIR}/crypto.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/crypto.sh"
-fi
-
-# Source path.sh for path manipulation
-if [[ -f "${_MAINFRAME_LIB_DIR}/path.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/path.sh"
-fi
-
-# Source validation.sh for input validation and sanitization
-if [[ -f "${_MAINFRAME_LIB_DIR}/validation.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/validation.sh"
-fi
-
-# Source env.sh for environment variable management
-if [[ -f "${_MAINFRAME_LIB_DIR}/env.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/env.sh"
-fi
-
-# Source docker.sh for Docker container operations
-if [[ -f "${_MAINFRAME_LIB_DIR}/docker.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/docker.sh"
-fi
-
-# Source k8s.sh for Kubernetes operations
-if [[ -f "${_MAINFRAME_LIB_DIR}/k8s.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/k8s.sh"
-fi
-
-# Source pipe.sh for Unix pipeline processing
-if [[ -f "${_MAINFRAME_LIB_DIR}/pipe.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/pipe.sh"
-fi
-
-# Source stream.sh for advanced streaming paradigms
-if [[ -f "${_MAINFRAME_LIB_DIR}/stream.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/stream.sh"
-fi
-
-# Source guard.sh for defensive programming guards (AI assistant error prevention)
-if [[ -f "${_MAINFRAME_LIB_DIR}/guard.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/guard.sh"
-fi
-
-# Source functional.sh for functional programming primitives
-if [[ -f "${_MAINFRAME_LIB_DIR}/functional.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/functional.sh"
-fi
-
-# Source meta.sh for metaprogramming and indirect references
-if [[ -f "${_MAINFRAME_LIB_DIR}/meta.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/meta.sh"
-fi
-
-# Source procsub.sh for process substitution utilities (subshell variable preservation)
-if [[ -f "${_MAINFRAME_LIB_DIR}/procsub.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/procsub.sh"
-fi
-
-# Source safe.sh for strict mode helpers and gotcha prevention
-if [[ -f "${_MAINFRAME_LIB_DIR}/safe.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/safe.sh"
-fi
-
-# v3.0 AI-optimized libraries
-if [[ -f "${_MAINFRAME_LIB_DIR}/idempotent.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/idempotent.sh"
-fi
-if [[ -f "${_MAINFRAME_LIB_DIR}/atomic.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/atomic.sh"
-fi
-if [[ -f "${_MAINFRAME_LIB_DIR}/observe.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/observe.sh"
-fi
-if [[ -f "${_MAINFRAME_LIB_DIR}/project.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/project.sh"
-fi
-if [[ -f "${_MAINFRAME_LIB_DIR}/contract.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/contract.sh"
-fi
-if [[ -f "${_MAINFRAME_LIB_DIR}/perf.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/perf.sh"
-fi
-if [[ -f "${_MAINFRAME_LIB_DIR}/netscan.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/netscan.sh"
-fi
-if [[ -f "${_MAINFRAME_LIB_DIR}/parsers.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/parsers.sh"
-fi
-if [[ -f "${_MAINFRAME_LIB_DIR}/cache.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/cache.sh"
-fi
-if [[ -f "${_MAINFRAME_LIB_DIR}/scope.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/scope.sh"
-fi
-if [[ -f "${_MAINFRAME_LIB_DIR}/hints.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/hints.sh"
-fi
-if [[ -f "${_MAINFRAME_LIB_DIR}/risk.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/risk.sh"
-fi
-if [[ -f "${_MAINFRAME_LIB_DIR}/dryrun.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/dryrun.sh"
-fi
-if [[ -f "${_MAINFRAME_LIB_DIR}/undo.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/undo.sh"
-fi
-if [[ -f "${_MAINFRAME_LIB_DIR}/limits.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/limits.sh"
-fi
-if [[ -f "${_MAINFRAME_LIB_DIR}/confirm.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/confirm.sh"
-fi
-if [[ -f "${_MAINFRAME_LIB_DIR}/safewrap.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/safewrap.sh"
-fi
-if [[ -f "${_MAINFRAME_LIB_DIR}/safecontext.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/safecontext.sh"
-fi
-if [[ -f "${_MAINFRAME_LIB_DIR}/agent.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/agent.sh"
-fi
-if [[ -f "${_MAINFRAME_LIB_DIR}/workflow.sh" ]]; then
-    source "${_MAINFRAME_LIB_DIR}/workflow.sh"
-fi
+    # AI tier libraries
+    _mainframe_load_library "idempotent"
+    _mainframe_load_library "atomic"
+    _mainframe_load_library "observe"
+    _mainframe_load_library "project"
+    _mainframe_load_library "contract"
+    _mainframe_load_library "perf"
+    _mainframe_load_library "netscan"
+    _mainframe_load_library "parsers"
+    _mainframe_load_library "cache"
+    _mainframe_load_library "scope"
+    _mainframe_load_library "risk"
+    _mainframe_load_library "dryrun"
+    _mainframe_load_library "undo"
+    _mainframe_load_library "limits"
+    _mainframe_load_library "confirm"
+    _mainframe_load_library "safewrap"
+    _mainframe_load_library "safecontext"
+    _mainframe_load_library "agent"
+    _mainframe_load_library "workflow"
+    _mainframe_load_library "taskstate"
+    _mainframe_load_library "context"
+    _mainframe_load_library "diff"
+    _mainframe_load_library "parse_output"
+    _mainframe_load_library "symbols"
+    _mainframe_load_library "agent_exec"
 
 fi # End of full loading (backward-compatible path)
+
+# =============================================================================
+# PUBLIC API - Lazy Loading
+# =============================================================================
+
+# Load a specific library by name (public interface)
+# Usage: mainframe_load "git"
+# Returns: 0 on success, 1 on failure
+mainframe_load() {
+    local lib_name="$1"
+    _mainframe_load_library "$lib_name"
+}
+
+# Load all available libraries (equivalent to MAINFRAME_LIBS='all')
+# Usage: mainframe_load_all
+mainframe_load_all() {
+    _mainframe_load_tier "core"
+    _mainframe_load_tier "standard"
+    _mainframe_load_tier "extended"
+    _mainframe_load_tier "ai"
+
+    # Also load any .sh files in lib dir that aren't in tiers
+    local lib_file lib_name
+    for lib_file in "${_MAINFRAME_LIB_DIR}"/*.sh; do
+        [[ -f "$lib_file" ]] || continue
+        lib_name="${lib_file##*/}"
+        lib_name="${lib_name%.sh}"
+        # Skip common.sh itself
+        [[ "$lib_name" == "common" ]] && continue
+        _mainframe_load_library "$lib_name"
+    done
+}
+
+# List all currently loaded libraries (one per line)
+# Usage: mainframe_loaded
+mainframe_loaded() {
+    local lib
+    for lib in "${!_MAINFRAME_LOADED_LIBS[@]}"; do
+        printf '%s\n' "$lib"
+    done | sort
+}
+
+# List all available libraries in the lib directory (one per line)
+# Usage: mainframe_available
+mainframe_available() {
+    local lib_file lib_name
+    for lib_file in "${_MAINFRAME_LIB_DIR}"/*.sh; do
+        [[ -f "$lib_file" ]] || continue
+        lib_name="${lib_file##*/}"
+        lib_name="${lib_name%.sh}"
+        # Skip common.sh itself
+        [[ "$lib_name" == "common" ]] && continue
+        printf '%s\n' "$lib_name"
+    done | sort
+}
 
 # =============================================================================
 # MODULE EXPORTS
@@ -918,6 +858,9 @@ fi # End of full loading (backward-compatible path)
 
 # List of all public functions (for documentation)
 BASHER_COMMON_EXPORTS=(
+    # Lazy Loading API
+    mainframe_load mainframe_load_all mainframe_loaded mainframe_available
+    _mainframe_lazy_init
     # Logging
     log_debug log_info log_warn log_error log_fatal
     debug info warn error
@@ -1070,11 +1013,15 @@ BASHER_COMMON_EXPORTS=(
     commands_equal read_n_lines_from batch_lines_from
     interleave_commands count_lines_from read_pairs_from
     # Structured Output (from output.sh) - Universal Structured Output Protocol
-    output output_error output_timer_start output_timer_elapsed
+    output_init output_mode output_success output_error
+    output_timer_start output_timer_elapsed
     output_string output_int output_bool output_float
     output_json_object output_json_array output_file_path output_void
-    output_v output_is_json output_is_raw output_is_debug output_is_minimal
-    output_with_mode
+    output_raw output_json output_wrap output_v
+    output_is_json output_is_raw output_is_debug output_is_minimal
+    output_format output_with_mode
+    mainframe_call output_auto output_list output_object output_progress
+    output_structured_error output_try output_json_escape
     # Scope Boundary Enforcement (from scope.sh) - AI agent safety
     mainframe_scope_set mainframe_scope_check mainframe_scope_clear mainframe_scope_status
     mainframe_scope_check_path mainframe_scope_check_host mainframe_scope_check_cmd
@@ -1084,9 +1031,9 @@ BASHER_COMMON_EXPORTS=(
     mainframe_hint mainframe_hints_for mainframe_hints_chain
     mainframe_hint_category mainframe_hint_categories mainframe_hints_count
     # Caching and Memoization (from cache.sh)
-    memoize
-    cas_store cas_get cas_exists
-    session_cache_set session_cache_get session_cache_clear
-    cache_invalidate cache_clear cache_stats cache_evict_lru
+    memoize memoize_clear memoize_stats
+    cas_store cas_get cas_exists cas_gc
+    session_cache_set session_cache_get session_cache_has session_cache_clear session_cache_stats
+    cache_invalidate cache_clear cache_stats cache_max_size cache_evict_lru cache_warm
     cache_depends_on cache_check_deps
 )

@@ -885,3 +885,728 @@ agent_wait() {
     _agent_log error "agent_wait: timeout waiting for signal '$signal_name'"
     return 1
 }
+
+# =============================================================================
+# ADDITIONAL REGISTRATION FUNCTIONS
+# =============================================================================
+
+# @pre: Agent must be registered
+# @post: Prints JSON with agent details
+# @returns: 0 on success, 1 if not found
+#
+# Get detailed info for an agent (alias for agent_status).
+#
+# Usage: agent_info NAME
+# Example: agent_info worker1
+agent_info() {
+    agent_status "$@"
+}
+
+# @pre: Nameref variable passed
+# @post: Result stored in variable (avoids subshell overhead)
+# @returns: 0 on success, 1 if not found
+#
+# Store agent info in a variable (nameref variant).
+#
+# Usage: agent_info_v RESULT_VAR NAME
+# Example: agent_info_v info "worker1"
+agent_info_v() {
+    local -n __aiv_out=$1
+    local name="${2:-$_MAINFRAME_AGENT_NAME}"
+
+    if [[ -z "$name" ]]; then
+        _agent_log error "agent_info_v: agent name required"
+        return 1
+    fi
+
+    if ! _agent_exists "$name"; then
+        _agent_log error "agent_info_v: agent '$name' not found"
+        return 1
+    fi
+
+    __aiv_out=$(agent_status "$name")
+    return 0
+}
+
+# @pre: Base directory exists
+# @post: Stale agents removed from registry
+# @returns: 0 on success
+#
+# Remove agents that haven't sent a heartbeat within the specified time.
+#
+# Usage: agent_prune [--older-than SECONDS]
+# Example: agent_prune --older-than 300
+agent_prune() {
+    local max_age=300  # Default 5 minutes
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --older-than)
+                max_age="${2:-300}"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    local now
+    now=$(_agent_epoch)
+    local cutoff=$(( now - max_age ))
+    local pruned=0
+
+    local agent_dir
+    for agent_dir in "$_MAINFRAME_AGENT_BASE"/*/; do
+        [[ -d "$agent_dir" ]] || continue
+        local name="${agent_dir%/}"
+        name="${name##*/}"
+
+        [[ -f "$agent_dir/registered" ]] || continue
+
+        local last_seen=0
+        if [[ -f "$agent_dir/heartbeat" ]]; then
+            last_seen=$(cat "$agent_dir/heartbeat" 2>/dev/null || echo 0)
+        fi
+
+        if [[ $last_seen -lt $cutoff ]]; then
+            agent_unregister "$name" 2>/dev/null
+            pruned=$(( pruned + 1 ))
+        fi
+    done
+
+    _agent_log info "Pruned $pruned stale agents"
+    return 0
+}
+
+# @pre: Nameref array variable passed
+# @post: Array populated with agent names
+# @returns: 0 always
+#
+# Store list of agent names in an array (nameref variant).
+#
+# Usage: agent_list_v ARRAY_VAR
+# Example: local -a agents; agent_list_v agents
+agent_list_v() {
+    local -n __alv_out=$1
+    __alv_out=()
+
+    local agent_dir
+    for agent_dir in "$_MAINFRAME_AGENT_BASE"/*/; do
+        [[ -d "$agent_dir" ]] || continue
+        local name="${agent_dir%/}"
+        name="${name##*/}"
+        [[ -f "$agent_dir/registered" ]] || continue
+        __alv_out+=("$name")
+    done
+}
+
+# =============================================================================
+# ASYNCHRONOUS RECEIVE
+# =============================================================================
+
+# @pre: Current agent registered with inbox
+# @post: If message available, prints it. Otherwise returns immediately.
+# @returns: 0 if message received, 1 if no message
+#
+# Non-blocking receive: returns immediately if no message available.
+#
+# Usage: agent_receive_async
+# Example: msg=$(agent_receive_async) || echo "No message"
+agent_receive_async() {
+    local name="${_MAINFRAME_AGENT_NAME}"
+
+    if [[ -z "$name" ]]; then
+        _agent_log error "agent_receive_async: not registered"
+        return 1
+    fi
+
+    local inbox
+    inbox="$(_agent_inbox "$name")"
+    local lockfile="$inbox/.lock"
+
+    (
+        flock -n 200 || exit 1
+
+        local oldest=""
+        local f
+        for f in "$inbox"/msg_*; do
+            [[ -e "$f" ]] || break
+            oldest="$f"
+            break
+        done
+
+        if [[ -n "$oldest" && -f "$oldest" ]]; then
+            cat "$oldest"
+            rm -f "$oldest"
+            exit 0
+        fi
+        exit 1
+    ) 200>"$lockfile"
+}
+
+# =============================================================================
+# PUB/SUB: TOPIC-BASED MESSAGING
+# =============================================================================
+
+# @pre: Agent is registered
+# @post: Agent added to topic subscriber list
+# @returns: 0 on success
+#
+# Subscribe an agent to a topic for pub/sub messaging.
+#
+# Usage: agent_subscribe TOPIC
+# Example: agent_subscribe "news"
+agent_subscribe() {
+    local topic="${1:-}"
+    local name="${_MAINFRAME_AGENT_NAME}"
+
+    if [[ -z "$topic" ]]; then
+        _agent_log error "agent_subscribe: topic required"
+        return 1
+    fi
+
+    if [[ -z "$name" ]]; then
+        _agent_log error "agent_subscribe: not registered"
+        return 1
+    fi
+
+    local topics_dir="$_MAINFRAME_AGENT_BASE/_topics"
+    mkdir -p "$topics_dir"
+
+    local topic_file="$topics_dir/$topic"
+    local lockfile="$topics_dir/.lock_$topic"
+
+    (
+        flock 200
+
+        # Add to subscriber list if not already present
+        if ! grep -qx "$name" "$topic_file" 2>/dev/null; then
+            printf '%s\n' "$name" >> "$topic_file"
+        fi
+    ) 200>"$lockfile"
+
+    _agent_log info "Agent '$name' subscribed to topic '$topic'"
+    return 0
+}
+
+# @pre: Agent is subscribed to topic
+# @post: Agent removed from topic subscriber list
+# @returns: 0 on success
+#
+# Unsubscribe an agent from a topic.
+#
+# Usage: agent_unsubscribe TOPIC
+# Example: agent_unsubscribe "news"
+agent_unsubscribe() {
+    local topic="${1:-}"
+    local name="${_MAINFRAME_AGENT_NAME}"
+
+    if [[ -z "$topic" ]]; then
+        _agent_log error "agent_unsubscribe: topic required"
+        return 1
+    fi
+
+    if [[ -z "$name" ]]; then
+        _agent_log error "agent_unsubscribe: not registered"
+        return 1
+    fi
+
+    local topic_file="$_MAINFRAME_AGENT_BASE/_topics/$topic"
+    local lockfile="$_MAINFRAME_AGENT_BASE/_topics/.lock_$topic"
+
+    if [[ ! -f "$topic_file" ]]; then
+        return 0
+    fi
+
+    (
+        flock 200
+
+        # Remove from subscriber list
+        local tmp
+        tmp=$(mktemp)
+        grep -vx "$name" "$topic_file" > "$tmp" 2>/dev/null || true
+        mv "$tmp" "$topic_file"
+    ) 200>"$lockfile"
+
+    _agent_log info "Agent '$name' unsubscribed from topic '$topic'"
+    return 0
+}
+
+# @pre: Topic has subscribers
+# @post: Message sent to all topic subscribers
+# @returns: 0 on success, 1 if topic not found
+#
+# Publish a message to all subscribers of a topic.
+#
+# Usage: agent_publish TOPIC MESSAGE
+# Example: agent_publish "news" '{"headline":"Breaking news"}'
+agent_publish() {
+    local topic="${1:-}"
+    local message="${2:-}"
+
+    if [[ -z "$topic" ]]; then
+        _agent_log error "agent_publish: topic required"
+        return 1
+    fi
+
+    if [[ -z "$message" ]]; then
+        _agent_log error "agent_publish: message required"
+        return 1
+    fi
+
+    local topic_file="$_MAINFRAME_AGENT_BASE/_topics/$topic"
+
+    if [[ ! -f "$topic_file" ]]; then
+        _agent_log error "agent_publish: topic '$topic' not found"
+        return 1
+    fi
+
+    local subscriber
+    while IFS= read -r subscriber; do
+        [[ -z "$subscriber" ]] && continue
+        if _agent_exists "$subscriber"; then
+            agent_send "$subscriber" "$message"
+        fi
+    done < "$topic_file"
+
+    return 0
+}
+
+# =============================================================================
+# RESOURCE LOCKING
+# =============================================================================
+
+# @pre: Base directory writable
+# @post: Exclusive lock acquired on resource
+# @returns: 0 on success (blocks until acquired)
+#
+# Acquire an exclusive lock on a named resource.
+# This is a blocking operation that waits until the lock is available.
+#
+# Usage: agent_lock RESOURCE
+# Example: agent_lock "database"
+agent_lock() {
+    local resource="${1:-}"
+    local name="${_MAINFRAME_AGENT_NAME:-$$}"
+
+    if [[ -z "$resource" ]]; then
+        _agent_log error "agent_lock: resource name required"
+        return 1
+    fi
+
+    local locks_dir="$_MAINFRAME_AGENT_BASE/_locks"
+    mkdir -p "$locks_dir"
+
+    local lockfile="$locks_dir/$resource.lock"
+
+    # Use flock to acquire exclusive lock
+    exec {_AGENT_LOCK_FD}>>"$lockfile"
+    flock "$_AGENT_LOCK_FD"
+
+    # Write holder info
+    printf '%s %s\n' "$name" "$(_agent_epoch)" > "$lockfile"
+
+    _agent_log info "Agent '$name' acquired lock on '$resource'"
+    return 0
+}
+
+# @pre: Lock was previously acquired by this agent
+# @post: Lock released
+# @returns: 0 on success
+#
+# Release a previously acquired lock.
+#
+# Usage: agent_unlock RESOURCE
+# Example: agent_unlock "database"
+agent_unlock() {
+    local resource="${1:-}"
+
+    if [[ -z "$resource" ]]; then
+        _agent_log error "agent_unlock: resource name required"
+        return 1
+    fi
+
+    local locks_dir="$_MAINFRAME_AGENT_BASE/_locks"
+    local lockfile="$locks_dir/$resource.lock"
+
+    if [[ -v _AGENT_LOCK_FD ]]; then
+        flock -u "$_AGENT_LOCK_FD" 2>/dev/null
+        exec {_AGENT_LOCK_FD}>&-
+        unset _AGENT_LOCK_FD
+    fi
+
+    rm -f "$lockfile" 2>/dev/null
+    return 0
+}
+
+# @pre: Base directory writable
+# @post: Lock acquired if available, otherwise returns immediately
+# @returns: 0 if lock acquired, 1 if not available
+#
+# Try to acquire a lock without blocking.
+#
+# Usage: agent_trylock RESOURCE
+# Example: agent_trylock "database" && echo "Got it!"
+agent_trylock() {
+    local resource="${1:-}"
+    local name="${_MAINFRAME_AGENT_NAME:-$$}"
+
+    if [[ -z "$resource" ]]; then
+        _agent_log error "agent_trylock: resource name required"
+        return 1
+    fi
+
+    local locks_dir="$_MAINFRAME_AGENT_BASE/_locks"
+    mkdir -p "$locks_dir"
+
+    local lockfile="$locks_dir/$resource.lock"
+
+    # Use flock with -n (non-blocking)
+    exec {_AGENT_LOCK_FD}>>"$lockfile"
+    if flock -n "$_AGENT_LOCK_FD"; then
+        printf '%s %s\n' "$name" "$(_agent_epoch)" > "$lockfile"
+        _agent_log info "Agent '$name' acquired lock on '$resource'"
+        return 0
+    else
+        exec {_AGENT_LOCK_FD}>&-
+        unset _AGENT_LOCK_FD
+        return 1
+    fi
+}
+
+# =============================================================================
+# WORK QUEUE: COMPLETION TRACKING
+# =============================================================================
+
+# @pre: Queue exists
+# @post: Item pushed with task ID, returns ID
+# @returns: 0 on success, prints task_id
+#
+# Push an item onto a work queue and return its task ID.
+# This is an enhanced version that returns a trackable ID.
+#
+# Usage: task_id=$(agent_work_push_tracked QUEUE ITEM)
+# Example: id=$(agent_work_push_tracked tasks '{"url":"http://example.com"}')
+agent_work_push_tracked() {
+    local queue_name="${1:-}"
+    local item="${2:-}"
+
+    if [[ -z "$queue_name" ]]; then
+        _agent_log error "agent_work_push_tracked: queue name required"
+        return 1
+    fi
+
+    if [[ -z "$item" ]]; then
+        _agent_log error "agent_work_push_tracked: item required"
+        return 1
+    fi
+
+    local queue_dir="$_MAINFRAME_AGENT_BASE/_queues/$queue_name"
+    if [[ ! -d "$queue_dir" ]]; then
+        _agent_log error "agent_work_push_tracked: queue '$queue_name' does not exist"
+        return 1
+    fi
+
+    # Generate unique task ID
+    local task_id
+    task_id=$(printf '%s-%s-%s' "$(date +%s%N)" "$$" "$RANDOM")
+
+    local item_file
+    item_file="$queue_dir/$(_agent_msg_filename)"
+
+    local timestamp
+    timestamp="$(_agent_timestamp)"
+    local producer="${_MAINFRAME_AGENT_NAME:-anonymous}"
+
+    local json
+    json=$(printf '{"task_id":"%s","producer":"%s","timestamp":"%s","item":"%s","status":"pending"}' \
+        "$(_agent_json_escape "$task_id")" \
+        "$(_agent_json_escape "$producer")" \
+        "$timestamp" \
+        "$(_agent_json_escape "$item")")
+
+    printf '%s\n' "$json" > "$item_file"
+    printf '%s\n' "$task_id"
+    return 0
+}
+
+# @pre: Task was popped from queue
+# @post: Task marked as complete in tracking file
+# @returns: 0 on success
+#
+# Mark a task as complete.
+#
+# Usage: agent_work_complete QUEUE TASK_ID
+# Example: agent_work_complete tasks "1234-5678"
+agent_work_complete() {
+    local queue_name="${1:-}"
+    local task_id="${2:-}"
+
+    if [[ -z "$queue_name" || -z "$task_id" ]]; then
+        _agent_log error "agent_work_complete: queue name and task_id required"
+        return 1
+    fi
+
+    local queue_dir="$_MAINFRAME_AGENT_BASE/_queues/$queue_name"
+    local completed_file="$queue_dir/.completed"
+    local inprogress_file="$queue_dir/.inprogress"
+    local lockfile="$queue_dir/.track_lock"
+
+    (
+        flock 200
+
+        # Remove from in-progress
+        if [[ -f "$inprogress_file" ]]; then
+            local tmp
+            tmp=$(mktemp)
+            grep -v "^$task_id " "$inprogress_file" > "$tmp" 2>/dev/null || true
+            mv "$tmp" "$inprogress_file"
+        fi
+
+        # Add to completed
+        printf '%s %s %s\n' "$task_id" "$(_agent_epoch)" "${_MAINFRAME_AGENT_NAME:-anonymous}" >> "$completed_file"
+    ) 200>"$lockfile"
+
+    return 0
+}
+
+# @pre: Task was popped from queue
+# @post: Task marked as failed with reason
+# @returns: 0 on success
+#
+# Mark a task as failed with a reason.
+#
+# Usage: agent_work_fail QUEUE TASK_ID REASON
+# Example: agent_work_fail tasks "1234-5678" "Connection timeout"
+agent_work_fail() {
+    local queue_name="${1:-}"
+    local task_id="${2:-}"
+    local reason="${3:-unknown}"
+
+    if [[ -z "$queue_name" || -z "$task_id" ]]; then
+        _agent_log error "agent_work_fail: queue name and task_id required"
+        return 1
+    fi
+
+    local queue_dir="$_MAINFRAME_AGENT_BASE/_queues/$queue_name"
+    local failed_file="$queue_dir/.failed"
+    local inprogress_file="$queue_dir/.inprogress"
+    local lockfile="$queue_dir/.track_lock"
+
+    (
+        flock 200
+
+        # Remove from in-progress
+        if [[ -f "$inprogress_file" ]]; then
+            local tmp
+            tmp=$(mktemp)
+            grep -v "^$task_id " "$inprogress_file" > "$tmp" 2>/dev/null || true
+            mv "$tmp" "$inprogress_file"
+        fi
+
+        # Add to failed with reason
+        printf '%s %s %s %s\n' "$task_id" "$(_agent_epoch)" "${_MAINFRAME_AGENT_NAME:-anonymous}" "$(_agent_json_escape "$reason")" >> "$failed_file"
+    ) 200>"$lockfile"
+
+    return 0
+}
+
+# @pre: Queue exists
+# @post: Prints JSON with queue statistics
+# @returns: 0 on success
+#
+# Get statistics for a work queue.
+#
+# Usage: agent_work_stats QUEUE
+# Example: agent_work_stats tasks
+agent_work_stats() {
+    local queue_name="${1:-}"
+
+    if [[ -z "$queue_name" ]]; then
+        _agent_log error "agent_work_stats: queue name required"
+        return 1
+    fi
+
+    local queue_dir="$_MAINFRAME_AGENT_BASE/_queues/$queue_name"
+    if [[ ! -d "$queue_dir" ]]; then
+        _agent_log error "agent_work_stats: queue '$queue_name' does not exist"
+        return 1
+    fi
+
+    # Count pending items
+    local pending=0
+    local files
+    files=( "$queue_dir"/msg_* )
+    if [[ -e "${files[0]}" ]]; then
+        pending=${#files[@]}
+    fi
+
+    # Count in-progress
+    local in_progress=0
+    if [[ -f "$queue_dir/.inprogress" ]]; then
+        in_progress=$(wc -l < "$queue_dir/.inprogress")
+    fi
+
+    # Count completed
+    local completed=0
+    if [[ -f "$queue_dir/.completed" ]]; then
+        completed=$(wc -l < "$queue_dir/.completed")
+    fi
+
+    # Count failed
+    local failed=0
+    if [[ -f "$queue_dir/.failed" ]]; then
+        failed=$(wc -l < "$queue_dir/.failed")
+    fi
+
+    printf '{"queue":"%s","pending":%d,"in_progress":%d,"completed":%d,"failed":%d}\n' \
+        "$(_agent_json_escape "$queue_name")" \
+        "$pending" \
+        "$in_progress" \
+        "$completed" \
+        "$failed"
+}
+
+# Enhanced work_pop that tracks in-progress status
+# @pre: Queue exists
+# @post: Oldest item consumed, marked as in-progress
+# @returns: 0 if item popped, 1 if queue empty
+#
+# Pop the next item from a work queue with tracking.
+#
+# Usage: agent_work_pop_tracked QUEUE
+# Example: item=$(agent_work_pop_tracked tasks)
+agent_work_pop_tracked() {
+    local queue_name="${1:-}"
+
+    if [[ -z "$queue_name" ]]; then
+        _agent_log error "agent_work_pop_tracked: queue name required"
+        return 1
+    fi
+
+    local queue_dir="$_MAINFRAME_AGENT_BASE/_queues/$queue_name"
+    if [[ ! -d "$queue_dir" ]]; then
+        _agent_log error "agent_work_pop_tracked: queue '$queue_name' does not exist"
+        return 1
+    fi
+
+    local lockfile="$queue_dir/.lock"
+    local inprogress_file="$queue_dir/.inprogress"
+
+    (
+        flock 200 || exit 1
+
+        local oldest=""
+        local f
+        for f in "$queue_dir"/msg_*; do
+            [[ -e "$f" ]] || break
+            oldest="$f"
+            break
+        done
+
+        if [[ -n "$oldest" && -f "$oldest" ]]; then
+            local content
+            content=$(cat "$oldest")
+
+            # Extract task_id if present, or use filename
+            local task_id
+            if [[ "$content" =~ \"task_id\":\"([^\"]+)\" ]]; then
+                task_id="${BASH_REMATCH[1]}"
+            else
+                task_id="${oldest##*/}"
+            fi
+
+            # Mark as in-progress
+            printf '%s %s %s\n' "$task_id" "$(_agent_epoch)" "${_MAINFRAME_AGENT_NAME:-anonymous}" >> "$inprogress_file"
+
+            cat "$oldest"
+            rm -f "$oldest"
+            exit 0
+        fi
+        exit 1
+    ) 200>"$lockfile"
+}
+
+# =============================================================================
+# DISCOVERY: ADDITIONAL FUNCTIONS
+# =============================================================================
+
+# @pre: Agents registered with capabilities
+# @post: Prints agent names that have the capability
+# @returns: 0 if found, 1 if none found
+#
+# Find agents by capability (alias for agent_discover).
+#
+# Usage: agent_find_by_capability CAPABILITY
+# Example: agent_find_by_capability "http"
+agent_find_by_capability() {
+    agent_discover "$@"
+}
+
+# @pre: At least one agent registered
+# @post: Prints name of elected leader (deterministic for same group)
+# @returns: 0 on success, 1 if no agents
+#
+# Simple leader election among registered agents.
+# Uses lexicographic ordering for determinism.
+#
+# Usage: agent_elect_leader GROUP_NAME
+# Example: leader=$(agent_elect_leader "workers")
+agent_elect_leader() {
+    local group="${1:-default}"
+
+    local -a agents
+    agent_list_v agents
+
+    if [[ ${#agents[@]} -eq 0 ]]; then
+        _agent_log error "agent_elect_leader: no agents registered"
+        return 1
+    fi
+
+    # Sort agents and pick first (deterministic)
+    local sorted
+    sorted=$(printf '%s\n' "${agents[@]}" | sort | head -n1)
+
+    printf '%s\n' "$sorted"
+    return 0
+}
+
+# =============================================================================
+# CLEANUP
+# =============================================================================
+
+# @pre: Base directory exists
+# @post: All agent resources cleaned up
+# @returns: 0 on success
+#
+# Clean up all agent resources (for testing/shutdown).
+#
+# Usage: agent_cleanup
+agent_cleanup() {
+    rm -rf "$_MAINFRAME_AGENT_BASE"/* 2>/dev/null
+    _MAINFRAME_AGENT_NAME=""
+    _agent_log info "Cleaned up all agent resources"
+    return 0
+}
+
+# =============================================================================
+# INITIALIZATION
+# =============================================================================
+
+# @pre: None
+# @post: Agent base directory created
+# @returns: 0 on success
+#
+# Initialize the agent subsystem (creates base directories).
+#
+# Usage: agent_init
+agent_init() {
+    mkdir -p "$_MAINFRAME_AGENT_BASE/_queues"
+    mkdir -p "$_MAINFRAME_AGENT_BASE/_barriers"
+    mkdir -p "$_MAINFRAME_AGENT_BASE/_signals"
+    mkdir -p "$_MAINFRAME_AGENT_BASE/_topics"
+    mkdir -p "$_MAINFRAME_AGENT_BASE/_locks"
+    chmod 700 "$_MAINFRAME_AGENT_BASE" 2>/dev/null
+    return 0
+}

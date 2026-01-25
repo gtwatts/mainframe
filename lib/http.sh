@@ -252,6 +252,48 @@ _base64_encode() {
 }
 
 # =============================================================================
+# HOSTNAME VALIDATION (Security)
+# =============================================================================
+
+# Validate hostname format (RFC 1123 compliant)
+# Usage: _http_validate_hostname "example.com"
+# Returns: 0 if valid, 1 if invalid
+_http_validate_hostname() {
+    local host="$1"
+
+    # Empty check
+    [[ -z "$host" ]] && return 1
+
+    # Length check (max 253 chars)
+    [[ ${#host} -gt 253 ]] && return 1
+
+    # IPv4 address (simple validation)
+    if [[ "$host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        local IFS='.'
+        read -ra octets <<< "$host"
+        for octet in "${octets[@]}"; do
+            [[ "$octet" =~ ^[0-9]+$ ]] || return 1
+            (( octet >= 0 && octet <= 255 )) || return 1
+        done
+        return 0
+    fi
+
+    # RFC 1123 hostname validation
+    # Labels: alphanumeric, hyphens (not at start/end), 1-63 chars each
+    local label_re='^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$'
+    local IFS='.'
+    read -ra labels <<< "$host"
+
+    for label in "${labels[@]}"; do
+        [[ -z "$label" ]] && return 1
+        [[ ${#label} -gt 63 ]] && return 1
+        [[ "$label" =~ $label_re ]] || return 1
+    done
+
+    return 0
+}
+
+# =============================================================================
 # CORE HTTP REQUEST (Pure Bash /dev/tcp)
 # =============================================================================
 
@@ -275,6 +317,12 @@ http_request() {
 
     # Add query string to path if present
     [[ -n "$URL_QUERY" ]] && path+="?$URL_QUERY"
+
+    # Validate hostname before connection (Security: prevent injection)
+    if ! _http_validate_hostname "$host"; then
+        printf 'HTTP/1.1 000 Invalid Hostname\r\n\r\nInvalid hostname format: %s' "$host"
+        return 1
+    fi
 
     # HTTPS requires openssl fallback
     if [[ "$scheme" == "https" ]]; then
@@ -345,6 +393,12 @@ _http_request_openssl() {
     local body="$5"
     shift 5
     local extra_headers=("$@")
+
+    # Validate hostname before connection (Security: prevent injection)
+    if ! _http_validate_hostname "$host"; then
+        printf 'HTTP/1.1 000 Invalid Hostname\r\n\r\nInvalid hostname format: %s' "$host"
+        return 1
+    fi
 
     # Check for openssl
     if ! command -v openssl &>/dev/null; then

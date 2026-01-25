@@ -6,7 +6,22 @@
 # =============================================================================
 
 # Get MAINFRAME root directory
-export MAINFRAME_ROOT="${BATS_TEST_DIRNAME}/.."
+# Handle both tests/ and tests/unit/ locations
+if [[ -f "${BATS_TEST_DIRNAME}/../lib/common.sh" ]]; then
+    export MAINFRAME_ROOT="${BATS_TEST_DIRNAME}/.."
+elif [[ -f "${BATS_TEST_DIRNAME}/../../lib/common.sh" ]]; then
+    export MAINFRAME_ROOT="${BATS_TEST_DIRNAME}/../.."
+else
+    # Fallback: search upward
+    _dir="${BATS_TEST_DIRNAME}"
+    while [[ "$_dir" != "/" ]]; do
+        if [[ -f "$_dir/lib/common.sh" ]]; then
+            export MAINFRAME_ROOT="$_dir"
+            break
+        fi
+        _dir="$(dirname "$_dir")"
+    done
+fi
 
 # Source all libraries
 source_all_libs() {

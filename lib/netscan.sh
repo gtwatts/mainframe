@@ -26,6 +26,44 @@ MAINFRAME_NET_TIMEOUT="${MAINFRAME_NET_TIMEOUT:-3}"
 # INTERNAL HELPERS
 # =============================================================================
 
+# Validate hostname format (RFC 1123 compliant)
+# Usage: _netscan_validate_host "example.com"
+# Returns: 0 if valid, 1 if invalid
+_netscan_validate_host() {
+    local host="$1"
+
+    # Empty check
+    [[ -z "$host" ]] && return 1
+
+    # Length check (max 253 chars)
+    [[ ${#host} -gt 253 ]] && return 1
+
+    # IPv4 address (simple validation)
+    if [[ "$host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        local IFS='.'
+        read -ra octets <<< "$host"
+        for octet in "${octets[@]}"; do
+            [[ "$octet" =~ ^[0-9]+$ ]] || return 1
+            (( octet >= 0 && octet <= 255 )) || return 1
+        done
+        return 0
+    fi
+
+    # RFC 1123 hostname validation
+    # Labels: alphanumeric, hyphens (not at start/end), 1-63 chars each
+    local label_re='^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$'
+    local IFS='.'
+    read -ra labels <<< "$host"
+
+    for label in "${labels[@]}"; do
+        [[ -z "$label" ]] && return 1
+        [[ ${#label} -gt 63 ]] && return 1
+        [[ "$label" =~ $label_re ]] || return 1
+    done
+
+    return 0
+}
+
 _netscan_escape() {
     local str="$1"
     str="${str//\\/\\\\}"
@@ -64,6 +102,11 @@ port_check() {
     local timeout="${3:-$MAINFRAME_NET_TIMEOUT}"
 
     if [[ -z "$host" ]] || [[ -z "$port" ]]; then
+        return 2
+    fi
+
+    # Validate hostname format (Security: prevent injection)
+    if ! _netscan_validate_host "$host"; then
         return 2
     fi
 
@@ -149,6 +192,11 @@ banner_grab() {
     local timeout="${3:-$MAINFRAME_NET_TIMEOUT}"
 
     if [[ -z "$host" ]] || [[ -z "$port" ]]; then
+        return 1
+    fi
+
+    # Validate hostname format (Security: prevent injection)
+    if ! _netscan_validate_host "$host"; then
         return 1
     fi
 
