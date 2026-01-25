@@ -1584,7 +1584,7 @@ agent_elect_leader() {
 #
 # Usage: agent_cleanup
 agent_cleanup() {
-    rm -rf "$_MAINFRAME_AGENT_BASE"/* 2>/dev/null
+    rm -rf "${_MAINFRAME_AGENT_BASE:?}/"* 2>/dev/null
     _MAINFRAME_AGENT_NAME=""
     _agent_log info "Cleaned up all agent resources"
     return 0
