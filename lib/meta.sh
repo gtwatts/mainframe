@@ -175,11 +175,10 @@ var_copy() {
         local -n _dst="$dest"
         _dst=("${_src[@]}")
     elif [[ "$decl" =~ ^declare\ -A ]]; then
-        # Associative array
+        # Associative array - use declare -gA directly (no eval needed)
+        # Variable name already validated above, safe to use with declare
         local -n _src="$source"
-        local -n _dst="$dest"
-        # Must use declare -A for associative arrays
-        eval "declare -gA $dest"
+        declare -gA "$dest"
         local -n _dst="$dest"
         local key
         for key in "${!_src[@]}"; do
@@ -420,17 +419,18 @@ funcs_with_prefix() {
 
 # Create a nameref to a variable
 # Usage: var_ref "refname" "target"
-# Note: Creates local nameref; useful in functions
+# Note: Creates global nameref; useful in functions
 var_ref() {
     local refname="$1"
     local target="$2"
 
-    # Validate names
+    # Validate names (strict validation makes declare safe without eval)
     [[ "$refname" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || return 1
     [[ "$target" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || return 1
 
-    # Use eval to create global nameref (declare -gn)
-    eval "declare -gn $refname=$target"
+    # Use declare -gn directly (safe after validation, no eval needed)
+    # The = assignment syntax requires the target to be passed as a value
+    declare -gn "$refname=$target"
 }
 
 # Get nameref target

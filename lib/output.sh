@@ -182,13 +182,13 @@ _output_escape() {
     for ((i=0; i<${#str}; i++)); do
         char="${str:i:1}"
         case "$char" in
-            '"')   result+='\"' ;;
-            '\')   result+='\\' ;;
-            $'\b') result+='\b' ;;
-            $'\f') result+='\f' ;;
-            $'\n') result+='\n' ;;
-            $'\r') result+='\r' ;;
-            $'\t') result+='\t' ;;
+            \\)    result+='\\\\' ;;
+            '"')   result+='\\\"' ;;
+            $'\b') result+='\\b' ;;
+            $'\f') result+='\\f' ;;
+            $'\n') result+='\\n' ;;
+            $'\r') result+='\\r' ;;
+            $'\t') result+='\\t' ;;
             *)
                 # Check for control characters (< 0x20)
                 if [[ "$char" < $'\x20' ]]; then
@@ -213,13 +213,13 @@ _output_escape_v() {
     for ((i=0; i<${#str}; i++)); do
         char="${str:i:1}"
         case "$char" in
-            '"')   __oev_out+='\"' ;;
-            '\')   __oev_out+='\\' ;;
-            $'\b') __oev_out+='\b' ;;
-            $'\f') __oev_out+='\f' ;;
-            $'\n') __oev_out+='\n' ;;
-            $'\r') __oev_out+='\r' ;;
-            $'\t') __oev_out+='\t' ;;
+            \\)    __oev_out+='\\\\' ;;
+            '"')   __oev_out+='\\\"' ;;
+            $'\b') __oev_out+='\\b' ;;
+            $'\f') __oev_out+='\\f' ;;
+            $'\n') __oev_out+='\\n' ;;
+            $'\r') __oev_out+='\\r' ;;
+            $'\t') __oev_out+='\\t' ;;
             *)
                 # Check for control characters (< 0x20)
                 if [[ "$char" < $'\x20' ]]; then

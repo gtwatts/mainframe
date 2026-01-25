@@ -132,25 +132,26 @@ is_strict_mode() {
 # =============================================================================
 
 # Run command with strict mode temporarily disabled
-# Usage: unsafe_run "command that might fail"
+# Usage: unsafe_run "command" OR unsafe_run cmd arg1 arg2 ...
 #
 # Executes the given command in a context where errors don't cause script exit
 # Captures and returns the actual exit code of the command
 #
+# For safety, prefer passing command as separate arguments:
+#   unsafe_run grep pattern missing-file.txt
+#
 # Example:
-#   if unsafe_run "grep pattern missing-file.txt"; then
+#   if unsafe_run grep pattern missing-file.txt; then
 #       echo "Pattern found"
 #   else
 #       echo "Pattern not found or file missing"
 #   fi
 #
-# Example with variable capture:
-#   local result
-#   if result=$(unsafe_run "some_command"); then
-#       echo "Got: $result"
+# Example with string command (uses bash -c for isolation):
+#   if unsafe_run "grep pattern missing-file.txt"; then
+#       echo "Pattern found"
 #   fi
 unsafe_run() {
-    local command="$1"
     local exit_code=0
 
     # Disable strict mode for this execution
@@ -159,7 +160,13 @@ unsafe_run() {
     set +o pipefail 2>/dev/null || true
 
     # Execute the command
-    eval "$command"
+    if [[ $# -eq 1 ]]; then
+        # Single argument: treat as shell command string, use bash -c for isolation
+        bash -c "$1"
+    else
+        # Multiple arguments: execute directly as command array (safer)
+        "$@"
+    fi
     exit_code=$?
 
     # Re-enable strict mode if it was on
@@ -173,7 +180,7 @@ unsafe_run() {
 }
 
 # Run command, capturing exit code without triggering errexit
-# Usage: safe_exit_code "command"
+# Usage: safe_exit_code "command" OR safe_exit_code cmd arg1 arg2 ...
 # Returns: Exit code is stored in SAFE_EXIT_CODE variable
 #
 # Example:
@@ -181,13 +188,23 @@ unsafe_run() {
 #   if [[ $SAFE_EXIT_CODE -eq 0 ]]; then
 #       echo "Found"
 #   fi
+#
+# Safer example with arguments:
+#   safe_exit_code grep pattern file.txt
+#   if [[ $SAFE_EXIT_CODE -eq 0 ]]; then
+#       echo "Found"
+#   fi
 declare -g SAFE_EXIT_CODE=0
 
 safe_exit_code() {
-    local command="$1"
-
     # The || true pattern prevents errexit from triggering
-    eval "$command" && SAFE_EXIT_CODE=0 || SAFE_EXIT_CODE=$?
+    if [[ $# -eq 1 ]]; then
+        # Single argument: treat as shell command string
+        bash -c "$1" && SAFE_EXIT_CODE=0 || SAFE_EXIT_CODE=$?
+    else
+        # Multiple arguments: execute directly as command array (safer)
+        "$@" && SAFE_EXIT_CODE=0 || SAFE_EXIT_CODE=$?
+    fi
 
     return 0  # Always return success to not trigger errexit
 }
@@ -270,6 +287,7 @@ source_if_exists() {
 
 # Run command and capture both stdout and stderr separately
 # Usage: capture_both stdout_var stderr_var "command"
+# Usage: capture_both stdout_var stderr_var cmd arg1 arg2 ...
 #
 # Captures stdout and stderr into separate variables without mixing them
 # Uses temporary files for reliable capture (pure bash alternative is complex)
@@ -277,7 +295,7 @@ source_if_exists() {
 # Parameters:
 #   stdout_var - Name of variable to store stdout
 #   stderr_var - Name of variable to store stderr
-#   command    - Command to execute
+#   command    - Command to execute (string or command with args)
 #
 # Returns: Exit code of the command
 #
@@ -285,10 +303,13 @@ source_if_exists() {
 #   capture_both out err "ls /nonexistent"
 #   echo "stdout: $out"
 #   echo "stderr: $err"
+#
+# Safer example:
+#   capture_both out err ls /nonexistent
 capture_both() {
     local -n stdout_ref="$1"
     local -n stderr_ref="$2"
-    local command="$3"
+    shift 2
     local exit_code=0
 
     # Create temp files for capture
@@ -304,9 +325,13 @@ capture_both() {
     }
 
     # Execute command, capturing streams separately
-    {
-        eval "$command"
-    } > "$stdout_file" 2> "$stderr_file"
+    if [[ $# -eq 1 ]]; then
+        # Single argument: treat as shell command string
+        bash -c "$1" > "$stdout_file" 2> "$stderr_file"
+    else
+        # Multiple arguments: execute directly as command array (safer)
+        "$@" > "$stdout_file" 2> "$stderr_file"
+    fi
     exit_code=$?
 
     # Read results into variables
@@ -321,32 +346,47 @@ capture_both() {
 
 # Capture stdout only, discard stderr
 # Usage: result=$(capture_stdout "command")
+# Usage: result=$(capture_stdout cmd arg1 arg2)
 #
 # Example:
 #   version=$(capture_stdout "python --version 2>&1")
+#   version=$(capture_stdout python --version)
 capture_stdout() {
-    local command="$1"
-    eval "$command" 2>/dev/null
+    if [[ $# -eq 1 ]]; then
+        bash -c "$1" 2>/dev/null
+    else
+        "$@" 2>/dev/null
+    fi
 }
 
 # Capture stderr only, discard stdout
 # Usage: errors=$(capture_stderr "command")
+# Usage: errors=$(capture_stderr cmd arg1 arg2)
 #
 # Example:
 #   errors=$(capture_stderr "make build")
+#   errors=$(capture_stderr make build)
 capture_stderr() {
-    local command="$1"
-    eval "$command" >/dev/null 2>&1
+    if [[ $# -eq 1 ]]; then
+        bash -c "$1" 2>&1 1>/dev/null
+    else
+        "$@" 2>&1 1>/dev/null
+    fi
 }
 
 # Capture combined stdout+stderr
 # Usage: all_output=$(capture_all "command")
+# Usage: all_output=$(capture_all cmd arg1 arg2)
 #
 # Example:
 #   log=$(capture_all "npm install")
+#   log=$(capture_all npm install)
 capture_all() {
-    local command="$1"
-    eval "$command" 2>&1
+    if [[ $# -eq 1 ]]; then
+        bash -c "$1" 2>&1
+    else
+        "$@" 2>&1
+    fi
 }
 
 # =============================================================================
@@ -355,10 +395,11 @@ capture_all() {
 
 # Retry command with exponential backoff
 # Usage: retry_backoff max_attempts "command" [initial_delay] [max_delay]
+# Usage: retry_backoff max_attempts initial_delay max_delay -- cmd arg1 arg2
 #
 # Parameters:
 #   max_attempts  - Maximum number of retry attempts (must be > 0)
-#   command       - Command to execute
+#   command       - Command to execute (string or after -- separator)
 #   initial_delay - Initial delay in seconds (default: 1)
 #   max_delay     - Maximum delay cap in seconds (default: 60)
 #
@@ -367,11 +408,22 @@ capture_all() {
 # Example:
 #   retry_backoff 5 "curl -sf http://api.example.com/health"
 #   retry_backoff 3 "docker pull nginx" 2 30
+#   retry_backoff 5 1 60 -- curl -sf http://api.example.com/health
 retry_backoff() {
     local max_attempts="${1:-3}"
     local command="$2"
     local initial_delay="${3:-1}"
     local max_delay="${4:-60}"
+    shift 4 2>/dev/null || true
+
+    # Check if using -- separator for command array
+    local -a cmd_array=()
+    if [[ "${command:-}" == "--" ]] || [[ "${1:-}" == "--" ]]; then
+        # Shift past -- if present
+        [[ "${command:-}" == "--" ]] && { command=""; shift 2>/dev/null || true; }
+        [[ "${1:-}" == "--" ]] && shift
+        cmd_array=("$@")
+    fi
 
     local attempt=1
     local delay="$initial_delay"
@@ -384,11 +436,17 @@ retry_backoff() {
     fi
 
     while (( attempt <= max_attempts )); do
-        _safe_debug "Attempt $attempt/$max_attempts: $command"
+        _safe_debug "Attempt $attempt/$max_attempts: ${cmd_array[*]:-$command}"
 
         # Execute with error capture
         set +e
-        eval "$command"
+        if [[ ${#cmd_array[@]} -gt 0 ]]; then
+            # Command array: execute directly (safer)
+            "${cmd_array[@]}"
+        else
+            # String command: use bash -c for isolation
+            bash -c "$command"
+        fi
         exit_code=$?
         set -e 2>/dev/null || true  # Only set if strict mode was on
 
@@ -419,27 +477,42 @@ retry_backoff() {
 
 # Retry with jitter (adds randomness to prevent thundering herd)
 # Usage: retry_backoff_jitter max_attempts "command" [initial_delay] [max_delay]
+# Usage: retry_backoff_jitter max_attempts initial_delay max_delay -- cmd arg1 arg2
 #
 # Same as retry_backoff but adds random jitter (0-25% of delay)
 # Useful for distributed systems to prevent synchronized retries
 #
 # Example:
 #   retry_backoff_jitter 5 "curl -sf http://api.example.com/endpoint"
+#   retry_backoff_jitter 5 1 60 -- curl -sf http://api.example.com/endpoint
 retry_backoff_jitter() {
     local max_attempts="${1:-3}"
     local command="$2"
     local initial_delay="${3:-1}"
     local max_delay="${4:-60}"
+    shift 4 2>/dev/null || true
+
+    # Check if using -- separator for command array
+    local -a cmd_array=()
+    if [[ "${command:-}" == "--" ]] || [[ "${1:-}" == "--" ]]; then
+        [[ "${command:-}" == "--" ]] && { command=""; shift 2>/dev/null || true; }
+        [[ "${1:-}" == "--" ]] && shift
+        cmd_array=("$@")
+    fi
 
     local attempt=1
     local delay="$initial_delay"
     local exit_code
 
     while (( attempt <= max_attempts )); do
-        _safe_debug "Attempt $attempt/$max_attempts: $command"
+        _safe_debug "Attempt $attempt/$max_attempts: ${cmd_array[*]:-$command}"
 
         set +e
-        eval "$command"
+        if [[ ${#cmd_array[@]} -gt 0 ]]; then
+            "${cmd_array[@]}"
+        else
+            bash -c "$command"
+        fi
         exit_code=$?
         set -e 2>/dev/null || true
 
@@ -469,16 +542,37 @@ retry_backoff_jitter() {
 
 # Retry with custom callback on each failure
 # Usage: retry_with_callback max_attempts "command" "callback_func"
+# Usage: retry_with_callback max_attempts callback_func -- cmd arg1 arg2
 #
 # Callback receives: attempt_number max_attempts exit_code
 #
 # Example:
 #   on_retry() { echo "Retry $1/$2 (error: $3)"; }
 #   retry_with_callback 3 "flaky_command" on_retry
+#   retry_with_callback 3 on_retry -- flaky_command arg1
 retry_with_callback() {
     local max_attempts="${1:-3}"
     local command="$2"
     local callback="${3:-:}"  # Default to no-op
+    shift 3 2>/dev/null || true
+
+    # Check if using -- separator for command array
+    local -a cmd_array=()
+    if [[ "${command:-}" == "--" ]] || [[ "${callback:-}" == "--" ]] || [[ "${1:-}" == "--" ]]; then
+        # Re-parse for -- syntax: max_attempts callback -- cmd args
+        if [[ "${command:-}" == "--" ]]; then
+            callback=":"
+            cmd_array=("$callback" "$@")
+            shift ${#cmd_array[@]} 2>/dev/null || true
+        elif [[ "${callback:-}" == "--" ]]; then
+            callback="$command"
+            command=""
+            cmd_array=("$@")
+        elif [[ "${1:-}" == "--" ]]; then
+            shift
+            cmd_array=("$@")
+        fi
+    fi
 
     local attempt=1
     local delay=1
@@ -486,7 +580,11 @@ retry_with_callback() {
 
     while (( attempt <= max_attempts )); do
         set +e
-        eval "$command"
+        if [[ ${#cmd_array[@]} -gt 0 ]]; then
+            "${cmd_array[@]}"
+        else
+            bash -c "$command"
+        fi
         exit_code=$?
         set -e 2>/dev/null || true
 
@@ -514,13 +612,14 @@ retry_with_callback() {
 
 # Run command with timeout (pure bash implementation)
 # Usage: run_with_timeout seconds "command"
+# Usage: run_with_timeout seconds -- cmd arg1 arg2
 #
 # Executes command and kills it if it exceeds the specified timeout.
 # Uses background process and wait -n for efficient implementation.
 #
 # Parameters:
 #   seconds - Maximum time to wait (must be positive integer)
-#   command - Command to execute
+#   command - Command to execute (string or after -- separator)
 #
 # Returns:
 #   0   - Command completed successfully within timeout
@@ -533,9 +632,21 @@ retry_with_callback() {
 #   elif [[ $? -eq 124 ]]; then
 #       echo "Timed out"
 #   fi
+#
+# Safer example:
+#   run_with_timeout 5 -- sleep 10
 run_with_timeout() {
     local timeout="$1"
-    local command="$2"
+    local command="${2:-}"
+    shift 2 2>/dev/null || shift 1
+
+    # Check if using -- separator for command array
+    local -a cmd_array=()
+    if [[ "${command:-}" == "--" ]] || [[ "${1:-}" == "--" ]]; then
+        [[ "${command:-}" == "--" ]] && { command=""; shift 2>/dev/null || true; }
+        [[ "${1:-}" == "--" ]] && shift
+        cmd_array=("$@")
+    fi
 
     # Validate timeout
     if [[ ! "$timeout" =~ ^[0-9]+$ ]] || (( timeout < 1 )); then
@@ -548,7 +659,11 @@ run_with_timeout() {
     local exit_code
 
     # Start the command in background
-    eval "$command" &
+    if [[ ${#cmd_array[@]} -gt 0 ]]; then
+        "${cmd_array[@]}" &
+    else
+        bash -c "$command" &
+    fi
     cmd_pid=$!
 
     # Start watchdog timer in background

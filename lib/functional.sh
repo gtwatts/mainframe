@@ -467,11 +467,13 @@ fp_pipe() {
 
 # Apply composed/piped function
 # Usage: fp_apply "$(fp_pipe double increment)" 5
+# Note: Uses bash -c for isolation instead of eval for security
 fp_apply() {
     local func_def="$1"
     shift
-    eval "$func_def"
-    _fp_piped_inner "$@" 2>/dev/null || _fp_composed_inner "$@"
+    # Use bash -c to execute the function definition in a subshell for isolation
+    # This prevents arbitrary code execution in the current shell context
+    bash -c "$func_def"$'\n'"_fp_piped_inner \"\$@\" 2>/dev/null || _fp_composed_inner \"\$@\"" -- "$@"
 }
 
 # =============================================================================

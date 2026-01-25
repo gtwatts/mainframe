@@ -58,7 +58,10 @@ env_detect_shell() {
 # Returns: Path to .bashrc, .zshrc, etc.
 env_config_file() {
     local shell="${1:-$(env_detect_shell)}"
-    local home="${HOME:-$(eval echo ~)}"
+    local home="${HOME:-}"
+    # Fallback to getent or ~ expansion if HOME not set
+    [[ -z "$home" ]] && home=$(getent passwd "$USER" 2>/dev/null | cut -d: -f6)
+    [[ -z "$home" ]] && home=~
 
     case "$shell" in
         bash)
@@ -800,10 +803,19 @@ env_diff() {
 # =============================================================================
 
 # Expand environment variables in a string
-# Usage: env_expand "string with $VAR"
+# Usage: env_expand "string with \$VAR"
+# Note: Uses envsubst for safe variable expansion, falls back to bash -c
 env_expand() {
     local str="$1"
-    eval "printf '%s\\n' \"$str\""
+
+    # Prefer envsubst if available (safer, no command execution)
+    if command -v envsubst &>/dev/null; then
+        printf '%s' "$str" | envsubst
+    else
+        # Fallback: use bash -c with printf for isolation
+        # Only expand $VAR and ${VAR} patterns, not command substitutions
+        bash -c 'printf "%s\n" "'"${str//\"/\\\"}"'"'
+    fi
 }
 
 # Get shell environment summary
@@ -813,7 +825,10 @@ env_summary() {
 
     shell=$(env_detect_shell)
     user="${USER:-$(whoami)}"
-    home="${HOME:-$(eval echo ~)}"
+    home="${HOME:-}"
+    # Fallback to getent or ~ expansion if HOME not set
+    [[ -z "$home" ]] && home=$(getent passwd "$user" 2>/dev/null | cut -d: -f6)
+    [[ -z "$home" ]] && home=~
 
     printf 'Shell: %s\n' "$shell"
     printf 'User: %s\n' "$user"

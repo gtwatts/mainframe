@@ -24,8 +24,12 @@ setup() {
     # Clear loaded libs tracking (if it exists)
     unset _MAINFRAME_LOADED_LIBS
 
-    # Store test start time for performance tests
-    TEST_START_NS=$(date +%s%N 2>/dev/null || echo "0")
+    # Store test start time for performance tests (fallback for macOS)
+    if date +%s%N &>/dev/null && [[ "$(date +%s%N)" != *"N"* ]]; then
+        TEST_START_NS=$(date +%s%N)
+    else
+        TEST_START_NS="0"
+    fi
 }
 
 teardown() {
@@ -389,8 +393,8 @@ teardown() {
 # =============================================================================
 
 @test "performance: core-only loading is fast" {
-    # Skip if nanosecond timing not available
-    if ! date +%s%N &>/dev/null; then
+    # Skip if nanosecond timing not available (macOS returns literal %N)
+    if ! date +%s%N &>/dev/null || [[ "$(date +%s%N)" == *"N"* ]]; then
         skip "nanosecond timing not available"
     fi
 
@@ -414,7 +418,8 @@ teardown() {
 
 @test "performance: full loading completes successfully" {
     # This test ensures full loading still works, timing is informational
-    if ! date +%s%N &>/dev/null; then
+    # Skip if nanosecond timing not available (macOS returns literal %N)
+    if ! date +%s%N &>/dev/null || [[ "$(date +%s%N)" == *"N"* ]]; then
         skip "nanosecond timing not available"
     fi
 
@@ -437,7 +442,8 @@ teardown() {
 }
 
 @test "performance: selective loading is faster than full loading" {
-    if ! date +%s%N &>/dev/null; then
+    # Skip if nanosecond timing not available (macOS returns literal %N)
+    if ! date +%s%N &>/dev/null || [[ "$(date +%s%N)" == *"N"* ]]; then
         skip "nanosecond timing not available"
     fi
 
