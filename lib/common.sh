@@ -680,13 +680,21 @@ _mainframe_load_selected() {
         return
     fi
 
+    # Handle single tier name (e.g., 'core', 'standard', 'ai')
+    case "$libs_spec" in
+        core)     return ;;  # Already loaded core tier above
+        standard) _mainframe_load_tier "standard"; return ;;
+        extended) _mainframe_load_tier "extended"; return ;;
+        ai)       _mainframe_load_tier "ai"; return ;;
+    esac
+
     # Handle tier expressions (e.g., 'core+standard+ai')
     if [[ "$libs_spec" == *"+"* ]]; then
         local IFS='+'
         local tier
         for tier in $libs_spec; do
             case "$tier" in
-                core)     _mainframe_load_tier "core" ;;
+                core)     ;; # Already loaded
                 standard) _mainframe_load_tier "standard" ;;
                 extended) _mainframe_load_tier "extended" ;;
                 ai)       _mainframe_load_tier "ai" ;;
