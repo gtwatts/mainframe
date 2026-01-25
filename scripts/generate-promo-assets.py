@@ -157,8 +157,8 @@ def create_linkedin_hero():
     draw.rectangle([60, box_y, 550, box_y + 180], outline=MAINFRAME_GREEN, width=2)
 
     stats = [
-        ("3x", "More tasks before hitting Claude Code cap"),
-        ("96%", "First-run success rate (vs 68%)"),
+        ("3x", "More tasks before weekly cap"),
+        ("96%", "First-run success rate"),
         ("72x", "Faster than external tools"),
     ]
 
