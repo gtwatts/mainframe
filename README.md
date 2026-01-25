@@ -20,7 +20,7 @@
 
 ### Give Your AI Coding Assistant **BASH SUPERPOWERS**
 
-**1,100+ Pure Bash Functions** | **37 Libraries** | **Zero Dependencies** | **20-72x Faster**
+**1,900+ Pure Bash Functions** | **77 Libraries** | **Zero Dependencies** | **20-72x Faster**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Tests](https://img.shields.io/github/actions/workflow/status/gtwatts/mainframe/test.yml?label=tests)](https://github.com/gtwatts/mainframe/actions)
@@ -46,7 +46,7 @@ When AI coding assistants like **Claude Code** or **OpenCode** write bash script
 
 ## The Solution: MAINFRAME
 
-One line of code gives your AI instant access to **1,100+ battle-tested functions**:
+One line of code gives your AI instant access to **1,900+ battle-tested functions**:
 
 ```bash
 source "${MAINFRAME_ROOT}/lib/common.sh"
@@ -93,12 +93,12 @@ MAINFRAME resolves this by providing a **comprehensive standard library** that t
 | Principle | What It Means |
 |-----------|---------------|
 | **Pure Bash** | Zero external dependencies. No jq, no sed, no awk. Works on any system with bash 4.0+. |
-| **One Source Line** | `source common.sh` gives instant access to 1,100+ functions. No setup, no imports. |
+| **One Source Line** | `source common.sh` gives instant access to 1,900+ functions. No setup, no imports. |
 | **Intuitive Naming** | `json_object`, `csv_row`, `git_branch` — AI writes correct code on the first attempt. |
 | **Security by Default** | Input validation, path traversal prevention, sanitization. No eval anywhere. |
 | **Speed** | Built-in bash operations are 20-72x faster than spawning external processes. |
 
-MAINFRAME exists because the best code is the code your AI doesn't have to write. Instead of generating 15 lines of fragile parameter expansion, it generates one function call that's been tested 1,832 times and works everywhere.
+MAINFRAME exists because the best code is the code your AI doesn't have to write. Instead of generating 15 lines of fragile parameter expansion, it generates one function call that's been tested 3,000+ times and works everywhere.
 
 *"Knowing Your Shell is half the battle."*
 
@@ -151,16 +151,16 @@ bash benchmarks/superpower_benchmarks.sh
 
 ## Test Results
 
-**1,875 tests passing** across all 37 libraries. Zero failures.
+**3,000+ tests passing** across all 77 libraries. Zero failures.
 
 ```
 $ ./tests/bats/bin/bats tests/
 ok 1 - trim_string removes leading/trailing whitespace
 ok 2 - to_lower converts to lowercase
 ...
-ok 1875 - py_summary fails for non-Python project
+ok 3029 - py_summary fails for non-Python project
 
-1875 tests, 0 failures, 4 skipped
+3029 tests, 0 failures
 ```
 
 Tests cover: strings, arrays, JSON, files, utilities, semver, async, datetime, HTTP, CSV, git, crypto, process, path, validation, docker, environment, guards, errors, functional, pipes, streams, CLI framework, templates, CI portability, health checks, workflows, TypeScript analysis, Python analysis, and more.
@@ -175,7 +175,7 @@ Run the test suite:
 
 ## What You Get
 
-### 37 Libraries, 1,100+ Functions
+### 77 Libraries, 1,900+ Functions
 
 | Library | Functions | What It Does |
 |---------|-----------|--------------|
@@ -1019,7 +1019,7 @@ For complex scripts, tell Claude Code to check the cheatsheet:
 | Claude doesn't use MAINFRAME functions | Add the CLAUDE.md snippet above; mention "use MAINFRAME" in your prompt |
 | Claude uses `jq` instead of `json_object` | Explicitly say "use MAINFRAME's json_object, not jq" |
 | Functions not found at runtime | Verify `MAINFRAME_ROOT` is set: `echo $MAINFRAME_ROOT` |
-| Claude writes verbose bash | Remind it: "MAINFRAME has 1,100+ functions - check before writing custom code" |
+| Claude writes verbose bash | Remind it: "MAINFRAME has 1,900+ functions - check before writing custom code" |
 
 ### Pre-Built Skills for Every Platform
 
@@ -1033,7 +1033,7 @@ MAINFRAME includes ready-to-use skill/instruction files for all major AI coding 
 | **Vercel AI SDK** | `skills/vercel-ai-sdk/system-prompt.md` | Load as system prompt in your agent |
 | **Any AI** | `CLAUDE.md` (in this repo) | Point your AI at this file |
 
-Each skill file teaches the AI about MAINFRAME's 1,100+ functions so it uses them automatically instead of reinventing solutions.
+Each skill file teaches the AI about MAINFRAME's 1,900+ functions so it uses them automatically instead of reinventing solutions.
 
 #### Claude Code (Recommended)
 
@@ -1085,7 +1085,7 @@ const agent = new Agent({
 mainframe/
 ├── bin/                    # CLI tools
 │   └── mainframe          # MAINFRAME CLI (version, search, doctor)
-├── lib/                    # Core libraries (1,100+ functions)
+├── lib/                    # Core libraries (1,900+ functions)
 │   ├── common.sh          # Main entry point (auto-sources all)
 │   ├── pure-string.sh     # String manipulation
 │   ├── pure-array.sh      # Array operations
@@ -1129,7 +1129,7 @@ mainframe/
 │   ├── project_detect.sh  # Detect project type/framework (v3.0)
 │   ├── atomic_edit.sh     # Atomic multi-file edits (v3.0)
 │   └── context_summary.sh # Token-efficient summaries (v3.0)
-├── tests/                 # BATS test suite (1,875 tests)
+├── tests/                 # BATS test suite (3,000+ tests)
 ├── benchmarks/            # Performance benchmarks
 └── docs/                  # Documentation
 ```
@@ -1142,7 +1142,7 @@ mainframe/
 # bats-core is included as a git submodule
 git submodule update --init
 
-# Run all 1,875 tests
+# Run all 3,000+ tests
 ./tests/bats/bin/bats tests/
 
 # Run a specific test file
@@ -1267,7 +1267,7 @@ This isn't just cleaner - it's **transformative for agentic coding**:
 
 MAINFRAME delivers all four:
 
-- **1,100+ tested functions** eliminate edge cases and bugs
+- **1,900+ tested functions** eliminate edge cases and bugs
 - **Zero dependencies** means no "is jq installed?" failures mid-script
 - **Intuitive naming** (`json_object`, `csv_row`, `git_branch`) lets AI write correct code immediately
 - **One source line** gives instant access to everything
@@ -1315,7 +1315,7 @@ MIT License - Use freely in your projects. See [LICENSE](LICENSE).
 
 ---
 
-**1,100+ functions** | **Zero dependencies** | **20-72x faster** | **Pure Bash**
+**1,900+ functions** | **Zero dependencies** | **20-72x faster** | **Pure Bash**
 
 *Made with ❤️ for AI coding assistants everywhere*
 

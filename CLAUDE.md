@@ -4,7 +4,7 @@
 
 ## Quick Start
 
-One line gives you 600+ pure bash functions:
+One line gives you 1,900+ pure bash functions:
 
 ```bash
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
@@ -12,7 +12,7 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 
 ## What You Can Do
 
-MAINFRAME provides **29 libraries** with **600+ functions**. Here's what's available:
+MAINFRAME provides **77 libraries** with **1,900+ functions**. Here's what's available:
 
 ### Core Libraries
 
@@ -377,4 +377,4 @@ diff_affected_lines "$diff"                  # Line numbers
 
 ## Full Reference
 
-For all 700+ function signatures: [CHEATSHEET.md](CHEATSHEET.md)
+For all 1,900+ function signatures: [CHEATSHEET.md](CHEATSHEET.md)
