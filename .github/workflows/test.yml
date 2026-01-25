@@ -47,11 +47,12 @@ jobs:
           # SC2015: A && B || C pattern (intentional)
           # SC2030/SC2031: Variable modification in subshell (intentional)
           # SC2317: Unreachable code false positive (library functions)
+          # SC2069: Intentional redirect order for capture_stderr
           shellcheck -x \
             -e SC1090 -e SC1091 -e SC2034 -e SC2178 -e SC2053 -e SC2206 \
             -e SC2059 -e SC1003 -e SC2004 -e SC2181 -e SC2012 \
             -e SC2120 -e SC2119 -e SC2016 -e SC2155 -e SC2188 \
-            -e SC2295 -e SC2015 -e SC2030 -e SC2031 -e SC2317 \
+            -e SC2295 -e SC2015 -e SC2030 -e SC2031 -e SC2317 -e SC2069 \
             lib/*.sh
 
       - name: Run ShellCheck on scripts
