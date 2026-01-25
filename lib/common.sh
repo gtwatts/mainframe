@@ -573,12 +573,14 @@ _MAINFRAME_TIER_STANDARD=(
     validation path env datetime http csv
     git docker crypto proc args config
     log error tui template ci health
+    device sysinfo service retry
+    toml yaml
 )
 
 # Extended tier: advanced/specialized libraries
 _MAINFRAME_TIER_EXTENDED=(
     k8s semver functional stream pipe
-    procsub async meta cli
+    procsub async meta cli fzf
     compat safe guard
 )
 
@@ -588,7 +590,8 @@ _MAINFRAME_TIER_AI=(
     contract perf netscan parsers
     risk dryrun undo
     limits confirm safewrap safecontext
-    agent workflow
+    agent workflow taskstate
+    context diff parse_output symbols agent_exec
 )
 
 # --- Profile Presets ---------------------------------------------------------

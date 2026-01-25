@@ -19,6 +19,8 @@ Thumbs.db
 # BATS test framework (install via package manager)
 tests/bats/
 tests/bats-support/
+tests/bats-assert/
+tests/bats-file/
 
 # Benchmark results (keep the script, not results)
 benchmark_results/

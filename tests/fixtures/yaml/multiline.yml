@@ -1,0 +1,16 @@
+name: multiline-test
+
+literal_block: |
+  This is a literal block.
+  Line breaks are preserved.
+  Indentation matters.
+
+folded_block: >
+  This is a folded block.
+  Lines will be joined
+  into a single line.
+
+simple_key: simple_value
+
+nested:
+  child: value

@@ -1,0 +1,6 @@
+# Simple key-value TOML file
+title = "My Application"
+version = "1.0.0"
+debug = true
+port = 8080
+rate = 3.14

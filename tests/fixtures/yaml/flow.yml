@@ -1,0 +1,11 @@
+# Flow collections test
+name: flow-test
+
+ports: [8080, 8081, 8082]
+tags: ["web", "api", "v2"]
+
+config: {host: localhost, port: 3000, debug: true}
+
+nested:
+  items: [one, two, three]
+  settings: {timeout: 30, retries: 3}

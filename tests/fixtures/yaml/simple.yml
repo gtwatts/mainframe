@@ -1,0 +1,7 @@
+# Simple key-value YAML
+name: myapp
+version: 1.0.0
+debug: true
+port: 8080
+rate: 3.14
+description: "A simple application"

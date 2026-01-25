@@ -2074,6 +2074,291 @@ echo "$info"  # {"scheme":"https","host":"api.example.com","port":8443,"path":"/
 
 ---
 
-*900+ functions | 34 libraries | Zero dependencies | 20-72x faster*
+## Retry / Timeout / Circuit Breaker (retry.sh)
+
+**Purpose**: Resilient operation primitives for AI agents -- retry with configurable backoff, timeouts, circuit breakers, polling/wait helpers, and token-bucket rate limiting.
+
+### Retry
+
+| Function | Signature | Example | Purpose |
+|----------|-----------|---------|---------|
+| `retry` | `retry [opts] cmd [args]` | `retry --max-attempts 5 --backoff exponential curl -sf http://api.com` | Retry with configurable backoff |
+| `retry_simple` | `retry_simple N cmd [args]` | `retry_simple 3 curl -sf http://example.com` | Simple retry (exponential backoff) |
+
+**Options**: `--max-attempts N` (default: 3), `--delay SECONDS` (default: 1), `--backoff linear|exponential|fixed` (default: exponential), `--max-delay SECONDS` (default: 30), `--jitter` (random 0-50% added), `--on-retry "callback"`.
+
+### Timeout
+
+| Function | Signature | Example | Purpose |
+|----------|-----------|---------|---------|
+| `with_timeout` | `with_timeout SECONDS cmd [args]` | `with_timeout 30 curl -sf http://slow-api.com` | Run with timeout (returns 124 on timeout) |
+| `did_timeout` | `did_timeout` | `with_timeout 5 cmd; did_timeout && echo "timed out"` | Check if last with_timeout timed out |
+
+### Circuit Breaker
+
+| Function | Signature | Example | Purpose |
+|----------|-----------|---------|---------|
+| `circuit_breaker_init` | `circuit_breaker_init "name" [opts]` | `circuit_breaker_init "redis" --threshold 3 --timeout 30` | Initialize breaker |
+| `circuit_breaker_call` | `circuit_breaker_call "name" cmd [args]` | `circuit_breaker_call "redis" redis-cli ping` | Execute through breaker (0=ok, 1=fail, 2=open) |
+| `circuit_breaker_state` | `circuit_breaker_state "name"` | `state=$(circuit_breaker_state "redis")` | Query: closed/open/half-open |
+| `circuit_breaker_failures` | `circuit_breaker_failures "name"` | `count=$(circuit_breaker_failures "redis")` | Current failure count |
+| `circuit_breaker_reset` | `circuit_breaker_reset "name"` | `circuit_breaker_reset "redis"` | Force reset to closed |
+| `circuit_breaker_list` | `circuit_breaker_list` | `circuit_breaker_list` | List all breakers (name, state, failures) |
+
+**Options**: `--threshold N` (default: 5), `--timeout SECONDS` (default: 60), `--half-open-max N` (default: 1).
+
+### Polling / Wait
+
+| Function | Signature | Example | Purpose |
+|----------|-----------|---------|---------|
+| `wait_for` | `wait_for [opts] cmd [args]` | `wait_for --timeout 60 --interval 2 curl -sf http://localhost:8080/health` | Poll until condition true |
+| `wait_for_file` | `wait_for_file "path" [timeout]` | `wait_for_file "/var/run/app.pid" 10` | Wait for file to exist |
+| `wait_for_port` | `wait_for_port HOST PORT [timeout]` | `wait_for_port localhost 8080 60` | Wait for TCP port to open |
+
+**Options**: `--timeout SECONDS` (default: 30), `--interval SECONDS` (default: 1), `--message "text"`.
+
+### Rate Limiter
+
+| Function | Signature | Example | Purpose |
+|----------|-----------|---------|---------|
+| `rate_limit_init` | `rate_limit_init "name" --rate N --per S` | `rate_limit_init "api" --rate 10 --per 60` | Initialize token bucket |
+| `rate_limit_acquire` | `rate_limit_acquire "name" [--no-wait]` | `rate_limit_acquire "api"` | Acquire token (blocks or returns 1) |
+| `rate_limit_reset` | `rate_limit_reset "name"` | `rate_limit_reset "api"` | Reset to full bucket |
+
+### Quick Patterns (Retry)
+
+```bash
+# Retry with exponential backoff and jitter
+retry --max-attempts 5 --backoff exponential --jitter curl -sf http://api.com
+
+# Simple 3-attempt retry
+retry_simple 3 wget -q http://example.com/file.zip
+
+# Timeout with fallback
+if ! with_timeout 30 long_running_task; then
+    if did_timeout; then
+        echo "Task timed out after 30s"
+    else
+        echo "Task failed"
+    fi
+fi
+
+# Circuit breaker for flaky service
+circuit_breaker_init "payment_api" --threshold 3 --timeout 30
+if ! circuit_breaker_call "payment_api" curl -sf http://payments/charge; then
+    case $? in
+        1) echo "Payment failed" ;;
+        2) echo "Payment service circuit is OPEN" ;;
+    esac
+fi
+
+# Wait for service to be ready
+wait_for_port localhost 5432 60
+wait_for --timeout 30 --interval 2 curl -sf http://localhost:8080/health
+
+# Rate-limited API calls
+rate_limit_init "github_api" --rate 30 --per 60
+for repo in "${repos[@]}"; do
+    rate_limit_acquire "github_api"
+    curl -sf "https://api.github.com/repos/$repo"
+done
+```
+
+---
+
+## Context Budget & Token Estimation (context.sh)
+
+**Purpose**: Helps AI agents estimate token costs BEFORE operations, manage context budgets, and truncate/summarize content to fit within model limits. All estimates are approximations based on character-count heuristics.
+
+### Token Estimation
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `context_estimate_tokens` | `context_estimate_tokens "text"` | `context_estimate_tokens "Hello world"` | `3` |
+| `context_file_tokens` | `context_file_tokens "path"` | `context_file_tokens "src/app.py"` | `285` |
+| `context_command_tokens` | `context_command_tokens cmd [args]` | `context_command_tokens cat README.md` | `150` |
+| `context_ratio` | `context_ratio [--type text\|code\|json\|markdown]` | `context_ratio --type code` | `3.5` |
+
+### Budget Management
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `context_budget_init` | `context_budget_init [--max-tokens N] [--reserve N]` | `context_budget_init --max-tokens 128000 --reserve 4000` | (creates budget state) |
+| `context_budget_use` | `context_budget_use "label" tokens` | `context_budget_use "config.ts" 2500` | (tracks allocation) |
+| `context_budget_remaining` | `context_budget_remaining` | `context_budget_remaining` | `91500` |
+| `context_budget_fits` | `context_budget_fits tokens` | `context_budget_fits 5000` | (returns 0=fits, 1=exceeds) |
+| `context_budget_summary` | `context_budget_summary` | `context_budget_summary` | `{"max":128000,"used":36500,...}` |
+| `context_budget_reset` | `context_budget_reset` | `context_budget_reset` | (clears all state) |
+
+### Content Truncation
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `context_truncate` | `context_truncate "text" max_tokens [--strategy S]` | `context_truncate "$big" 1000 --strategy smart` | (truncated text) |
+| `context_truncate_file` | `context_truncate_file "path" max_tokens [--strategy S]` | `context_truncate_file "big.log" 500` | (truncated content) |
+| `context_distribute_budget` | `echo "items" \| context_distribute_budget max_tokens` | (see patterns below) | (JSON with allocations) |
+
+**Strategies**: `head` (default, keep beginning), `tail` (keep end), `middle` (keep both ends), `smart` (first+last paragraphs).
+
+### Content Analysis
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `context_analyze` | `context_analyze "text"` | `context_analyze "$code"` | `{"chars":500,"lines":20,"type":"code","language":"python",...}` |
+| `context_detect_type` | `context_detect_type "text"` | `context_detect_type "$src"` | `code:python` |
+| `context_chunk_size` | `context_chunk_size [--type T] [--model M]` | `context_chunk_size --type code --model claude` | `6000` |
+
+### File Batching
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `context_batch_files` | `echo "paths" \| context_batch_files max_tokens [--sort S]` | (see patterns below) | (file paths that fit) |
+| `context_read_plan` | `context_read_plan max_tokens [files...]` | `context_read_plan 50000 src/*.ts` | `{"files":[...],"files_included":12,...}` |
+
+### Quick Patterns (Context)
+
+```bash
+# Estimate before reading
+tokens=$(context_file_tokens "src/main.ts")
+echo "File would use ~$tokens tokens"
+
+# Budget workflow for agent operations
+context_budget_init --max-tokens 128000 --reserve 8000
+for f in src/*.py; do
+    tokens=$(context_file_tokens "$f")
+    if context_budget_fits "$tokens"; then
+        context_budget_use "$f" "$tokens"
+        cat "$f"  # safe to read
+    else
+        echo "Skipping $f (would exceed budget)"
+    fi
+done
+context_budget_summary  # JSON report
+
+# Truncate large file for context
+content=$(context_truncate_file "huge.log" 2000 --strategy tail)
+
+# Plan which files to read
+plan=$(context_read_plan 50000 src/*.ts tests/*.ts)
+echo "$plan"  # Shows included/excluded files with token counts
+
+# Batch files within budget (smallest first)
+included=$(find src -name "*.py" | context_batch_files 30000 --sort size)
+echo "$included"  # Paths that fit
+
+# Distribute budget by priority
+printf 'important\t%s\t3\nnice_to_have\t%s\t1\n' "$critical_content" "$extra_content" \
+    | context_distribute_budget 10000
+```
+
+### Token Ratios
+
+| Content Type | Chars/Token | Detection |
+|--------------|-------------|-----------|
+| English prose | 4.0 | Default |
+| Code | 3.5 | >30% lines with indentation or `{};()=` |
+| JSON/structured | 3.0 | Starts with `{` or `[` |
+| Markdown | 3.8 | Contains `#`, `**`, triple backticks |
+
+---
+
+## Diff & Patch Operations (diff.sh)
+
+**Purpose**: Surgical file editing for AI agents via unified diffs, search-and-replace, and safe patch application. Enables agents to make precise edits without dumping/rewriting entire files.
+
+### Diff Generation
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `diff_strings` | `diff_strings "old" "new" [--context N]` | `diff_strings "hello" "world"` | Unified diff |
+| `diff_files` | `diff_files "old_file" "new_file" [--context N]` | `diff_files "a.txt" "b.txt"` | Unified diff |
+| `diff_preview` | `diff_preview "file" "new_content"` | `diff_preview "config.sh" "$new"` | Preview changes |
+| `diff_edit_script` | `diff_edit_script "old" "new"` | `diff_edit_script "$old" "$new"` | Edit commands |
+
+### Patch Application
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `diff_apply` | `diff_apply "file" "diff" [--backup] [--dry-run] [--fuzz N]` | `diff_apply "f.txt" "$patch"` | (returns 0/1/2) |
+| `diff_apply_string` | `diff_apply_string "text" "diff" [fuzz]` | `diff_apply_string "$text" "$patch"` | Patched text |
+| `diff_reverse` | `diff_reverse "file" "diff"` | `diff_reverse "f.txt" "$patch"` | (returns 0/1/2) |
+
+### Search-and-Replace (Agent-Friendly)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `diff_replace` | `diff_replace "file" "old" "new" [--all] [--backup]` | `diff_replace "f.txt" "foo" "bar"` | (returns 0/1/2) |
+| `diff_replace_string` | `diff_replace_string "text" "old" "new" [--all]` | `diff_replace_string "$s" "a" "b"` | Modified text |
+| `diff_insert_after` | `diff_insert_after "file" "match" "new_text"` | `diff_insert_after "f.txt" "line" "new"` | (returns 0/1) |
+| `diff_insert_before` | `diff_insert_before "file" "match" "new_text"` | `diff_insert_before "f.txt" "line" "new"` | (returns 0/1) |
+| `diff_delete_lines` | `diff_delete_lines "file" "pattern" [--regex]` | `diff_delete_lines "f.txt" "TODO"` | (returns 0/1) |
+| `diff_replace_range` | `diff_replace_range "file" start end "new"` | `diff_replace_range "f.txt" 2 4 "new"` | (returns 0/1) |
+
+### Conflict Detection
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `diff_can_apply` | `diff_can_apply "file" "diff"` | `diff_can_apply "f.txt" "$patch"` | (returns 0/1) |
+| `diff_conflicts` | `diff_conflicts "file" "diff"` | `diff_conflicts "f.txt" "$patch"` | JSON array |
+| `diff_validate_unique` | `diff_validate_unique "file" "text"` | `diff_validate_unique "f.txt" "foo"` | Match count |
+
+### Diff Analysis
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `diff_stats` | `diff_stats "diff"` | `diff_stats "$patch"` | `{"additions":3,"deletions":1,...}` |
+| `diff_changed_lines` | `diff_changed_lines "diff"` | `diff_changed_lines "$patch"` | +/- prefixed lines |
+| `diff_affected_lines` | `diff_affected_lines "diff"` | `diff_affected_lines "$patch"` | Line numbers |
+
+### Quick Patterns (Diff)
+
+```bash
+# Agent surgical edit (the PRIMARY use case)
+diff_replace "src/config.ts" \
+    'const PORT = 3000;' \
+    'const PORT = 8080;' --backup
+
+# Multiline replacement
+diff_replace "src/app.ts" \
+    $'function old() {\n    return null;\n}' \
+    $'function new() {\n    return 42;\n}' --no-backup
+
+# Insert after a matching line
+diff_insert_after "Dockerfile" "FROM node:20" "RUN apt-get update"
+
+# Preview changes before applying
+preview=$(diff_preview "config.sh" "$new_content")
+echo "$preview"
+
+# Safe patch workflow
+if diff_can_apply "main.py" "$patch"; then
+    diff_apply "main.py" "$patch" --backup
+else
+    conflicts=$(diff_conflicts "main.py" "$patch")
+    echo "Conflicts: $conflicts"
+fi
+
+# Validate before replacing
+count=$(diff_validate_unique "src/index.ts" "$old_text")
+case $? in
+    0) diff_replace "src/index.ts" "$old_text" "$new_text" ;;
+    1) echo "Text not found" ;;
+    2) echo "Ambiguous: $count matches" ;;
+esac
+
+# Analyze a diff
+stats=$(diff_stats "$patch")
+echo "$stats"  # {"additions":5,"deletions":2,"changes":7,"files":1}
+
+# Delete lines matching pattern
+diff_delete_lines "output.log" "DEBUG" --regex
+
+# Replace a range of lines (1-based)
+diff_replace_range "script.sh" 10 15 "# replaced block"
+```
+
+---
+
+*900+ functions | 37 libraries | Zero dependencies | 20-72x faster*
 
 **YO JOE!**

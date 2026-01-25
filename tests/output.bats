@@ -2,24 +2,25 @@
 # =============================================================================
 # MAINFRAME: Universal Structured Output Protocol (USOP) Tests
 # =============================================================================
+# Tests for lib/output.sh - Mode detection, envelopes, mainframe_call, helpers
+# =============================================================================
 
 load 'test_helper'
 
 setup() {
     source_lib "output"
-    # Reset state between tests
-    MAINFRAME_OUTPUT="raw"
-    MAINFRAME_OUTPUT_HINT=""
-    unset _MAINFRAME_TIMER__default 2>/dev/null || true
+    # Reset output mode to default before each test
+    MAINFRAME_OUTPUT="text"
 }
 
 # =============================================================================
 # CONFIGURATION TESTS
 # =============================================================================
 
-@test "MAINFRAME_OUTPUT defaults to raw" {
-    # After setup sources output.sh, MAINFRAME_OUTPUT is set to raw
-    [ "$MAINFRAME_OUTPUT" = "raw" ]
+@test "MAINFRAME_OUTPUT defaults to text" {
+    run bash -c 'source "'"$MAINFRAME_ROOT"'/lib/output.sh"; printf "%s" "$MAINFRAME_OUTPUT"'
+    [ "$status" -eq 0 ]
+    [ "$output" = "text" ]
 }
 
 @test "double-source guard prevents reloading" {
@@ -27,642 +28,799 @@ setup() {
 }
 
 # =============================================================================
-# RAW MODE TESTS
+# OUTPUT MODE DETECTION TESTS
 # =============================================================================
 
-@test "output in raw mode prints plain text" {
-    MAINFRAME_OUTPUT=raw
-    local result
-    result=$(output "hello world")
-    [ "$result" = "hello world" ]
+@test "output_is_json returns 1 when MAINFRAME_OUTPUT=text" {
+    MAINFRAME_OUTPUT="text"
+    run output_is_json
+    [ "$status" -ne 0 ]
 }
 
-@test "output -n suppresses newline in raw mode" {
-    MAINFRAME_OUTPUT=raw
-    local result
-    result=$(output -n "hello")
-    [ "$result" = "hello" ]
+@test "output_is_json returns 0 when MAINFRAME_OUTPUT=json" {
+    MAINFRAME_OUTPUT="json"
+    run output_is_json
+    [ "$status" -eq 0 ]
 }
 
-@test "output -t void produces no output in raw mode" {
-    MAINFRAME_OUTPUT=raw
-    local result
-    result=$(output -t void "")
-    [ -z "$result" ]
+@test "output_is_json returns 1 when MAINFRAME_OUTPUT is unset" {
+    unset MAINFRAME_OUTPUT
+    run output_is_json
+    [ "$status" -ne 0 ]
 }
 
-@test "output in raw mode with int type just prints value" {
-    MAINFRAME_OUTPUT=raw
-    local result
-    result=$(output -t int "42")
-    [ "$result" = "42" ]
+@test "output_format returns text by default" {
+    MAINFRAME_OUTPUT="text"
+    run output_format
+    [ "$status" -eq 0 ]
+    [ "$output" = "text" ]
 }
 
-@test "output in raw mode has near-zero overhead" {
-    MAINFRAME_OUTPUT=raw
-    # Just verify it does not crash or add JSON wrapping
-    local result
-    result=$(output -t bool "true")
-    [ "$result" = "true" ]
+@test "output_format returns json when MAINFRAME_OUTPUT=json" {
+    MAINFRAME_OUTPUT="json"
+    run output_format
+    [ "$status" -eq 0 ]
+    [ "$output" = "json" ]
 }
 
 # =============================================================================
-# MINIMAL MODE TESTS
+# JSON ESCAPE TESTS
 # =============================================================================
 
-@test "output in minimal mode prints value" {
-    MAINFRAME_OUTPUT=minimal
-    local result
-    result=$(output "test value")
-    [ "$result" = "test value" ]
+@test "output_json_escape handles plain string" {
+    run output_json_escape "hello world"
+    [ "$status" -eq 0 ]
+    [ "$output" = "hello world" ]
 }
 
-@test "output in minimal mode - void produces nothing" {
-    MAINFRAME_OUTPUT=minimal
-    local result
-    result=$(output -t void "")
-    [ -z "$result" ]
+@test "output_json_escape escapes double quotes" {
+    run output_json_escape 'say "hello"'
+    [ "$status" -eq 0 ]
+    [ "$output" = 'say \"hello\"' ]
 }
 
-# =============================================================================
-# JSON MODE TESTS
-# =============================================================================
-
-@test "output in json mode produces envelope" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output "hello")
-    assert_contains "$result" '"ok":true'
-    assert_contains "$result" '"data":"hello"'
-    assert_contains "$result" '"elapsed_ms"'
+@test "output_json_escape escapes backslashes" {
+    run output_json_escape 'path\to\file'
+    [ "$status" -eq 0 ]
+    [ "$output" = 'path\\to\\file' ]
 }
 
-@test "output json mode wraps string type" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output -t string "hello world")
-    assert_contains "$result" '"data":"hello world"'
+@test "output_json_escape escapes newlines" {
+    local input=$'line1\nline2'
+    run output_json_escape "$input"
+    [ "$status" -eq 0 ]
+    [ "$output" = 'line1\nline2' ]
 }
 
-@test "output json mode wraps int type" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output -t int "42")
-    assert_contains "$result" '"data":42'
+@test "output_json_escape escapes tabs" {
+    local input=$'col1\tcol2'
+    run output_json_escape "$input"
+    [ "$status" -eq 0 ]
+    [ "$output" = 'col1\tcol2' ]
 }
 
-@test "output json mode wraps float type" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output -t float "3.14")
-    assert_contains "$result" '"data":3.14'
+@test "output_json_escape escapes carriage returns" {
+    local input=$'hello\rworld'
+    run output_json_escape "$input"
+    [ "$status" -eq 0 ]
+    [ "$output" = 'hello\rworld' ]
 }
 
-@test "output json mode wraps bool type" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output -t bool "true")
-    assert_contains "$result" '"data":true'
+@test "output_json_escape escapes backspace" {
+    local input=$'hello\bworld'
+    run output_json_escape "$input"
+    [ "$status" -eq 0 ]
+    [ "$output" = 'hello\bworld' ]
 }
 
-@test "output json mode wraps bool false" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output -t bool "false")
-    assert_contains "$result" '"data":false'
+@test "output_json_escape escapes form feed" {
+    local input=$'hello\fworld'
+    run output_json_escape "$input"
+    [ "$status" -eq 0 ]
+    [ "$output" = 'hello\fworld' ]
 }
 
-@test "output json mode wraps json_object type" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output -t json_object '{"name":"John"}')
-    assert_contains "$result" '"data":{"name":"John"}'
+@test "output_json_escape escapes control characters as unicode" {
+    local input=$'\x01\x02\x03'
+    run output_json_escape "$input"
+    [ "$status" -eq 0 ]
+    [ "$output" = '\u0001\u0002\u0003' ]
 }
 
-@test "output json mode wraps json_array type" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output -t json_array '["a","b","c"]')
-    assert_contains "$result" '"data":["a","b","c"]'
+@test "output_json_escape handles empty string" {
+    run output_json_escape ""
+    [ "$status" -eq 0 ]
+    [ "$output" = "" ]
 }
 
-@test "output json mode wraps void as null" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output -t void "")
-    assert_contains "$result" '"data":null'
-}
-
-@test "output json mode includes hint when set" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output -h "next_func" "value")
-    assert_contains "$result" '"hint":"next_func"'
-}
-
-@test "output json mode - hint is consumed (reset after output)" {
-    MAINFRAME_OUTPUT=json
-    output -h "myhint" "value" >/dev/null
-    [ -z "$MAINFRAME_OUTPUT_HINT" ]
-}
-
-@test "output json mode file_path type includes exists flag" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output -t file_path "/tmp")
-    assert_contains "$result" '"path":"/tmp"'
-    assert_contains "$result" '"exists":true'
-}
-
-@test "output json mode file_path for nonexistent path" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output -t file_path "/nonexistent_path_xyz_12345")
-    assert_contains "$result" '"exists":false'
-}
-
-@test "output json mode stream type" {
-    MAINFRAME_OUTPUT=json
-    local multiline
-    multiline=$(printf 'line1\nline2\nline3')
-    local result
-    result=$(output -t stream "$multiline")
-    assert_contains "$result" '"line1"'
-    assert_contains "$result" '"line2"'
-    assert_contains "$result" '"line3"'
-}
-
-@test "output json mode escapes special characters" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output "hello \"world\"")
-    assert_contains "$result" 'hello \"world\"'
+@test "output_json_escape handles combined special chars" {
+    local input=$'quote:"val"\nnewline\ttab\\slash'
+    run output_json_escape "$input"
+    [ "$status" -eq 0 ]
+    [ "$output" = 'quote:\"val\"\nnewline\ttab\\slash' ]
 }
 
 # =============================================================================
-# DEBUG MODE TESTS
+# JSON HELPER TESTS
 # =============================================================================
 
-@test "output in debug mode prints value to stdout" {
-    MAINFRAME_OUTPUT=debug
-    local result
-    result=$(output "debug value" 2>/dev/null)
-    [ "$result" = "debug value" ]
+@test "output_json_string emits key-value pair" {
+    run output_json_string "name" "John"
+    [ "$status" -eq 0 ]
+    [ "$output" = '"name":"John"' ]
 }
 
-@test "output in debug mode prints metadata to stderr" {
-    MAINFRAME_OUTPUT=debug
-    local stderr_out
-    stderr_out=$(output "test" 2>&1 >/dev/null)
-    assert_contains "$stderr_out" "[DEBUG]"
-    assert_contains "$stderr_out" "type=string"
+@test "output_json_string escapes value" {
+    run output_json_string "msg" 'say "hi"'
+    [ "$status" -eq 0 ]
+    [ "$output" = '"msg":"say \"hi\""' ]
 }
 
-@test "output in debug mode void prints (void) to stderr" {
-    MAINFRAME_OUTPUT=debug
-    local stderr_out
-    stderr_out=$(output -t void "" 2>&1 >/dev/null)
-    assert_contains "$stderr_out" "(void)"
+@test "output_json_string escapes key" {
+    run output_json_string 'key "1"' "value"
+    [ "$status" -eq 0 ]
+    [ "$output" = '"key \"1\"":"value"' ]
 }
 
-# =============================================================================
-# TIMER TESTS
-# =============================================================================
-
-@test "output_timer_start creates timer variable" {
-    output_timer_start "test_timer"
-    local varname="_MAINFRAME_TIMER_test_timer"
-    [ -n "${!varname}" ]
+@test "output_json_number emits integer" {
+    run output_json_number "age" "30"
+    [ "$status" -eq 0 ]
+    [ "$output" = '"age":30' ]
 }
 
-@test "output_timer_elapsed returns a number" {
-    output_timer_start "elapsed_test"
-    local ms
-    ms=$(output_timer_elapsed "elapsed_test")
-    [[ "$ms" =~ ^[0-9]+$ ]]
+@test "output_json_number emits float" {
+    run output_json_number "pi" "3.14"
+    [ "$status" -eq 0 ]
+    [ "$output" = '"pi":3.14' ]
 }
 
-@test "output_timer_elapsed returns 0 for missing timer" {
-    local ms
-    ms=$(output_timer_elapsed "nonexistent_timer_xyz") || true
-    [ "$ms" = "0" ]
+@test "output_json_number emits negative" {
+    run output_json_number "offset" "-5"
+    [ "$status" -eq 0 ]
+    [ "$output" = '"offset":-5' ]
 }
 
-@test "output_timer_elapsed returns non-negative" {
-    output_timer_start "nonneg_test"
-    sleep 0.01
-    local ms
-    ms=$(output_timer_elapsed "nonneg_test")
-    [ "$ms" -ge 0 ]
+@test "output_json_number emits scientific notation" {
+    run output_json_number "big" "1.5e10"
+    [ "$status" -eq 0 ]
+    [ "$output" = '"big":1.5e10' ]
 }
 
-@test "output_timer_start default timer name" {
-    output_timer_start
-    local varname="_MAINFRAME_TIMER__default"
-    [ -n "${!varname}" ]
+@test "output_json_number returns null for invalid" {
+    run output_json_number "bad" "abc"
+    [ "$status" -eq 1 ]
+    [ "$output" = '"bad":null' ]
 }
 
-@test "output_timer_elapsed default timer name" {
-    output_timer_start
-    local ms
-    ms=$(output_timer_elapsed)
-    [[ "$ms" =~ ^[0-9]+$ ]]
+@test "output_json_bool emits true" {
+    run output_json_bool "active" "true"
+    [ "$status" -eq 0 ]
+    [ "$output" = '"active":true' ]
 }
 
-@test "multiple named timers are independent" {
-    output_timer_start "timer_a"
-    sleep 0.02
-    output_timer_start "timer_b"
-    sleep 0.02
-    local ms_a ms_b
-    ms_a=$(output_timer_elapsed "timer_a")
-    ms_b=$(output_timer_elapsed "timer_b")
-    # timer_a should have more elapsed time than timer_b
-    [ "$ms_a" -ge "$ms_b" ]
+@test "output_json_bool emits false" {
+    run output_json_bool "active" "false"
+    [ "$status" -eq 0 ]
+    [ "$output" = '"active":false' ]
 }
 
-@test "json output includes elapsed_ms from timer" {
-    MAINFRAME_OUTPUT=json
-    output_timer_start
-    sleep 0.01
-    local result
-    result=$(output "timed")
-    assert_contains "$result" '"elapsed_ms":'
+@test "output_json_bool handles yes/no" {
+    run output_json_bool "flag" "yes"
+    [ "$status" -eq 0 ]
+    [ "$output" = '"flag":true' ]
 }
 
-# =============================================================================
-# ERROR OUTPUT TESTS
-# =============================================================================
-
-@test "output_error in raw mode prints to stderr" {
-    MAINFRAME_OUTPUT=raw
-    local stderr_out
-    stderr_out=$(output_error "E_TEST" "test error" 2>&1) || true
-    assert_contains "$stderr_out" "E_TEST"
-    assert_contains "$stderr_out" "test error"
+@test "output_json_bool handles 1/0" {
+    run output_json_bool "flag" "0"
+    [ "$status" -eq 0 ]
+    [ "$output" = '"flag":false' ]
 }
 
-@test "output_error in raw mode includes suggestion" {
-    MAINFRAME_OUTPUT=raw
-    local stderr_out
-    stderr_out=$(output_error -s "try again" "E_FAIL" "it failed" 2>&1) || true
-    assert_contains "$stderr_out" "try again"
+@test "output_json_bool returns null for invalid" {
+    run output_json_bool "flag" "maybe"
+    [ "$status" -eq 1 ]
+    [ "$output" = '"flag":null' ]
 }
 
-@test "output_error in minimal mode prints terse error" {
-    MAINFRAME_OUTPUT=minimal
-    local stderr_out
-    stderr_out=$(output_error "E_CODE" "msg" 2>&1) || true
-    assert_contains "$stderr_out" "E_CODE: msg"
+@test "output_json_null emits null" {
+    run output_json_null "value"
+    [ "$status" -eq 0 ]
+    [ "$output" = '"value":null' ]
 }
 
-@test "output_error in json mode produces error envelope" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output_error "E_NOT_FOUND" "File missing" 2>/dev/null) || true
-    assert_contains "$result" '"ok":false'
-    assert_contains "$result" '"code":"E_NOT_FOUND"'
-    assert_contains "$result" '"msg":"File missing"'
+@test "output_json_array_from_lines converts lines to array" {
+    run bash -c 'source "'"$MAINFRAME_ROOT"'/lib/output.sh"; printf "alpha\nbeta\ngamma" | output_json_array_from_lines'
+    [ "$status" -eq 0 ]
+    [ "$output" = '["alpha","beta","gamma"]' ]
 }
 
-@test "output_error json mode includes suggestion" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output_error -s "check path" "E_NOT_FOUND" "missing" 2>/dev/null) || true
-    assert_contains "$result" '"suggestion":"check path"'
+@test "output_json_array_from_lines handles single line" {
+    run bash -c 'source "'"$MAINFRAME_ROOT"'/lib/output.sh"; printf "only" | output_json_array_from_lines'
+    [ "$status" -eq 0 ]
+    [ "$output" = '["only"]' ]
 }
 
-@test "output_error json mode includes context" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output_error -c '{"path":"/tmp/foo"}' "E_NOT_FOUND" "missing" 2>/dev/null) || true
-    assert_contains "$result" '"context":{"path":"/tmp/foo"}'
-}
-
-@test "output_error returns exit code 1" {
-    MAINFRAME_OUTPUT=raw
-    ! output_error "E_TEST" "error" 2>/dev/null
-}
-
-@test "output_error in debug mode prints verbose info" {
-    MAINFRAME_OUTPUT=debug
-    local stderr_out
-    stderr_out=$(output_error "E_DBG" "debug error" 2>&1 >/dev/null) || true
-    assert_contains "$stderr_out" "[ERROR]"
-    assert_contains "$stderr_out" "code=E_DBG"
-    assert_contains "$stderr_out" "message: debug error"
+@test "output_json_array_from_lines escapes special chars in lines" {
+    run bash -c 'source "'"$MAINFRAME_ROOT"'/lib/output.sh"; printf "say \"hi\"\npath\\\\file" | output_json_array_from_lines'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'\"hi\"'* ]]
 }
 
 # =============================================================================
-# TYPE FORMAT TESTS
+# USOP ENVELOPE: output_success TESTS
 # =============================================================================
 
-@test "int type validates integer" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output -t int "not_a_number")
-    assert_contains "$result" '"data":null'
+@test "output_success emits basic envelope" {
+    run output_success "hello"
+    [ "$status" -eq 0 ]
+    [ "$output" = '{"status":"success","data":"hello"}' ]
 }
 
-@test "int type accepts negative integers" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output -t int "-42")
-    assert_contains "$result" '"data":-42'
+@test "output_success includes message when provided" {
+    run output_success "result" "Operation completed"
+    [ "$status" -eq 0 ]
+    [ "$output" = '{"status":"success","data":"result","message":"Operation completed"}' ]
 }
 
-@test "float type validates number" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output -t float "not_float")
-    assert_contains "$result" '"data":null'
+@test "output_success escapes data" {
+    run output_success 'say "hi"'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'say \"hi\"'* ]]
 }
 
-@test "float type accepts scientific notation" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output -t float "1.5e10")
-    assert_contains "$result" '"data":1.5e10'
+@test "output_success handles empty data" {
+    run output_success ""
+    [ "$status" -eq 0 ]
+    [ "$output" = '{"status":"success","data":""}' ]
 }
 
-@test "bool type normalizes yes/on to true" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output -t bool "yes")
-    assert_contains "$result" '"data":true'
+@test "output_success escapes message with newline" {
+    run output_success "data" $'line1\nline2'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"message":"line1\nline2"'* ]]
 }
 
-@test "bool type normalizes no/off to false" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output -t bool "off")
-    assert_contains "$result" '"data":false'
+@test "output_success handles multiline data" {
+    local data=$'line1\nline2\nline3'
+    run output_success "$data"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'line1\nline2\nline3'* ]]
 }
 
-@test "bool type returns null for invalid" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output -t bool "maybe")
-    assert_contains "$result" '"data":null'
-}
-
-@test "unknown type treated as string" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output -t custom_type "value")
-    assert_contains "$result" '"data":"value"'
+@test "output_success without message omits message field" {
+    run output_success "data"
+    [ "$status" -eq 0 ]
+    [[ "$output" != *'"message"'* ]]
 }
 
 # =============================================================================
-# CONVENIENCE WRAPPER TESTS
+# USOP ENVELOPE: output_error TESTS
 # =============================================================================
 
-@test "output_string delegates to output" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output_string "test")
-    assert_contains "$result" '"data":"test"'
+@test "output_error emits basic error envelope" {
+    run output_error "something broke"
+    [ "$status" -eq 0 ]
+    [ "$output" = '{"status":"error","error":"something broke","code":1}' ]
 }
 
-@test "output_int delegates to output" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output_int "99")
-    assert_contains "$result" '"data":99'
+@test "output_error uses custom exit code" {
+    run output_error "not found" 404
+    [ "$status" -eq 0 ]
+    [ "$output" = '{"status":"error","error":"not found","code":404}' ]
 }
 
-@test "output_bool delegates to output" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output_bool "true")
-    assert_contains "$result" '"data":true'
+@test "output_error includes context" {
+    run output_error "failed" 1 "during file read"
+    [ "$status" -eq 0 ]
+    [ "$output" = '{"status":"error","error":"failed","code":1,"context":"during file read"}' ]
 }
 
-@test "output_float delegates to output" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output_float "2.718")
-    assert_contains "$result" '"data":2.718'
+@test "output_error escapes error message" {
+    run output_error 'file "test.txt" not found'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'file \"test.txt\" not found'* ]]
 }
 
-@test "output_json_object passes through" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output_json_object '{"x":1}')
-    assert_contains "$result" '"data":{"x":1}'
+@test "output_error escapes context" {
+    run output_error "failed" 1 'path: /tmp/"foo"'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'path: /tmp/\"foo\"'* ]]
 }
 
-@test "output_json_array passes through" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output_json_array '[1,2,3]')
-    assert_contains "$result" '"data":[1,2,3]'
+@test "output_error without context omits context field" {
+    run output_error "error msg" 2
+    [ "$status" -eq 0 ]
+    [[ "$output" != *'"context"'* ]]
 }
 
-@test "output_void produces null data" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output_void)
-    assert_contains "$result" '"data":null'
+@test "output_error defaults exit code to 1" {
+    run output_error "default code"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"code":1'* ]]
 }
 
-@test "output_file_path checks existence" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output_file_path "/tmp")
-    assert_contains "$result" '"exists":true'
+@test "output_error handles zero exit code" {
+    run output_error "weird error" 0
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"code":0'* ]]
 }
 
 # =============================================================================
-# NAMEREF VARIANT TESTS
+# USOP ENVELOPE: output_list TESTS
 # =============================================================================
 
-@test "output_v stores value in variable (raw mode)" {
-    MAINFRAME_OUTPUT=raw
-    local my_result
-    output_v my_result "hello from nameref"
-    [ "$my_result" = "hello from nameref" ]
+@test "output_list emits array envelope" {
+    run output_list "apple" "banana" "cherry"
+    [ "$status" -eq 0 ]
+    [ "$output" = '{"status":"success","data":["apple","banana","cherry"],"count":3}' ]
 }
 
-@test "output_v stores JSON envelope (json mode)" {
-    MAINFRAME_OUTPUT=json
-    local my_result
-    output_v my_result -t int "42"
-    assert_contains "$my_result" '"ok":true'
-    assert_contains "$my_result" '"data":42'
+@test "output_list handles single item" {
+    run output_list "only"
+    [ "$status" -eq 0 ]
+    [ "$output" = '{"status":"success","data":["only"],"count":1}' ]
 }
 
-@test "output_v handles void type" {
-    MAINFRAME_OUTPUT=raw
-    local my_result="placeholder"
-    output_v my_result -t void ""
-    [ -z "$my_result" ]
+@test "output_list handles no items" {
+    run output_list
+    [ "$status" -eq 0 ]
+    [ "$output" = '{"status":"success","data":[],"count":0}' ]
 }
 
-@test "output_v includes hint in json mode" {
-    MAINFRAME_OUTPUT=json
-    local my_result
-    output_v my_result -h "next_step" "value"
-    assert_contains "$my_result" '"hint":"next_step"'
+@test "output_list escapes items with quotes" {
+    run output_list 'say "hi"'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'say \"hi\"'* ]]
 }
 
-# =============================================================================
-# MODE UTILITY TESTS
-# =============================================================================
-
-@test "output_is_json returns true in json mode" {
-    MAINFRAME_OUTPUT=json
-    output_is_json
+@test "output_list escapes items with backslash" {
+    run output_list 'path\to'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'path\\to'* ]]
 }
 
-@test "output_is_json returns false in raw mode" {
-    MAINFRAME_OUTPUT=raw
-    ! output_is_json
+@test "output_list reports correct count" {
+    run output_list a b c d e
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"count":5'* ]]
 }
 
-@test "output_is_raw returns true in raw mode" {
-    MAINFRAME_OUTPUT=raw
-    output_is_raw
-}
-
-@test "output_is_debug returns true in debug mode" {
-    MAINFRAME_OUTPUT=debug
-    output_is_debug
-}
-
-@test "output_is_minimal returns true in minimal mode" {
-    MAINFRAME_OUTPUT=minimal
-    output_is_minimal
-}
-
-@test "output_with_mode temporarily changes mode" {
-    MAINFRAME_OUTPUT=raw
-    local result
-    result=$(output_with_mode json output "switched")
-    assert_contains "$result" '"ok":true'
-    # Mode should be restored
-    [ "$MAINFRAME_OUTPUT" = "raw" ]
-}
-
-@test "output_with_mode restores mode after failure" {
-    MAINFRAME_OUTPUT=raw
-    fail_func() { return 1; }
-    output_with_mode json fail_func || true
-    [ "$MAINFRAME_OUTPUT" = "raw" ]
-}
-
-@test "output_with_mode preserves exit code" {
-    MAINFRAME_OUTPUT=raw
-    exit42() { return 42; }
-    local rc=0
-    output_with_mode json exit42 || rc=$?
-    [ "$rc" = "42" ]
+@test "output_list handles items with newlines" {
+    run output_list $'multi\nline'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'multi\nline'* ]]
 }
 
 # =============================================================================
-# ESCAPE FUNCTION TESTS
+# USOP ENVELOPE: output_object TESTS
 # =============================================================================
 
-@test "output escapes backslash in json mode" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output 'path\to\file')
-    assert_contains "$result" 'path\\to\\file'
+@test "output_object emits string key-value pairs" {
+    run output_object "name=John" "city=NYC"
+    [ "$status" -eq 0 ]
+    [ "$output" = '{"status":"success","data":{"name":"John","city":"NYC"}}' ]
 }
 
-@test "output escapes double quote in json mode" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output 'say "hello"')
-    assert_contains "$result" 'say \"hello\"'
+@test "output_object handles number type" {
+    run output_object "age:number=30"
+    [ "$status" -eq 0 ]
+    [ "$output" = '{"status":"success","data":{"age":30}}' ]
 }
 
-@test "output escapes tab in json mode" {
-    MAINFRAME_OUTPUT=json
-    local result
-    result=$(output $'col1\tcol2')
-    assert_contains "$result" 'col1\tcol2'
+@test "output_object handles bool type true" {
+    run output_object "active:bool=true"
+    [ "$status" -eq 0 ]
+    [ "$output" = '{"status":"success","data":{"active":true}}' ]
+}
+
+@test "output_object handles bool type false" {
+    run output_object "active:bool=false"
+    [ "$status" -eq 0 ]
+    [ "$output" = '{"status":"success","data":{"active":false}}' ]
+}
+
+@test "output_object handles null type" {
+    run output_object "value:null="
+    [ "$status" -eq 0 ]
+    [ "$output" = '{"status":"success","data":{"value":null}}' ]
+}
+
+@test "output_object handles mixed types" {
+    run output_object "name=John" "age:number=30" "active:bool=true"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"name":"John"'* ]]
+    [[ "$output" == *'"age":30'* ]]
+    [[ "$output" == *'"active":true'* ]]
+}
+
+@test "output_object handles raw type" {
+    run output_object 'items:raw=["a","b"]'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"items":["a","b"]'* ]]
+}
+
+@test "output_object escapes string values" {
+    run output_object 'msg=say "hi"'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'say \"hi\"'* ]]
+}
+
+@test "output_object handles invalid number gracefully" {
+    run output_object "count:number=abc"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"count":null'* ]]
+}
+
+@test "output_object handles invalid bool gracefully" {
+    run output_object "flag:bool=maybe"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"flag":null'* ]]
+}
+
+@test "output_object skips malformed pairs" {
+    run output_object "valid=yes" "malformed" "also_valid=true"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"valid":"yes"'* ]]
+    [[ "$output" == *'"also_valid":"true"'* ]]
+}
+
+@test "output_object handles float number" {
+    run output_object "pi:number=3.14159"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"pi":3.14159'* ]]
+}
+
+@test "output_object handles negative number" {
+    run output_object "offset:number=-10"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"offset":-10'* ]]
+}
+
+@test "output_object handles value with equals sign" {
+    run output_object "equation=1+1=2"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"equation":"1+1=2"'* ]]
+}
+
+@test "output_object handles empty value" {
+    run output_object "key="
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"key":""'* ]]
+}
+
+@test "output_object handles single pair" {
+    run output_object "solo=value"
+    [ "$status" -eq 0 ]
+    [ "$output" = '{"status":"success","data":{"solo":"value"}}' ]
+}
+
+@test "output_object handles bool yes/no/on/off" {
+    run output_object "a:bool=yes" "b:bool=no" "c:bool=on" "d:bool=off"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"a":true'* ]]
+    [[ "$output" == *'"b":false'* ]]
+    [[ "$output" == *'"c":true'* ]]
+    [[ "$output" == *'"d":false'* ]]
+}
+
+@test "output_object handles scientific notation number" {
+    run output_object "big:number=1.5e10"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"big":1.5e10'* ]]
 }
 
 # =============================================================================
-# INTERNAL FUNCTION TESTS
+# USOP ENVELOPE: output_progress TESTS
 # =============================================================================
 
-@test "_output_json generates valid envelope" {
-    local result
-    result=$(_output_json '"test"' 5 "hint1")
-    assert_contains "$result" '"ok":true'
-    assert_contains "$result" '"data":"test"'
-    assert_contains "$result" '"elapsed_ms":5'
-    assert_contains "$result" '"hint":"hint1"'
+@test "output_progress emits progress envelope" {
+    run output_progress "downloading" 3 10
+    [ "$status" -eq 0 ]
+    [ "$output" = '{"status":"progress","step":"downloading","current":3,"total":10}' ]
 }
 
-@test "_output_json without hint omits hint field" {
-    MAINFRAME_OUTPUT_HINT=""
-    local result
-    result=$(_output_json '42' 0 "")
-    # Should not contain hint key
-    [[ "$result" != *'"hint"'* ]]
+@test "output_progress includes message" {
+    run output_progress "processing" 5 20 "Halfway there"
+    [ "$status" -eq 0 ]
+    [ "$output" = '{"status":"progress","step":"processing","current":5,"total":20,"message":"Halfway there"}' ]
 }
 
-@test "_error_json generates valid error envelope" {
-    local result
-    result=$(_error_json "E_FAIL" "broke" "fix it" 10 '{"key":"val"}')
-    assert_contains "$result" '"ok":false'
-    assert_contains "$result" '"code":"E_FAIL"'
-    assert_contains "$result" '"msg":"broke"'
-    assert_contains "$result" '"suggestion":"fix it"'
-    assert_contains "$result" '"elapsed_ms":10'
-    assert_contains "$result" '"context":{"key":"val"}'
+@test "output_progress escapes step name" {
+    run output_progress 'step "1"' 1 5
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'step \"1\"'* ]]
 }
 
-@test "_error_json without suggestion omits field" {
-    local result
-    result=$(_error_json "E_X" "msg" "" 0 "")
-    [[ "$result" != *'"suggestion"'* ]]
+@test "output_progress escapes message" {
+    run output_progress "step" 1 5 'file "x.txt"'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'file \"x.txt\"'* ]]
 }
 
-@test "_error_json without context omits field" {
-    local result
-    result=$(_error_json "E_X" "msg" "sug" 0 "")
-    [[ "$result" != *'"context"'* ]]
+@test "output_progress handles zero values" {
+    run output_progress "init" 0 0
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"current":0'* ]]
+    [[ "$output" == *'"total":0'* ]]
+}
+
+@test "output_progress without message omits message field" {
+    run output_progress "step" 1 5
+    [ "$status" -eq 0 ]
+    [[ "$output" != *'"message"'* ]]
+}
+
+@test "output_progress with large numbers" {
+    run output_progress "scan" 999999 1000000
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"current":999999'* ]]
+    [[ "$output" == *'"total":1000000'* ]]
 }
 
 # =============================================================================
-# EDGE CASES
+# mainframe_call META-WRAPPER TESTS
 # =============================================================================
 
-@test "output handles empty string value" {
-    MAINFRAME_OUTPUT=json
+@test "mainframe_call wraps successful function" {
+    _test_hello() { printf "hello world"; }
+    run mainframe_call _test_hello
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"status":"success"'* ]]
+    [[ "$output" == *'"function":"_test_hello"'* ]]
+    [[ "$output" == *'"data":"hello world"'* ]]
+    [[ "$output" == *'"exit_code":0'* ]]
+    [[ "$output" == *'"duration_ms":'* ]]
+}
+
+@test "mainframe_call wraps failing function" {
+    _test_fail() { printf "error output" >&2; return 1; }
+    run mainframe_call _test_fail
+    [ "$status" -eq 1 ]
+    [[ "$output" == *'"status":"error"'* ]]
+    [[ "$output" == *'"exit_code":1'* ]]
+    [[ "$output" == *'"stderr":"error output"'* ]]
+}
+
+@test "mainframe_call handles nonexistent function" {
+    run mainframe_call "nonexistent_function_xyz"
+    [ "$status" -eq 127 ]
+    [[ "$output" == *'"status":"error"'* ]]
+    [[ "$output" == *'"exit_code":127'* ]]
+    [[ "$output" == *'Function not found'* ]]
+}
+
+@test "mainframe_call passes arguments" {
+    _test_echo_args() { printf "%s %s" "$1" "$2"; }
+    run mainframe_call _test_echo_args "foo" "bar"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"data":"foo bar"'* ]]
+}
+
+@test "mainframe_call captures stderr separately" {
+    _test_both() { printf "stdout"; printf "stderr" >&2; }
+    run mainframe_call _test_both
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"data":"stdout"'* ]]
+    [[ "$output" == *'"stderr":"stderr"'* ]]
+}
+
+@test "mainframe_call omits stderr when empty" {
+    _test_stdout_only() { printf "just stdout"; }
+    run mainframe_call _test_stdout_only
+    [ "$status" -eq 0 ]
+    [[ "$output" != *'"stderr"'* ]]
+}
+
+@test "mainframe_call handles empty output" {
+    _test_empty() { :; }
+    run mainframe_call _test_empty
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"data":""'* ]]
+    [[ "$output" == *'"status":"success"'* ]]
+}
+
+@test "mainframe_call captures nonzero exit codes" {
+    _test_exit42() { return 42; }
+    run mainframe_call _test_exit42
+    [ "$status" -eq 42 ]
+    [[ "$output" == *'"exit_code":42'* ]]
+    [[ "$output" == *'"status":"error"'* ]]
+}
+
+@test "mainframe_call duration_ms is non-negative" {
+    _test_quick() { printf "fast"; }
+    run mainframe_call _test_quick
+    [ "$status" -eq 0 ]
+    # Extract duration_ms value
+    local duration
+    duration=$(printf '%s' "$output" | grep -o '"duration_ms":[0-9]*' | grep -o '[0-9]*$')
+    [ "$duration" -ge 0 ]
+}
+
+@test "mainframe_call escapes multiline stdout" {
+    _test_multiline() { printf "line1\nline2\nline3"; }
+    run mainframe_call _test_multiline
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"data":"line1\nline2\nline3"'* ]]
+}
+
+@test "mainframe_call escapes tabs in stdout" {
+    _test_tabs() { printf "col1\tcol2\tcol3"; }
+    run mainframe_call _test_tabs
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"data":"col1\tcol2\tcol3"'* ]]
+}
+
+@test "mainframe_call escapes quotes in stdout" {
+    _test_quotes() { printf 'say "hello"'; }
+    run mainframe_call _test_quotes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'say \"hello\"'* ]]
+}
+
+@test "mainframe_call escapes function name with special chars" {
+    eval '_test_func_123() { printf "ok"; }'
+    run mainframe_call "_test_func_123"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"function":"_test_func_123"'* ]]
+}
+
+# =============================================================================
+# CONDITIONAL OUTPUT: output_auto TESTS
+# =============================================================================
+
+@test "output_auto outputs text in text mode" {
+    MAINFRAME_OUTPUT="text"
+    run output_auto "plain result" '{"status":"success","data":"plain result"}'
+    [ "$status" -eq 0 ]
+    [ "$output" = "plain result" ]
+}
+
+@test "output_auto outputs json in json mode" {
+    MAINFRAME_OUTPUT="json"
+    run output_auto "plain result" '{"status":"success","data":"plain result"}'
+    [ "$status" -eq 0 ]
+    [ "$output" = '{"status":"success","data":"plain result"}' ]
+}
+
+@test "output_auto defaults to text mode when unset" {
+    run bash -c 'source "'"$MAINFRAME_ROOT"'/lib/output.sh"; output_auto "text_out" "json_out"'
+    [ "$status" -eq 0 ]
+    [ "$output" = "text_out" ]
+}
+
+@test "output_auto handles empty text" {
+    MAINFRAME_OUTPUT="text"
+    run output_auto "" '{"status":"success","data":""}'
+    [ "$status" -eq 0 ]
+    [ "$output" = "" ]
+}
+
+@test "output_auto handles empty json" {
+    MAINFRAME_OUTPUT="json"
+    run output_auto "text" ""
+    [ "$status" -eq 0 ]
+    [ "$output" = "" ]
+}
+
+# =============================================================================
+# EDGE CASE / INTEGRATION TESTS
+# =============================================================================
+
+@test "output_success produces valid JSON structure" {
+    run output_success "test data" "test message"
+    [ "$status" -eq 0 ]
+    [[ "$output" == "{"* ]]
+    [[ "$output" == *"}" ]]
+    [[ "$output" == *'"status":"success"'* ]]
+    [[ "$output" == *'"data":"test data"'* ]]
+    [[ "$output" == *'"message":"test message"'* ]]
+}
+
+@test "output_error produces valid JSON structure" {
+    run output_error "test error" 2 "test context"
+    [ "$status" -eq 0 ]
+    [[ "$output" == "{"* ]]
+    [[ "$output" == *"}" ]]
+    [[ "$output" == *'"status":"error"'* ]]
+    [[ "$output" == *'"error":"test error"'* ]]
+    [[ "$output" == *'"code":2'* ]]
+    [[ "$output" == *'"context":"test context"'* ]]
+}
+
+@test "output_list with special characters produces valid JSON" {
+    run output_list 'item "one"' $'item\ntwo' 'item\three'
+    [ "$status" -eq 0 ]
+    [[ "$output" == "{"* ]]
+    [[ "$output" == *'"count":3'* ]]
+}
+
+@test "output_object with all types produces valid JSON" {
+    run output_object "str=hello" "num:number=42" "flag:bool=true" "nil:null=" "raw:raw=[1,2,3]"
+    [ "$status" -eq 0 ]
+    [[ "$output" == '{"status":"success","data":{'* ]]
+    [[ "$output" == *'}}' ]]
+}
+
+@test "MAINFRAME_OUTPUT env var controls mode" {
+    run bash -c 'source "'"$MAINFRAME_ROOT"'/lib/output.sh"; MAINFRAME_OUTPUT=json; output_format'
+    [ "$status" -eq 0 ]
+    [ "$output" = "json" ]
+}
+
+@test "output_success with backslash in data" {
+    run output_success 'C:\Users\admin'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'C:\\Users\\admin'* ]]
+}
+
+@test "output_error with multiline error message" {
+    run output_error $'error\non line 2'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'error\non line 2'* ]]
+}
+
+@test "output_list with many items" {
+    run output_list a b c d e f g h i j
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"count":10'* ]]
+}
+
+@test "output_object handles key with spaces" {
+    run output_object "my key=my value"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"my key":"my value"'* ]]
+}
+
+@test "mainframe_call with function that writes to both streams" {
+    _test_mixed_io() {
+        printf "stdout line 1\nstdout line 2"
+        printf "stderr line 1\nstderr line 2" >&2
+        return 0
+    }
+    run mainframe_call _test_mixed_io
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"status":"success"'* ]]
+    [[ "$output" == *'stdout line 1\nstdout line 2'* ]]
+    [[ "$output" == *'stderr line 1\nstderr line 2'* ]]
+}
+
+@test "all envelope functions output trailing newline" {
+    # Verify each function outputs exactly one trailing newline
     local result
-    result=$(output "")
-    assert_contains "$result" '"data":""'
+
+    result=$(output_success "data" | wc -l)
+    [ "$result" -eq 1 ]
+
+    result=$(output_error "err" | wc -l)
+    [ "$result" -eq 1 ]
+
+    result=$(output_list "a" "b" | wc -l)
+    [ "$result" -eq 1 ]
+
+    result=$(output_object "k=v" | wc -l)
+    [ "$result" -eq 1 ]
+
+    result=$(output_progress "s" 1 2 | wc -l)
+    [ "$result" -eq 1 ]
 }
 
-@test "output handles value starting with dash" {
-    MAINFRAME_OUTPUT=raw
-    local result
-    result=$(output -- "-dangerous")
-    [ "$result" = "-dangerous" ]
+@test "output_json_escape handles very long string" {
+    local long_str
+    long_str=$(printf '%0.s-' {1..1000})
+    run output_json_escape "$long_str"
+    [ "$status" -eq 0 ]
+    [ ${#output} -eq 1000 ]
 }
 
-@test "unknown MAINFRAME_OUTPUT mode falls back gracefully" {
-    MAINFRAME_OUTPUT=invalid_mode
-    local result
-    result=$(output "fallback test")
-    [ "$result" = "fallback test" ]
+@test "output_json_number rejects empty string" {
+    run output_json_number "val" ""
+    [ "$status" -eq 1 ]
+    [ "$output" = '"val":null' ]
 }
 
-@test "output_error with unknown mode still prints error" {
-    MAINFRAME_OUTPUT=invalid_mode
-    local stderr_out
-    stderr_out=$(output_error "E_X" "unknown mode error" 2>&1) || true
-    assert_contains "$stderr_out" "E_X"
-}
-
-@test "timer name with special chars gets sanitized" {
-    output_timer_start "my-timer.1"
-    local ms
-    ms=$(output_timer_elapsed "my-timer.1")
-    [[ "$ms" =~ ^[0-9]+$ ]]
+@test "output_json_number rejects spaces" {
+    run output_json_number "val" "12 34"
+    [ "$status" -eq 1 ]
+    [ "$output" = '"val":null' ]
 }

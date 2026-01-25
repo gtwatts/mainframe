@@ -1,0 +1,22 @@
+# Tests for multiline strings and arrays
+title = "Multiline Test"
+
+description = """
+This is a multiline
+basic string value."""
+
+items = [
+    "first",
+    "second",
+    "third"
+]
+
+numbers = [1, 2, 3, 4, 5]
+
+[server]
+host = "localhost"
+ports = [8080, 8081, 8082]
+
+[database]
+connection = "postgres://localhost/mydb"
+pool_size = 5

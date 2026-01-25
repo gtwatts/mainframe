@@ -218,6 +218,7 @@ Run the test suite:
 | **safe.sh** | 21 | Strict mode helpers & gotcha prevention (v3.0) |
 | **typescript.sh** | 22 | TypeScript project analysis - imports, API diff, bundle size (v4.0) |
 | **python.sh** | 17 | Python project analysis - imports, deps, code quality (v4.0) |
+| **diff.sh** | 20 | Diff generation, patch application, search-replace for AI agents (v5.0) |
 
 ### Library Relationships
 

@@ -485,3 +485,110 @@ ensure_command() {
     fi
     command -v "$cmd" &>/dev/null
 }
+
+# =============================================================================
+# IDEMPOTENT FILE WRITE OPERATIONS
+# =============================================================================
+
+# @pre: parent directory is writable (or creatable)
+# @post: file contains exactly the specified content
+# @idempotent: yes - no-op if file already has identical content
+# @returns: 0=written (changed), 1=skipped (identical), 2=error
+#
+# Write file only if content differs (avoids unnecessary mtime changes, CI rebuilds).
+# Uses atomic write (temp + rename) to prevent partial writes on failure.
+#
+# Usage: file_write_if_changed "/path/to/file" "new content"
+# Example: file_write_if_changed "/etc/app.conf" "key=value"
+file_write_if_changed() {
+    local file="${1:?file path required}"
+    local content="${2:?content required}"
+
+    # If file exists and content matches (byte-for-byte), skip
+    # Note: We use cmp for exact comparison because $() strips trailing newlines
+    if [[ -f "$file" ]] && cmp -s "$file" <(printf '%s' "$content"); then
+        return 1  # No change needed
+    fi
+
+    # Write atomically (temp + rename)
+    local dir
+    dir=$(dirname "$file")
+    [[ -d "$dir" ]] || mkdir -p "$dir" || return 2
+    local tmp
+    tmp=$(mktemp "${dir}/.tmp.XXXXXX") || return 2
+    printf '%s' "$content" > "$tmp" || { rm -f "$tmp"; return 2; }
+    mv -f "$tmp" "$file" || { rm -f "$tmp"; return 2; }
+    return 0
+}
+
+# @pre: parent directory is writable (or creatable)
+# @post: file contains specified content followed by a trailing newline
+# @idempotent: yes - no-op if file already has identical content+newline
+# @returns: 0=written (changed), 1=skipped (identical), 2=error
+#
+# Write file with trailing newline only if content differs.
+# Convenience wrapper for POSIX-compliant text files.
+#
+# Usage: file_write_if_changed_nl "/path/to/file" "line content"
+file_write_if_changed_nl() {
+    local file="${1:?file path required}"
+    local content="${2:?content required}"
+    file_write_if_changed "$file" "${content}
+"
+}
+
+# @pre: parent directory is writable (file created if missing)
+# @post: line exists in file at least once
+# @idempotent: yes - no-op if exact line already present
+# @returns: 0=appended, 1=already present
+#
+# Append to file only if the line doesn't already exist.
+# Uses fixed-string exact-line matching (grep -Fx).
+#
+# Usage: file_append_if_missing "/path/to/file" "export PATH=/opt/bin:\$PATH"
+file_append_if_missing() {
+    local file="${1:?file path required}"
+    local line="${2:?line required}"
+
+    if [[ -f "$file" ]] && grep -qFx "$line" "$file" 2>/dev/null; then
+        return 1  # Already present
+    fi
+    printf '%s\n' "$line" >> "$file"
+    return 0
+}
+
+# @pre: parent directory is writable (or creatable), jq optional for semantic compare
+# @post: file contains the specified JSON content
+# @idempotent: yes - no-op if JSON is semantically identical (with jq) or byte-identical (without)
+# @returns: 0=written (changed), 1=skipped (identical), 2=error
+#
+# Write JSON file only if parsed content differs (ignores formatting).
+# When jq is available, normalizes both sides (sorted keys, compact) before comparison.
+# Falls back to byte comparison when jq is not installed.
+#
+# Usage: file_write_json_if_changed "/path/to/config.json" '{"key":"value"}'
+file_write_json_if_changed() {
+    local file="${1:?file path required}"
+    local content="${2:?JSON content required}"
+
+    if [[ -f "$file" ]]; then
+        # Compare normalized (sorted keys, no whitespace variance)
+        local existing_norm content_norm
+        if command -v jq &>/dev/null; then
+            existing_norm=$(jq -cS '.' "$file" 2>/dev/null) || existing_norm=""
+            content_norm=$(printf '%s' "$content" | jq -cS '.' 2>/dev/null) || content_norm=""
+            if [[ -n "$existing_norm" && "$existing_norm" == "$content_norm" ]]; then
+                return 1
+            fi
+        else
+            # Fallback: byte comparison
+            local existing
+            existing=$(<"$file") 2>/dev/null || true
+            if [[ "$existing" == "$content" ]]; then
+                return 1
+            fi
+        fi
+    fi
+
+    file_write_if_changed "$file" "$content"
+}

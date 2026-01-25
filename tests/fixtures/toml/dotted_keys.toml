@@ -1,0 +1,17 @@
+# Dotted keys and inline tables
+name = "dotted test"
+
+fruit.apple.color = "red"
+fruit.apple.taste = "sweet"
+fruit.orange.color = "orange"
+
+[server]
+host = "0.0.0.0"
+port = 9090
+
+[server.tls]
+enabled = true
+cert = "/path/to/cert.pem"
+key = "/path/to/key.pem"
+
+"quoted key" = "special value"

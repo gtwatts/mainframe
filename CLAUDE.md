@@ -12,7 +12,7 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 
 ## What You Can Do
 
-MAINFRAME provides **28 libraries** with **600+ functions**. Here's what's available:
+MAINFRAME provides **29 libraries** with **600+ functions**. Here's what's available:
 
 ### Core Libraries
 
@@ -59,6 +59,13 @@ MAINFRAME provides **28 libraries** with **600+ functions**. Here's what's avail
 |---------|--------------|---------|
 | **TypeScript** | `ts_file_imports`, `ts_import_graph`, `ts_breaking_changes`, `ts_import_cost` | TS project analysis |
 | **Python** | `py_file_imports`, `py_import_graph`, `py_parse_requirements`, `py_summary` | Python project analysis |
+
+### v5.0 Libraries (AI Agent Infrastructure)
+
+| Library | Key Functions | Use For |
+|---------|--------------|---------|
+| **Context** | `context_estimate_tokens`, `context_budget_init`, `context_truncate`, `context_read_plan` | Token estimation & budget |
+| **Diff** | `diff_replace`, `diff_apply`, `diff_strings`, `diff_validate_unique`, `diff_insert_after` | Surgical file editing |
 
 ### Formatting Functions
 
@@ -293,6 +300,72 @@ py_class_count "$dir"             # Count class definitions
 py_docstring_coverage "$dir"      # "covered/total percent%"
 py_type_hint_coverage "$dir"      # "annotated/total percent%"
 py_summary "$dir"                 # Quick project health overview
+```
+
+### Context Budget (AI agent token management)
+
+```bash
+# Token estimation (approximate, no external deps)
+context_estimate_tokens "string"       # Estimate tokens for text
+context_file_tokens "/path/to/file"    # Estimate file tokens
+context_command_tokens cmd [args]      # Estimate command output tokens
+context_ratio --type code              # Get chars/token ratio: "3.5"
+
+# Budget management
+context_budget_init --max-tokens 128000 --reserve 4000
+context_budget_use "file.py" 2500      # Record usage
+context_budget_remaining               # Tokens left
+context_budget_fits 5000               # 0=fits, 1=exceeds
+context_budget_summary                 # JSON summary
+context_budget_reset                   # Clear state
+
+# Truncation (preserves complete lines)
+context_truncate "$text" 1000 --strategy smart  # head|tail|middle|smart
+context_truncate_file "big.log" 500 --strategy tail
+
+# Content analysis
+context_analyze "$text"                # JSON: chars, lines, type, density
+context_detect_type "$text"            # "code:python", "data:json", etc.
+context_chunk_size --type code --model claude  # Recommended chunk size
+
+# File batching (which files fit in budget?)
+find src -name "*.py" | context_batch_files 30000 --sort size
+context_read_plan 50000 src/*.ts       # JSON plan with included/excluded
+```
+
+### Diff & Patch (surgical file editing for AI agents)
+
+```bash
+# Diff generation
+diff_strings "old text" "new text"           # Unified diff between strings
+diff_files "old.txt" "new.txt"               # Unified diff between files
+diff_preview "file.txt" "$new_content"       # Preview what would change
+diff_edit_script "old" "new"                 # Line-based edit commands
+
+# Patch application
+diff_apply "file.txt" "$diff" --backup       # Apply unified diff (safe)
+diff_apply "file.txt" "$diff" --dry-run      # Validate without applying
+diff_apply_string "$text" "$diff"            # Apply diff in memory
+diff_reverse "file.txt" "$diff"              # Undo a patch
+
+# Search-and-replace (PRIMARY agent editing primitive)
+diff_replace "file" "old_text" "new_text"    # Replace unique text (atomic)
+diff_replace "file" "old" "new" --all        # Replace all occurrences
+diff_replace_string "$s" "old" "new"         # In-memory replace
+diff_insert_after "file" "match" "new_text"  # Insert after matching line
+diff_insert_before "file" "match" "new_text" # Insert before matching line
+diff_delete_lines "file" "pattern" --regex   # Delete matching lines
+diff_replace_range "file" 2 5 "new content"  # Replace line range
+
+# Conflict detection
+diff_can_apply "file" "$diff"                # 0=clean, 1=conflicts
+diff_conflicts "file" "$diff"                # JSON conflict details
+diff_validate_unique "file" "text"           # 0=unique, 1=missing, 2=multi
+
+# Analysis
+diff_stats "$diff"                           # {"additions":N,"deletions":N,...}
+diff_changed_lines "$diff"                   # Only +/- lines
+diff_affected_lines "$diff"                  # Line numbers
 ```
 
 ## Important Rules
