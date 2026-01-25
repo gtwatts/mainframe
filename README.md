@@ -149,6 +149,34 @@ bash benchmarks/superpower_benchmarks.sh
 
 ---
 
+## Token Savings for AI Assistants
+
+**Claude Code Max users:** MAINFRAME reduces token usage by **71% per bash task**, extending your weekly cap significantly.
+
+<div align="center">
+<img src="assets/promo/token-comparison-chart.png" alt="Token Usage Comparison - 71% savings" width="700">
+</div>
+
+| Task | Without MAINFRAME | With MAINFRAME | Savings |
+|------|-------------------|----------------|---------|
+| JSON Creation | 72 tokens | 26 tokens | **64%** |
+| Array Operations | 101 tokens | 39 tokens | **62%** |
+| HTTP + Retry | 154 tokens | 32 tokens | **80%** |
+| String Trimming | 40 tokens | 17 tokens | **58%** |
+| Date Arithmetic | 64 tokens | 15 tokens | **77%** |
+| Path Validation | 129 tokens | 21 tokens | **84%** |
+
+**Compounding effect:** 10 bash tasks/day × 71% savings = **3x more productivity** before hitting your weekly cap.
+
+Run the comparison yourself:
+```bash
+./tests/token_comparison.sh
+```
+
+See [docs/VALUE_PROOF.md](docs/VALUE_PROOF.md) for detailed analysis.
+
+---
+
 ## Test Results
 
 **3,000+ tests passing** across all 77 libraries. Zero failures.
