@@ -1,11 +1,11 @@
 ---
 name: mainframe-bash
-description: Pure bash standard library with 1100+ functions across 37 libraries. Use when writing bash scripts, shell automation, CLI tools, or any task requiring string manipulation, JSON generation, arrays, file operations, validation, HTTP, CSV, git, crypto, async, process management, path handling, docker, or datetime in bash. Eliminates need for sed, awk, jq, and external tools. Source with `source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"`.
+description: "Use when writing bash scripts, shell automation, CLI tools, or any bash programming task."
 ---
 
 # MAINFRAME - Pure Bash Standard Library
 
-1100+ pure bash functions across 37 libraries. Zero external dependencies. 20-72x faster than spawning sed/awk/jq.
+1,900+ pure bash functions across 77 libraries. Zero external dependencies. 20-72x faster than spawning sed/awk/jq.
 
 ## When to Use This Skill
 
@@ -646,5 +646,5 @@ fi
 
 - **Source**: https://github.com/gtwatts/mainframe
 - **Install**: `git clone https://github.com/gtwatts/mainframe.git ~/.mainframe`
-- **Tests**: 1800+ bats tests, zero failures
+- **Tests**: 3,000+ bats tests, zero failures
 - **License**: MIT
