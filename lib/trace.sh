@@ -693,8 +693,8 @@ trace_clear() {
     _TRACE_FUNC_WRAPPERS=()
     _TRACE_SNAPSHOTS=()
 
-    # Clean up state directory
-    [[ -d "$MAINFRAME_TRACE_STATE_DIR" ]] && rm -rf "$MAINFRAME_TRACE_STATE_DIR"/*
+    # Clean up state directory (use :? to prevent rm -rf /* if var is empty)
+    [[ -d "$MAINFRAME_TRACE_STATE_DIR" ]] && rm -rf "${MAINFRAME_TRACE_STATE_DIR:?}"/*
 
     return 0
 }
@@ -922,8 +922,8 @@ _trace_cleanup() {
         _trace_remove_debug_trap
     fi
 
-    # Clean up state directory
-    [[ -d "$MAINFRAME_TRACE_STATE_DIR" ]] && rm -rf "$MAINFRAME_TRACE_STATE_DIR"
+    # Clean up state directory (use :? to prevent accidental rm -rf /)
+    [[ -d "$MAINFRAME_TRACE_STATE_DIR" ]] && rm -rf "${MAINFRAME_TRACE_STATE_DIR:?}"
 }
 
 # Register cleanup (only if not in sourced-only mode)
