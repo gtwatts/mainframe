@@ -233,6 +233,7 @@ MAINFRAME works with all AI coding assistants that can execute bash.
 | Platform | Integration | Setup |
 |----------|-------------|-------|
 | **Claude Code** | Full skill integration | `ln -s ~/.mainframe/skills/claude-code ~/.claude/skills/mainframe-bash` |
+| **Clawdbot** | Config + source | Add to `~/.clawdbot/clawdbot.json` preamble |
 | **Cursor** | .mdc rules | `cp ~/.mainframe/skills/cursor/mainframe.mdc .cursor/rules/` |
 | **Aider** | CONVENTIONS.md | Add `read: CONVENTIONS.md` to `.aider.conf.yml` |
 | **OpenCode** | CLAUDE.md | Point at this repo's CLAUDE.md |

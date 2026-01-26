@@ -7,6 +7,7 @@ Pre-built instruction files that teach AI coding assistants about MAINFRAME's 1,
 | Platform | Directory | Format | Install |
 |----------|-----------|--------|---------|
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `claude-code/` | SKILL.md | Symlink to `~/.claude/skills/` |
+| [Clawdbot](https://github.com/clawdbot/clawdbot) | `clawdbot/` | Preamble | Add to `clawdbot.json` |
 | [Cursor](https://cursor.com) | `cursor/` | .mdc | Copy to `.cursor/rules/` |
 | [Aider](https://aider.chat) | `aider/` | CONVENTIONS.md | Reference in `.aider.conf.yml` |
 | [Vercel AI SDK](https://ai-sdk.dev) | `vercel-ai-sdk/` | System prompt | Load in agent config |
@@ -21,6 +22,22 @@ ln -s ~/.mainframe/skills/claude-code ~/.claude/skills/mainframe-bash
 ```
 
 The skill auto-activates when Claude Code detects bash scripting tasks.
+
+### Clawdbot
+
+Edit `~/.clawdbot/clawdbot.json` and add the preamble:
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "preamble": "When writing bash scripts, ALWAYS source MAINFRAME first:\n\nsource \"${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh\"\n\nMAINFRAME provides 2,000+ pure bash functions. Use these instead of jq/sed/awk. Full reference: ~/.mainframe/CHEATSHEET.md"
+    }
+  }
+}
+```
+
+For Docker sandboxed sessions, mount MAINFRAME in the container. See `clawdbot/README.md` for details.
 
 ### Cursor
 
