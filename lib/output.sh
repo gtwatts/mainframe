@@ -1515,14 +1515,14 @@ usop_error_timeout() {
 # Usage: usop_error_command_failed CMD EXIT_CODE STDERR
 # Example: usop_error_command_failed "git pull" "128" "fatal: not a git repository"
 usop_error_command_failed() {
-    local cmd="$1"
+    local cmd_str="$1"
     local exit_code="${2:-1}"
     local stderr="$3"
 
     json_object \
         "success:bool=false" \
         "error=command failed" \
-        "command=$cmd" \
+        "command=$cmd_str" \
         "exit_code:number=$exit_code" \
         "stderr=$stderr" \
         "suggestion=Check command arguments, permissions, and prerequisites"
