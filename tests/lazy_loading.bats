@@ -624,3 +624,529 @@ teardown() {
         [[ $total_defined -ge 30 ]]
     )
 }
+
+# =============================================================================
+# ENHANCED LAZY LOADING ENGINE TESTS (lib/lazy.sh)
+# =============================================================================
+# These tests cover the function-level lazy loading system that creates stubs
+# which load libraries on first call.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Lazy Loading Setup
+# -----------------------------------------------------------------------------
+
+lazy_setup() {
+    source_lib "lazy"
+    export MAINFRAME_QUIET=1
+    LAZY_TEST_DIR=$(mktemp -d "/tmp/mainframe-lazy-test.XXXXXX")
+
+    # Reset state
+    _LAZY_MANIFEST=()
+    _LAZY_LOAD_TIMES=()
+    _LAZY_STUBS=()
+    _LAZY_LOADED_LIBS=()
+}
+
+lazy_teardown() {
+    [[ -d "${LAZY_TEST_DIR:-}" ]] && rm -rf "$LAZY_TEST_DIR"
+}
+
+# -----------------------------------------------------------------------------
+# Stub Creation Tests
+# -----------------------------------------------------------------------------
+
+@test "lazy_stub: creates a callable function" {
+    lazy_setup
+    lazy_stub "test_stub_func" "testlib"
+    declare -F test_stub_func
+    lazy_teardown
+}
+
+@test "lazy_stub: registers function in manifest" {
+    lazy_setup
+    lazy_stub "test_manifest_func" "targetlib"
+    [ "${_LAZY_MANIFEST[test_manifest_func]}" = "targetlib" ]
+    lazy_teardown
+}
+
+@test "lazy_stub: marks function as stub" {
+    lazy_setup
+    lazy_stub "test_marked_func" "somelib"
+    lazy_is_stub "test_marked_func"
+    lazy_teardown
+}
+
+@test "lazy_stub: rejects empty function name" {
+    lazy_setup
+    ! lazy_stub "" "testlib"
+    lazy_teardown
+}
+
+@test "lazy_stub: rejects empty library name" {
+    lazy_setup
+    ! lazy_stub "test_func" ""
+    lazy_teardown
+}
+
+@test "lazy_stub: rejects function name with spaces" {
+    lazy_setup
+    ! lazy_stub "invalid func" "testlib"
+    lazy_teardown
+}
+
+@test "lazy_stub: rejects library name with path traversal" {
+    lazy_setup
+    ! lazy_stub "test_func" "../etc/passwd"
+    ! lazy_stub "test_func" "path/to/lib"
+    lazy_teardown
+}
+
+@test "lazy_stub_library: creates multiple stubs" {
+    lazy_setup
+    lazy_stub_library "multilib" func_a func_b func_c
+    declare -F func_a
+    declare -F func_b
+    declare -F func_c
+    lazy_teardown
+}
+
+@test "lazy_is_stub: returns false for regular function" {
+    lazy_setup
+    regular_function() { echo "regular"; }
+    ! lazy_is_stub "regular_function"
+    lazy_teardown
+}
+
+# -----------------------------------------------------------------------------
+# Stub Execution Tests
+# -----------------------------------------------------------------------------
+
+@test "stub: loads library on first call" {
+    lazy_setup
+    cat > "$LAZY_TEST_DIR/autoload_lib.sh" << 'EOF'
+#!/usr/bin/env bash
+autoload_func() { printf 'autoloaded\n'; }
+EOF
+    local orig_root="${MAINFRAME_ROOT:-}"
+    export MAINFRAME_ROOT="$LAZY_TEST_DIR"
+
+    lazy_stub "autoload_func" "autoload_lib"
+    local result
+    result=$(autoload_func)
+    [ "$result" = "autoloaded" ]
+
+    [[ -n "$orig_root" ]] && export MAINFRAME_ROOT="$orig_root" || unset MAINFRAME_ROOT
+    lazy_teardown
+}
+
+@test "stub: is no longer stub after library loads" {
+    lazy_setup
+    cat > "$LAZY_TEST_DIR/load_once_lib.sh" << 'EOF'
+#!/usr/bin/env bash
+load_once_func() { echo "loaded"; }
+EOF
+    local orig_root="${MAINFRAME_ROOT:-}"
+    export MAINFRAME_ROOT="$LAZY_TEST_DIR"
+
+    lazy_stub "load_once_func" "load_once_lib"
+    lazy_is_stub "load_once_func"
+    load_once_func >/dev/null
+    ! lazy_is_stub "load_once_func"
+
+    [[ -n "$orig_root" ]] && export MAINFRAME_ROOT="$orig_root" || unset MAINFRAME_ROOT
+    lazy_teardown
+}
+
+@test "stub: preserves arguments" {
+    lazy_setup
+    cat > "$LAZY_TEST_DIR/args_lib.sh" << 'EOF'
+#!/usr/bin/env bash
+args_test_func() { printf '%s|%s|%s\n' "$1" "$2" "$3"; }
+EOF
+    local orig_root="${MAINFRAME_ROOT:-}"
+    export MAINFRAME_ROOT="$LAZY_TEST_DIR"
+
+    lazy_stub "args_test_func" "args_lib"
+    local result
+    result=$(args_test_func "arg1" "arg2" "arg3")
+    [ "$result" = "arg1|arg2|arg3" ]
+
+    [[ -n "$orig_root" ]] && export MAINFRAME_ROOT="$orig_root" || unset MAINFRAME_ROOT
+    lazy_teardown
+}
+
+# -----------------------------------------------------------------------------
+# Manifest Tests
+# -----------------------------------------------------------------------------
+
+@test "lazy_register: adds multiple functions to manifest" {
+    lazy_setup
+    lazy_register "datetime" now now_iso date_add
+    [ "${_LAZY_MANIFEST[now]}" = "datetime" ]
+    [ "${_LAZY_MANIFEST[now_iso]}" = "datetime" ]
+    [ "${_LAZY_MANIFEST[date_add]}" = "datetime" ]
+    lazy_teardown
+}
+
+@test "lazy_library_for: returns correct library" {
+    lazy_setup
+    lazy_register "http" http_get http_post
+    local result
+    result=$(lazy_library_for "http_get")
+    [ "$result" = "http" ]
+    lazy_teardown
+}
+
+@test "lazy_library_for: returns empty for unknown function" {
+    lazy_setup
+    local result
+    result=$(lazy_library_for "nonexistent_xyz")
+    [ -z "$result" ]
+    lazy_teardown
+}
+
+@test "lazy_functions_in: lists functions for library" {
+    lazy_setup
+    lazy_register "crypto" sha256 md5 base64_encode
+    local result
+    result=$(lazy_functions_in "crypto")
+    [[ "$result" == *"sha256"* ]]
+    [[ "$result" == *"md5"* ]]
+    lazy_teardown
+}
+
+# -----------------------------------------------------------------------------
+# Library Loading Tests
+# -----------------------------------------------------------------------------
+
+@test "lazy_load_library: loads existing library" {
+    lazy_setup
+    cat > "$LAZY_TEST_DIR/loadable_lib.sh" << 'EOF'
+#!/usr/bin/env bash
+LOADABLE_MARKER=1
+EOF
+    local orig_root="${MAINFRAME_ROOT:-}"
+    export MAINFRAME_ROOT="$LAZY_TEST_DIR"
+
+    lazy_load_library "loadable_lib"
+    [ "${_LAZY_LOADED_LIBS[loadable_lib]}" = "1" ]
+
+    [[ -n "$orig_root" ]] && export MAINFRAME_ROOT="$orig_root" || unset MAINFRAME_ROOT
+    lazy_teardown
+}
+
+@test "lazy_load_library: fails for nonexistent library" {
+    lazy_setup
+    ! lazy_load_library "definitely_not_a_real_library_xyz"
+    lazy_teardown
+}
+
+@test "lazy_load_library: rejects invalid names" {
+    lazy_setup
+    ! lazy_load_library ""
+    ! lazy_load_library "../passwd"
+    ! lazy_load_library "lib;echo"
+    lazy_teardown
+}
+
+@test "lazy_is_loaded: returns true after loading" {
+    lazy_setup
+    cat > "$LAZY_TEST_DIR/check_loaded_lib.sh" << 'EOF'
+#!/usr/bin/env bash
+EOF
+    local orig_root="${MAINFRAME_ROOT:-}"
+    export MAINFRAME_ROOT="$LAZY_TEST_DIR"
+
+    ! lazy_is_loaded "check_loaded_lib"
+    lazy_load_library "check_loaded_lib"
+    lazy_is_loaded "check_loaded_lib"
+
+    [[ -n "$orig_root" ]] && export MAINFRAME_ROOT="$orig_root" || unset MAINFRAME_ROOT
+    lazy_teardown
+}
+
+# -----------------------------------------------------------------------------
+# Bundle Tests
+# -----------------------------------------------------------------------------
+
+@test "lazy_bundle_create: produces valid bash" {
+    lazy_setup
+    cat > "$LAZY_TEST_DIR/bundle_lib1.sh" << 'EOF'
+#!/usr/bin/env bash
+bundle_func1() { echo "func1"; }
+EOF
+    local orig_root="${MAINFRAME_ROOT:-}"
+    export MAINFRAME_ROOT="$LAZY_TEST_DIR"
+
+    lazy_bundle_create "$LAZY_TEST_DIR/bundle_output.sh" "bundle_lib1"
+    [ -f "$LAZY_TEST_DIR/bundle_output.sh" ]
+    bash -n "$LAZY_TEST_DIR/bundle_output.sh"
+
+    [[ -n "$orig_root" ]] && export MAINFRAME_ROOT="$orig_root" || unset MAINFRAME_ROOT
+    lazy_teardown
+}
+
+@test "lazy_bundle_create: includes library content" {
+    lazy_setup
+    cat > "$LAZY_TEST_DIR/content_test_lib.sh" << 'EOF'
+#!/usr/bin/env bash
+unique_bundle_marker() { echo "marker"; }
+EOF
+    local orig_root="${MAINFRAME_ROOT:-}"
+    export MAINFRAME_ROOT="$LAZY_TEST_DIR"
+
+    lazy_bundle_create "$LAZY_TEST_DIR/content_bundle.sh" "content_test_lib"
+    grep -q "unique_bundle_marker" "$LAZY_TEST_DIR/content_bundle.sh"
+
+    [[ -n "$orig_root" ]] && export MAINFRAME_ROOT="$orig_root" || unset MAINFRAME_ROOT
+    lazy_teardown
+}
+
+@test "lazy_bundle_validate: accepts valid bundle" {
+    lazy_setup
+    cat > "$LAZY_TEST_DIR/valid_test_bundle.sh" << 'EOF'
+#!/usr/bin/env bash
+# Libraries: test
+echo "valid bundle"
+EOF
+    lazy_bundle_validate "$LAZY_TEST_DIR/valid_test_bundle.sh"
+    lazy_teardown
+}
+
+@test "lazy_bundle_validate: rejects invalid syntax" {
+    lazy_setup
+    cat > "$LAZY_TEST_DIR/invalid_test_bundle.sh" << 'EOF'
+#!/usr/bin/env bash
+if [[ then syntax error
+EOF
+    ! lazy_bundle_validate "$LAZY_TEST_DIR/invalid_test_bundle.sh" 2>/dev/null
+    lazy_teardown
+}
+
+# -----------------------------------------------------------------------------
+# Profiling Tests
+# -----------------------------------------------------------------------------
+
+@test "profiling: records load times when enabled" {
+    lazy_setup
+    export MAINFRAME_PROFILE_LOADS=1
+    cat > "$LAZY_TEST_DIR/profile_test_lib.sh" << 'EOF'
+#!/usr/bin/env bash
+EOF
+    local orig_root="${MAINFRAME_ROOT:-}"
+    export MAINFRAME_ROOT="$LAZY_TEST_DIR"
+
+    lazy_load_library "profile_test_lib"
+    [[ -n "${_LAZY_LOAD_TIMES[profile_test_lib]:-}" ]]
+
+    [[ -n "$orig_root" ]] && export MAINFRAME_ROOT="$orig_root" || unset MAINFRAME_ROOT
+    unset MAINFRAME_PROFILE_LOADS
+    lazy_teardown
+}
+
+@test "profiling: does not record when disabled" {
+    lazy_setup
+    export MAINFRAME_PROFILE_LOADS=0
+    cat > "$LAZY_TEST_DIR/no_profile_lib.sh" << 'EOF'
+#!/usr/bin/env bash
+EOF
+    local orig_root="${MAINFRAME_ROOT:-}"
+    export MAINFRAME_ROOT="$LAZY_TEST_DIR"
+
+    lazy_load_library "no_profile_lib"
+    [[ -z "${_LAZY_LOAD_TIMES[no_profile_lib]:-}" ]]
+
+    [[ -n "$orig_root" ]] && export MAINFRAME_ROOT="$orig_root" || unset MAINFRAME_ROOT
+    unset MAINFRAME_PROFILE_LOADS
+    lazy_teardown
+}
+
+@test "lazy_profile_report: generates output" {
+    lazy_setup
+    _LAZY_LOAD_TIMES=([testlib]="5.5" [otherlib]="3.2")
+    local result
+    result=$(lazy_profile_report)
+    [[ "$result" == *"MAINFRAME Load Profile"* ]]
+    [[ "$result" == *"testlib"* ]]
+    [[ "$result" == *"TOTAL"* ]]
+    lazy_teardown
+}
+
+@test "lazy_profile_clear: resets state" {
+    lazy_setup
+    _LAZY_LOAD_TIMES=([lib1]="1.0")
+    _LAZY_LOAD_START="12345"
+    lazy_profile_clear
+    [ ${#_LAZY_LOAD_TIMES[@]} -eq 0 ]
+    [ -z "$_LAZY_LOAD_START" ]
+    lazy_teardown
+}
+
+# -----------------------------------------------------------------------------
+# Unload/Reload Tests
+# -----------------------------------------------------------------------------
+
+@test "lazy_unload: replaces functions with stubs" {
+    lazy_setup
+    cat > "$LAZY_TEST_DIR/unload_test_lib.sh" << 'EOF'
+#!/usr/bin/env bash
+unload_test_func() { echo "real"; }
+EOF
+    local orig_root="${MAINFRAME_ROOT:-}"
+    export MAINFRAME_ROOT="$LAZY_TEST_DIR"
+
+    lazy_register "unload_test_lib" unload_test_func
+    lazy_load_library "unload_test_lib"
+    lazy_is_loaded "unload_test_lib"
+    ! lazy_is_stub "unload_test_func"
+
+    lazy_unload "unload_test_lib"
+    ! lazy_is_loaded "unload_test_lib"
+    lazy_is_stub "unload_test_func"
+
+    [[ -n "$orig_root" ]] && export MAINFRAME_ROOT="$orig_root" || unset MAINFRAME_ROOT
+    lazy_teardown
+}
+
+@test "lazy_reload: unloads and reloads" {
+    lazy_setup
+    cat > "$LAZY_TEST_DIR/reload_test_lib.sh" << 'EOF'
+#!/usr/bin/env bash
+RELOAD_TEST_COUNTER=$((${RELOAD_TEST_COUNTER:-0} + 1))
+EOF
+    local orig_root="${MAINFRAME_ROOT:-}"
+    export MAINFRAME_ROOT="$LAZY_TEST_DIR"
+
+    lazy_register "reload_test_lib" reload_test_func
+    lazy_load_library "reload_test_lib"
+    local first="$RELOAD_TEST_COUNTER"
+    lazy_reload "reload_test_lib"
+    [ "$RELOAD_TEST_COUNTER" -gt "$first" ]
+
+    [[ -n "$orig_root" ]] && export MAINFRAME_ROOT="$orig_root" || unset MAINFRAME_ROOT
+    lazy_teardown
+}
+
+@test "lazy_memory_report: produces output" {
+    lazy_setup
+    local result
+    result=$(lazy_memory_report)
+    [[ "$result" == *"Function Memory Usage"* ]]
+    [[ "$result" == *"Total functions"* ]]
+    lazy_teardown
+}
+
+@test "lazy_memory_usage: returns numeric value" {
+    lazy_setup
+    local result
+    result=$(lazy_memory_usage)
+    [[ "$result" =~ ^[0-9]+$ ]]
+    lazy_teardown
+}
+
+# -----------------------------------------------------------------------------
+# Initialization Tests
+# -----------------------------------------------------------------------------
+
+@test "lazy_init_manifests: registers standard libraries" {
+    lazy_setup
+    lazy_init_manifests
+    [[ -n "${_LAZY_MANIFEST[now]:-}" ]]
+    [[ -n "${_LAZY_MANIFEST[http_get]:-}" ]]
+    [[ -n "${_LAZY_MANIFEST[sha256]:-}" ]]
+    lazy_teardown
+}
+
+@test "lazy_init_stubs: creates stubs for registered functions" {
+    lazy_setup
+    lazy_init_stubs
+    declare -F now
+    declare -F http_get
+    lazy_is_stub "now"
+    lazy_is_stub "http_get"
+    lazy_teardown
+}
+
+@test "lazy_init with manifests mode: only registers" {
+    lazy_setup
+    lazy_init "manifests"
+    [[ ${#_LAZY_MANIFEST[@]} -gt 0 ]]
+    [ ${#_LAZY_STUBS[@]} -eq 0 ]
+    lazy_teardown
+}
+
+@test "lazy_init with stubs mode: creates stubs" {
+    lazy_setup
+    lazy_init "stubs"
+    [[ ${#_LAZY_STUBS[@]} -gt 0 ]]
+    lazy_teardown
+}
+
+@test "lazy_status: produces status output" {
+    lazy_setup
+    lazy_init "manifests"
+    local result
+    result=$(lazy_status)
+    [[ "$result" == *"Lazy Loading Status"* ]]
+    [[ "$result" == *"Registered functions"* ]]
+    lazy_teardown
+}
+
+# -----------------------------------------------------------------------------
+# Edge Cases
+# -----------------------------------------------------------------------------
+
+@test "lazy_unload: safe on not-loaded library" {
+    lazy_setup
+    lazy_unload "never_loaded_library"
+    # Should not error
+    lazy_teardown
+}
+
+@test "double load: is idempotent" {
+    lazy_setup
+    cat > "$LAZY_TEST_DIR/double_load_lib.sh" << 'EOF'
+#!/usr/bin/env bash
+DOUBLE_LOAD_COUNTER=$((${DOUBLE_LOAD_COUNTER:-0} + 1))
+EOF
+    local orig_root="${MAINFRAME_ROOT:-}"
+    export MAINFRAME_ROOT="$LAZY_TEST_DIR"
+
+    lazy_load_library "double_load_lib"
+    local count1="$DOUBLE_LOAD_COUNTER"
+    lazy_load_library "double_load_lib"
+    local count2="$DOUBLE_LOAD_COUNTER"
+    [ "$count1" = "$count2" ]
+
+    [[ -n "$orig_root" ]] && export MAINFRAME_ROOT="$orig_root" || unset MAINFRAME_ROOT
+    lazy_teardown
+}
+
+# -----------------------------------------------------------------------------
+# Integration: MAINFRAME_LAZY=1 Mode
+# -----------------------------------------------------------------------------
+
+@test "MAINFRAME_LAZY=1: enables function-level lazy loading" {
+    (
+        export MAINFRAME_LAZY=1
+        unset _MAINFRAME_COMMON_LOADED
+        source "$MAINFRAME_ROOT/lib/common.sh"
+
+        # lazy.sh should be loaded
+        [[ -n "${_MAINFRAME_LOADED_LIBS[lazy]:-}" ]] || \
+        declare -F lazy_stub &>/dev/null
+    )
+}
+
+@test "MAINFRAME_PROFILE=lazy: enables function-level lazy loading" {
+    (
+        export MAINFRAME_PROFILE='lazy'
+        unset _MAINFRAME_COMMON_LOADED
+        source "$MAINFRAME_ROOT/lib/common.sh"
+
+        # Lazy loading should be enabled
+        declare -F lazy_stub &>/dev/null || \
+        [[ "${MAINFRAME_LAZY:-0}" == "1" ]]
+    )
+}

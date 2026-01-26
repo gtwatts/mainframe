@@ -592,6 +592,7 @@ _MAINFRAME_TIER_AI=(
     limits confirm safewrap safecontext
     agent workflow taskstate
     context diff parse_output symbols agent_exec
+    agent_comm agent_safety
 )
 
 # --- Profile Presets ---------------------------------------------------------
@@ -603,12 +604,30 @@ if [[ -n "${MAINFRAME_PROFILE:-}" && -z "${MAINFRAME_LIBS:-}" ]]; then
         standard) MAINFRAME_LIBS="core+standard" ;;
         full)     MAINFRAME_LIBS="all" ;;
         ai)       MAINFRAME_LIBS="core+ai" ;;
+        lazy)     MAINFRAME_LAZY=1 ;;  # Function-level lazy loading
         *)
             log_warn "Unknown MAINFRAME_PROFILE '${MAINFRAME_PROFILE}', loading all"
             MAINFRAME_LIBS="all"
             ;;
     esac
 fi
+
+# --- Enhanced Lazy Loading (Function-Level) ----------------------------------
+# When MAINFRAME_LAZY=1, uses stub functions that load libraries on first call.
+# This provides maximum efficiency for AI agents that only need specific functions.
+#
+# Usage:
+#   MAINFRAME_LAZY=1 source common.sh           # Stubs only (fastest startup)
+#   MAINFRAME_PROFILE='lazy' source common.sh   # Same as above
+#
+# The lazy.sh library provides:
+#   - Function stubs that auto-load libraries
+#   - Library manifests for function->library mapping
+#   - Precompiled bundles for deployment
+#   - Load profiling and memory reporting
+# =============================================================================
+
+declare -g MAINFRAME_LAZY="${MAINFRAME_LAZY:-0}"
 
 # --- Loader Functions --------------------------------------------------------
 
@@ -717,8 +736,19 @@ _mainframe_load_selected() {
 
 # --- Load Decision -----------------------------------------------------------
 
-if [[ -n "${MAINFRAME_LIBS:-}" ]]; then
-    # Selective loading: use lazy loading engine
+# Check for function-level lazy loading mode
+if [[ "${MAINFRAME_LAZY:-0}" == "1" ]]; then
+    # Function-level lazy loading: load only lazy.sh, create stubs for everything else
+    # This is the most efficient mode for AI agents
+    _mainframe_load_library "lazy"
+
+    # Initialize function stubs - libraries load on first use
+    if declare -F lazy_init_stubs &>/dev/null; then
+        lazy_init_stubs
+    fi
+
+elif [[ -n "${MAINFRAME_LIBS:-}" ]]; then
+    # Selective loading: use tier-based loading engine
     _mainframe_load_selected "${MAINFRAME_LIBS}"
 else
     # Full loading: backward-compatible, source everything
@@ -803,6 +833,8 @@ else
     _mainframe_load_library "parse_output"
     _mainframe_load_library "symbols"
     _mainframe_load_library "agent_exec"
+    _mainframe_load_library "agent_comm"
+    _mainframe_load_library "agent_safety"
 
 fi # End of full loading (backward-compatible path)
 
@@ -1041,6 +1073,9 @@ BASHER_COMMON_EXPORTS=(
     mainframe_hint_category mainframe_hint_categories mainframe_hints_count
     # Caching and Memoization (from cache.sh)
     memoize memoize_clear memoize_stats
+    memo_wrap memo_unwrap memo_clear
+    cache_command cache_file cache_file_invalidate cache_compute
+    cache_stats_reset cache_prewarm
     cas_store cas_get cas_exists cas_gc
     session_cache_set session_cache_get session_cache_has session_cache_clear session_cache_stats
     cache_invalidate cache_clear cache_stats cache_max_size cache_evict_lru cache_warm

@@ -2777,6 +2777,137 @@ restored=$(echo "$csv" | bridge_csv_to_json)
 
 ---
 
+## Caching & Memoization (cache.sh)
+
+**Purpose**: AI-agent optimized caching with function memoization, command output caching, file content caching with auto-invalidation, and computation caching with dependency tracking.
+
+### Function Memoization (Decorator Style)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `memo_wrap` | `memo_wrap "fn" [ttl]` | `memo_wrap expensive_lookup 300` | Wraps function with caching |
+| `memo_unwrap` | `memo_unwrap "fn"` | `memo_unwrap expensive_lookup` | Restores original function |
+| `memo_clear` | `memo_clear "fn"` | `memo_clear expensive_lookup` | Clears cache for function |
+
+### Memoize (Call-Style)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `memoize` | `memoize [--ttl N] [--invalidate-on F] fn [args]` | `memoize --ttl 60 my_func arg1 arg2` | Cached function output |
+| `memoize_clear` | `memoize_clear [pattern]` | `memoize_clear "my_func"` | Clears matching entries |
+| `memoize_stats` | `memoize_stats [--json]` | `memoize_stats --json` | `{"hits":50,"misses":12,...}` |
+
+### Command Output Caching
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `cache_command` | `cache_command TTL cmd [args]` | `cache_command 60 git status --porcelain` | Cached command output |
+
+### File Content Caching
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `cache_file` | `cache_file "path"` | `cache_file "/etc/hosts"` | File contents (cached until modified) |
+| `cache_file_invalidate` | `cache_file_invalidate "path"` | `cache_file_invalidate "/etc/hosts"` | Clears file cache |
+
+### Computation Caching
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `cache_compute` | `cache_compute "key" fn [deps...]` | `cache_compute "summary" compute_fn package.json` | Cached result (invalidated when deps change) |
+
+### Content-Addressable Store (CAS)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `cas_store` | `cas_store "content"` | `hash=$(cas_store "my data")` | SHA-256 hash |
+| `cas_get` | `cas_get "hash"` | `cas_get "$hash"` | Stored content |
+| `cas_exists` | `cas_exists "hash"` | `cas_exists "$hash"` | (returns 0/1) |
+| `cas_gc` | `cas_gc [--older-than days]` | `cas_gc --older-than 30` | Removed entry count |
+
+### Session Cache (In-Memory)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `session_cache_set` | `session_cache_set "key" "value"` | `session_cache_set "user" "gordon"` | (stores value) |
+| `session_cache_get` | `session_cache_get "key" [default]` | `session_cache_get "user" "anon"` | `gordon` or `anon` |
+| `session_cache_has` | `session_cache_has "key"` | `session_cache_has "user"` | (returns 0/1) |
+| `session_cache_clear` | `session_cache_clear` | `session_cache_clear` | (clears all) |
+| `session_cache_stats` | `session_cache_stats [--json]` | `session_cache_stats` | Entry count, memory usage |
+
+### Cache Management
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `cache_stats` | `cache_stats [--json]` | `cache_stats --json` | `{"hits":100,"misses":20,...}` |
+| `cache_stats_reset` | `cache_stats_reset` | `cache_stats_reset` | Resets hit/miss counters |
+| `cache_clear` | `cache_clear --force` | `cache_clear --force` | Clears all caches |
+| `cache_invalidate` | `cache_invalidate "pattern"` | `cache_invalidate "my_func*"` | Removed entry count |
+| `cache_max_size` | `cache_max_size "size"` | `cache_max_size "256MB"` | Sets max cache size |
+| `cache_evict_lru` | `cache_evict_lru [max_mb]` | `cache_evict_lru 100` | Evicts oldest entries |
+
+### Prewarming
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `cache_prewarm` | `cache_prewarm "profile"` | `cache_prewarm git` | Pre-caches common operations |
+| `cache_warm` | `cache_warm "spec" [dir]` | `cache_warm "project-type=node" .` | Warms for project type |
+
+**Profiles**: `standard`, `git`, `project`, `system`, `all`
+
+### Dependency Tracking
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `cache_depends_on` | `cache_depends_on "key" file...` | `cache_depends_on "$key" config.json` | Registers dependencies |
+| `cache_check_deps` | `cache_check_deps "key"` | `cache_check_deps "$key"` | 0=valid, 1=stale |
+
+### Quick Patterns (Cache)
+
+```bash
+# Decorator-style memoization
+expensive_lookup() {
+    curl -sf "http://api.example.com/data/$1"
+}
+memo_wrap expensive_lookup 300  # Cache for 5 minutes
+result=$(expensive_lookup "key")  # Cached
+
+# Command output caching (great for git commands)
+status=$(cache_command 5 git status --porcelain)
+branch=$(cache_command 300 git branch --show-current)
+
+# File caching with auto-invalidation
+config=$(cache_file "config.json")  # Cached until file changes
+
+# Computation with dependency tracking
+build_summary() { ... }
+summary=$(cache_compute "project_summary" build_summary package.json tsconfig.json)
+
+# Prewarm cache at session start
+cache_prewarm git     # Cache git status, branch, commit
+cache_prewarm project # Cache package.json, tsconfig.json, etc.
+
+# Check cache performance
+cache_stats --json
+# {"hits":150,"misses":30,"hit_ratio_pct":83,...}
+
+# Clear cache for specific function
+memo_clear expensive_lookup
+
+# Reset counters for new benchmark
+cache_stats_reset
+```
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MAINFRAME_CACHE_ROOT` | `~/.mainframe/cache` | Cache directory |
+| `MAINFRAME_CACHE_MAX_SIZE_MB` | `512` | Max cache size in MB |
+| `MAINFRAME_CACHE_DEFAULT_TTL` | `0` | Default TTL (0 = no expiration) |
+
+---
+
 ## Savant-Level Debugging (trace.sh)
 
 **Purpose**: Advanced function tracing, variable watching, high-precision timing, session replay, and Mermaid diagram generation. Produces JSON output for AI agent debugging and analysis. All tracing is disabled by default for production safety.
@@ -2923,6 +3054,281 @@ trace_disable
 
 ---
 
-*900+ functions | 41 libraries | Zero dependencies | 20-72x faster*
+## Agent Communication Protocol (agent_comm.sh)
+
+**Purpose**: Standardized inter-agent communication for AI collaboration. Provides agent identity management, message passing, status reporting, task coordination, and shared state for multi-agent workflows.
+
+### Agent Identity
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `agent_init` | `agent_init [name]` | `agent_init "worker"` | `{"success":true,"agent_id":"worker_1234_5678",...}` |
+| `agent_register` | `agent_register` | `agent_register` | (updates registry) |
+| `agent_add_capability` | `agent_add_capability "cap"` | `agent_add_capability "file_processing"` | (adds capability) |
+| `agent_remove_capability` | `agent_remove_capability "cap"` | `agent_remove_capability "temp"` | (removes capability) |
+| `agent_info` | `agent_info [agent_id]` | `agent_info` | `{"id":"...","pid":1234,...}` |
+
+### Message Passing
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `agent_send` | `agent_send agent type payload` | `agent_send "worker_2" "task" "process file"` | `{"success":true,"message_id":"msg_..."}` |
+| `agent_receive` | `agent_receive [timeout]` | `msg=$(agent_receive 30)` | JSON message |
+| `agent_peek` | `agent_peek [count]` | `agent_peek 5` | JSON array of messages |
+| `agent_broadcast` | `agent_broadcast type payload` | `agent_broadcast "shutdown" "now"` | `{"success":true,"sent":3}` |
+| `agent_request` | `agent_request agent type payload [timeout]` | `reply=$(agent_request "srv" "query" "data")` | Reply message or timeout |
+
+### Status Reporting
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `agent_status` | `agent_status status [details]` | `agent_status "working" "processing batch"` | (writes status) |
+| `agent_get_status` | `agent_get_status agent_id` | `agent_get_status "worker_1"` | `{"status":"working",...}` |
+| `agent_list` | `agent_list` | `agents=$(agent_list)` | `["agent_1","agent_2"]` |
+| `agent_find_by_capability` | `agent_find_by_capability "cap"` | `agent_find_by_capability "gpu"` | `["gpu_worker_1"]` |
+
+### Task Coordination
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `agent_create_task` | `agent_create_task id desc [priority]` | `agent_create_task "task_1" "Process data"` | `{"success":true,"task_id":"task_1"}` |
+| `agent_claim_task` | `agent_claim_task task_id` | `agent_claim_task "task_1"` | `{"success":true,...}` or fail if claimed |
+| `agent_complete_task` | `agent_complete_task id result` | `agent_complete_task "task_1" "done"` | `{"success":true,...}` |
+| `agent_fail_task` | `agent_fail_task id error` | `agent_fail_task "task_1" "timeout"` | (releases claim) |
+| `agent_wait_task` | `agent_wait_task id [timeout]` | `result=$(agent_wait_task "task_1" 60)` | Task result or timeout |
+| `agent_task_status` | `agent_task_status task_id` | `agent_task_status "task_1"` | `{"status":"in_progress",...}` |
+| `agent_list_tasks` | `agent_list_tasks [status]` | `agent_list_tasks "pending"` | JSON array of tasks |
+
+### Shared State
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `agent_state_set` | `agent_state_set key value` | `agent_state_set "counter" "10"` | (atomic write) |
+| `agent_state_get` | `agent_state_get key [default]` | `agent_state_get "counter" "0"` | Stored value |
+| `agent_state_del` | `agent_state_del key` | `agent_state_del "temp"` | (removes key) |
+| `agent_state_exists` | `agent_state_exists key` | `agent_state_exists "counter"` | (returns 0/1) |
+| `agent_state_incr` | `agent_state_incr key [amount]` | `agent_state_incr "counter" 5` | New value (atomic) |
+| `agent_state_decr` | `agent_state_decr key [amount]` | `agent_state_decr "counter" 1` | New value (atomic) |
+| `agent_state_list` | `agent_state_list` | `keys=$(agent_state_list)` | `["key1","key2"]` |
+| `agent_state_cas` | `agent_state_cas key expected new` | `agent_state_cas "lock" "" "taken"` | (returns 0 if swapped) |
+
+### Cleanup
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `agent_shutdown` | `agent_shutdown` | `agent_shutdown` | `{"success":true,"status":"shutdown"}` |
+| `agent_cleanup_dead` | `agent_cleanup_dead` | `cleaned=$(agent_cleanup_dead)` | Number cleaned |
+| `agent_cleanup_all` | `agent_cleanup_all` | `agent_cleanup_all` | (removes all agent data) |
+
+### Error Reporting
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `agent_error` | `agent_error "message"` | `agent_error "Connection failed"` | (logs error) |
+| `agent_warn` | `agent_warn "message"` | `agent_warn "Slow response"` | (logs warning) |
+| `agent_progress` | `agent_progress current total [desc]` | `agent_progress 50 100 "Files"` | `{"percent":50,...}` |
+
+### Quick Patterns (Agent Communication)
+
+```bash
+# Initialize agent with capabilities
+agent_init "data_processor"
+agent_add_capability "csv_parsing"
+agent_add_capability "json_transform"
+agent_status "idle" "Ready for work"
+
+# Send messages between agents
+agent_send "coordinator" "ready" '{"capabilities":["csv","json"]}'
+msg=$(agent_receive 30)  # Wait up to 30s for response
+
+# Task coordination (atomic claiming)
+agent_create_task "batch_001" "Process CSV files" "high"
+if agent_claim_task "batch_001"; then
+    # Only one agent can claim this task
+    process_files
+    agent_complete_task "batch_001" "Processed 150 files"
+else
+    echo "Task already claimed by another agent"
+fi
+
+# Wait for task result
+result=$(agent_wait_task "batch_001" 120)
+echo "Result: $(json_get "$result" "result")"
+
+# Shared state for coordination
+agent_state_set "processing_mode" "parallel"
+mode=$(agent_state_get "processing_mode")
+
+# Atomic counter for distributed counting
+total=$(agent_state_incr "files_processed" 10)
+
+# Compare-and-swap for locking
+if agent_state_cas "global_lock" "" "$AGENT_ID"; then
+    # Critical section - only one agent at a time
+    do_exclusive_work
+    agent_state_set "global_lock" ""  # Release
+fi
+
+# Find agents with specific capability
+gpu_agents=$(agent_find_by_capability "gpu_compute")
+for agent in $(echo "$gpu_agents" | jq -r '.[]'); do
+    agent_send "$agent" "gpu_task" "render_frame"
+done
+
+# Broadcast to all agents
+agent_broadcast "shutdown" "graceful"
+
+# Progress reporting
+for i in {1..100}; do
+    process_item "$i"
+    agent_progress "$i" 100 "Processing items"
+done
+
+# Cleanup on exit
+trap 'agent_shutdown' EXIT
+```
+
+### Architecture
+
+- **Registry**: `/tmp/mainframe_agents/registry/` - Agent registration files
+- **Workspaces**: `/tmp/mainframe_agents/{agent_id}/` - Per-agent directories
+- **Tasks**: `/tmp/mainframe_agents/tasks/` - Task coordination
+- **Shared State**: `/tmp/mainframe_agents/shared_state/` - Key-value store
+
+### Concurrency Guarantees
+
+| Operation | Guarantee |
+|-----------|-----------|
+| Task claiming | Atomic via `mkdir` (only one agent succeeds) |
+| State increment/decrement | Atomic via `flock` |
+| Compare-and-swap | Atomic via `flock` |
+| Message delivery | File-based (eventual consistency) |
+
+---
+
+## Agent Safety Stack (agent_safety.sh)
+
+**Purpose**: AI agents use bash to control computers. Every operation must be safe, correct the first time, and provide clear feedback to minimize token usage.
+
+### Safe Command Dispatch (NO EVAL)
+
+| Function | Signature | Example | Purpose |
+|----------|-----------|---------|---------|
+| `agent_safe_exec` | `agent_safe_exec cmd [args]` | `agent_safe_exec rm -rf "$dir"` | Validated command execution |
+| `agent_safe_exec_capture` | `agent_safe_exec_capture cmd [args]` | `agent_safe_exec_capture ls -la` | Execute with JSON output |
+| `agent_validate_command` | `agent_validate_command cmd [args]` | `agent_validate_command rm -rf /tmp` | Validate before execution |
+| `agent_risk_score` | `score=$(agent_risk_score cmd [args])` | `agent_risk_score rm -rf /etc` | Returns 0-100 risk score |
+| `agent_requires_confirmation` | `agent_requires_confirmation cmd [args]` | `agent_requires_confirmation reboot` | Check if high-risk (returns 0/1) |
+
+### Callback Whitelist (NO EVAL)
+
+| Function | Signature | Example | Purpose |
+|----------|-----------|---------|---------|
+| `agent_register_callback` | `agent_register_callback "name"` | `agent_register_callback "my_handler"` | Register function for safe invocation |
+| `agent_callback` | `agent_callback "name" [args]` | `agent_callback "my_handler" arg1 arg2` | Invoke registered callback safely |
+| `agent_unregister_callback` | `agent_unregister_callback "name"` | `agent_unregister_callback "my_handler"` | Remove callback from whitelist |
+| `agent_list_callbacks` | `agent_list_callbacks` | `agent_list_callbacks` | List all registered callbacks |
+
+### Structured Error Output (Token-Efficient)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `agent_error` | `agent_error "msg" [context...]` | `agent_error "file not found" "path=/tmp/x"` | JSON error to stderr |
+| `agent_success` | `agent_success "msg" [key=val...]` | `agent_success "done" "path=/tmp/x" "action=created"` | JSON success to stdout |
+| `agent_result` | `agent_result "key" "val" [type]` | `agent_result "count" "42" "number"` | Typed JSON result |
+
+**Types**: `string` (default), `number`, `bool`, `raw`
+
+### Idempotent Operations
+
+| Function | Signature | Example | Purpose |
+|----------|-----------|---------|---------|
+| `agent_ensure_file` | `agent_ensure_file "path" "content" [mode]` | `agent_ensure_file "/tmp/x" "hello" 0644` | Create/update file (idempotent) |
+| `agent_ensure_dir` | `agent_ensure_dir "path" [mode]` | `agent_ensure_dir "/tmp/mydir" 0755` | Create directory (idempotent) |
+| `agent_ensure_line` | `agent_ensure_line "path" "line"` | `agent_ensure_line "/etc/hosts" "127.0.0.1 myapp"` | Add line to file (idempotent) |
+| `agent_ensure_symlink` | `agent_ensure_symlink "link" "target"` | `agent_ensure_symlink "/usr/local/bin/app" "/opt/app/bin"` | Create symlink (idempotent) |
+| `agent_ensure_command` | `agent_ensure_command "cmd" [pkg]` | `agent_ensure_command "git" "git"` | Check command exists |
+
+### Audit Trail
+
+| Function | Signature | Example | Purpose |
+|----------|-----------|---------|---------|
+| `agent_audit` | `agent_audit "action" [key=val...]` | `agent_audit "file_created" "path=/tmp/x"` | Write JSONL audit entry |
+| `agent_audit_replay` | `agent_audit_replay [filter]` | `agent_audit_replay "exec_"` | Replay/filter audit log |
+| `agent_audit_clear` | `agent_audit_clear` | `agent_audit_clear` | Clear audit log |
+| `agent_audit_path` | `agent_audit_path` | `agent_audit_path` | Get audit log file path |
+| `agent_audit_stats` | `agent_audit_stats` | `agent_audit_stats` | JSON statistics |
+
+### Sandbox Profiles
+
+| Function | Signature | Example | Purpose |
+|----------|-----------|---------|---------|
+| `agent_set_profile` | `agent_set_profile "profile" [base]` | `agent_set_profile "project" "/home/user/app"` | Set security profile |
+| `agent_get_profile` | `agent_get_profile` | `agent_get_profile` | Get current profile JSON |
+| `agent_list_profiles` | `agent_list_profiles` | `agent_list_profiles` | List available profiles |
+
+**Profiles**:
+- `readonly` - Read files only, no writes
+- `project` - Read/write within project base
+- `system` - Full system access
+
+### Initialization
+
+| Function | Signature | Example | Purpose |
+|----------|-----------|---------|---------|
+| `agent_safety_init` | `agent_safety_init [profile] [base]` | `agent_safety_init "project" "$PWD"` | Initialize with profile |
+| `agent_safety_cleanup` | `agent_safety_cleanup` | `agent_safety_cleanup` | Cleanup and final audit |
+
+### Configuration Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `AGENT_AUDIT_LOG` | `/tmp/mainframe_agent_$$.audit.jsonl` | Audit log path |
+| `AGENT_SAFE_BASE` | `""` | Base directory for path validation |
+| `AGENT_CURRENT_PROFILE` | `project` | Current security profile |
+| `AGENT_RISK_THRESHOLD` | `50` | Risk score requiring confirmation |
+
+### Quick Patterns (Agent Safety)
+
+```bash
+# Initialize agent with project profile
+agent_safety_init "project" "$PWD"
+
+# Safe command execution with validation
+if agent_safe_exec rm -rf "$build_dir"; then
+    agent_success "build directory cleaned" "path=$build_dir"
+fi
+
+# Idempotent file creation
+agent_ensure_file "$config_file" '{"port": 8080}' 0644
+# Output: {"success":true,"message":"file written","data":{"path":"...","action":"created"}}
+
+# Idempotent directory
+agent_ensure_dir "$cache_dir" 0755
+# Output: {"success":true,"message":"directory exists","data":{"path":"...","action":"none"}}
+
+# Safe callback registration (no eval)
+my_handler() { echo "Handling: $1"; }
+agent_register_callback "my_handler"
+agent_callback "my_handler" "test data"
+
+# Check risk before execution
+if agent_requires_confirmation rm -rf /etc; then
+    echo "HIGH RISK: requires confirmation"
+fi
+
+# Structured error for AI self-correction
+agent_error "file not found" "path=/missing/file" "suggestion=Check path exists"
+# Output: {"success":false,"error":"file not found","function":"...","context":[...],"timestamp":"..."}
+
+# Audit all actions
+agent_audit "deployment_started" "version=1.2.3" "env=production"
+agent_audit_stats
+# Output: {"entries":15,"size_bytes":2048,"path":"..."}
+```
+
+---
+
+*900+ functions | 43 libraries | Zero dependencies | 20-72x faster*
 
 **YO JOE!**

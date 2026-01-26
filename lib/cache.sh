@@ -1308,14 +1308,480 @@ cache_warm() {
 }
 
 # =============================================================================
+# AI-AGENT OPTIMIZED CACHING (v2.0)
+# =============================================================================
+# Extended caching primitives for AI agent workflows:
+# - Function decorator-style memoization
+# - Command output caching with TTL
+# - File content caching with auto-invalidation
+# - Computation caching with dependency tracking
+# - Cache statistics and prewarming
+# =============================================================================
+
+# @pre: FN_NAME is a declared function
+# @post: function is wrapped with memoization, original preserved as _memo_orig_FN_NAME
+# @idempotent: no - calling twice will double-wrap (use memo_unwrap first)
+# @returns: 0 on success, 1 if function not found
+#
+# Decorator-style memoization: wraps an existing function so all calls are cached.
+# The original function is preserved as _memo_orig_<fn_name>.
+#
+# Usage: memo_wrap FUNCTION_NAME [TTL_SECONDS]
+# Example: memo_wrap expensive_lookup 300
+memo_wrap() {
+    local fn_name="$1"
+    local ttl="${2:-3600}"
+
+    # Verify function exists
+    if ! declare -F "$fn_name" &>/dev/null; then
+        _cache_log error "memo_wrap: function '$fn_name' not found"
+        return 1
+    fi
+
+    # Check if already wrapped
+    local orig_fn="_memo_orig_${fn_name}"
+    if declare -F "$orig_fn" &>/dev/null; then
+        _cache_log warn "memo_wrap: function '$fn_name' already wrapped"
+        return 0
+    fi
+
+    # Save original function definition
+    local fn_def
+    fn_def=$(declare -f "$fn_name")
+
+    # Create the original backup
+    eval "${fn_def/$fn_name/$orig_fn}"
+
+    # Create memoized wrapper
+    eval "${fn_name}() {
+        local _memo_key=\"memo_${fn_name}_\$(_cache_sha256 \"\$*\")\"
+        local _memo_file=\"\${MAINFRAME_CACHE_ROOT}/memo/\${_memo_key}\"
+        local _memo_meta=\"\${_memo_file}.meta\"
+
+        _cache_ensure_dirs
+
+        # Check cache
+        if [[ -f \"\$_memo_file\" ]] && [[ -f \"\$_memo_meta\" ]]; then
+            if ! _cache_is_expired \"\$_memo_meta\"; then
+                _MAINFRAME_CACHE_HITS=\$((_MAINFRAME_CACHE_HITS + 1))
+                _cache_touch_meta \"\$_memo_meta\"
+                cat \"\$_memo_file\"
+                return 0
+            fi
+        fi
+
+        # Cache miss - compute
+        _MAINFRAME_CACHE_MISSES=\$((_MAINFRAME_CACHE_MISSES + 1))
+        local _memo_result
+        _memo_result=\$($orig_fn \"\$@\")
+        local _memo_exit=\$?
+
+        if [[ \$_memo_exit -eq 0 ]]; then
+            _cache_atomic_write \"\$_memo_file\" \"\$_memo_result\"
+            local _memo_now
+            _memo_now=\$(_cache_epoch)
+            _cache_atomic_write \"\$_memo_meta\" \"{\\\"timestamp\\\":\$_memo_now,\\\"ttl\\\":$ttl,\\\"hit_count\\\":0,\\\"function\\\":\\\"$fn_name\\\",\\\"deps\\\":[]}\"
+        fi
+
+        printf '%s' \"\$_memo_result\"
+        return \$_memo_exit
+    }"
+
+    return 0
+}
+
+# @pre: FN_NAME was previously wrapped with memo_wrap
+# @post: original function restored, wrapper removed
+# @returns: 0 on success, 1 if not wrapped
+#
+# Remove memoization wrapper and restore original function.
+#
+# Usage: memo_unwrap FUNCTION_NAME
+# Example: memo_unwrap expensive_lookup
+memo_unwrap() {
+    local fn_name="$1"
+    local orig_fn="_memo_orig_${fn_name}"
+
+    if ! declare -F "$orig_fn" &>/dev/null; then
+        _cache_log error "memo_unwrap: function '$fn_name' is not wrapped"
+        return 1
+    fi
+
+    # Restore original
+    local fn_def
+    fn_def=$(declare -f "$orig_fn")
+    eval "${fn_def/$orig_fn/$fn_name}"
+
+    # Remove the backup
+    unset -f "$orig_fn"
+
+    return 0
+}
+
+# @pre: FN_NAME was wrapped with memo_wrap
+# @post: cached entries for this function are cleared
+# @returns: number of cleared entries
+#
+# Clear memoization cache for a specific wrapped function.
+#
+# Usage: memo_clear FUNCTION_NAME
+# Example: memo_clear expensive_lookup
+memo_clear() {
+    local fn_name="$1"
+    local count=0
+
+    if [[ -z "$fn_name" ]]; then
+        _cache_log error "memo_clear: function name required"
+        return 1
+    fi
+
+    local memo_dir="${MAINFRAME_CACHE_ROOT}/memo"
+    if [[ ! -d "$memo_dir" ]]; then
+        printf '0'
+        return 0
+    fi
+
+    # Find and remove entries matching this function
+    local pattern="memo_${fn_name}_"
+    local file
+    while IFS= read -r -d '' file; do
+        local basename="${file##*/}"
+        if [[ "$basename" == ${pattern}* ]]; then
+            rm -f "$file" "${file}.meta" "${file}.deps" 2>/dev/null
+            count=$((count + 1))
+        fi
+    done < <(find "$memo_dir" -type f ! -name "*.meta" ! -name "*.deps" -print0 2>/dev/null)
+
+    printf '%s' "$count"
+    return 0
+}
+
+# @pre: TTL is a positive integer (seconds)
+# @post: command output cached on disk
+# @returns: command exit code
+#
+# Cache command output with TTL. Useful for expensive shell commands like
+# git status, find operations, or network requests.
+#
+# Usage: cache_command TTL COMMAND [ARGS...]
+# Example: cache_command 5 git status --porcelain
+# Example: cache_command 60 curl -s https://api.example.com/data
+cache_command() {
+    local ttl="$1"
+    shift
+
+    if [[ $# -eq 0 ]]; then
+        _cache_log error "cache_command: command required"
+        return 1
+    fi
+
+    _cache_ensure_dirs
+
+    # Build cache key from command string
+    local cmd_string="$*"
+    local cache_key
+    cache_key="cmd_$(_cache_sha256 "$cmd_string")"
+    local cache_file="${MAINFRAME_CACHE_ROOT}/memo/${cache_key}"
+    local meta_file="${cache_file}.meta"
+
+    # Check cache
+    if [[ -f "$cache_file" ]] && [[ -f "$meta_file" ]]; then
+        if ! _cache_is_expired "$meta_file"; then
+            _MAINFRAME_CACHE_HITS=$((_MAINFRAME_CACHE_HITS + 1))
+            _cache_touch_meta "$meta_file"
+            cat "$cache_file"
+            return 0
+        fi
+    fi
+
+    # Cache miss - execute command
+    _MAINFRAME_CACHE_MISSES=$((_MAINFRAME_CACHE_MISSES + 1))
+    local result
+    result=$("$@" 2>&1)
+    local exit_code=$?
+
+    if [[ $exit_code -eq 0 ]]; then
+        _cache_atomic_write "$cache_file" "$result"
+        local now
+        now=$(_cache_epoch)
+        local meta
+        meta=$(_cache_build_meta "$now" "$ttl" "0" "command" )
+        _cache_atomic_write "$meta_file" "$meta"
+    fi
+
+    printf '%s' "$result"
+    return $exit_code
+}
+
+# @pre: PATH is a valid file path
+# @post: file content cached with inode+mtime key for auto-invalidation
+# @returns: 0 on success, 1 if file not found
+#
+# Cache file contents with automatic invalidation when file changes.
+# Uses inode + mtime as cache key, so modifications trigger re-read.
+#
+# Usage: cache_file PATH
+# Example: content=$(cache_file "/etc/hosts")
+cache_file() {
+    local path="$1"
+
+    if [[ ! -f "$path" ]]; then
+        _cache_log error "cache_file: file not found: $path"
+        return 1
+    fi
+
+    _cache_ensure_dirs
+
+    # Build cache key from path + stat info
+    local stat_info
+    stat_info=$(stat -c '%i_%Y_%s' "$path" 2>/dev/null || stat -f '%i_%m_%z' "$path" 2>/dev/null)
+    if [[ -z "$stat_info" ]]; then
+        # Fallback: just use path hash
+        stat_info=$(date +%s)
+    fi
+
+    local path_safe="${path//\//_}"
+    local cache_key="file_${path_safe}_$(_cache_sha256 "$stat_info")"
+    local cache_file="${MAINFRAME_CACHE_ROOT}/memo/${cache_key}"
+    local meta_file="${cache_file}.meta"
+
+    # Check cache - file caches don't expire by time, only by content change
+    if [[ -f "$cache_file" ]]; then
+        _MAINFRAME_CACHE_HITS=$((_MAINFRAME_CACHE_HITS + 1))
+        cat "$cache_file"
+        return 0
+    fi
+
+    # Cache miss - read file
+    _MAINFRAME_CACHE_MISSES=$((_MAINFRAME_CACHE_MISSES + 1))
+    local content
+    content=$(<"$path")
+
+    _cache_atomic_write "$cache_file" "$content"
+    local now
+    now=$(_cache_epoch)
+    # TTL of 0 = never expires by time (only by stat change)
+    local meta
+    meta=$(_cache_build_meta "$now" "0" "0" "file:$path")
+    _cache_atomic_write "$meta_file" "$meta"
+
+    printf '%s' "$content"
+    return 0
+}
+
+# @pre: PATH is a valid file path that was previously cached
+# @post: cached content for this file is removed
+# @returns: 0 on success
+#
+# Invalidate file cache when you know the file has changed.
+#
+# Usage: cache_file_invalidate PATH
+# Example: cache_file_invalidate "/etc/hosts"
+cache_file_invalidate() {
+    local path="$1"
+    local path_safe="${path//\//_}"
+    local pattern="file_${path_safe}_"
+    local count=0
+
+    local memo_dir="${MAINFRAME_CACHE_ROOT}/memo"
+    if [[ ! -d "$memo_dir" ]]; then
+        return 0
+    fi
+
+    local file
+    while IFS= read -r -d '' file; do
+        local basename="${file##*/}"
+        if [[ "$basename" == ${pattern}* ]]; then
+            rm -f "$file" "${file}.meta" 2>/dev/null
+            count=$((count + 1))
+        fi
+    done < <(find "$memo_dir" -type f ! -name "*.meta" -print0 2>/dev/null)
+
+    return 0
+}
+
+# @pre: KEY is a unique identifier, COMPUTE_FN is a function name
+# @post: computed result cached with dependency tracking
+# @returns: computed result (cached or fresh)
+#
+# Cache expensive computations with dependency tracking on files.
+# Result is invalidated when any dependency file changes.
+#
+# Usage: cache_compute KEY COMPUTE_FN [DEPENDENCY_FILE...]
+# Example: cache_compute "project_summary" compute_summary package.json tsconfig.json
+cache_compute() {
+    local key="$1"
+    local compute_fn="$2"
+    shift 2
+    local -a deps=("$@")
+
+    if [[ -z "$key" ]] || [[ -z "$compute_fn" ]]; then
+        _cache_log error "cache_compute: key and compute function required"
+        return 1
+    fi
+
+    if ! declare -F "$compute_fn" &>/dev/null; then
+        _cache_log error "cache_compute: function '$compute_fn' not found"
+        return 1
+    fi
+
+    _cache_ensure_dirs
+
+    # Build dependency hash from all file stats
+    local dep_hash=""
+    local dep
+    for dep in "${deps[@]}"; do
+        if [[ -f "$dep" ]]; then
+            local stat_info
+            stat_info=$(stat -c '%i_%Y_%s' "$dep" 2>/dev/null || stat -f '%i_%m_%z' "$dep" 2>/dev/null)
+            dep_hash+="${dep}:${stat_info}|"
+        else
+            dep_hash+="${dep}:missing|"
+        fi
+    done
+
+    local cache_key="compute_${key}_$(_cache_sha256 "$dep_hash")"
+    local cache_file="${MAINFRAME_CACHE_ROOT}/memo/${cache_key}"
+    local meta_file="${cache_file}.meta"
+
+    # Check cache
+    if [[ -f "$cache_file" ]] && [[ -f "$meta_file" ]]; then
+        # For compute caches, we rely on the dep_hash being in the key
+        # So if the file exists, the deps haven't changed
+        _MAINFRAME_CACHE_HITS=$((_MAINFRAME_CACHE_HITS + 1))
+        _cache_touch_meta "$meta_file"
+        cat "$cache_file"
+        return 0
+    fi
+
+    # Cache miss - compute
+    _MAINFRAME_CACHE_MISSES=$((_MAINFRAME_CACHE_MISSES + 1))
+    local result
+    result=$("$compute_fn")
+    local exit_code=$?
+
+    if [[ $exit_code -eq 0 ]]; then
+        _cache_atomic_write "$cache_file" "$result"
+        local now
+        now=$(_cache_epoch)
+        local meta
+        meta=$(_cache_build_meta "$now" "0" "0" "$compute_fn" "${deps[@]}")
+        _cache_atomic_write "$meta_file" "$meta"
+
+        # Also register deps for explicit invalidation checks
+        if [[ ${#deps[@]} -gt 0 ]]; then
+            cache_depends_on "$cache_key" "${deps[@]}"
+        fi
+    fi
+
+    printf '%s' "$result"
+    return $exit_code
+}
+
+# @pre: none
+# @post: hit/miss counters reset to 0
+# @returns: 0
+#
+# Reset cache statistics counters.
+#
+# Usage: cache_stats_reset
+cache_stats_reset() {
+    _MAINFRAME_CACHE_HITS=0
+    _MAINFRAME_CACHE_MISSES=0
+    return 0
+}
+
+# @pre: PROFILE is one of: standard, git, project, system, all
+# @post: common operations for the profile are pre-cached
+# @returns: 0 on success
+#
+# Prewarm cache with common operations for AI agent workflows.
+# This reduces latency for first-time operations.
+#
+# Usage: cache_prewarm [PROFILE]
+# Example: cache_prewarm git
+# Example: cache_prewarm project
+cache_prewarm() {
+    local profile="${1:-standard}"
+
+    _cache_ensure_dirs
+
+    case "$profile" in
+        git)
+            # Git operations are frequently repeated
+            if command -v git &>/dev/null && git rev-parse --git-dir &>/dev/null 2>&1; then
+                cache_command 60 git status --porcelain 2>/dev/null || true
+                cache_command 300 git branch --show-current 2>/dev/null || true
+                cache_command 300 git rev-parse --short HEAD 2>/dev/null || true
+                cache_command 300 git remote get-url origin 2>/dev/null || true
+            fi
+            ;;
+
+        project)
+            # Cache common project files
+            local files=(
+                "package.json"
+                "Cargo.toml"
+                "pyproject.toml"
+                "go.mod"
+                "requirements.txt"
+                "tsconfig.json"
+                "Makefile"
+            )
+            local f
+            for f in "${files[@]}"; do
+                [[ -f "$f" ]] && cache_file "$f" >/dev/null 2>&1 || true
+            done
+            ;;
+
+        system)
+            # System info rarely changes
+            cache_command 3600 uname -a 2>/dev/null || true
+            cache_command 3600 hostname 2>/dev/null || true
+            cache_command 3600 whoami 2>/dev/null || true
+            cache_command 300 pwd 2>/dev/null || true
+            ;;
+
+        standard|all)
+            # Combined prewarming
+            cache_prewarm git
+            cache_prewarm project
+            cache_prewarm system
+            ;;
+
+        *)
+            _cache_log warn "cache_prewarm: unknown profile '$profile'"
+            return 1
+            ;;
+    esac
+
+    return 0
+}
+
+# =============================================================================
 # MODULE EXPORTS
 # =============================================================================
 
 MAINFRAME_CACHE_EXPORTS=(
-    # Memoization
+    # Memoization (original)
     memoize
     memoize_clear
     memoize_stats
+    # Decorator-style Memoization (v2.0)
+    memo_wrap
+    memo_unwrap
+    memo_clear
+    # Command Caching (v2.0)
+    cache_command
+    # File Caching (v2.0)
+    cache_file
+    cache_file_invalidate
+    # Computation Caching (v2.0)
+    cache_compute
+    # Statistics (v2.0)
+    cache_stats_reset
+    # Prewarming (v2.0)
+    cache_prewarm
     # Content-Addressable Store
     cas_store
     cas_get

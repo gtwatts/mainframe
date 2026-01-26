@@ -1050,6 +1050,564 @@ output_try() {
 }
 
 # =============================================================================
+# USOP COMMAND EXECUTION - AI Agent Command Envelopes
+# =============================================================================
+# These functions provide standardized JSON envelopes for command execution
+# results, enabling AI agents to parse output reliably and self-correct.
+#
+# Dependencies: json.sh (for json_object, json_get, json_array)
+# =============================================================================
+
+# Auto-source json.sh if json_object is not available
+if ! declare -F json_object &>/dev/null; then
+    _usop_lib_dir="${BASH_SOURCE[0]%/*}"
+    if [[ -f "${_usop_lib_dir}/json.sh" ]]; then
+        source "${_usop_lib_dir}/json.sh"
+    fi
+fi
+
+# Execute any command and wrap result in USOP envelope
+# Returns JSON with: success, exit_code, stdout, stderr, duration_ms, command, cwd, timestamp
+#
+# Usage: usop_exec command [args...]
+# Example: result=$(usop_exec ls -la /tmp)
+usop_exec() {
+    local -a cmd=("$@")
+
+    if [[ ${#cmd[@]} -eq 0 ]]; then
+        json_object \
+            "success:bool=false" \
+            "exit_code:number=1" \
+            "stdout=" \
+            "stderr=usop_exec: no command provided" \
+            "duration_ms:number=0" \
+            "command=" \
+            "cwd=$PWD" \
+            "timestamp=$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S)"
+        return 1
+    fi
+
+    local start_time stdout_file stderr_file
+    start_time=$(_output_now_ms)
+    stdout_file=$(mktemp "${TMPDIR:-/tmp}/usop_out.XXXXXX")
+    stderr_file=$(mktemp "${TMPDIR:-/tmp}/usop_err.XXXXXX")
+
+    # Execute capturing output
+    "${cmd[@]}" >"$stdout_file" 2>"$stderr_file"
+    local exit_code=$?
+
+    local end_time duration_ms
+    end_time=$(_output_now_ms)
+    duration_ms=$((end_time - start_time))
+    [[ $duration_ms -lt 0 ]] && duration_ms=0
+
+    # Read captured output
+    local stdout stderr
+    stdout=$(<"$stdout_file")
+    stderr=$(<"$stderr_file")
+    rm -f "$stdout_file" "$stderr_file"
+
+    local success="false"
+    [[ $exit_code -eq 0 ]] && success="true"
+
+    json_object \
+        "success:bool=$success" \
+        "exit_code:number=$exit_code" \
+        "stdout=$stdout" \
+        "stderr=$stderr" \
+        "duration_ms:number=$duration_ms" \
+        "command=${cmd[*]}" \
+        "cwd=$PWD" \
+        "timestamp=$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S)"
+
+    return $exit_code
+}
+
+# Parse USOP result and extract a specific field
+# Supports both top-level fields and nested values
+#
+# Usage: usop_get JSON_STRING FIELD
+# Example: stdout=$(usop_get "$result" "stdout")
+usop_get() {
+    local json="$1"
+    local field="$2"
+
+    if [[ -z "$json" || -z "$field" ]]; then
+        return 1
+    fi
+
+    json_get "$json" "$field"
+}
+
+# Check if USOP result indicates success
+# Returns 0 (true) if success:true, 1 (false) otherwise
+#
+# Usage: usop_ok JSON_STRING
+# Example: usop_ok "$result" && echo "Command succeeded"
+usop_ok() {
+    local json="$1"
+
+    if [[ -z "$json" ]]; then
+        return 1
+    fi
+
+    local success
+    success=$(json_get "$json" "success")
+    [[ "$success" == "true" ]]
+}
+
+# =============================================================================
+# USOP FILE OPERATIONS
+# =============================================================================
+
+# Read file and return USOP envelope with content
+# Includes file metadata (size, path) and AI-friendly error suggestions
+#
+# Usage: usop_read_file PATH
+# Example: result=$(usop_read_file /etc/hosts)
+usop_read_file() {
+    local path="$1"
+
+    if [[ -z "$path" ]]; then
+        json_object \
+            "success:bool=false" \
+            "error=path required" \
+            "path=" \
+            "suggestion=Provide a file path as the first argument"
+        return 1
+    fi
+
+    if [[ ! -e "$path" ]]; then
+        json_object \
+            "success:bool=false" \
+            "error=file not found" \
+            "path=$path" \
+            "suggestion=Verify the path exists and check for typos"
+        return 1
+    fi
+
+    if [[ ! -f "$path" ]]; then
+        json_object \
+            "success:bool=false" \
+            "error=not a regular file" \
+            "path=$path" \
+            "suggestion=The path exists but is not a regular file (may be directory or special file)"
+        return 1
+    fi
+
+    if [[ ! -r "$path" ]]; then
+        json_object \
+            "success:bool=false" \
+            "error=permission denied" \
+            "path=$path" \
+            "suggestion=Check file permissions or run with appropriate privileges"
+        return 1
+    fi
+
+    local content size
+    content=$(<"$path")
+    # Get file size (portable between Linux and macOS)
+    if [[ "$OSTYPE" == darwin* ]]; then
+        size=$(stat -f%z "$path" 2>/dev/null || echo "0")
+    else
+        size=$(stat -c%s "$path" 2>/dev/null || echo "0")
+    fi
+
+    json_object \
+        "success:bool=true" \
+        "path=$path" \
+        "size:number=$size" \
+        "content=$content"
+}
+
+# Write content to file atomically and return USOP envelope
+# Uses atomic_write if available for safe file operations
+#
+# Usage: usop_write_file PATH CONTENT
+# Example: result=$(usop_write_file /tmp/test.txt "Hello World")
+usop_write_file() {
+    local path="$1"
+    local content="$2"
+
+    if [[ -z "$path" ]]; then
+        json_object \
+            "success:bool=false" \
+            "error=path required" \
+            "path=" \
+            "suggestion=Provide a file path as the first argument"
+        return 1
+    fi
+
+    # Check parent directory exists
+    local parent_dir
+    parent_dir="${path%/*}"
+    if [[ "$parent_dir" != "$path" ]] && [[ ! -d "$parent_dir" ]]; then
+        json_object \
+            "success:bool=false" \
+            "error=parent directory does not exist" \
+            "path=$path" \
+            "parent=$parent_dir" \
+            "suggestion=Create parent directory first or check the path"
+        return 1
+    fi
+
+    # Check if parent is writable
+    local check_dir="$parent_dir"
+    [[ "$check_dir" == "$path" ]] && check_dir="."
+    if [[ ! -w "$check_dir" ]]; then
+        json_object \
+            "success:bool=false" \
+            "error=permission denied" \
+            "path=$path" \
+            "operation=write" \
+            "suggestion=Check directory permissions or run with appropriate privileges"
+        return 1
+    fi
+
+    # Use atomic_write if available
+    if declare -F atomic_write &>/dev/null; then
+        if atomic_write "$path" "$content"; then
+            json_object \
+                "success:bool=true" \
+                "path=$path" \
+                "bytes_written:number=${#content}" \
+                "action=written"
+        else
+            json_object \
+                "success:bool=false" \
+                "error=write failed" \
+                "path=$path" \
+                "suggestion=Check disk space and file system permissions"
+            return 1
+        fi
+    else
+        # Fallback to direct write
+        if printf '%s' "$content" > "$path"; then
+            json_object \
+                "success:bool=true" \
+                "path=$path" \
+                "bytes_written:number=${#content}" \
+                "action=written"
+        else
+            json_object \
+                "success:bool=false" \
+                "error=write failed" \
+                "path=$path" \
+                "suggestion=Check disk space and file system permissions"
+            return 1
+        fi
+    fi
+}
+
+# List directory contents and return USOP envelope
+# Returns array of entries with file/directory information
+#
+# Usage: usop_list_dir [PATH]
+# Example: result=$(usop_list_dir /tmp)
+usop_list_dir() {
+    local path="${1:-.}"
+
+    if [[ ! -e "$path" ]]; then
+        json_object \
+            "success:bool=false" \
+            "error=path not found" \
+            "path=$path" \
+            "suggestion=Verify the path exists"
+        return 1
+    fi
+
+    if [[ ! -d "$path" ]]; then
+        json_object \
+            "success:bool=false" \
+            "error=not a directory" \
+            "path=$path" \
+            "suggestion=The path exists but is not a directory"
+        return 1
+    fi
+
+    if [[ ! -r "$path" ]] || [[ ! -x "$path" ]]; then
+        json_object \
+            "success:bool=false" \
+            "error=permission denied" \
+            "path=$path" \
+            "suggestion=Check directory permissions (need read and execute)"
+        return 1
+    fi
+
+    local -a entries=()
+    local entry
+    while IFS= read -r -d '' entry; do
+        entries+=("$entry")
+    done < <(find "$path" -maxdepth 1 -mindepth 1 -print0 2>/dev/null | sort -z)
+
+    local entries_json
+    entries_json=$(json_array "${entries[@]}")
+
+    json_object \
+        "success:bool=true" \
+        "path=$path" \
+        "count:number=${#entries[@]}" \
+        "entries:raw=$entries_json"
+}
+
+# =============================================================================
+# USOP PROCESS OPERATIONS
+# =============================================================================
+
+# Run command in background and return USOP envelope with tracking info
+# Returns PID and paths to stdout/stderr capture files
+#
+# Usage: usop_run_background command [args...]
+# Example: result=$(usop_run_background sleep 30)
+usop_run_background() {
+    local -a cmd=("$@")
+
+    if [[ ${#cmd[@]} -eq 0 ]]; then
+        json_object \
+            "success:bool=false" \
+            "error=no command provided" \
+            "suggestion=Provide a command to run in background"
+        return 1
+    fi
+
+    local stdout_file stderr_file
+    stdout_file=$(mktemp "${TMPDIR:-/tmp}/usop_bg_out.XXXXXX")
+    stderr_file=$(mktemp "${TMPDIR:-/tmp}/usop_bg_err.XXXXXX")
+
+    # Start in background
+    "${cmd[@]}" >"$stdout_file" 2>"$stderr_file" &
+    local pid=$!
+
+    # Verify process started
+    if ! kill -0 "$pid" 2>/dev/null; then
+        rm -f "$stdout_file" "$stderr_file"
+        json_object \
+            "success:bool=false" \
+            "error=failed to start process" \
+            "command=${cmd[*]}" \
+            "suggestion=Check if command exists and is executable"
+        return 1
+    fi
+
+    json_object \
+        "success:bool=true" \
+        "pid:number=$pid" \
+        "stdout_file=$stdout_file" \
+        "stderr_file=$stderr_file" \
+        "command=${cmd[*]}"
+}
+
+# Check status of a process by PID
+# Returns running status and exit code if completed
+#
+# Usage: usop_check_pid PID
+# Example: result=$(usop_check_pid 12345)
+usop_check_pid() {
+    local pid="$1"
+
+    if [[ -z "$pid" ]]; then
+        json_object \
+            "success:bool=false" \
+            "error=pid required" \
+            "suggestion=Provide a process ID to check"
+        return 1
+    fi
+
+    if ! [[ "$pid" =~ ^[0-9]+$ ]]; then
+        json_object \
+            "success:bool=false" \
+            "error=invalid pid format" \
+            "pid=$pid" \
+            "suggestion=PID must be a positive integer"
+        return 1
+    fi
+
+    if kill -0 "$pid" 2>/dev/null; then
+        json_object \
+            "success:bool=true" \
+            "pid:number=$pid" \
+            "status=running"
+    else
+        # Process not running - try to get exit code
+        local exit_code=0
+        wait "$pid" 2>/dev/null
+        exit_code=$?
+
+        json_object \
+            "success:bool=true" \
+            "pid:number=$pid" \
+            "status=exited" \
+            "exit_code:number=$exit_code"
+    fi
+}
+
+# =============================================================================
+# USOP ERROR HELPERS - Standard Error Formats for AI Agents
+# =============================================================================
+
+# Generate standard "not found" error envelope
+#
+# Usage: usop_error_not_found WHAT PATH
+# Example: usop_error_not_found "file" "/path/to/missing"
+usop_error_not_found() {
+    local what="${1:-resource}"
+    local path="$2"
+
+    json_object \
+        "success:bool=false" \
+        "error=$what not found" \
+        "path=$path" \
+        "suggestion=Verify the path exists and check for typos"
+}
+
+# Generate standard "permission denied" error envelope
+#
+# Usage: usop_error_permission PATH OPERATION
+# Example: usop_error_permission "/etc/shadow" "read"
+usop_error_permission() {
+    local path="$1"
+    local operation="${2:-access}"
+
+    json_object \
+        "success:bool=false" \
+        "error=permission denied" \
+        "path=$path" \
+        "operation=$operation" \
+        "suggestion=Check file permissions or run with appropriate privileges"
+}
+
+# Generate standard validation error envelope
+#
+# Usage: usop_error_validation FIELD VALUE EXPECTED
+# Example: usop_error_validation "port" "abc" "integer 1-65535"
+usop_error_validation() {
+    local field="$1"
+    local value="$2"
+    local expected="$3"
+
+    json_object \
+        "success:bool=false" \
+        "error=validation failed" \
+        "field=$field" \
+        "value=$value" \
+        "expected=$expected" \
+        "suggestion=Provide a value matching the expected format"
+}
+
+# Generate timeout error envelope
+#
+# Usage: usop_error_timeout OPERATION TIMEOUT_SECS
+# Example: usop_error_timeout "HTTP request" "30"
+usop_error_timeout() {
+    local operation="${1:-operation}"
+    local timeout_secs="${2:-unknown}"
+
+    json_object \
+        "success:bool=false" \
+        "error=timeout" \
+        "operation=$operation" \
+        "timeout_secs=$timeout_secs" \
+        "suggestion=Increase timeout or check if target is responsive"
+}
+
+# Generate command failed error envelope with full context
+#
+# Usage: usop_error_command_failed CMD EXIT_CODE STDERR
+# Example: usop_error_command_failed "git pull" "128" "fatal: not a git repository"
+usop_error_command_failed() {
+    local cmd="$1"
+    local exit_code="${2:-1}"
+    local stderr="$3"
+
+    json_object \
+        "success:bool=false" \
+        "error=command failed" \
+        "command=$cmd" \
+        "exit_code:number=$exit_code" \
+        "stderr=$stderr" \
+        "suggestion=Check command arguments, permissions, and prerequisites"
+}
+
+# =============================================================================
+# USOP NAMEREF VARIANTS (High Performance)
+# =============================================================================
+
+# Execute command and store USOP result in variable (avoids subshell)
+#
+# Usage: usop_exec_v RESULT_VAR command [args...]
+# Example: usop_exec_v result ls -la /tmp
+usop_exec_v() {
+    local -n __uev_out=$1
+    shift
+    local -a cmd=("$@")
+
+    if [[ ${#cmd[@]} -eq 0 ]]; then
+        json_object_v __uev_out \
+            "success:bool=false" \
+            "exit_code:number=1" \
+            "stdout=" \
+            "stderr=usop_exec: no command provided" \
+            "duration_ms:number=0" \
+            "command=" \
+            "cwd=$PWD" \
+            "timestamp=$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S)"
+        return 1
+    fi
+
+    local start_time stdout_file stderr_file
+    start_time=$(_output_now_ms)
+    stdout_file=$(mktemp "${TMPDIR:-/tmp}/usop_out.XXXXXX")
+    stderr_file=$(mktemp "${TMPDIR:-/tmp}/usop_err.XXXXXX")
+
+    # Execute capturing output
+    "${cmd[@]}" >"$stdout_file" 2>"$stderr_file"
+    local exit_code=$?
+
+    local end_time duration_ms
+    end_time=$(_output_now_ms)
+    duration_ms=$((end_time - start_time))
+    [[ $duration_ms -lt 0 ]] && duration_ms=0
+
+    # Read captured output
+    local stdout stderr
+    stdout=$(<"$stdout_file")
+    stderr=$(<"$stderr_file")
+    rm -f "$stdout_file" "$stderr_file"
+
+    local success="false"
+    [[ $exit_code -eq 0 ]] && success="true"
+
+    json_object_v __uev_out \
+        "success:bool=$success" \
+        "exit_code:number=$exit_code" \
+        "stdout=$stdout" \
+        "stderr=$stderr" \
+        "duration_ms:number=$duration_ms" \
+        "command=${cmd[*]}" \
+        "cwd=$PWD" \
+        "timestamp=$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S)"
+
+    return $exit_code
+}
+
+# Extract USOP field into variable (avoids subshell)
+#
+# Usage: usop_get_v RESULT_VAR JSON_STRING FIELD
+# Example: usop_get_v stdout_val "$result" "stdout"
+usop_get_v() {
+    local -n __ugv_out=$1
+    local json="$2"
+    local field="$3"
+
+    if [[ -z "$json" || -z "$field" ]]; then
+        __ugv_out=""
+        return 1
+    fi
+
+    json_get_v __ugv_out "$json" "$field"
+}
+
+# =============================================================================
 # MODULE EXPORTS
 # =============================================================================
 
@@ -1095,4 +1653,23 @@ _OUTPUT_EXPORTS=(
     output_try
     output_json_escape
     output_json_array_from_lines
+    # USOP Command Execution
+    usop_exec
+    usop_get
+    usop_ok
+    usop_exec_v
+    usop_get_v
+    # USOP File Operations
+    usop_read_file
+    usop_write_file
+    usop_list_dir
+    # USOP Process Operations
+    usop_run_background
+    usop_check_pid
+    # USOP Error Helpers
+    usop_error_not_found
+    usop_error_permission
+    usop_error_validation
+    usop_error_timeout
+    usop_error_command_failed
 )
