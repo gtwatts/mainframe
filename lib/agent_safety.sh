@@ -794,20 +794,20 @@ agent_ensure_symlink() {
 #
 # Usage: agent_ensure_command "git"
 agent_ensure_command() {
-    local cmd="$1"
-    local package="${2:-$cmd}"
+    local cmd_name="$1"
+    local package="${2:-$cmd_name}"
 
-    if [[ -z "$cmd" ]]; then
+    if [[ -z "$cmd_name" ]]; then
         agent_error "command name required"
         return 1
     fi
 
-    if command -v "$cmd" &>/dev/null; then
-        agent_success "command available" "cmd=$cmd" "action=none"
+    if command -v "$cmd_name" &>/dev/null; then
+        agent_success "command available" "cmd=$cmd_name" "action=none"
         return 0
     fi
 
-    agent_error "command not found: $cmd" \
+    agent_error "command not found: $cmd_name" \
         "suggestion=Install with: sudo apt install $package (or equivalent)"
     return 1
 }

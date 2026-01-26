@@ -208,8 +208,10 @@ agent_peek() {
 
     local -a messages=()
     local i=0
+    local msg_file
 
-    for msg_file in $(ls -1tr "$inbox"/*.json 2>/dev/null); do
+    # Use glob instead of ls (shellcheck SC2045)
+    for msg_file in "$inbox"/*.json; do
         (( i >= count )) && break
         [[ -f "$msg_file" ]] || continue
         messages+=("$(<"$msg_file")")
@@ -358,7 +360,8 @@ agent_list() {
         else
             # Cleanup dead agent
             rm -f "$agent_file"
-            rm -rf "$AGENT_BASE_DIR/$agent_id"
+            # shellcheck disable=SC2115
+            rm -rf "${AGENT_BASE_DIR:?}/${agent_id:?}"
         fi
     done
 
@@ -769,7 +772,8 @@ agent_shutdown() {
     rm -f "$AGENT_REGISTRY_DIR/$AGENT_ID.json"
 
     # Cleanup workspace
-    rm -rf "$AGENT_BASE_DIR/$AGENT_ID"
+    # shellcheck disable=SC2115
+    rm -rf "${AGENT_BASE_DIR:?}/${AGENT_ID:?}"
 
     local old_id="$AGENT_ID"
     AGENT_ID=""
@@ -797,7 +801,8 @@ agent_cleanup_dead() {
 
         if ! kill -0 "$pid" 2>/dev/null; then
             rm -f "$agent_file"
-            rm -rf "$AGENT_BASE_DIR/$agent_id"
+            # shellcheck disable=SC2115
+            rm -rf "${AGENT_BASE_DIR:?}/${agent_id:?}"
             ((cleaned++))
         fi
     done
