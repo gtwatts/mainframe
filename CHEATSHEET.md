@@ -2685,6 +2685,244 @@ Structure:
 
 ---
 
-*900+ functions | 39 libraries | Zero dependencies | 20-72x faster*
+## Format Bridge Functions (bridge.sh)
+
+**Purpose**: Auto-detect data formats and convert between JSON, CSV, YAML, XML, NDJSON, and key-value formats. Pure bash implementation with no external dependencies.
+
+### Format Detection
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `bridge_detect` | `bridge_detect "content"` | `bridge_detect '{"a":1}'` | `json` |
+| `bridge_detect_file` | `bridge_detect_file "path"` | `bridge_detect_file "data.csv"` | `csv` |
+
+**Detected Formats**: `json`, `csv`, `yaml`, `xml`, `ini`, `ndjson`, `kv`, `unknown`
+
+### JSON <-> CSV Conversions
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `bridge_json_to_csv` | `echo '[...]' \| bridge_json_to_csv` | `echo '[{"a":1}]' \| bridge_json_to_csv` | `a\n1` |
+| `bridge_csv_to_json` | `echo '...' \| bridge_csv_to_json` | `echo 'a\n1' \| bridge_csv_to_json` | `[{"a":1}]` |
+
+### JSON <-> NDJSON Conversions
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `bridge_json_to_ndjson` | `echo '[...]' \| bridge_json_to_ndjson` | `echo '[{"a":1},{"a":2}]' \| bridge_json_to_ndjson` | `{"a":1}\n{"a":2}` |
+| `bridge_ndjson_to_json` | `echo '...' \| bridge_ndjson_to_json` | `echo '{"a":1}\n{"a":2}' \| bridge_ndjson_to_json` | `[{"a":1},{"a":2}]` |
+
+### JSON <-> YAML Conversions
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `bridge_yaml_to_json` | `echo '...' \| bridge_yaml_to_json` | `echo 'name: John' \| bridge_yaml_to_json` | `{"name":"John"}` |
+| `bridge_json_to_yaml` | `echo '...' \| bridge_json_to_yaml` | `echo '{"name":"John"}' \| bridge_json_to_yaml` | `name: John` |
+
+### JSON <-> XML Conversions
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `bridge_xml_to_json` | `echo '...' \| bridge_xml_to_json` | `echo '<r><a>1</a></r>' \| bridge_xml_to_json` | `{"a":1}` |
+| `bridge_json_to_xml` | `echo '...' \| bridge_json_to_xml "root"` | `echo '{"a":1}' \| bridge_json_to_xml "data"` | `<data><a>1</a></data>` |
+
+### Universal Converter
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `bridge_convert` | `echo '...' \| bridge_convert "target"` | `cat data.csv \| bridge_convert "json"` | JSON array |
+
+### Schema Extraction
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `bridge_schema_extract` | `echo '...' \| bridge_schema_extract` | `echo '[{"a":1}]' \| bridge_schema_extract` | `{"format":"json","fields":{"a":"integer"}}` |
+
+### Quick Patterns (Bridge)
+
+```bash
+# Detect format
+format=$(bridge_detect "$content")
+echo "Format: $format"  # json, csv, yaml, xml, etc.
+
+# Convert CSV to JSON
+cat users.csv | bridge_csv_to_json > users.json
+
+# Convert JSON array to NDJSON for streaming
+cat data.json | bridge_json_to_ndjson > data.ndjson
+
+# Universal conversion (auto-detects source)
+cat config.yaml | bridge_convert "json" > config.json
+cat data.csv | bridge_convert "xml" > data.xml
+
+# Extract schema from data
+cat records.json | bridge_schema_extract
+# {"format":"json","fields":{"name":"string","age":"integer","active":"boolean"}}
+
+# Roundtrip: JSON -> CSV -> JSON
+original='[{"name":"John","age":30}]'
+csv=$(echo "$original" | bridge_json_to_csv)
+restored=$(echo "$csv" | bridge_csv_to_json)
+```
+
+### Supported Conversions
+
+| From | To | Method |
+|------|-----|--------|
+| JSON | CSV, NDJSON, YAML, XML | Direct |
+| CSV | JSON, NDJSON, YAML, XML | Direct or via JSON |
+| NDJSON | JSON, CSV, YAML, XML | Direct or via JSON |
+| YAML | JSON, CSV, NDJSON, XML | Direct or via JSON |
+| XML | JSON, CSV, NDJSON, YAML | Direct or via JSON |
+
+---
+
+## Savant-Level Debugging (trace.sh)
+
+**Purpose**: Advanced function tracing, variable watching, high-precision timing, session replay, and Mermaid diagram generation. Produces JSON output for AI agent debugging and analysis. All tracing is disabled by default for production safety.
+
+### Control Functions
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `trace_enable` | `trace_enable` | `trace_enable` | (enables tracing globally) |
+| `trace_disable` | `trace_disable` | `trace_disable` | (disables tracing globally) |
+| `trace_is_enabled` | `trace_is_enabled` | `trace_is_enabled && echo "active"` | (returns 0/1) |
+| `trace_status` | `trace_status` | `trace_status` | `{"enabled":true,"entries":42,"timers":2,...}` |
+| `trace_set_output` | `trace_set_output "path"` | `trace_set_output "/tmp/traces.jsonl"` | (redirects output) |
+| `trace_clear` | `trace_clear` | `trace_clear` | (clears all trace data) |
+
+### Function Tracing
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `trace_function` | `trace_function "name"` | `trace_function "process_file"` | (wraps function with timing/args trace) |
+| `trace_untrace` | `trace_untrace "name"` | `trace_untrace "process_file"` | (restores original function) |
+| `trace_all_in_file` | `trace_all_in_file "path"` | `trace_all_in_file "lib/utils.sh"` | (traces all functions in file) |
+
+### Variable Watching
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `trace_variable` | `trace_variable "var"` | `trace_variable "CONFIG_PATH"` | (watches variable changes via DEBUG trap) |
+| `trace_unwatch` | `trace_unwatch "var"` | `trace_unwatch "CONFIG_PATH"` | (stops watching) |
+| `trace_snapshot` | `trace_snapshot "name"` | `trace_snapshot "before_deploy"` | (captures all shell variables) |
+| `trace_diff` | `trace_diff "snap1" "snap2"` | `trace_diff "before" "after"` | `{"diff":{"added":[],"removed":[],"changed":[...]}}` |
+
+### High-Precision Timing
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `trace_timer_start` | `trace_timer_start "label"` | `trace_timer_start "db_query"` | (starts nanosecond timer) |
+| `trace_timer_stop` | `ns=$(trace_timer_stop "label")` | `elapsed=$(trace_timer_stop "db_query")` | `123456789` (nanoseconds) |
+| `trace_timing` | `trace_timing "label" cmd [args]` | `trace_timing "fetch" curl -s http://api.com` | (times command, returns its exit code) |
+
+### Output & Visualization
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `trace_to_json` | `trace_to_json` | `all=$(trace_to_json)` | `[{"event":"timer_start",...},...]` |
+| `trace_to_mermaid` | `trace_to_mermaid` | `trace_to_mermaid > diagram.md` | Mermaid sequence diagram |
+
+### Session Recording & Replay
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `trace_record_start` | `trace_record_start "session"` | `trace_record_start "deployment"` | (begins recording) |
+| `trace_record_stop` | `trace_record_stop` | `trace_record_stop` | (stops recording) |
+| `trace_record_command` | `trace_record_command "cmd" [args]` | `trace_record_command "git" "commit" "-m" "msg"` | (records command in session) |
+| `trace_replay` | `trace_replay "session"` | `trace_replay "deployment"` | `{"replay_session":"...","events":[...]}` |
+
+### Quick Patterns (Trace)
+
+```bash
+# Enable tracing for debugging session
+trace_enable
+trace_set_output "/tmp/debug_session.jsonl"
+
+# Time critical sections with nanosecond precision
+trace_timer_start "database_migration"
+run_migration
+elapsed_ns=$(trace_timer_stop "database_migration")
+echo "Migration took ${elapsed_ns}ns"
+
+# Time commands inline
+trace_timing "api_call" curl -sf http://api.example.com/data
+# Emits: {"event":"timing","label":"api_call","elapsed_ns":123456789,...}
+
+# Watch variable changes during debugging
+trace_variable "DEPLOYMENT_STATUS"
+DEPLOYMENT_STATUS="starting"
+# Emits: {"event":"var_change","var":"DEPLOYMENT_STATUS","old":"","new":"starting",...}
+DEPLOYMENT_STATUS="complete"
+# Emits: {"event":"var_change","var":"DEPLOYMENT_STATUS","old":"starting","new":"complete",...}
+trace_unwatch "DEPLOYMENT_STATUS"
+
+# Compare environment before/after operation
+trace_snapshot "before_install"
+npm install
+trace_snapshot "after_install"
+changes=$(trace_diff "before_install" "after_install")
+echo "$changes"  # {"diff":{"added":["NODE_PATH"],"changed":["PATH"],...}}
+
+# Trace all functions in a library
+trace_all_in_file "lib/deployment.sh"
+source "lib/deployment.sh"
+deploy_application "staging"  # All calls automatically traced
+# Emits: {"event":"func_entry","func":"deploy_application","args":["staging"],...}
+# Emits: {"event":"func_exit","func":"deploy_application","exit_code":0,"duration_s":12.5,...}
+
+# Record and replay sessions
+trace_record_start "my_workflow"
+trace_record_command "git" "pull" "origin" "main"
+trace_record_command "npm" "install"
+trace_record_command "npm" "test"
+trace_record_stop
+
+# Later: replay to see what was executed
+trace_replay "my_workflow"
+# {"replay_session":"my_workflow","events":[{"event":"command","cmd":"git",...},...]}
+
+# Generate Mermaid diagram from trace data
+trace_to_mermaid
+# sequenceDiagram
+#     participant Main
+#     participant deploy_application
+#     Main->>deploy_application: call()
+#     deploy_application-->>Main: return
+
+# Export all traces as JSON for AI analysis
+all_traces=$(trace_to_json)
+echo "$all_traces" | jq '.[] | select(.event == "func_exit" and .duration_s > 1)'
+
+# Disable before production
+trace_disable
+```
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MAINFRAME_TRACE_ENABLED` | `0` | Set to `1` to enable tracing |
+| `MAINFRAME_TRACE_FILE` | `/dev/stderr` | Output destination (file path or `/dev/stderr`) |
+| `MAINFRAME_TRACE_MAX_ENTRIES` | `1000` | Max entries to retain in memory |
+
+### JSON Event Types
+
+| Event | Fields | Description |
+|-------|--------|-------------|
+| `timer_start` | `label`, `timestamp_ns` | Timer started |
+| `timer_stop` | `label`, `elapsed_ns`, `timestamp_ns` | Timer stopped |
+| `timing` | `label`, `cmd`, `exit_code`, `elapsed_ns` | Command timing |
+| `func_entry` | `func`, `args`, `timestamp` | Function called |
+| `func_exit` | `func`, `exit_code`, `duration_s`, `timestamp` | Function returned |
+| `var_change` | `var`, `old`, `new`, `func`, `file`, `line` | Variable changed |
+| `snapshot` | `name`, `timestamp` | Snapshot captured |
+| `record_start` | `session`, `timestamp` | Recording started |
+| `record_stop` | `session`, `timestamp` | Recording stopped |
+
+---
+
+*900+ functions | 41 libraries | Zero dependencies | 20-72x faster*
 
 **YO JOE!**

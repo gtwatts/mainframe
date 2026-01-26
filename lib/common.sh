@@ -587,7 +587,7 @@ _MAINFRAME_TIER_EXTENDED=(
 # Phase 3 AI tier: agent-optimized modules
 _MAINFRAME_TIER_AI=(
     idempotent atomic observe project
-    contract perf netscan parsers
+    contract perf netscan parsers trace
     risk dryrun undo
     limits confirm safewrap safecontext
     agent workflow taskstate
@@ -785,6 +785,7 @@ else
     _mainframe_load_library "perf"
     _mainframe_load_library "netscan"
     _mainframe_load_library "parsers"
+    _mainframe_load_library "trace"
     _mainframe_load_library "cache"
     _mainframe_load_library "scope"
     _mainframe_load_library "risk"
@@ -1044,4 +1045,11 @@ BASHER_COMMON_EXPORTS=(
     session_cache_set session_cache_get session_cache_has session_cache_clear session_cache_stats
     cache_invalidate cache_clear cache_stats cache_max_size cache_evict_lru cache_warm
     cache_depends_on cache_check_deps
+    # Savant-Level Debugging (from trace.sh) - Function tracing, variable watching, replay
+    trace_enable trace_disable trace_is_enabled trace_status
+    trace_function trace_untrace trace_all_in_file
+    trace_variable trace_unwatch trace_snapshot trace_diff
+    trace_timer_start trace_timer_stop trace_timing
+    trace_to_json trace_to_mermaid trace_clear trace_set_output
+    trace_record_start trace_record_stop trace_replay trace_record_command
 )
