@@ -431,6 +431,7 @@ git submodule update --init
 - **[Installation Guide](INSTALL.md)** - Detailed setup instructions
 - **[Full Function Reference](CHEATSHEET.md)** - All 2,000+ function signatures
 - **[Contributing](CONTRIBUTING.md)** - How to contribute
+- **[Roadmap](ROADMAP.md)** - Planned features and improvements
 - **[Wiki](https://github.com/gtwatts/mainframe/wiki)** - Extended documentation
 
 ---
