@@ -1,8 +1,11 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
-  - name: Documentation
+  - name: Function Reference (CHEATSHEET.md)
     url: https://github.com/gtwatts/mainframe/blob/main/CHEATSHEET.md
-    about: Check the full function reference first
+    about: Complete reference for all 2,000+ functions - check here before asking about function signatures
   - name: Discussions
     url: https://github.com/gtwatts/mainframe/discussions
-    about: Ask questions and share ideas
+    about: Ask questions, share ideas, and connect with the community
+  - name: Wiki Documentation
+    url: https://github.com/gtwatts/mainframe/wiki
+    about: Extended guides, tutorials, and AI agent integration examples

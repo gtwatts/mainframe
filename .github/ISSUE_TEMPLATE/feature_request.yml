@@ -1,0 +1,74 @@
+name: Feature Request
+description: Suggest a new function or improvement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! MAINFRAME is built for AI agents - features that improve safety, accuracy, and efficiency are especially welcome.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Feature Category
+      description: What area does this feature belong to?
+      options:
+        - AI Agent Safety (validation, sandboxing, guardrails)
+        - AI Agent Efficiency (caching, lazy loading, performance)
+        - Structured Output (USOP, JSON envelopes)
+        - Multi-Agent Coordination (messaging, tasks, state)
+        - New Library (new domain of functionality)
+        - Existing Library Enhancement
+        - Documentation
+        - Testing
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve?
+      placeholder: "I'm trying to... but currently MAINFRAME doesn't..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How do you envision this working?
+      placeholder: |
+        A new function `safe_exec` that:
+        - Validates command before execution
+        - Returns structured JSON output
+        - Logs to audit trail
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other approaches did you consider?
+
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: Breaking Change?
+      description: Would this change break existing behavior?
+      options:
+        - "No"
+        - "Yes - minor"
+        - "Yes - major"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I'm willing to submit a PR for this feature

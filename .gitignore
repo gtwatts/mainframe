@@ -33,3 +33,6 @@ basher.conf
 # Temporary files
 *.tmp
 *.temp
+
+# Cache directory
+cache/

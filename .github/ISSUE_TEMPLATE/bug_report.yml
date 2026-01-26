@@ -1,0 +1,98 @@
+name: Bug Report
+description: Report a bug in MAINFRAME
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the form below.
+
+  - type: input
+    id: function
+    attributes:
+      label: Function Name
+      description: Which MAINFRAME function is affected?
+      placeholder: "e.g., json_object, validate_email, agent_exec"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear description of what the bug is
+      placeholder: "Describe what happened..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this issue?
+      placeholder: |
+        1. Source MAINFRAME: `source lib/common.sh`
+        2. Call function: `json_object "key=value"`
+        3. See error...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+    validations:
+      required: true
+
+  - type: input
+    id: bash-version
+    attributes:
+      label: Bash Version
+      description: Output of `bash --version`
+      placeholder: "e.g., GNU bash, version 5.1.16"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Linux
+        - macOS
+        - WSL/Windows
+        - FreeBSD
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: ai-tool
+    attributes:
+      label: AI Tool (if applicable)
+      description: Which AI coding assistant are you using?
+      options:
+        - Not using AI
+        - Claude Code
+        - Cursor
+        - Aider
+        - OpenCode
+        - Other AI Agent
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other context about the problem
