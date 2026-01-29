@@ -1,0 +1,11 @@
+[project]
+name = "mainframe-mcp"
+version = "1.0.0"
+description = "MAINFRAME MCP Server - Exposes bash functions as MCP tools"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0.0",
+]
+
+[tool.uv]
+dev-dependencies = []

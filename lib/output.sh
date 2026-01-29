@@ -1608,6 +1608,270 @@ usop_get_v() {
 }
 
 # =============================================================================
+# USOP v3.0 - Enhanced Structured Output Protocol
+# =============================================================================
+
+# Global state for USOP v3
+declare -g _USOP_LOG_LEVEL="${MAINFRAME_LOG_LEVEL:-info}"
+declare -g _USOP_PROGRESS_START_MS=""
+
+# Log level comparison
+_usop_log_level_value() {
+    case "$1" in
+        debug) echo 0 ;;
+        info)  echo 1 ;;
+        warn)  echo 2 ;;
+        error) echo 3 ;;
+        fatal) echo 4 ;;
+        *) echo 1 ;;
+    esac
+}
+
+_usop_log_meets_threshold() {
+    local level="$1"
+    local threshold="${_USOP_LOG_LEVEL:-info}"
+    [[ $(_usop_log_level_value "$level") -ge $(_usop_log_level_value "$threshold") ]]
+}
+
+# usop_result - Enhanced result with status and typed data
+# Usage: usop_result success|error|partial [--code N] [--data "json"] [--hint "text"]
+usop_result() {
+    local status="$1"
+    shift
+    local code=0 data="" hint="" error_type="" error_msg="" retryable="false" context=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --code) code="$2"; shift 2 ;;
+            --data) data="$2"; shift 2 ;;
+            --hint) hint="$2"; shift 2 ;;
+            --error-type) error_type="$2"; shift 2 ;;
+            --error-msg) error_msg="$2"; shift 2 ;;
+            --retryable) retryable="true"; shift ;;
+            --context) context="$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+
+    local mode="${MAINFRAME_OUTPUT:-raw}"
+    local ok="true"
+    [[ "$status" == "error" ]] && ok="false"
+
+    case "$mode" in
+        raw)
+            if [[ "$ok" == "true" ]]; then
+                [[ -n "$data" ]] && printf '%s\n' "$data"
+            else
+                [[ -n "$error_msg" ]] && printf '%s\n' "$error_msg" >&2
+            fi
+            return "$code"
+            ;;
+        json|minimal|debug)
+            local timestamp
+            timestamp=$(_output_now_ms 2>/dev/null || date +%s%3N)
+
+            local json="{"
+            json+="\"ok\":$ok,"
+            json+="\"code\":$code,"
+            json+="\"status\":\"$status\""
+
+            if [[ -n "$data" ]]; then
+                # Check if data is valid JSON
+                if [[ "$data" =~ ^\{.*\}$ ]] || [[ "$data" =~ ^\[.*\]$ ]]; then
+                    json+=",\"data\":$data"
+                else
+                    local escaped_data
+                    escaped_data=$(_output_escape "$data" 2>/dev/null || printf '%s' "$data" | sed 's/\\/\\\\/g; s/"/\\"/g')
+                    json+=",\"data\":\"$escaped_data\""
+                fi
+            fi
+
+            if [[ "$ok" == "false" && -n "$error_type" ]]; then
+                json+=",\"error\":{"
+                json+="\"type\":\"$error_type\""
+                [[ -n "$error_msg" ]] && json+=",\"message\":\"$(_output_escape "$error_msg" 2>/dev/null || echo "$error_msg")\""
+                json+=",\"retryable\":$retryable"
+                [[ -n "$context" ]] && json+=",\"context\":$context"
+                json+="}"
+            fi
+
+            [[ -n "$hint" ]] && json+=",\"hint\":\"$hint\""
+            json+=",\"meta\":{\"timestamp\":$timestamp}"
+            json+="}"
+
+            printf '%s\n' "$json"
+            return "$code"
+            ;;
+    esac
+}
+
+# usop_progress - Progress reporting with ETA
+# Usage: usop_progress CURRENT TOTAL [MESSAGE]
+usop_progress() {
+    local current="$1"
+    local total="$2"
+    local message="${3:-Processing...}"
+
+    [[ "${MAINFRAME_PROGRESS:-1}" != "1" ]] && return 0
+
+    local mode="${MAINFRAME_OUTPUT:-raw}"
+    local percent=""
+    local eta_ms=""
+
+    # Calculate percentage
+    if [[ "$total" -gt 0 ]]; then
+        percent=$((current * 100 / total))
+    fi
+
+    # Calculate ETA if we have a start time
+    if [[ -n "$_USOP_PROGRESS_START_MS" && "$current" -gt 0 && "$total" -gt 0 ]]; then
+        local now elapsed remaining rate
+        now=$(_output_now_ms 2>/dev/null || date +%s%3N)
+        elapsed=$((now - _USOP_PROGRESS_START_MS))
+        if [[ "$elapsed" -gt 0 ]]; then
+            remaining=$((total - current))
+            rate=$((elapsed / current))
+            eta_ms=$((remaining * rate))
+        fi
+    fi
+
+    case "$mode" in
+        raw)
+            if [[ -n "$percent" ]]; then
+                printf '\r[%3d%%] %s' "$percent" "$message"
+            else
+                printf '\r%s' "$message"
+            fi
+            ;;
+        json|minimal|debug)
+            local timestamp
+            timestamp=$(_output_now_ms 2>/dev/null || date +%s%3N)
+
+            local json="{"
+            json+="\"type\":\"progress\""
+            json+=",\"current\":$current"
+            json+=",\"total\":$total"
+            [[ -n "$percent" ]] && json+=",\"percent\":$percent"
+            json+=",\"message\":\"$message\""
+            [[ -n "$eta_ms" ]] && json+=",\"eta_ms\":$eta_ms"
+            json+=",\"timestamp\":$timestamp"
+            json+="}"
+
+            printf '%s\n' "$json"
+            ;;
+    esac
+}
+
+# usop_progress_start - Start progress tracking
+usop_progress_start() {
+    _USOP_PROGRESS_START_MS=$(_output_now_ms 2>/dev/null || date +%s%3N)
+}
+
+# usop_progress_end - End progress tracking
+usop_progress_end() {
+    local mode="${MAINFRAME_OUTPUT:-raw}"
+    [[ "$mode" == "raw" ]] && printf '\n'
+    _USOP_PROGRESS_START_MS=""
+}
+
+# usop_error_retryable - Emit retryable error
+# Usage: usop_error_retryable "E_CODE" "message" [--context "json"]
+usop_error_retryable() {
+    local code="$1"
+    local message="$2"
+    shift 2
+    usop_result error --code 1 --error-type "$code" --error-msg "$message" --retryable "$@"
+}
+
+# usop_error_permanent - Emit permanent (non-retryable) error
+# Usage: usop_error_permanent "E_CODE" "message" [--context "json"]
+usop_error_permanent() {
+    local code="$1"
+    local message="$2"
+    shift 2
+    usop_result error --code 1 --error-type "$code" --error-msg "$message" "$@"
+}
+
+# usop_warning - Emit warning (non-fatal)
+# Usage: usop_warning "W_CODE" "message" [--suggestion "text"]
+usop_warning() {
+    local code="$1"
+    local message="$2"
+    local suggestion="${3:-}"
+
+    local mode="${MAINFRAME_OUTPUT:-raw}"
+
+    case "$mode" in
+        raw)
+            printf 'Warning [%s]: %s\n' "$code" "$message" >&2
+            [[ -n "$suggestion" ]] && printf '  Suggestion: %s\n' "$suggestion" >&2
+            ;;
+        json|minimal|debug)
+            local timestamp
+            timestamp=$(_output_now_ms 2>/dev/null || date +%s%3N)
+
+            local json="{"
+            json+="\"type\":\"warning\""
+            json+=",\"code\":\"$code\""
+            json+=",\"message\":\"$message\""
+            [[ -n "$suggestion" ]] && json+=",\"suggestion\":\"$suggestion\""
+            json+=",\"timestamp\":$timestamp"
+            json+="}"
+
+            printf '%s\n' "$json"
+            ;;
+    esac
+}
+
+# usop_log - Structured logging with levels
+# Usage: usop_log LEVEL "message" [--context "json"]
+usop_log() {
+    local level="$1"
+    local message="$2"
+    shift 2
+    local context=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --context) context="$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+
+    # Check log level threshold
+    _usop_log_meets_threshold "$level" || return 0
+
+    local mode="${MAINFRAME_OUTPUT:-raw}"
+
+    case "$mode" in
+        raw)
+            printf '[%s] %s\n' "${level^^}" "$message" >&2
+            ;;
+        json|minimal|debug)
+            local timestamp
+            timestamp=$(_output_now_ms 2>/dev/null || date +%s%3N)
+
+            local json="{"
+            json+="\"type\":\"log\""
+            json+=",\"level\":\"$level\""
+            json+=",\"message\":\"$(_output_escape "$message" 2>/dev/null || echo "$message")\""
+            [[ -n "$context" ]] && json+=",\"context\":$context"
+            json+=",\"timestamp\":$timestamp"
+            json+="}"
+
+            printf '%s\n' "$json"
+            ;;
+    esac
+}
+
+# Convenience logging functions
+usop_debug() { usop_log debug "$@"; }
+usop_info() { usop_log info "$@"; }
+usop_warn() { usop_log warn "$@"; }
+usop_log_error() { usop_log error "$@"; }
+usop_fatal() { usop_log fatal "$@"; exit 1; }
+
+# =============================================================================
 # MODULE EXPORTS
 # =============================================================================
 
@@ -1672,4 +1936,18 @@ _OUTPUT_EXPORTS=(
     usop_error_validation
     usop_error_timeout
     usop_error_command_failed
+    # USOP v3.0 - Enhanced API
+    usop_result
+    usop_progress
+    usop_progress_start
+    usop_progress_end
+    usop_error_retryable
+    usop_error_permanent
+    usop_warning
+    usop_log
+    usop_debug
+    usop_info
+    usop_warn
+    usop_log_error
+    usop_fatal
 )

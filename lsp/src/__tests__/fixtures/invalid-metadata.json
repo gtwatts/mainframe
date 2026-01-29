@@ -1,0 +1,9 @@
+{
+  "invalid": "json",
+  "completions": [
+    {
+      "label": "broken_func"
+      // Missing comma - intentional syntax error
+    }
+  ]
+}

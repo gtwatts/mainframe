@@ -1,0 +1,46 @@
+{
+  "version": "5.0.0",
+  "generated": "2026-01-28T00:00:00Z",
+  "stats": {
+    "total_functions": 5,
+    "total_libraries": 2,
+    "categories": ["strings", "arrays"]
+  },
+  "completions": [
+    {
+      "label": "json_object",
+      "kind": 3,
+      "detail": "JSON - Create JSON object from key=value pairs",
+      "documentation": "Create a JSON object from key=value pairs. Supports typed values with key:type=val syntax.\n\nTypes: string (default), number, bool, null\n\nExample:\n```bash\njson_object \"name=John\" \"age:number=30\" \"active:bool=true\"\n# Output: {\"name\":\"John\",\"age\":30,\"active\":true}\n```",
+      "tags": ["json", "data"]
+    },
+    {
+      "label": "array_sort",
+      "kind": 3,
+      "detail": "Arrays - Sort array elements",
+      "documentation": "Sort array elements alphabetically or numerically.\n\nExample:\n```bash\narray_sort \"b\" \"a\" \"c\"\n# Output: a b c\n```",
+      "tags": ["arrays", "utilities"]
+    },
+    {
+      "label": "http_get",
+      "kind": 3,
+      "detail": "HTTP - Make HTTP GET request",
+      "documentation": "Make an HTTP GET request to a URL.\n\nExample:\n```bash\nhttp_get \"https://api.example.com/data\"\n```\n\nParameters:\n- url: The URL to request",
+      "tags": ["network", "http"]
+    },
+    {
+      "label": "validate_email",
+      "kind": 3,
+      "detail": "Validation - Validate email address",
+      "documentation": "Validate an email address using RFC 5322 simplified regex.\n\nExample:\n```bash\nvalidate_email \"user@example.com\" && echo \"valid\"\n```",
+      "tags": ["validation"]
+    },
+    {
+      "label": "trim_string",
+      "kind": 3,
+      "detail": "Strings - Remove leading/trailing whitespace",
+      "documentation": "Remove leading and trailing whitespace from a string.\n\nExample:\n```bash\ntrim_string \"  hello world  \"\n# Output: hello world\n```",
+      "tags": ["strings"]
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+{
+  "name": "mainframe-bash-lsp",
+  "displayName": "MAINFRAME Bash Language Support",
+  "description": "IntelliSense for MAINFRAME's 2,000+ bash functions",
+  "version": "1.0.0",
+  "publisher": "mainframe",
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Snippets"
+  ],
+  "keywords": [
+    "bash",
+    "shell",
+    "mainframe",
+    "autocomplete",
+    "intellisense"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gtwatts/mainframe"
+  },
+  "bugs": {
+    "url": "https://github.com/gtwatts/mainframe/issues"
+  },
+  "homepage": "https://github.com/gtwatts/mainframe#readme",
+  "engines": {
+    "vscode": "^1.75.0",
+    "node": ">=18.0.0"
+  },
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:shellscript"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "shellscript",
+        "extensions": [".sh", ".bash"],
+        "aliases": ["Shell Script", "shellscript", "bash", "sh"]
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "MAINFRAME",
+      "properties": {
+        "mainframe.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable MAINFRAME LSP support"
+        },
+        "mainframe.functionsPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to FUNCTIONS.json (auto-detected if empty)"
+        },
+        "mainframe.showHints": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show inline hints for function parameters"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "mainframe.restart",
+        "title": "Restart MAINFRAME LSP Server",
+        "category": "MAINFRAME"
+      },
+      {
+        "command": "mainframe.toggleEnable",
+        "title": "Toggle MAINFRAME LSP",
+        "category": "MAINFRAME"
+      },
+      {
+        "command": "mainframe.showFunctionsPath",
+        "title": "Show FUNCTIONS.json Path",
+        "category": "MAINFRAME"
+      },
+      {
+        "command": "mainframe.openSettings",
+        "title": "Open Settings",
+        "category": "MAINFRAME"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "pretest": "npm run compile",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:coverage": "vitest run --coverage",
+    "test:ui": "vitest --ui",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package",
+    "publish": "vsce publish",
+    "generate-metadata": "./scripts/generate-lsp-metadata.sh"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1",
+    "vscode-languageserver": "^9.0.0",
+    "vscode-languageserver-textdocument": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.108.1",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "@vitest/ui": "^4.0.18",
+    "@vscode/vsce": "^2.22.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^4.0.18"
+  }
+}

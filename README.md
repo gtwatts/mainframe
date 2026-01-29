@@ -427,10 +427,57 @@ git submodule update --init
 
 ---
 
+## What's New in v5.0
+
+**MAINFRAME v5.0** completes the transformation into a full **AI-Native Bash Runtime with LSP support**.
+
+### New Libraries
+
+| Library | Functions | Purpose |
+|---------|-----------|---------|
+| `introspect.sh` | 15+ | Runtime introspection - discover functions, signatures, metadata |
+| `state.sh` | 20+ | Persistent state management with checkpoints and rollback |
+| `events.sh` | 15+ | Event/hook system for lifecycle management |
+| `testing.sh` | 20+ | Built-in testing and mocking framework |
+| `sandbox.sh` | 15+ | Execution sandboxing with allow/deny rules |
+| `taskgraph.sh` | 15+ | Task DAG execution with topological sort |
+
+### Language Server Protocol (LSP)
+
+Full LSP implementation for IDE integration:
+- **Smart Completion** - 1,546 functions with signatures and documentation
+- **Hover Documentation** - Rich markdown with examples
+- **Signature Help** - Parameter hints as you type
+- **Go-to-Definition** - Jump to library source
+- **Document Symbols** - Function outline
+
+Works with VS Code, Neovim, and any LSP-compatible editor.
+
+### MCP Server
+
+Model Context Protocol server exposing MAINFRAME functions as tools:
+- 673 core tools available to AI agents
+- Structured JSON responses
+- Built-in validation and error handling
+
+### USOP v3.0
+
+Universal Structured Output Protocol with progress tracking:
+```bash
+usop_success "Operation complete" --hint "verify"
+usop_progress "Downloading" 45 100 "bytes"
+usop_error "E_NOT_FOUND" "File missing" --suggestion "check path"
+```
+
+---
+
 ## Documentation
 
 - **[Installation Guide](INSTALL.md)** - Detailed setup instructions
 - **[Full Function Reference](CHEATSHEET.md)** - All 2,000+ function signatures
+- **[Comparison vs Alternatives](docs/COMPARISON.md)** - MAINFRAME vs Plain Bash vs Python
+- **[Value Proof](docs/VALUE_PROOF.md)** - Token savings and productivity metrics
+- **[AI Agent Integration](CLAUDE.md)** - Instructions for AI coding assistants
 - **[Contributing](CONTRIBUTING.md)** - How to contribute
 - **[Roadmap](ROADMAP.md)** - Planned features and improvements
 - **[Wiki](https://github.com/gtwatts/mainframe/wiki)** - Extended documentation

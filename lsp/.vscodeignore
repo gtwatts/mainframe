@@ -1,0 +1,31 @@
+# Source files
+src/**
+tsconfig.json
+
+# Tests
+tests/**
+*.test.ts
+vitest.config.ts
+coverage/**
+
+# Development files
+.vscode/**
+.vscode-test/**
+.gitignore
+.eslintrc.json
+.prettierrc
+
+# Documentation (keep only README)
+IMPLEMENTATION.md
+TESTING.md
+
+# Build artifacts
+node_modules/**
+*.map
+
+# Scripts
+scripts/**
+
+# Misc
+.DS_Store
+*.log

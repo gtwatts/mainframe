@@ -3329,6 +3329,370 @@ agent_audit_stats
 
 ---
 
-*900+ functions | 43 libraries | Zero dependencies | 20-72x faster*
+## Runtime Introspection (introspect.sh) - NEW v6.0
+
+**Purpose**: Self-discovery API for AI agents to query MAINFRAME's capabilities at runtime.
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `mainframe_describe` | `mainframe_describe "func"` | `mainframe_describe "json_object"` | JSON metadata about function |
+| `mainframe_signature` | `mainframe_signature "func"` | `mainframe_signature "array_join"` | Function signature string |
+| `mainframe_capabilities` | `mainframe_capabilities ["cat"]` | `mainframe_capabilities "json"` | List functions by category |
+| `mainframe_search` | `mainframe_search "pattern"` | `mainframe_search "array"` | Search function names/descriptions |
+| `mainframe_version` | `mainframe_version` | `mainframe_version` | MAINFRAME version info |
+
+### Quick Patterns (Introspection)
+
+```bash
+# Get function metadata (AI agent pattern)
+mainframe_describe "json_object"
+# {"name":"json_object","library":"json","signature":"json_object key=val...","description":"..."}
+
+# Search for relevant functions
+mainframe_search "array sort"
+# [{"name":"array_sort",...},{"name":"array_unique",...}]
+
+# List all JSON functions
+mainframe_capabilities "json"
+# ["json_object","json_array","json_get","json_merge",...]
+```
+
+---
+
+## State Persistence (state.sh) - NEW v6.0
+
+**Purpose**: Key-value state management with checkpointing for multi-step agentic workflows.
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `state_init` | `state_init "/path" [--ttl N]` | `state_init "/tmp/my_state"` | Initialize state store |
+| `state_set` | `state_set "key" "value"` | `state_set "step" "3"` | Set key-value pair |
+| `state_get` | `state_get "key" [--default val]` | `state_get "step" --default "1"` | Get value with optional default |
+| `state_delete` | `state_delete "key"` | `state_delete "temp_var"` | Delete a key |
+| `state_list` | `state_list` | `state_list` | List all keys |
+| `state_checkpoint` | `state_checkpoint ["label"]` | `state_checkpoint "pre_deploy"` | Create checkpoint |
+| `state_rollback` | `state_rollback ["label"]` | `state_rollback "pre_deploy"` | Rollback to checkpoint |
+| `state_history` | `state_history` | `state_history` | Show checkpoint history |
+| `state_clear` | `state_clear` | `state_clear` | Clear all keys (keep store) |
+| `state_destroy` | `state_destroy` | `state_destroy` | Delete entire state store |
+
+### Quick Patterns (State)
+
+```bash
+# Initialize workflow state (path to state directory)
+state_init "/tmp/my_workflow"
+
+# Track progress across script restarts
+state_set "current_step" "2"
+state_set "processed_files" "15"
+
+# Resume from saved state
+step=$(state_get "current_step" --default "1")
+
+# Create checkpoint before risky operation
+state_checkpoint "before_deploy"
+
+# Rollback on failure
+if ! deploy_app; then
+    state_rollback "before_deploy"
+fi
+```
+
+---
+
+## Event/Hook System (events.sh) - NEW v6.0
+
+**Purpose**: Pub/sub events and synchronous hooks for extensibility.
+
+### Hooks (Synchronous)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `hook_on` | `hook_on "name" "callback"` | `hook_on "pre_deploy" "my_fn"` | Register hook handler |
+| `hook_off` | `hook_off "name" "callback"` | `hook_off "pre_deploy" "my_fn"` | Remove hook handler |
+| `hook_trigger` | `hook_trigger "name" [args...]` | `hook_trigger "pre_deploy" "$ver"` | Execute all handlers |
+| `hook_list` | `hook_list "name"` | `hook_list "pre_deploy"` | List handlers for hook |
+
+### Events (Async/Pub-Sub)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `event_on` | `event_on "event" "callback"` | `event_on "file_changed" "reload"` | Subscribe to event |
+| `event_off` | `event_off "event" "callback"` | `event_off "file_changed" "reload"` | Unsubscribe |
+| `event_emit` | `event_emit "event" [args...]` | `event_emit "file_changed" "$f"` | Emit event to subscribers |
+| `event_once` | `event_once "event" "callback"` | `event_once "ready" "init"` | One-time subscription |
+| `event_list` | `event_list "event"` | `event_list "file_changed"` | List subscribers |
+
+### Management
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `events_enable_logging` | `events_enable_logging` | `events_enable_logging` | Enable debug logging |
+| `events_disable_logging` | `events_disable_logging` | `events_disable_logging` | Disable debug logging |
+| `events_clear_all` | `events_clear_all` | `events_clear_all` | Clear all hooks/events |
+
+### Quick Patterns (Events)
+
+```bash
+# Hook pattern - synchronous middleware
+pre_deploy_check() { echo "Checking $1..."; }
+hook_on "pre_deploy" "pre_deploy_check"
+hook_trigger "pre_deploy" "v1.2.3"
+
+# Event pattern - pub/sub notifications
+on_file_change() { echo "File changed: $1"; }
+event_on "file:changed" "on_file_change"
+event_emit "file:changed" "/path/to/file"
+
+# One-time handler
+event_once "app:ready" "run_migrations"
+event_emit "app:ready"  # Runs once, then auto-removes
+```
+
+---
+
+## Testing/Mocking Framework (testing.sh) - NEW v6.0
+
+**Purpose**: Unit testing primitives with function mocking and fixtures.
+
+### Mocking
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `mock_function` | `mock_function "func" "response"` | `mock_function "http_get" "data"` | Mock a function |
+| `mock_function_restore` | `mock_function_restore "func"` | `mock_function_restore "http_get"` | Restore original |
+| `mock_function_restore_all` | `mock_function_restore_all` | `mock_function_restore_all` | Restore all mocks |
+| `mock_call_count` | `mock_call_count "func"` | `mock_call_count "http_get"` | Number of calls |
+| `mock_last_args` | `mock_last_args "func"` | `mock_last_args "http_get"` | Last call arguments |
+
+### Environment Mocking
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `mock_env` | `mock_env "VAR" "value"` | `mock_env "API_KEY" "test"` | Mock env variable |
+| `mock_env_restore` | `mock_env_restore "VAR"` | `mock_env_restore "API_KEY"` | Restore original |
+| `mock_env_restore_all` | `mock_env_restore_all` | `mock_env_restore_all` | Restore all env |
+
+### Assertions
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `assert_equals` | `assert_equals "exp" "got" ["msg"]` | `assert_equals "5" "$x"` | Pass if equal |
+| `assert_not_equals` | `assert_not_equals "a" "b"` | `assert_not_equals "" "$x"` | Pass if different |
+| `assert_contains` | `assert_contains "hay" "needle"` | `assert_contains "$out" "OK"` | Pass if substring |
+| `assert_empty` | `assert_empty "val"` | `assert_empty "$err"` | Pass if empty |
+| `assert_not_empty` | `assert_not_empty "val"` | `assert_not_empty "$out"` | Pass if non-empty |
+| `assert_exit_code` | `assert_exit_code exp cmd...` | `assert_exit_code 0 true` | Check exit code |
+| `assert_file_exists` | `assert_file_exists "path"` | `assert_file_exists "$f"` | Pass if file exists |
+| `assert_file_contains` | `assert_file_contains "f" "str"` | `assert_file_contains "$f" "ok"` | Check file content |
+| `assert_true` | `assert_true cmd...` | `assert_true [[ -f $f ]]` | Pass if exit 0 |
+| `assert_false` | `assert_false cmd...` | `assert_false [[ -f $f ]]` | Pass if exit non-0 |
+
+### Fixtures
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `fixture_tempdir` | `fixture_tempdir ["name"]` | `d=$(fixture_tempdir "test")` | Create temp directory |
+| `fixture_tempfile` | `fixture_tempfile ["name"] ["content"]` | `f=$(fixture_tempfile "cfg" "{}")` | Create temp file |
+| `fixture_cleanup` | `fixture_cleanup` | `fixture_cleanup` | Clean up all fixtures |
+
+### Test Structure
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `test_start` | `test_start "name"` | `test_start "test_json_parse"` | Begin test |
+| `test_end` | `test_end` | `test_end` | End test (report result) |
+| `test_summary` | `test_summary` | `test_summary` | Print test summary |
+| `test_reset` | `test_reset` | `test_reset` | Reset test state |
+
+### Quick Patterns (Testing)
+
+```bash
+# Basic test structure
+test_start "test_array_sort"
+result=$(array_sort c a b)
+assert_equals "a b c" "$result"
+test_end
+
+# Mock external commands
+mock_function "http_get" '{"status":"ok"}'
+result=$(my_function_that_calls_http)
+assert_contains "$result" "ok"
+assert_equals 1 $(mock_call_count "http_get")
+mock_function_restore "http_get"
+
+# Fixture for temp files
+tmpdir=$(fixture_tempdir "mytest")
+echo "data" > "$tmpdir/input.txt"
+# ... run tests ...
+fixture_cleanup
+
+# Full test suite
+test_reset
+test_start "test1"; assert_equals "a" "a"; test_end
+test_start "test2"; assert_true true; test_end
+test_summary
+# Output: Tests: 2 passed, 0 failed
+```
+
+---
+
+## Execution Sandboxing (sandbox.sh) - NEW v6.0
+
+**Purpose**: Filesystem restriction layer for autonomous agent execution.
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `sandbox_enable` | `sandbox_enable` | `sandbox_enable` | Enable sandbox mode |
+| `sandbox_disable` | `sandbox_disable` | `sandbox_disable` | Disable sandbox |
+| `sandbox_allow_write` | `sandbox_allow_write "path"` | `sandbox_allow_write "$PWD"` | Whitelist path for writes |
+| `sandbox_deny_write` | `sandbox_deny_write "path"` | `sandbox_deny_write "/etc"` | Blacklist path |
+| `sandbox_deny_network` | `sandbox_deny_network` | `sandbox_deny_network` | Block network commands |
+| `sandbox_allow_network` | `sandbox_allow_network` | `sandbox_allow_network` | Allow network commands |
+| `sandbox_exec` | `sandbox_exec cmd [args]` | `sandbox_exec rm -rf "$dir"` | Execute with checks |
+| `sandbox_write` | `sandbox_write "path" "content"` | `sandbox_write "$f" "data"` | Safe file write |
+| `sandbox_mkdir` | `sandbox_mkdir "path"` | `sandbox_mkdir "$dir"` | Safe mkdir |
+| `sandbox_rm` | `sandbox_rm "path"` | `sandbox_rm "$tmpfile"` | Safe remove |
+| `sandbox_status` | `sandbox_status` | `sandbox_status` | Show sandbox state |
+| `sandbox_check` | `sandbox_check "op" "path"` | `sandbox_check write "/tmp/f"` | Check if operation allowed |
+| `sandbox_audit_log` | `sandbox_audit_log` | `sandbox_audit_log` | Show audit log |
+
+### Quick Patterns (Sandbox)
+
+```bash
+# Enable sandbox with restricted writes
+sandbox_enable
+sandbox_allow_write "$PWD/output"
+sandbox_allow_write "/tmp"
+sandbox_deny_write "/etc"
+sandbox_deny_write "$HOME/.ssh"
+
+# Safe execution - blocked writes are rejected
+sandbox_write "/etc/passwd" "hacked"  # Returns 1, logged
+sandbox_write "$PWD/output/result.txt" "data"  # OK
+
+# Execute commands through sandbox
+sandbox_exec rm -rf "$build_dir"  # Checked against allow/deny lists
+
+# Check before write (op_type: write, exec, network)
+if sandbox_check write "$target_path"; then
+    sandbox_write "$target_path" "$content"
+fi
+
+# Review what was blocked
+sandbox_audit_log
+# Shows all denied operations
+```
+
+---
+
+## Task Graphs (taskgraph.sh) - NEW v6.0
+
+**Purpose**: Declarative task DAG with dependency resolution and parallel execution.
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `task_define` | `task_define "name" "cmd" ["deps"]` | `task_define "build" "./build.sh" "lint test"` | Define task with dependencies |
+| `task_run` | `task_run "name"` | `task_run "build"` | Run single task |
+| `task_run_graph` | `task_run_graph ["root"]` | `task_run_graph "deploy"` | Run task DAG (topo sort) |
+| `task_status` | `task_status` | `task_status` | Show all task statuses |
+| `task_reset` | `task_reset ["name"]` | `task_reset "build"` | Reset task(s) to pending |
+| `task_clear` | `task_clear` | `task_clear` | Clear all tasks |
+| `task_list` | `task_list` | `task_list` | List all tasks |
+| `task_output` | `task_output "name"` | `task_output "test"` | Get task stdout |
+| `task_graph` | `task_graph` | `task_graph` | Show dependency graph |
+
+### Task Status Values
+
+| Status | Meaning |
+|--------|---------|
+| `pending` | Not yet started |
+| `running` | Currently executing |
+| `completed` | Finished successfully |
+| `failed` | Execution failed |
+| `skipped` | Skipped (dependency failed) |
+
+### Quick Patterns (Task Graph)
+
+```bash
+# Define a build pipeline DAG
+task_define "lint" "npm run lint"
+task_define "test" "npm test" "lint"
+task_define "build" "./scripts/build.sh" "lint test"
+task_define "deploy" "./scripts/deploy.sh" "build"
+
+# Run full graph (respects dependencies)
+task_run_graph "deploy"
+# Execution order: lint -> test -> build -> deploy
+
+# Check status (via internal array)
+status="${_TASK_STATUS[build]}"  # "completed" or "failed"
+
+# Get output from a task
+build_output=$(task_output "build")
+
+# Visualize graph
+task_graph
+# lint -> test -> build -> deploy
+
+# Reset and re-run
+task_reset
+task_run_graph "deploy"
+```
+
+---
+
+## USOP v3.0 Additions (output.sh) - NEW v6.0
+
+**Purpose**: Enhanced structured output for AI agent consumption.
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `usop_result` | `usop_result "data" ["meta"]` | `usop_result "done" "step=3"` | Standard result envelope |
+| `usop_progress` | `usop_progress cur total ["msg"]` | `usop_progress 5 10 "files"` | Progress update |
+| `usop_error_retryable` | `usop_error_retryable "code" "msg"` | `usop_error_retryable "TIMEOUT" "API slow"` | Retryable error |
+| `usop_error_permanent` | `usop_error_permanent "code" "msg"` | `usop_error_permanent "INVALID" "Bad input"` | Non-retryable error |
+| `usop_warning` | `usop_warning "msg" ["details"]` | `usop_warning "Deprecated API"` | Warning message |
+| `usop_log` | `usop_log "level" "msg"` | `usop_log "info" "Starting"` | Structured log |
+| `usop_debug` | `usop_debug "msg"` | `usop_debug "Variable=$x"` | Debug log |
+| `usop_info` | `usop_info "msg"` | `usop_info "Processing..."` | Info log |
+| `usop_warn` | `usop_warn "msg"` | `usop_warn "Slow response"` | Warning log |
+| `usop_fatal` | `usop_fatal "msg"` | `usop_fatal "Cannot continue"` | Fatal error (exits) |
+
+### Quick Patterns (USOP v3.0)
+
+```bash
+export MAINFRAME_OUTPUT=json
+
+# Standard result
+usop_result "Operation completed" "items_processed=42"
+# {"ok":true,"data":"Operation completed","meta":{"items_processed":"42"}}
+
+# Progress tracking for long operations
+for i in {1..10}; do
+    usop_progress $i 10 "Processing file $i"
+    process_file $i
+done
+# {"type":"progress","current":5,"total":10,"percent":50,"message":"Processing file 5"}
+
+# Error classification for AI retry logic
+if ! api_call; then
+    usop_error_retryable "API_TIMEOUT" "Request timed out after 30s"
+    # {"ok":false,"error":{"code":"API_TIMEOUT","msg":"...","retryable":true}}
+fi
+
+# Permanent errors (no retry)
+usop_error_permanent "INVALID_INPUT" "Email format invalid"
+# {"ok":false,"error":{"code":"INVALID_INPUT","msg":"...","retryable":false}}
+
+# Structured logging
+usop_info "Starting deployment"
+usop_debug "Config loaded: $config_path"
+usop_warn "Using deprecated API version"
+```
+
+---
+
+*2,100+ functions | 49 libraries | Zero dependencies | 20-72x faster*
 
 **YO JOE!**
