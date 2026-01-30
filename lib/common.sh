@@ -579,7 +579,7 @@ _MAINFRAME_TIER_STANDARD=(
 
 # Extended tier: advanced/specialized libraries
 _MAINFRAME_TIER_EXTENDED=(
-    k8s semver functional stream pipe
+    k8s semver functional compose stream streaming pipe
     procsub async meta cli fzf
     compat safe guard
 )
@@ -797,7 +797,9 @@ else
     _mainframe_load_library "k8s"
     _mainframe_load_library "semver"
     _mainframe_load_library "functional"
+    _mainframe_load_library "compose"
     _mainframe_load_library "stream"
+    _mainframe_load_library "streaming"
     _mainframe_load_library "pipe"
     _mainframe_load_library "procsub"
     _mainframe_load_library "async"
@@ -1028,6 +1030,14 @@ BASHER_COMMON_EXPORTS=(
     fp_count fp_group_by identity fp_const
     double_nr square_nr increment_nr decrement_nr
     sum_nr product_nr max_nr min_nr
+    # Function Composition (from compose.sh)
+    compose pipe_fn chain
+    partial curry flip
+    tap identity constant apply
+    lazy force lazy_seq take_lazy
+    memoize_fn cache_clear_fn
+    compose_reset compose_stats
+    try_each when if_else times
     # Metaprogramming (from meta.sh)
     var_get var_set var_exists var_nonempty var_unset
     vars_with_prefix vars_matching vars_exported
@@ -1102,4 +1112,12 @@ BASHER_COMMON_EXPORTS=(
     ring_create ring_push ring_pop ring_pop_v ring_peek ring_size ring_capacity
     ring_is_empty ring_is_full ring_clear ring_to_array
     queue_drain queue_each queue_filter queue_to_json queue_from_json pqueue_to_json
+    # Stream Processing (from streaming.sh)
+    stream_map stream_map_v stream_filter stream_filter_v stream_reduce stream_reduce_v
+    stream_take stream_skip stream_head stream_tail stream_unique stream_sort stream_reverse
+    stream_parallel stream_batch stream_chunk stream_fanout stream_fanin stream_rate_limit
+    stream_json_lines stream_csv_lines stream_detect_type stream_validate
+    stream_count stream_any stream_all stream_none stream_find
+    stream_take_while stream_drop_while stream_group_by stream_enumerate stream_zip
+    stream_to_usop stream_from_usop stream_stats stream_compose stream_tap
 )

@@ -862,3 +862,874 @@ cli::debug() {
         printf '  Remaining: %s\n' "${_CLI_REMAINING[*]}"
     fi
 }
+
+# =============================================================================
+# ENHANCED VALIDATION (v7.4 additions)
+# =============================================================================
+
+# Choice restrictions for options
+declare -gA _CLI_CHOICES=()
+
+# Range restrictions for numeric options
+declare -gA _CLI_RANGES=()
+
+# @pre: option defined
+# @post: choice restriction registered
+# @idempotent: yes (overwrites)
+# @returns: 0
+#
+# Restrict option to specific choices.
+#
+# Usage: cli::choices "format" "json" "yaml" "toml"
+cli::choices() {
+    local name="$1"
+    shift
+    local choices_str=""
+    local first=true
+
+    for choice in "$@"; do
+        $first || choices_str+="|"
+        first=false
+        choices_str+="$choice"
+    done
+
+    _CLI_CHOICES["$name"]="$choices_str"
+}
+
+# @pre: option defined
+# @post: range restriction registered
+# @idempotent: yes (overwrites)
+# @returns: 0
+#
+# Restrict numeric option to a range.
+#
+# Usage: cli::range "port" 1 65535
+cli::range() {
+    local name="$1"
+    local min="$2"
+    local max="$3"
+
+    _CLI_RANGES["$name"]="${min}|${max}"
+}
+
+# @pre: value exists
+# @post: errors emitted for failed choice validation
+# @returns: 0 if valid, 1 if invalid
+#
+# Validate a value against defined choices.
+#
+# Usage: cli::validate_choices "format"
+cli::validate_choices() {
+    local name="$1"
+    local value="${_CLI_VALUES[$name]:-}"
+
+    if [[ -n "$value" && -n "${_CLI_CHOICES[$name]:-}" ]]; then
+        local choices="${_CLI_CHOICES[$name]}"
+        local valid=false
+        local IFS='|'
+        read -ra choice_arr <<< "$choices"
+        for choice in "${choice_arr[@]}"; do
+            if [[ "$value" == "$choice" ]]; then
+                valid=true
+                break
+            fi
+        done
+        if ! $valid; then
+            local choice_list="${choices//|/, }"
+            cli::error "Invalid value '$value' for $name. Choose one of: $choice_list" --no-exit
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# @pre: value exists
+# @post: errors emitted for failed range validation
+# @returns: 0 if valid, 1 if invalid
+#
+# Validate a numeric value against defined range.
+#
+# Usage: cli::validate_range "port"
+cli::validate_range() {
+    local name="$1"
+    local value="${_CLI_VALUES[$name]:-}"
+
+    if [[ -n "$value" && -n "${_CLI_RANGES[$name]:-}" ]]; then
+        local range="${_CLI_RANGES[$name]}"
+        local IFS='|'
+        read -ra range_parts <<< "$range"
+        local min="${range_parts[0]}"
+        local max="${range_parts[1]}"
+
+        if [[ ! "$value" =~ ^-?[0-9]+$ ]]; then
+            cli::error "$name must be an integer" --no-exit
+            return 1
+        elif (( value < min || value > max )); then
+            cli::error "$name must be between $min and $max (got: $value)" --no-exit
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# =============================================================================
+# MAN PAGE GENERATION (v7.4 additions)
+# =============================================================================
+
+# @pre: CLI defined
+# @post: man page content printed to stdout
+# @idempotent: yes
+# @returns: 0
+#
+# Generate a man page in troff format.
+#
+# Usage: cli::man > myapp.1
+cli::man() {
+    local prog="${_CLI_NAME:-$(basename "$0")}"
+    local version="${_CLI_VERSION:-1.0.0}"
+    local date
+    date=$(date +"%Y-%m-%d")
+
+    # Man page header
+    printf '.TH %s 1 "%s" "%s" "User Commands"\n' "${prog^^}" "$date" "$version"
+
+    # NAME section
+    printf '.SH NAME\n'
+    printf '%s \\- %s\n' "$prog" "${_CLI_DESCRIPTION:-command line tool}"
+
+    # SYNOPSIS section
+    printf '.SH SYNOPSIS\n'
+    printf '.B %s\n' "$prog"
+    [[ ${#_CLI_FLAGS[@]} -gt 0 || ${#_CLI_OPTIONS[@]} -gt 0 ]] && printf '[\\fIOPTIONS\\fR]\n'
+
+    for spec in "${_CLI_POSITIONALS[@]}"; do
+        local name="${spec%%:*}"
+        local rest="${spec#*:}"
+        rest="${rest#*:}"
+        local required="${rest%%:*}"
+
+        if [[ "$required" == "required" ]]; then
+            printf '\\fI%s\\fR\n' "$name"
+        else
+            printf '[\\fI%s\\fR]\n' "$name"
+        fi
+    done
+
+    # DESCRIPTION section
+    printf '.SH DESCRIPTION\n'
+    printf '%s\n' "${_CLI_DESCRIPTION:-No description available.}"
+
+    # OPTIONS section
+    if [[ ${#_CLI_FLAGS[@]} -gt 0 || ${#_CLI_OPTIONS[@]} -gt 0 ]]; then
+        printf '.SH OPTIONS\n'
+
+        for spec in "${_CLI_FLAGS[@]}"; do
+            local long="${spec%%:*}"
+            local rest="${spec#*:}"
+            local short="${rest%%:*}"
+            local desc="${rest#*:}"
+
+            printf '.TP\n'
+            if [[ -n "$short" ]]; then
+                printf '.BR \\-%s ", " \\-\\-%s\n' "$short" "$long"
+            else
+                printf '.B \\-\\-%s\n' "$long"
+            fi
+            printf '%s\n' "$desc"
+        done
+
+        for spec in "${_CLI_OPTIONS[@]}"; do
+            local long="${spec%%:*}"
+            local rest="${spec#*:}"
+            local short="${rest%%:*}"
+            rest="${rest#*:}"
+            local desc="${rest%%:*}"
+            local default="${rest#*:}"
+
+            printf '.TP\n'
+            if [[ -n "$short" ]]; then
+                printf '.BR \\-%s ", " \\-\\-%s " " \\fIvalue\\fR\n' "$short" "$long"
+            else
+                printf '.B \\-\\-%s " " \\fIvalue\\fR\n' "$long"
+            fi
+            printf '%s' "$desc"
+            [[ -n "$default" ]] && printf ' (default: %s)' "$default"
+            printf '\n'
+        done
+
+        # Built-in options
+        printf '.TP\n.BR \\-h ", " \\-\\-help\nShow help message and exit.\n'
+        printf '.TP\n.BR \\-V ", " \\-\\-version\nShow version information and exit.\n'
+    fi
+
+    # EXAMPLES section
+    if [[ ${#_CLI_EXAMPLES[@]} -gt 0 ]]; then
+        printf '.SH EXAMPLES\n'
+
+        for example in "${_CLI_EXAMPLES[@]}"; do
+            printf '.PP\n.RS\n.nf\n%s\n.fi\n.RE\n' "$example"
+        done
+    fi
+
+    # VERSION section
+    printf '.SH VERSION\n'
+    printf '%s\n' "$version"
+}
+
+# =============================================================================
+# SHELL COMPLETION GENERATION (v7.4 additions)
+# =============================================================================
+
+# @pre: CLI defined
+# @post: bash completion script printed
+# @idempotent: yes
+# @returns: 0
+#
+# Generate bash completion script.
+#
+# Usage: cli::complete_bash > myapp.bash-completion
+cli::complete_bash() {
+    local script="${_CLI_NAME:-$(basename "$0")}"
+    local script_safe="${script//-/_}"
+
+    cat << EOF
+# Bash completion for $script
+# Generated by MAINFRAME cli.sh
+
+_${script_safe}_completions() {
+    local cur prev opts
+    COMPREPLY=()
+    cur="\${COMP_WORDS[COMP_CWORD]}"
+    prev="\${COMP_WORDS[COMP_CWORD-1]}"
+
+EOF
+
+    # Build options list
+    local opts="--help --version"
+
+    for spec in "${_CLI_FLAGS[@]}"; do
+        local long="${spec%%:*}"
+        local rest="${spec#*:}"
+        local short="${rest%%:*}"
+        opts+=" --$long"
+        [[ -n "$short" ]] && opts+=" -$short"
+    done
+
+    for spec in "${_CLI_OPTIONS[@]}"; do
+        local long="${spec%%:*}"
+        local rest="${spec#*:}"
+        local short="${rest%%:*}"
+        opts+=" --$long"
+        [[ -n "$short" ]] && opts+=" -$short"
+    done
+
+    printf '    opts="%s"\n\n' "$opts"
+
+    # Subcommands
+    if [[ ${#_CLI_SUBCOMMANDS[@]} -gt 0 ]]; then
+        local cmds=""
+        for spec in "${_CLI_SUBCOMMANDS[@]}"; do
+            local cmd="${spec%%:*}"
+            cmds+="$cmd "
+        done
+        printf '    local commands="%s"\n' "$cmds"
+        printf '\n    # Complete subcommands at position 1\n'
+        printf '    if [[ $COMP_CWORD -eq 1 ]]; then\n'
+        printf '        COMPREPLY=( $(compgen -W "$commands $opts" -- "$cur") )\n'
+        printf '        return 0\n'
+        printf '    fi\n\n'
+    fi
+
+    # Handle options with choices
+    for name in "${!_CLI_CHOICES[@]}"; do
+        local choices="${_CLI_CHOICES[$name]//|/ }"
+        printf '    case "$prev" in\n'
+        printf '        --%s)\n' "$name"
+        printf '            COMPREPLY=( $(compgen -W "%s" -- "$cur") )\n' "$choices"
+        printf '            return 0\n'
+        printf '            ;;\n'
+        printf '    esac\n\n'
+    done
+
+    cat << 'EOF'
+    # Default to options
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+        return 0
+    fi
+
+    # Default to files
+    COMPREPLY=( $(compgen -f -- "$cur") )
+    return 0
+}
+
+EOF
+
+    printf 'complete -F _%s_completions %s\n' "$script_safe" "$script"
+}
+
+# @pre: CLI defined
+# @post: zsh completion script printed
+# @idempotent: yes
+# @returns: 0
+#
+# Generate zsh completion script.
+#
+# Usage: cli::complete_zsh > _myapp
+cli::complete_zsh() {
+    local script="${_CLI_NAME:-$(basename "$0")}"
+
+    printf '#compdef %s\n\n' "$script"
+    printf '# Zsh completion for %s\n' "$script"
+    printf '# Generated by MAINFRAME cli.sh\n\n'
+
+    printf '_arguments \\\n'
+
+    # Flags
+    for spec in "${_CLI_FLAGS[@]}"; do
+        local long="${spec%%:*}"
+        local rest="${spec#*:}"
+        local short="${rest%%:*}"
+        local desc="${rest#*:}"
+
+        desc="${desc//\'/\'\\\'\'}"
+        desc="${desc//\"/\\\"}"
+
+        if [[ -n "$short" ]]; then
+            printf "    '(-%s --%-s)'{-%s,--%-s}'[%s]' \\\\\n" "$short" "$long" "$short" "$long" "$desc"
+        else
+            printf "    '--%-s[%s]' \\\\\n" "$long" "$desc"
+        fi
+    done
+
+    # Options
+    for spec in "${_CLI_OPTIONS[@]}"; do
+        local long="${spec%%:*}"
+        local rest="${spec#*:}"
+        local short="${rest%%:*}"
+        rest="${rest#*:}"
+        local desc="${rest%%:*}"
+
+        desc="${desc//\'/\'\\\'\'}"
+        desc="${desc//\"/\\\"}"
+
+        local action=":value:"
+
+        # Check for choices
+        if [[ -n "${_CLI_CHOICES[$long]:-}" ]]; then
+            local choices="${_CLI_CHOICES[$long]//|/ }"
+            action=":choice:(${choices})"
+        fi
+
+        if [[ -n "$short" ]]; then
+            printf "    '(-%s --%-s)'{-%s,--%-s}'[%s]%s' \\\\\n" "$short" "$long" "$short" "$long" "$desc" "$action"
+        else
+            printf "    '--%-s[%s]%s' \\\\\n" "$long" "$desc" "$action"
+        fi
+    done
+
+    # Built-in
+    printf "    '(-h --help)'{-h,--help}'[Show help]' \\\\\n"
+    printf "    '(-V --version)'{-V,--version}'[Show version]' \\\\\n"
+
+    # Positional arguments
+    local pos_idx=1
+    for spec in "${_CLI_POSITIONALS[@]}"; do
+        local name="${spec%%:*}"
+        local rest="${spec#*:}"
+        local desc="${rest%%:*}"
+        rest="${rest#*:}"
+        local required="${rest%%:*}"
+
+        desc="${desc//\'/\'\\\'\'}"
+
+        if [[ "$required" == "required" ]]; then
+            printf "    '%d:%s:_files' \\\\\n" "$pos_idx" "$desc"
+        else
+            printf "    '%d::%s:_files' \\\\\n" "$pos_idx" "$desc"
+        fi
+        ((pos_idx++))
+    done
+
+    # Subcommands
+    if [[ ${#_CLI_SUBCOMMANDS[@]} -gt 0 ]]; then
+        printf "    '1:command:->commands' \\\\\n"
+        printf "    '*::arg:->args'\n\n"
+
+        printf 'case "$state" in\n'
+        printf '    commands)\n'
+        printf '        local -a commands\n'
+        printf '        commands=(\n'
+        for spec in "${_CLI_SUBCOMMANDS[@]}"; do
+            local cmd="${spec%%:*}"
+            local rest="${spec#*:}"
+            local desc="${rest%%:*}"
+            desc="${desc//\'/\'\\\'\'}"
+            printf "            '%s:%s'\n" "$cmd" "$desc"
+        done
+        printf '        )\n'
+        printf '        _describe -t commands "command" commands\n'
+        printf '        ;;\n'
+        printf 'esac\n'
+    else
+        printf "    && return 0\n"
+    fi
+}
+
+# @pre: CLI defined
+# @post: fish completion script printed
+# @idempotent: yes
+# @returns: 0
+#
+# Generate fish completion script.
+#
+# Usage: cli::complete_fish > myapp.fish
+cli::complete_fish() {
+    local script="${_CLI_NAME:-$(basename "$0")}"
+
+    printf '# Fish completion for %s\n' "$script"
+    printf '# Generated by MAINFRAME cli.sh\n\n'
+
+    # Disable file completion by default
+    printf 'complete -c %s -f\n\n' "$script"
+
+    # Flags
+    for spec in "${_CLI_FLAGS[@]}"; do
+        local long="${spec%%:*}"
+        local rest="${spec#*:}"
+        local short="${rest%%:*}"
+        local desc="${rest#*:}"
+
+        printf 'complete -c %s' "$script"
+        [[ -n "$short" ]] && printf ' -s %s' "$short"
+        printf ' -l %s' "$long"
+        [[ -n "$desc" ]] && printf ' -d "%s"' "$desc"
+        printf '\n'
+    done
+
+    # Options
+    for spec in "${_CLI_OPTIONS[@]}"; do
+        local long="${spec%%:*}"
+        local rest="${spec#*:}"
+        local short="${rest%%:*}"
+        rest="${rest#*:}"
+        local desc="${rest%%:*}"
+
+        printf 'complete -c %s' "$script"
+        [[ -n "$short" ]] && printf ' -s %s' "$short"
+        printf ' -l %s' "$long"
+        printf ' -r'  # requires argument
+        [[ -n "$desc" ]] && printf ' -d "%s"' "$desc"
+
+        # Handle choices
+        if [[ -n "${_CLI_CHOICES[$long]:-}" ]]; then
+            local choices="${_CLI_CHOICES[$long]//|/ }"
+            printf ' -a "%s"' "$choices"
+        fi
+
+        printf '\n'
+    done
+
+    # Built-in
+    printf 'complete -c %s -s h -l help -d "Show help"\n' "$script"
+    printf 'complete -c %s -s V -l version -d "Show version"\n' "$script"
+
+    # Subcommands
+    if [[ ${#_CLI_SUBCOMMANDS[@]} -gt 0 ]]; then
+        printf '\n# Subcommands\n'
+        for spec in "${_CLI_SUBCOMMANDS[@]}"; do
+            local cmd="${spec%%:*}"
+            local rest="${spec#*:}"
+            local desc="${rest%%:*}"
+
+            printf 'complete -c %s -n "__fish_use_subcommand" -a %s' "$script" "$cmd"
+            [[ -n "$desc" ]] && printf ' -d "%s"' "$desc"
+            printf '\n'
+        done
+    fi
+}
+
+# =============================================================================
+# STRUCTURED ERROR OUTPUT - USOP (v7.4 additions)
+# =============================================================================
+
+# JSON escape helper for USOP output
+_cli_json_escape() {
+    local str="$1"
+    str="${str//\\/\\\\}"
+    str="${str//\"/\\\"}"
+    str="${str//$'\n'/\\n}"
+    str="${str//$'\t'/\\t}"
+    str="${str//$'\r'/\\r}"
+    printf '%s' "$str"
+}
+
+# @pre: error occurred
+# @post: JSON error emitted to stderr
+# @returns: provided exit code
+#
+# Emit a structured USOP error.
+#
+# Usage: cli::usop_error "CLI_MISSING_ARG" "Missing required argument" "field"
+cli::usop_error() {
+    local code="$1"
+    local msg="$2"
+    local field="${3:-}"
+    local suggestion="${4:-}"
+
+    local escaped_msg escaped_field escaped_suggestion
+    escaped_msg=$(_cli_json_escape "$msg")
+    escaped_field=$(_cli_json_escape "$field")
+    escaped_suggestion=$(_cli_json_escape "$suggestion")
+
+    local json="{"
+    json+="\"ok\":false"
+    json+=",\"error\":{\"code\":\"$code\",\"msg\":\"$escaped_msg\""
+    [[ -n "$field" ]] && json+=",\"field\":\"$escaped_field\""
+    [[ -n "$suggestion" ]] && json+=",\"suggestion\":\"$escaped_suggestion\""
+    json+="}}"
+
+    printf '%s\n' "$json" >&2
+}
+
+# @pre: CLI parsed
+# @post: JSON output with all parsed values
+# @returns: 0
+#
+# Output parsed CLI values as JSON (for debugging or chaining).
+#
+# Usage: cli::to_json
+cli::to_json() {
+    local json="{"
+    local first=true
+
+    for key in "${!_CLI_VALUES[@]}"; do
+        $first || json+=","
+        first=false
+        local value="${_CLI_VALUES[$key]}"
+        local escaped_key escaped_value
+        escaped_key=$(_cli_json_escape "$key")
+        escaped_value=$(_cli_json_escape "$value")
+
+        # Handle booleans
+        if [[ "$value" == "true" || "$value" == "false" ]]; then
+            json+="\"$escaped_key\":$value"
+        # Handle integers
+        elif [[ "$value" =~ ^-?[0-9]+$ ]]; then
+            json+="\"$escaped_key\":$value"
+        else
+            json+="\"$escaped_key\":\"$escaped_value\""
+        fi
+    done
+
+    json+="}"
+    printf '%s\n' "$json"
+}
+
+# =============================================================================
+# DISPATCH HELPER (v7.4 additions)
+# =============================================================================
+
+# @pre: subcommands registered, args parsed
+# @post: appropriate subcommand function called
+# @returns: subcommand exit code or 1 if not found
+#
+# Dispatch to the appropriate subcommand based on parsed state.
+# Alternative to cli::run_subcommand with better error handling.
+#
+# Usage: cli::dispatch "$@"
+cli::dispatch() {
+    if [[ -z "$_CLI_SUBCOMMAND" ]]; then
+        if [[ ${#_CLI_SUBCOMMANDS[@]} -gt 0 ]]; then
+            cli::usop_error "CLI_NO_COMMAND" "No command specified" "" "Use --help to see available commands"
+            return 1
+        fi
+        return 0
+    fi
+
+    for spec in "${_CLI_SUBCOMMANDS[@]}"; do
+        local name="${spec%%:*}"
+        local rest="${spec#*:}"
+        rest="${rest#*:}"
+        local handler="${rest%%:*}"
+
+        if [[ "$name" == "$_CLI_SUBCOMMAND" ]]; then
+            if [[ -n "$handler" ]]; then
+                if declare -F "$handler" &>/dev/null; then
+                    "$handler" "$@"
+                    return $?
+                else
+                    cli::usop_error "CLI_HANDLER_NOT_FOUND" "Handler function not found: $handler" "$name"
+                    return 1
+                fi
+            else
+                # No handler defined, return success (command recognized but no-op)
+                return 0
+            fi
+        fi
+    done
+
+    cli::usop_error "CLI_UNKNOWN_COMMAND" "Unknown command: $_CLI_SUBCOMMAND" "" "Use --help to see available commands"
+    return 1
+}
+
+# =============================================================================
+# SPEC-BASED PARSING (v7.4 additions)
+# =============================================================================
+
+# @pre: spec is valid format string
+# @post: arguments parsed according to spec
+# @idempotent: no
+# @returns: 0 on success
+#
+# Parse arguments using a compact spec format.
+# Spec format: "flag:f,option:o:default,positional:required"
+#
+# Usage: cli::parse_spec "verbose:v,output:o:/tmp,input:required" "$@"
+cli::parse_spec() {
+    local spec="$1"
+    shift
+
+    # Reset state
+    cli::reset
+
+    # Parse spec
+    local IFS=','
+    read -ra entries <<< "$spec"
+
+    for entry in "${entries[@]}"; do
+        local IFS=':'
+        read -ra parts <<< "$entry"
+        local name="${parts[0]}"
+
+        case ${#parts[@]} in
+            1)
+                # Simple flag
+                cli::flag "$name" "" ""
+                ;;
+            2)
+                # name:short (flag) or name:required (positional)
+                if [[ "${parts[1]}" == "required" || "${parts[1]}" == "optional" ]]; then
+                    cli::positional "$name" "" "${parts[1]}"
+                else
+                    cli::flag "$name" "${parts[1]}" ""
+                fi
+                ;;
+            3|*)
+                # name:short:default (option)
+                cli::option "$name" "${parts[1]}" "" "${parts[2]}"
+                ;;
+        esac
+    done
+
+    # Parse arguments
+    cli::parse "$@"
+}
+
+# =============================================================================
+# LEGACY COMPATIBILITY ALIASES (v7.4 additions)
+# =============================================================================
+# These functions provide backward compatibility with the specification API.
+
+# Alias: cli_parse -> cli::parse
+cli_parse() { cli::parse "$@"; }
+
+# Alias: cli_arg -> cli::option
+cli_arg() {
+    local name="$1"
+    local type="${2:-string}"
+    local default="${3:-}"
+    local description="${4:-}"
+    cli::option "$name" "" "$description" "$default"
+}
+
+# Alias: cli_flag -> cli::flag
+cli_flag() { cli::flag "$@"; }
+
+# Alias: cli_option -> cli::option
+cli_option() {
+    local name="$1"
+    local short="${2:-}"
+    local type="${3:-string}"
+    local default="${4:-}"
+    local description="${5:-}"
+    cli::option "$name" "$short" "$description" "$default"
+}
+
+# Alias: cli_positional -> cli::positional
+cli_positional() {
+    local name="$1"
+    local required="${2:-false}"
+    local description="${3:-}"
+    local default="${4:-}"
+    [[ "$required" == "true" ]] && required="required" || required="optional"
+    cli::positional "$name" "$description" "$required"
+}
+
+# Alias: cli_rest_args -> cli::remaining
+cli_rest_args() {
+    printf '%s\n' "${_CLI_REMAINING[@]}"
+}
+
+# Alias: cli_require -> cli::validate_type with nonempty
+cli_require() {
+    local arg="$1"
+    local message="${2:-$arg is required}"
+    cli::validate_type "$arg" "nonempty"
+}
+
+# Alias: cli_validate -> cli::validate_type
+cli_validate() {
+    local arg="$1"
+    local validator="$2"
+    cli::validate_type "$arg" "$validator"
+}
+
+# Alias: cli_choices -> cli::choices
+cli_choices() { cli::choices "$@"; }
+
+# Alias: cli_range -> cli::range
+cli_range() { cli::range "$@"; }
+
+# Alias: cli_usage -> cli::description
+cli_usage() { cli::description "$1"; }
+
+# Alias: cli_example -> cli::example
+cli_example() { cli::example "$1"; }
+
+# Alias: cli_help_generate -> cli::help
+cli_help_generate() { cli::help; }
+
+# Alias: cli_version -> cli::version
+cli_version() {
+    if [[ $# -gt 0 ]]; then
+        cli::version "$1"
+    else
+        printf '%s version %s\n' "${_CLI_NAME:-$(basename "$0")}" "${_CLI_VERSION:-unknown}"
+    fi
+}
+
+# Alias: cli_man_generate -> cli::man
+cli_man_generate() { cli::man; }
+
+# Alias: cli_complete_bash -> cli::complete_bash
+cli_complete_bash() { cli::complete_bash; }
+
+# Alias: cli_complete_zsh -> cli::complete_zsh
+cli_complete_zsh() { cli::complete_zsh; }
+
+# Alias: cli_complete_fish -> cli::complete_fish
+cli_complete_fish() { cli::complete_fish; }
+
+# Alias: cli_subcommand -> cli::subcommand
+cli_subcommand() { cli::subcommand "$@"; }
+
+# Alias: cli_dispatch -> cli::dispatch
+cli_dispatch() { cli::dispatch "$@"; }
+
+# Alias: cli_get -> cli::get
+cli_get() { cli::get "$@"; }
+
+# Alias: cli_get_bool -> cli::is
+cli_get_bool() { cli::is "$@"; }
+
+# Alias: cli_get_int -> cli::get as integer
+cli_get_int() {
+    local name="$1"
+    local default="${2:-0}"
+    local value
+    value=$(cli::get "$name" "$default")
+    if [[ "$value" =~ ^-?[0-9]+$ ]]; then
+        printf '%d' "$value"
+    else
+        printf '%d' "$default"
+    fi
+}
+
+# Alias: cli_has -> cli::has
+cli_has() { cli::has "$@"; }
+
+# Alias: cli_reset -> cli::reset
+cli_reset() {
+    cli::reset
+    _CLI_CHOICES=()
+    _CLI_RANGES=()
+}
+
+# Alias: cli_init -> cli::init
+cli_init() { cli::init "$@"; }
+
+# =============================================================================
+# MODULE EXPORTS
+# =============================================================================
+
+_CLI_EXPORTS=(
+    # Namespace API (primary)
+    cli::name
+    cli::version
+    cli::description
+    cli::flag
+    cli::option
+    cli::positional
+    cli::example
+    cli::subcommand
+    cli::get_subcommand
+    cli::is_subcommand
+    cli::parse
+    cli::get
+    cli::is
+    cli::get_array
+    cli::remaining
+    cli::has
+    cli::validate_type
+    cli::validate_required
+    cli::validate
+    cli::check
+    cli::choices
+    cli::range
+    cli::validate_choices
+    cli::validate_range
+    cli::help
+    cli::man
+    cli::complete_bash
+    cli::complete_zsh
+    cli::complete_fish
+    cli::error
+    cli::warn
+    cli::usop_error
+    cli::to_json
+    cli::reset
+    cli::init
+    cli::common_options
+    cli::run_subcommand
+    cli::dispatch
+    cli::parse_spec
+    cli::debug
+    # Legacy/Compatibility API
+    cli_parse
+    cli_arg
+    cli_flag
+    cli_option
+    cli_positional
+    cli_rest_args
+    cli_require
+    cli_validate
+    cli_choices
+    cli_range
+    cli_usage
+    cli_example
+    cli_help_generate
+    cli_version
+    cli_man_generate
+    cli_complete_bash
+    cli_complete_zsh
+    cli_complete_fish
+    cli_subcommand
+    cli_dispatch
+    cli_get
+    cli_get_bool
+    cli_get_int
+    cli_has
+    cli_reset
+    cli_init
+)

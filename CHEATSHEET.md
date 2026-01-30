@@ -3876,6 +3876,121 @@ usop_warn "Using deprecated API version"
 
 ---
 
-*2,100+ functions | 49 libraries | Zero dependencies | 20-72x faster*
+## Stream Processing Functions (streaming.sh)
+
+**Purpose**: Functional stream processing primitives for AI agent workflows. Provides map, filter, reduce, parallel processing, rate limiting, type-aware pipes, and USOP-compliant JSON output.
+
+### Core Streaming Functions
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `stream_map` | `stream_map fn` | `echo -e "1\n2\n3" \| stream_map double` | `2\n4\n6` |
+| `stream_map_v` | `stream_map_v result_arr fn items...` | `stream_map_v result double 1 2 3` | (array: 2 4 6) |
+| `stream_filter` | `stream_filter predicate` | `echo -e "1\n2\n3\n4" \| stream_filter is_even` | `2\n4` |
+| `stream_filter_v` | `stream_filter_v result_arr pred items...` | `stream_filter_v result is_even 1 2 3 4` | (array: 2 4) |
+| `stream_reduce` | `stream_reduce fn init` | `echo -e "1\n2\n3" \| stream_reduce sum 0` | `6` |
+| `stream_reduce_v` | `stream_reduce_v result fn init items...` | `stream_reduce_v result sum 0 1 2 3` | (result=6) |
+
+### Slicing & Ordering
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `stream_take` | `stream_take n` | `echo -e "1\n2\n3\n4\n5" \| stream_take 3` | `1\n2\n3` |
+| `stream_skip` | `stream_skip n` | `echo -e "1\n2\n3\n4\n5" \| stream_skip 2` | `3\n4\n5` |
+| `stream_head` | `stream_head n` | `stream_head 5 < file.txt` | First 5 lines |
+| `stream_tail` | `stream_tail n` | `stream_tail 5 < file.txt` | Last 5 lines |
+| `stream_unique` | `stream_unique` | `echo -e "a\nb\na\nc" \| stream_unique` | `a\nb\nc` |
+| `stream_sort` | `stream_sort [opts]` | `stream_sort -n` | Sorted stream |
+| `stream_reverse` | `stream_reverse` | `echo -e "1\n2\n3" \| stream_reverse` | `3\n2\n1` |
+
+### Parallel & Batch Processing
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `stream_parallel` | `stream_parallel fn [workers]` | `cat urls.txt \| stream_parallel fetch 4` | Parallel output |
+| `stream_batch` | `stream_batch size fn` | `cat items.txt \| stream_batch 10 process` | Batch-processed |
+| `stream_chunk` | `stream_chunk size [sep]` | `cat data.txt \| stream_chunk 5` | Chunked stream |
+| `stream_fanout` | `stream_fanout n fn1 fn2...` | `echo "data" \| stream_fanout 2 proc1 proc2` | Combined output |
+| `stream_fanin` | `stream_fanin file1 file2...` | `stream_fanin a.txt b.txt` | Interleaved |
+| `stream_rate_limit` | `stream_rate_limit n period` | `cat req.txt \| stream_rate_limit 10 1s` | Rate-limited |
+
+### Type-Aware Streaming
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `stream_json_lines` | `stream_json_lines [fn]` | `cat data.ndjson \| stream_json_lines` | Valid JSON lines |
+| `stream_csv_lines` | `stream_csv_lines [header] [delim]` | `cat data.csv \| stream_csv_lines false` | CSV rows (no header) |
+| `stream_detect_type` | `stream_detect_type` | `cat file \| stream_detect_type` | Type to stderr |
+| `stream_validate` | `stream_validate schema_fn [strict]` | `cat data.json \| stream_validate is_valid_json` | Validated stream |
+
+### Quantifiers & Search
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `stream_count` | `stream_count` | `cat file.txt \| stream_count` | Line count |
+| `stream_any` | `stream_any predicate` | `stream_any is_error < log.txt` | (returns 0/1) |
+| `stream_all` | `stream_all predicate` | `stream_all is_valid < data.txt` | (returns 0/1) |
+| `stream_none` | `stream_none predicate` | `stream_none is_empty < file.txt` | (returns 0/1) |
+| `stream_find` | `stream_find predicate` | `stream_find is_even < nums.txt` | First match |
+| `stream_take_while` | `stream_take_while predicate` | `stream_take_while is_positive` | Prefix stream |
+| `stream_drop_while` | `stream_drop_while predicate` | `stream_drop_while is_comment` | Suffix stream |
+
+### Grouping & Joining
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `stream_group_by` | `stream_group_by key_fn` | `stream_group_by first_char` | Grouped output |
+| `stream_enumerate` | `stream_enumerate [start]` | `cat file.txt \| stream_enumerate` | `0\tline1\n1\tline2` |
+| `stream_zip` | `stream_zip file2 [delim]` | `cat file1.txt \| stream_zip file2.txt` | Paired lines |
+
+### USOP Output
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `stream_to_usop` | `stream_to_usop` | `echo -e "a\nb" \| stream_to_usop` | `{"ok":true,"data":["a","b"],...}` |
+| `stream_from_usop` | `stream_from_usop json` | `stream_from_usop '{"data":["x","y"]}'` | `x\ny` |
+| `stream_stats` | `stream_stats` | `echo -e "1\n2\n3" \| stream_stats` | `{"count":3,"sum":6,...}` |
+
+### Composition
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `stream_compose` | `stream_compose "op1" "op2"...` | `stream_compose "stream_filter f" "stream_map g"` | Composed stream |
+| `stream_tap` | `stream_tap fn` | `cat data.txt \| stream_tap log_line` | Pass-through |
+
+### Quick Patterns (Streaming)
+
+```bash
+# Map/filter/reduce pipeline
+echo -e "1\n2\n3\n4\n5\n6" | stream_filter is_even | stream_map double | stream_reduce sum 0
+# Result: 24  (evens 2,4,6 -> doubled 4,8,12 -> sum)
+
+# Process JSON lines with validation
+cat data.ndjson | stream_json_lines | stream_filter is_valid | stream_take 100
+
+# Parallel processing with rate limiting
+cat urls.txt | stream_parallel fetch_url 8 | stream_rate_limit 10 1s
+
+# Get stream statistics
+cat numbers.txt | stream_stats
+# {"ok":true,"data":{"count":100,"sum":5050,"min":1,"max":100,"avg":50.50}}
+
+# Find first matching line
+cat log.txt | stream_find 'grep -q ERROR'
+
+# Count unique items
+cat data.txt | stream_unique | stream_count
+
+# Group and enumerate
+cat words.txt | stream_group_by first_letter | stream_enumerate
+
+# USOP envelope for AI consumption
+cat results.txt | stream_to_usop
+# {"ok":true,"data":["line1","line2"],"meta":{"count":2}}
+```
+
+---
+
+*2,100+ functions | 50 libraries | Zero dependencies | 20-72x faster*
 
 **YO JOE!**
