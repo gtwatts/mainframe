@@ -842,6 +842,189 @@ fi
 
 ---
 
+## Regex Functions (regex.sh)
+
+Pure bash regex operations using `[[ =~ ]]` extended regex with ReDoS protection.
+
+### Common Patterns (Constants)
+
+| Constant | Description | Example |
+|----------|-------------|---------|
+| `REGEX_EMAIL` | RFC 5322 simplified | `^[A-Za-z0-9._%+-]+@...` |
+| `REGEX_URL` | HTTP/HTTPS/FTP URL | `^(https?|ftp)://...` |
+| `REGEX_IPV4` | IPv4 address | `^([0-9]{1,3}\.){3}...` |
+| `REGEX_UUID` | UUID v1-v5 | `^[0-9a-fA-F]{8}-...` |
+| `REGEX_SEMVER` | Semantic version | `^v?(0|[1-9][0-9]*)\.\.\.` |
+| `REGEX_DATE_ISO` | ISO 8601 date | `^[0-9]{4}-(0[1-9]|...)` |
+| `REGEX_SLUG` | URL slug | `^[a-z0-9]+(-[a-z0-9]+)*$` |
+| `REGEX_IDENTIFIER` | Variable name | `^[a-zA-Z_][a-zA-Z0-9_]*$` |
+| `REGEX_HEX_COLOR` | Hex color code | `^#?([0-9a-fA-F]{3}|...)` |
+| `REGEX_MAC_ADDRESS` | MAC address | `^([0-9A-Fa-f]{2}[:-]){5}...` |
+
+### Core Matching
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `regex_match` | `regex_match "string" "pattern"` | `regex_match "hello" "[a-z]+"` | (returns 0/1) |
+| `regex_test` | `regex_test "string" "pattern"` | `regex_test "hello" "[a-z]+"` | (returns 0/1) |
+| `regex_find` | `regex_find "string" "pattern"` | `regex_find "hi123" "[0-9]+"` | `123` |
+| `regex_find_all` | `regex_find_all "string" "pattern"` | `regex_find_all "a1b2" "[0-9]"` | `1\n2` |
+| `regex_groups` | `regex_groups "string" "pattern"` | `regex_groups "hi123" "([a-z]+)([0-9]+)"` | `hi123\nhi\n123` |
+| `regex_named_groups` | `regex_named_groups "str" "pat" "names"` | `regex_named_groups "hi123" "([a-z]+)([0-9]+)" "word num"` | `word=hi\nnum=123` |
+
+### Replacement
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `regex_replace` | `regex_replace "str" "pat" "repl"` | `regex_replace "hello" "l" "L"` | `heLlo` |
+| `regex_replace_all` | `regex_replace_all "str" "pat" "repl"` | `regex_replace_all "aaa" "a" "b"` | `bbb` |
+| `regex_replace_callback` | `regex_replace_callback "str" "pat" func` | `regex_replace_callback "hi" "[a-z]" upcase` | Callback per match |
+| `regex_sub` | `regex_sub "str" "pat" "\\1 \\2"` | `regex_sub "ab" "(.)(.)" "\\2\\1"` | `ba` |
+
+### Splitting
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `regex_split` | `regex_split "string" "pattern"` | `regex_split "a1b2c" "[0-9]"` | `a\nb\nc` |
+| `regex_split_limit` | `regex_split_limit "str" "pat" limit` | `regex_split_limit "a-b-c" "-" 2` | `a\nb-c` |
+
+### Extraction
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `regex_extract` | `regex_extract "string" "pattern"` | `regex_extract "hi123" "[0-9]+"` | `123` |
+| `regex_extract_all` | `regex_extract_all "string" "pattern"` | `regex_extract_all "a1b2" "[0-9]"` | `1\n2` |
+| `regex_extract_groups` | `regex_extract_groups "str" "pat"` | `regex_extract_groups "a1b2" "([a-z])([0-9])"` | Groups per match |
+
+### Validation & Safety (ReDoS Protection)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `regex_is_valid` | `regex_is_valid "pattern"` | `regex_is_valid "[a-z]+"` | (returns 0/1) |
+| `regex_compile_safe` | `regex_compile_safe "pattern"` | `regex_compile_safe "(a+)+"` | 1 (dangerous) |
+| `regex_complexity_score` | `regex_complexity_score "pattern"` | `regex_complexity_score "[a-z]+"` | `7` (safe) |
+
+### Escaping
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `regex_escape` | `regex_escape "string"` | `regex_escape "file.txt"` | `file\.txt` |
+| `regex_unescape` | `regex_unescape "string"` | `regex_unescape "file\.txt"` | `file.txt` |
+| `regex_quote_literal` | `regex_quote_literal "string"` | `regex_quote_literal "a*b"` | `a\*b` |
+
+### Pattern Builders
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `regex_any_of` | `regex_any_of opt1 opt2 ...` | `regex_any_of "cat" "dog"` | `(cat|dog)` |
+| `regex_sequence` | `regex_sequence pat1 pat2 ...` | `regex_sequence "[a-z]" "[0-9]"` | `[a-z][0-9]` |
+| `regex_optional` | `regex_optional "pattern"` | `regex_optional "[a-z]+"` | `(?:[a-z]+)?` |
+| `regex_repeat` | `regex_repeat "pat" min [max]` | `regex_repeat "[a-z]" 2 5` | `(?:[a-z]){2,5}` |
+| `regex_group` | `regex_group "pattern"` | `regex_group "[a-z]+"` | `([a-z]+)` |
+| `regex_non_capture` | `regex_non_capture "pattern"` | `regex_non_capture "[a-z]+"` | `(?:[a-z]+)` |
+| `regex_anchor` | `regex_anchor "pat" [type]` | `regex_anchor "[a-z]+" "both"` | `^[a-z]+$` |
+| `regex_word_boundary` | `regex_word_boundary "pattern"` | `regex_word_boundary "hello"` | `\bhello\b` |
+
+### Conversions
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `glob_to_regex` | `glob_to_regex "glob"` | `glob_to_regex "*.txt"` | `^.*\.txt$` |
+| `regex_to_glob` | `regex_to_glob "pattern"` | `regex_to_glob ".*\.txt"` | `*.txt` |
+| `regex_flags_parse` | `regex_flags_parse "/pat/flags"` | `regex_flags_parse "/hello/gi"` | `hello\ngi` |
+
+### Utilities
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `regex_count` | `regex_count "string" "pattern"` | `regex_count "a1b2c3" "[0-9]"` | `3` |
+| `regex_positions` | `regex_positions "string" "pattern"` | `regex_positions "a1b" "[0-9]"` | `1:2` |
+| `regex_full_match` | `regex_full_match "str" "pat"` | `regex_full_match "hello" "[a-z]+"` | (returns 0/1) |
+| `regex_starts_with` | `regex_starts_with "str" "pat"` | `regex_starts_with "hello" "hel"` | (returns 0/1) |
+| `regex_ends_with` | `regex_ends_with "str" "pat"` | `regex_ends_with "hello" "lo"` | (returns 0/1) |
+| `regex_remove` | `regex_remove "string" "pattern"` | `regex_remove "a1b2" "[0-9]"` | `ab` |
+| `regex_keep` | `regex_keep "string" "pattern"` | `regex_keep "a1b2" "[0-9]"` | `12` |
+| `regex_debug` | `regex_debug "pattern"` | `regex_debug "[a-z]+"` | JSON debug info |
+
+### Common Validators
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `regex_validate_email` | `regex_validate_email "email"` | `regex_validate_email "a@b.com"` | (returns 0/1) |
+| `regex_validate_url` | `regex_validate_url "url"` | `regex_validate_url "https://..."` | (returns 0/1) |
+| `regex_validate_ipv4` | `regex_validate_ipv4 "ip"` | `regex_validate_ipv4 "192.168.1.1"` | (returns 0/1) |
+| `regex_validate_uuid` | `regex_validate_uuid "uuid"` | `regex_validate_uuid "550e8400-..."` | (returns 0/1) |
+| `regex_validate_semver` | `regex_validate_semver "ver"` | `regex_validate_semver "1.2.3"` | (returns 0/1) |
+| `regex_validate_date_iso` | `regex_validate_date_iso "date"` | `regex_validate_date_iso "2024-01-15"` | (returns 0/1) |
+| `regex_validate_slug` | `regex_validate_slug "slug"` | `regex_validate_slug "my-slug"` | (returns 0/1) |
+| `regex_validate_identifier` | `regex_validate_identifier "id"` | `regex_validate_identifier "my_var"` | (returns 0/1) |
+| `regex_validate_hex_color` | `regex_validate_hex_color "hex"` | `regex_validate_hex_color "#ff5500"` | (returns 0/1) |
+| `regex_validate_mac_address` | `regex_validate_mac_address "mac"` | `regex_validate_mac_address "00:1A:..."` | (returns 0/1) |
+
+---
+
+## Quick Patterns (Regex)
+
+### Basic Matching
+```bash
+# Test if string matches pattern
+if regex_match "$input" "^[0-9]+$"; then
+    echo "Input is numeric"
+fi
+
+# Find first match
+number=$(regex_find "Order #12345" "[0-9]+")
+echo "Order number: $number"  # 12345
+```
+
+### Extract Data
+```bash
+# Parse log line
+log="2024-01-15 10:30:00 [ERROR] Connection failed"
+regex_groups "$log" "([0-9-]+) ([0-9:]+) \[([A-Z]+)\] (.*)"
+# Output: full match, date, time, level, message
+
+# Extract all URLs from text
+regex_find_all "$html" "https?://[A-Za-z0-9.-]+"
+```
+
+### Replace with Patterns
+```bash
+# Mask credit card numbers
+masked=$(regex_replace_all "$text" "[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{4}" "****-****-****-****")
+
+# Swap words using backreferences
+swapped=$(regex_sub "hello world" "(\w+) (\w+)" '\2 \1')  # "world hello"
+```
+
+### ReDoS Protection
+```bash
+# Validate pattern safety before use
+if regex_compile_safe "$user_pattern"; then
+    regex_match "$input" "$user_pattern"
+else
+    echo "Pattern rejected - potential ReDoS attack"
+fi
+
+# Check complexity score
+score=$(regex_complexity_score "$pattern")
+if [[ $score -gt 50 ]]; then
+    echo "Warning: High complexity pattern"
+fi
+```
+
+### Build Patterns Dynamically
+```bash
+# Create alternation from array
+extensions=(jpg png gif)
+pattern=$(regex_any_of "${extensions[@]}")  # (jpg|png|gif)
+
+# Build full pattern with anchors
+full=$(regex_anchor "\\.$pattern\$" "both")  # ^\.(jpg|png|gif)$
+```
+
+---
+
 ## Docker Functions (docker.sh)
 
 | Function | Signature | Example | Output |

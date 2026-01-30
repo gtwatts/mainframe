@@ -574,7 +574,7 @@ _MAINFRAME_TIER_STANDARD=(
     git docker crypto proc args config
     log error tui template ci health
     device sysinfo service retry
-    toml yaml
+    toml yaml collection queue regex
 )
 
 # Extended tier: advanced/specialized libraries
@@ -790,6 +790,8 @@ else
     _mainframe_load_library "retry"
     _mainframe_load_library "toml"
     _mainframe_load_library "yaml"
+    _mainframe_load_library "collection"
+    _mainframe_load_library "queue"
 
     # Extended tier libraries
     _mainframe_load_library "k8s"
@@ -1087,4 +1089,17 @@ BASHER_COMMON_EXPORTS=(
     trace_timer_start trace_timer_stop trace_timing
     trace_to_json trace_to_mermaid trace_clear trace_set_output
     trace_record_start trace_record_stop trace_replay trace_record_command
+    # Queue and Data Structures (from queue.sh)
+    queue_create queue_push queue_pop queue_pop_v queue_peek queue_peek_v queue_peek_back
+    queue_size queue_is_empty queue_clear queue_to_array queue_from_array
+    stack_create stack_push stack_pop stack_pop_v stack_peek stack_peek_v
+    stack_size stack_is_empty stack_clear stack_reverse stack_to_array
+    deque_create deque_push_front deque_push_back deque_pop_front deque_pop_front_v
+    deque_pop_back deque_pop_back_v deque_peek_front deque_peek_back
+    deque_size deque_is_empty deque_clear deque_rotate_left deque_rotate_right
+    pqueue_create pqueue_push pqueue_pop pqueue_pop_v pqueue_peek pqueue_peek_priority
+    pqueue_size pqueue_is_empty pqueue_clear pqueue_update_priority
+    ring_create ring_push ring_pop ring_pop_v ring_peek ring_size ring_capacity
+    ring_is_empty ring_is_full ring_clear ring_to_array
+    queue_drain queue_each queue_filter queue_to_json queue_from_json pqueue_to_json
 )
