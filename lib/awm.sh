@@ -938,7 +938,7 @@ awm_export() {
                 [[ -z "$line" ]] && continue
                 # Extract discovery text
                 if [[ "$line" =~ \"discovery\":\"([^\"]+)\" ]]; then
-                    printf '- %s\n' "${BASH_REMATCH[1]}"
+                    printf '%s\n' "- ${BASH_REMATCH[1]}"
                 fi
             done < "${dir}/logs/discoveries.jsonl"
             printf '\n'
@@ -967,7 +967,7 @@ awm_export() {
             category="${category%.jsonl}"
             local count
             count=$(_awm_line_count "$log_file")
-            printf '- **%s**: %d entries\n' "$category" "$count"
+            printf '%s\n' "- **${category}**: ${count} entries"
         done
 
     } > "$output_file"
