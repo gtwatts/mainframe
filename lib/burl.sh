@@ -202,43 +202,43 @@ _burl_semantic_error() {
     local context="${2:-}"
 
     case "$code" in
-        $BURL_E_INVALID_URL)
+        "$BURL_E_INVALID_URL")
             _BURL_ERROR_MSG="Invalid URL format: $context"
             _BURL_ERROR_SUGGEST="Verify URL includes scheme (http:// or https://) and valid hostname"
             ;;
-        $BURL_E_DNS_FAILED)
+        "$BURL_E_DNS_FAILED")
             _BURL_ERROR_MSG="DNS resolution failed for: $context"
             _BURL_ERROR_SUGGEST="Check hostname spelling, verify network connectivity, try using IP address"
             ;;
-        $BURL_E_CONNECT_FAILED)
+        "$BURL_E_CONNECT_FAILED")
             _BURL_ERROR_MSG="Connection failed to: $context"
             _BURL_ERROR_SUGGEST="Verify server is running and accessible, check firewall rules, try alternate port"
             ;;
-        $BURL_E_TIMEOUT)
+        "$BURL_E_TIMEOUT")
             _BURL_ERROR_MSG="Request timed out after ${BURL_TIMEOUT}s: $context"
             _BURL_ERROR_SUGGEST="Increase BURL_TIMEOUT, check server responsiveness, verify network latency"
             ;;
-        $BURL_E_SSL_FAILED)
+        "$BURL_E_SSL_FAILED")
             _BURL_ERROR_MSG="SSL/TLS handshake failed: $context"
             _BURL_ERROR_SUGGEST="Check certificate validity, try -k flag to skip verification (not recommended for production)"
             ;;
-        $BURL_E_REDIRECT_LOOP)
+        "$BURL_E_REDIRECT_LOOP")
             _BURL_ERROR_MSG="Redirect loop detected after ${BURL_MAX_REDIRECTS} redirects: $context"
             _BURL_ERROR_SUGGEST="Check for redirect configuration issues, verify URL is not self-referencing"
             ;;
-        $BURL_E_RATE_LIMITED)
+        "$BURL_E_RATE_LIMITED")
             _BURL_ERROR_MSG="Rate limited by server: $context"
             _BURL_ERROR_SUGGEST="Wait before retrying, use --smart-retry for automatic backoff, reduce request frequency"
             ;;
-        $BURL_E_AUTH_FAILED)
+        "$BURL_E_AUTH_FAILED")
             _BURL_ERROR_MSG="Authentication failed: $context"
             _BURL_ERROR_SUGGEST="Verify credentials, check auth header format, ensure token is not expired"
             ;;
-        $BURL_E_BAD_REQUEST)
+        "$BURL_E_BAD_REQUEST")
             _BURL_ERROR_MSG="Bad request (4xx): $context"
             _BURL_ERROR_SUGGEST="Check request syntax, verify required parameters, examine response body for details"
             ;;
-        $BURL_E_SERVER_ERROR)
+        "$BURL_E_SERVER_ERROR")
             _BURL_ERROR_MSG="Server error (5xx): $context"
             _BURL_ERROR_SUGGEST="Retry with --smart-retry, server may be temporarily unavailable"
             ;;
@@ -1004,7 +1004,7 @@ burl() {
     # Execute request with retry logic
     local response=""
     local retries=0
-    local max_retries=$BURL_RETRY_COUNT
+    local max_retries="$BURL_RETRY_COUNT"
     $smart_retry || max_retries=1
 
     local start_time
@@ -1048,7 +1048,7 @@ burl() {
     # Check for connection failure
     if [[ -z "$response" ]]; then
         _burl_semantic_error "$BURL_E_CONNECT_FAILED" "${_BURL_HOST}:${_BURL_PORT}"
-        _burl_error $BURL_E_CONNECT_FAILED "$_BURL_ERROR_MSG" "$_BURL_ERROR_SUGGEST" \
+        _burl_error "$BURL_E_CONNECT_FAILED" "$_BURL_ERROR_MSG" "$_BURL_ERROR_SUGGEST" \
             "url=$url" "retries=$retries" "duration_ms=$duration_ms"
         return "$BURL_E_CONNECT_FAILED"
     fi
@@ -1061,9 +1061,9 @@ burl() {
     while $follow_redirects && [[ "$_BURL_STATUS" =~ ^30[1-8]$ ]]; do
         ((redirect_count++)) || true
 
-        if [[ $redirect_count -gt $BURL_MAX_REDIRECTS ]]; then
+        if [[ $redirect_count -gt "$BURL_MAX_REDIRECTS" ]]; then
             _burl_semantic_error "$BURL_E_REDIRECT_LOOP" "$url"
-            _burl_error $BURL_E_REDIRECT_LOOP "$_BURL_ERROR_MSG" "$_BURL_ERROR_SUGGEST" \
+            _burl_error "$BURL_E_REDIRECT_LOOP" "$_BURL_ERROR_MSG" "$_BURL_ERROR_SUGGEST" \
                 "url=$url" "redirects=$redirect_count"
             return "$BURL_E_REDIRECT_LOOP"
         fi
@@ -1102,7 +1102,7 @@ burl() {
         local retry_after
         retry_after=$(_burl_get_header "Retry-After")
         _burl_semantic_error "$BURL_E_RATE_LIMITED" "$url"
-        _burl_error $BURL_E_RATE_LIMITED "$_BURL_ERROR_MSG" "$_BURL_ERROR_SUGGEST" \
+        _burl_error "$BURL_E_RATE_LIMITED" "$_BURL_ERROR_MSG" "$_BURL_ERROR_SUGGEST" \
             "url=$url" "status=$_BURL_STATUS" "retry_after=${retry_after:-unknown}"
         return "$BURL_E_RATE_LIMITED"
     fi
@@ -1110,7 +1110,7 @@ burl() {
     # Check for auth failure
     if [[ "$_BURL_STATUS" == "401" ]] || [[ "$_BURL_STATUS" == "403" ]]; then
         _burl_semantic_error "$BURL_E_AUTH_FAILED" "$url"
-        _burl_error $BURL_E_AUTH_FAILED "$_BURL_ERROR_MSG" "$_BURL_ERROR_SUGGEST" \
+        _burl_error "$BURL_E_AUTH_FAILED" "$_BURL_ERROR_MSG" "$_BURL_ERROR_SUGGEST" \
             "url=$url" "status=$_BURL_STATUS"
         return "$BURL_E_AUTH_FAILED"
     fi
@@ -1170,10 +1170,10 @@ burl() {
     else
         # Check for error status codes
         if [[ "$_BURL_STATUS" =~ ^[45] ]]; then
-            local error_code=$BURL_E_BAD_REQUEST
-            [[ "$_BURL_STATUS" =~ ^5 ]] && error_code=$BURL_E_SERVER_ERROR
-            _burl_semantic_error $error_code "HTTP $_BURL_STATUS"
-            _burl_error $error_code "$_BURL_ERROR_MSG" "$_BURL_ERROR_SUGGEST" "${meta_parts[@]}" "body=$final_body"
+            local error_code="$BURL_E_BAD_REQUEST"
+            [[ "$_BURL_STATUS" =~ ^5 ]] && error_code="$BURL_E_SERVER_ERROR"
+            _burl_semantic_error "$error_code" "HTTP $_BURL_STATUS"
+            _burl_error "$error_code" "$_BURL_ERROR_MSG" "$_BURL_ERROR_SUGGEST" "${meta_parts[@]}" "body=$final_body"
         else
             _burl_ok "$final_body" "${meta_parts[@]}"
         fi
@@ -1289,7 +1289,7 @@ burl_smart_retry() {
     shift
 
     local retries=0
-    local delay=$BURL_RETRY_DELAY
+    local delay="$BURL_RETRY_DELAY"
     local last_response=""
 
     while [[ $retries -lt $max_retries ]]; do
@@ -1314,7 +1314,7 @@ burl_smart_retry() {
         fi
 
         # Check for non-retryable errors
-        if [[ "$last_response" =~ \"code\":($BURL_E_INVALID_URL|$BURL_E_AUTH_FAILED) ]]; then
+        if [[ "$last_response" =~ \"code\":($BURL_E_INVALID_URL|"$BURL_E_AUTH_FAILED") ]]; then
             printf '%s' "$last_response"
             return 1
         fi
