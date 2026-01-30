@@ -1047,7 +1047,7 @@ burl() {
 
     # Check for connection failure
     if [[ -z "$response" ]]; then
-        _burl_semantic_error $BURL_E_CONNECT_FAILED "${_BURL_HOST}:${_BURL_PORT}"
+        _burl_semantic_error "$BURL_E_CONNECT_FAILED" "${_BURL_HOST}:${_BURL_PORT}"
         _burl_error $BURL_E_CONNECT_FAILED "$_BURL_ERROR_MSG" "$_BURL_ERROR_SUGGEST" \
             "url=$url" "retries=$retries" "duration_ms=$duration_ms"
         return "$BURL_E_CONNECT_FAILED"
@@ -1062,7 +1062,7 @@ burl() {
         ((redirect_count++)) || true
 
         if [[ $redirect_count -gt $BURL_MAX_REDIRECTS ]]; then
-            _burl_semantic_error $BURL_E_REDIRECT_LOOP "$url"
+            _burl_semantic_error "$BURL_E_REDIRECT_LOOP" "$url"
             _burl_error $BURL_E_REDIRECT_LOOP "$_BURL_ERROR_MSG" "$_BURL_ERROR_SUGGEST" \
                 "url=$url" "redirects=$redirect_count"
             return "$BURL_E_REDIRECT_LOOP"
@@ -1101,7 +1101,7 @@ burl() {
     if [[ "$_BURL_STATUS" == "429" ]]; then
         local retry_after
         retry_after=$(_burl_get_header "Retry-After")
-        _burl_semantic_error $BURL_E_RATE_LIMITED "$url"
+        _burl_semantic_error "$BURL_E_RATE_LIMITED" "$url"
         _burl_error $BURL_E_RATE_LIMITED "$_BURL_ERROR_MSG" "$_BURL_ERROR_SUGGEST" \
             "url=$url" "status=$_BURL_STATUS" "retry_after=${retry_after:-unknown}"
         return "$BURL_E_RATE_LIMITED"
@@ -1109,7 +1109,7 @@ burl() {
 
     # Check for auth failure
     if [[ "$_BURL_STATUS" == "401" ]] || [[ "$_BURL_STATUS" == "403" ]]; then
-        _burl_semantic_error $BURL_E_AUTH_FAILED "$url"
+        _burl_semantic_error "$BURL_E_AUTH_FAILED" "$url"
         _burl_error $BURL_E_AUTH_FAILED "$_BURL_ERROR_MSG" "$_BURL_ERROR_SUGGEST" \
             "url=$url" "status=$_BURL_STATUS"
         return "$BURL_E_AUTH_FAILED"
