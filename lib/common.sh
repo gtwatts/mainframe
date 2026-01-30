@@ -5,7 +5,7 @@
 # "Mainframe can make a computer do anything short of tap dance."
 #                                        - GI Joe Filecard, 1986
 # =============================================================================
-# Version: 1.0.0
+# Version: 6.0.0
 # License: MIT
 # =============================================================================
 
@@ -17,7 +17,7 @@ readonly _MAINFRAME_COMMON_LOADED=1
 # CONSTANTS
 # =============================================================================
 
-readonly MAINFRAME_VERSION="1.0.0"
+readonly MAINFRAME_VERSION="6.0.0"
 readonly MAINFRAME_NAME="mainframe"
 
 # Aliases for backward compatibility

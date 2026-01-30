@@ -17,10 +17,10 @@ MAINFRAME is designed as an **AI-Native Bash Runtime** where security is foundat
 
 | Version | Supported          | Security Updates |
 | ------- | ------------------ | ---------------- |
-| 5.x     | :white_check_mark: | Active           |
+| 6.x     | :white_check_mark: | Active           |
+| 5.x     | :white_check_mark: | Security only    |
 | 4.x     | :white_check_mark: | Security only    |
-| 3.x     | :white_check_mark: | Security only    |
-| < 3.0   | :x:                | End of life      |
+| < 4.0   | :x:                | End of life      |
 
 ## Reporting a Vulnerability
 
@@ -201,14 +201,70 @@ agent_safe_exec "chmod" "755" "/path/to/script"
 
 ## Known Security Considerations
 
-### Eval Usage
+### Eval Usage and Trust Boundaries
 
-MAINFRAME minimizes but cannot completely eliminate `eval`. Current `eval` usage:
+MAINFRAME minimizes but cannot completely eliminate `eval`. This section documents all `eval` usage and the expected trust levels for callers.
 
-| Location | Purpose | Mitigation |
-|----------|---------|------------|
-| `cli.sh` | Dynamic function dispatch | Validated command names only |
-| `template.sh` | Variable expansion | Sandboxed context |
+#### Trust Levels
+
+| Level | Description | Example Sources |
+|-------|-------------|-----------------|
+| **TRUSTED** | Library-internal calls, hardcoded strings | Other MAINFRAME functions |
+| **VALIDATED** | User input that has passed validation | Post-`validate_command_safe()` input |
+| **UNTRUSTED** | Raw user input, AI prompts, external data | Direct user input, file contents |
+
+#### Current Eval Locations
+
+| Library | Function | Trust Required | Purpose | Mitigation |
+|---------|----------|----------------|---------|------------|
+| `stream.sh` | `stream_process` | VALIDATED | Pipeline command execution | Caller must validate |
+| `streams.sh` | `stream_map` | VALIDATED | Lazy stream transformation | Caller must validate |
+| `compose.sh` | `compose()` | TRUSTED | Function composition | Internal use only |
+| `cli.sh` | `cli_dispatch` | VALIDATED | Dynamic function dispatch | Command name whitelist |
+| `template.sh` | `template_render` | VALIDATED | Variable expansion | Sandboxed context |
+| `procsub.sh` | `procsub_eval` | VALIDATED | Process substitution | Caller must validate |
+| `sandbox.sh` | `sandbox_exec` | VALIDATED | Profile-based execution | Profile args validated |
+| `compat.sh` | `compat_setup_gnu_tools` | TRUSTED | Wrapper function creation | Internal array source |
+| `agent_exec.sh` | `agent_retry` | VALIDATED | Retry with command | Caller must validate |
+
+#### Caller Responsibilities
+
+**When calling functions that use eval internally:**
+
+1. **Always validate input first:**
+   ```bash
+   # CORRECT: Validate before passing to stream functions
+   validate_command_safe "$user_cmd" || die 1 "Invalid command"
+   stream_map "$user_cmd" < input.txt
+
+   # WRONG: Passing unvalidated input
+   stream_map "$user_cmd" < input.txt  # Command injection risk!
+   ```
+
+2. **Use MAINFRAME sanitization:**
+   ```bash
+   # Sanitize shell arguments
+   safe_arg=$(sanitize_shell_arg "$untrusted")
+
+   # Build safe commands
+   safe_cmd=$(build_safe_command "grep" "$pattern" "$file")
+   ```
+
+3. **Prefer non-eval alternatives when available:**
+   ```bash
+   # PREFERRED: Direct function call
+   json_object "key=$value"
+
+   # AVOID: eval-based dynamic dispatch
+   eval "json_$operation \"$args\""
+   ```
+
+#### Safe Mode (Future)
+
+We plan to add `MAINFRAME_SAFE_MODE=1` which will:
+- Reject commands containing shell metacharacters in stream functions
+- Require explicit `--allow-eval` flag for eval-using functions
+- Log all eval operations for audit
 
 We actively work to eliminate or sandbox remaining `eval` usage.
 
