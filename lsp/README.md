@@ -1,6 +1,6 @@
 # MAINFRAME Bash Language Server
 
-Comprehensive IntelliSense for MAINFRAME's 1,900+ bash functions.
+Comprehensive IntelliSense for MAINFRAME v6.0's 4,000+ bash functions.
 
 ## Features
 
@@ -65,14 +65,14 @@ validate_int "42" <cursor>
 ### 1. Generate Metadata
 
 ```bash
-cd /home/gordontwatts/Documents/Projects/basher
+cd /home/gordontwatts/Documents/Projects/mainframe
 ./lsp/scripts/generate-lsp-metadata.sh
 ```
 
 This creates `FUNCTIONS.lsp.json` in `$MAINFRAME_ROOT` with:
-- 1,900+ completion items
+- 4,000+ completion items
 - Signature help for functions with parameters
-- Library and category indexes
+- Library and category indexes (117 libraries)
 
 ### 2. Build TypeScript
 
@@ -92,7 +92,7 @@ Add to `.vscode/settings.json`:
 
 ```json
 {
-  "bash-ide-vscode.lsp.path": "/home/gordontwatts/Documents/Projects/basher/lsp/out/index.js"
+  "bash-ide-vscode.lsp.path": "/home/gordontwatts/Documents/Projects/mainframe/lsp/out/index.js"
 }
 ```
 
@@ -138,9 +138,9 @@ Editor Client
 ```typescript
 interface LSPMetadata {
   version: string;
-  completions: CompletionItem[];      // 1,900+ items
+  completions: CompletionItem[];      // 4,000+ items
   signatures: SignatureHelp[];        // Functions with params
-  libraries: LibraryInfo[];           // 68 libraries
+  libraries: LibraryInfo[];           // 117 libraries
   categoryIndex: CategoryIndex[];     // Group by category
   stats: {
     total_completions: number;
@@ -198,7 +198,7 @@ npm run generate-metadata  # Regenerate FUNCTIONS.lsp.json
 node out/index.js --stdio
 
 # VSCode Output panel → MAINFRAME Bash LSP
-# Shows: "✓ Loaded 1546 functions from 68 libraries"
+# Shows: "✓ Loaded 4000+ functions from 117 libraries"
 ```
 
 ### Adding Examples
@@ -296,10 +296,16 @@ To package as VSCode extension:
 
 ## Performance
 
-- **Metadata size**: ~2.5 MB for 1,900 functions
-- **Load time**: <100ms (one-time at startup)
+- **Metadata size**: ~5 MB for 4,000+ functions
+- **Load time**: <150ms (one-time at startup)
 - **Completion latency**: <10ms (in-memory lookup)
-- **Memory usage**: ~15 MB (metadata + lookup maps)
+- **Memory usage**: ~25 MB (metadata + lookup maps)
+
+## v6.0 Features
+
+- **Agent Working Memory (AWM)**: Full support for AWM libraries with context-aware completions
+- **117 Libraries**: Complete coverage of all MAINFRAME v6.0 libraries
+- **4,000+ Functions**: Comprehensive IntelliSense for every function
 
 ## Future Enhancements
 

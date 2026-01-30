@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Auto-activation for `.sh` and `.bash` files
 
 - **Language Server Protocol Support**
-  - Smart autocompletion for 2,000+ MAINFRAME functions
+  - Smart autocompletion for 4,000+ MAINFRAME v6.0 functions
   - Rich hover documentation with markdown formatting
   - Signature help with parameter hints
   - Document symbols (outline view)

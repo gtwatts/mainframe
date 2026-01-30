@@ -5,7 +5,7 @@ description: "Use when writing bash scripts, shell automation, CLI tools, or any
 
 # MAINFRAME - Pure Bash Standard Library
 
-1,900+ pure bash functions across 77 libraries. Zero external dependencies. 20-72x faster than spawning sed/awk/jq.
+4,000+ pure bash functions across 117 libraries. Zero external dependencies. 20-72x faster than spawning sed/awk/jq.
 
 ## When to Use This Skill
 
@@ -26,6 +26,9 @@ Use MAINFRAME when:
 - Running parallel/async operations
 - Building CLI tools with progress bars, colored output, config files
 - Analyzing TypeScript projects (imports, API diffs, bundle size)
+- Analyzing Python projects (imports, dependencies, metrics)
+- Managing AI agent state with Agent Working Memory (AWM)
+- Coordinating multi-agent workflows with agent IPC
 
 ## Installation Check
 
@@ -234,6 +237,79 @@ query_string "a=1" "b=2"         # "a=1&b=2"
 ```
 
 **Note**: Pure bash HTTP for port 80. HTTPS requires openssl on the system.
+
+### Agent Working Memory (AWM) - NEW in v6.0
+
+Persistent external memory for AI agents with finite context. Enables agents to write state/discoveries OUTSIDE their context, read back relevant portions, support sub-agent inheritance, and resume sessions after interruption.
+
+```bash
+# Session lifecycle
+sid=$(awm_init "task-name")       # Start new session, returns session ID
+awm_resume "$sid"                 # Resume existing session
+awm_close                         # Close current session
+
+# Write operations
+awm_checkpoint "key" "value"      # Save key-value (atomic, idempotent)
+awm_log "errors" "Failed to..."   # Append to categorized log
+awm_progress "task1" "47/200"     # Track task progress
+awm_discovery "API rate=100/min"  # Record key insight (high priority)
+
+# Read operations
+value=$(awm_get "key" "default")  # Retrieve checkpointed value
+entries=$(awm_recent "errors" 10) # Last N log entries (JSON array)
+summary=$(awm_summary)            # Compressed session summary (JSON)
+
+# Sub-agent support
+awm_namespace "code-reviewer"     # Isolate sub-agent memory
+ctx=$(awm_context_for "subtask")  # Generate context for sub-agent
+child_id=$(awm_inherit "$sid")    # Create child session with inheritance
+
+# Memory management
+awm_compress                      # Compress old entries
+tokens=$(awm_token_estimate)      # Estimate context cost
+awm_export "report.md"            # Export to markdown
+awm_cleanup 7                     # Delete completed sessions >7 days old
+```
+
+### Multi-Agent IPC - NEW in v6.0
+
+File-based inter-process communication for multi-agent coordination.
+
+```bash
+# Agent registration & discovery
+agent_register "worker1" compute storage  # Register with capabilities
+agent_unregister                          # Unregister current agent
+agent_discover "compute"                  # Find agents by capability
+agent_list                                # List all agents (JSON)
+agent_heartbeat                           # Update heartbeat
+
+# Messaging
+agent_send "worker2" '{"task":"compute"}' # Send message to agent
+msg=$(agent_receive 10)                   # Receive with timeout
+agent_broadcast '{"event":"shutdown"}'    # Broadcast to all agents
+agent_peek                                # View next message (no consume)
+
+# Pub/Sub
+agent_subscribe "news"                    # Subscribe to topic
+agent_publish "news" '{"headline":"..."}'  # Publish to topic
+agent_unsubscribe "news"                  # Unsubscribe from topic
+
+# Work queues
+agent_work_queue "tasks"                  # Create work queue
+agent_work_push "tasks" '{"url":"..."}'   # Push item to queue
+item=$(agent_work_pop "tasks")            # Pop item (FIFO, atomic)
+count=$(agent_work_count "tasks")         # Items in queue
+
+# Synchronization
+agent_barrier "phase1" 3 30               # Wait for 3 agents (30s timeout)
+agent_signal "data_ready"                 # Signal event
+agent_wait "data_ready" 60                # Wait for signal
+
+# Resource locking
+agent_lock "database"                     # Acquire exclusive lock
+agent_unlock "database"                   # Release lock
+agent_trylock "resource"                  # Non-blocking lock attempt
+```
 
 ### CSV Processing
 
@@ -642,9 +718,35 @@ if git_has_staged; then
 fi
 ```
 
+### Agent with AWM State Management
+```bash
+#!/usr/bin/env bash
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+
+# Initialize or resume session
+session_id="${AWM_SESSION:-$(awm_init "data-processor")}"
+export AWM_SESSION="$session_id"
+
+# Check for previous progress
+last_batch=$(awm_get "last_batch" "0")
+log_info "Resuming from batch $last_batch"
+
+# Process with checkpointing
+for batch in $(seq $((last_batch + 1)) 100); do
+    process_batch "$batch"
+    awm_checkpoint "last_batch" "$batch"
+    awm_progress "batches" "$batch/100"
+done
+
+# Record discovery
+awm_discovery "Processing completes in ~2min per batch"
+
+awm_close
+```
+
 ## Repository
 
 - **Source**: https://github.com/gtwatts/mainframe
 - **Install**: `git clone https://github.com/gtwatts/mainframe.git ~/.mainframe`
-- **Tests**: 3,000+ bats tests, zero failures
+- **Tests**: 6,500+ bats tests, zero failures
 - **License**: MIT

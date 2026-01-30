@@ -1,6 +1,6 @@
 # MAINFRAME Bash LSP Installation Guide
 
-Complete installation instructions for the MAINFRAME Bash Language Support extension.
+Complete installation instructions for the MAINFRAME v6.0 Bash Language Support extension.
 
 ## Method 1: VS Code Marketplace (Recommended)
 

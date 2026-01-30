@@ -1,6 +1,6 @@
 # MAINFRAME vs Alternatives: Feature Comparison
 
-> **Comprehensive comparison of MAINFRAME against plain bash and Python for AI agent workflows**
+> **Comprehensive comparison of MAINFRAME v6.0 against plain bash and Python for AI agent workflows**
 
 ## Quick Comparison Matrix
 
@@ -15,6 +15,7 @@
 | **Structured Output** | USOP v3.0 | None | Manual |
 | **Path Traversal Safety** | Built-in | Manual | Manual |
 | **IDE/LSP Support** | Full | Basic | Full |
+| **Agent Working Memory** | Built-in (AWM) | None | Manual |
 | **Agent State Persistence** | Built-in | None | Manual |
 | **Execution Sandboxing** | Built-in | None | Needs containers |
 | **Task Graphs/DAGs** | Built-in | None | Needs library |
@@ -34,7 +35,7 @@
 git clone https://github.com/gtwatts/mainframe.git ~/.mainframe
 echo 'source "$HOME/.mainframe/lib/common.sh"' >> ~/.bashrc
 source ~/.bashrc
-# Done. 2,000+ functions available.
+# Done. 4,000+ functions available.
 ```
 
 **Plain Bash:**
@@ -53,7 +54,7 @@ pip install requests pyyaml jsonschema  # 30+ MB
 # Create __init__.py, requirements.txt, setup.py...
 ```
 
-**Winner: MAINFRAME** - Zero dependencies, instant availability, works everywhere bash 4.0+ exists.
+**Winner: MAINFRAME** - Zero dependencies, instant availability, works everywhere bash 4.0+ exists. 4,000+ functions across 117 libraries.
 
 ---
 
@@ -162,28 +163,32 @@ if not real_path.startswith(safe_base):
 
 ---
 
-### 5. Agent State Persistence
+### 5. Agent Working Memory (AWM)
 
 **MAINFRAME:**
 ```bash
-# Initialize persistent state
-state_init "/tmp/agent-state" --ttl 3600
+# Initialize a persistent memory session
+session_id=$(awm_init)
 
-# Save and restore across sessions
-state_set "current_task" "deploy_api"
-state_set "retry_count:number" 2
-state_checkpoint "before_deploy"
+# Store discoveries and state OUTSIDE the context window
+awm_discovery "API uses JWT authentication"
+awm_checkpoint "target_file" "/src/auth/login.ts"
+awm_log "info" "Starting security scan"
+awm_progress "scan" 45 100  # Track progress
 
-# Later, in a new session...
-task=$(state_get "current_task" --default "none")
-state_rollback "before_deploy"  # Restore to checkpoint
+# Later, read back context-efficient summaries
+summary=$(awm_summary --tokens 2000)  # Compressed for context budget
+target=$(awm_get "target_file")
+
+# Sub-agent inheritance
+child_id=$(awm_init --parent "$session_id" --namespace "security")
 ```
 
 **Plain Bash:**
 ```bash
 # Manual file management
 echo "deploy_api" > /tmp/state/current_task
-# No atomic writes, no checkpoints, no TTL
+# No atomic writes, no inheritance, no compression, no token budgeting
 ```
 
 **Python:**
@@ -194,9 +199,10 @@ import shelve
 with shelve.open('state') as db:
     db['current_task'] = 'deploy_api'
 # Works, but requires explicit implementation
+# No context window awareness, no sub-agent support
 ```
 
-**Winner: MAINFRAME** - Built-in state management designed for multi-step agent workflows.
+**Winner: MAINFRAME** - Purpose-built Agent Working Memory with session persistence, sub-agent inheritance, automatic compression, and token budget awareness.
 
 ---
 
@@ -345,7 +351,7 @@ def test_api(mock_get):
 
 **MAINFRAME:**
 ```
-- Smart completion for 2,000+ functions
+- Smart completion for 4,000+ functions
 - Rich hover documentation with examples
 - Signature help as you type
 - Go-to-definition (jumps to library source)
@@ -411,13 +417,16 @@ def test_api(mock_get):
 
 | Dimension | MAINFRAME Advantage |
 |-----------|---------------------|
-| **For AI Agents** | Purpose-built with USOP, state management, sandboxing |
+| **For AI Agents** | Purpose-built with USOP, Agent Working Memory (AWM), sandboxing |
 | **Setup** | 30 seconds, zero dependencies |
 | **Safety** | Path validation, injection prevention built-in |
 | **Efficiency** | 82% token reduction vs plain bash |
 | **Reliability** | 96% first-run success vs 68% for raw bash |
 | **Speed** | 20-72x faster than external tools |
 | **IDE Support** | Full LSP with completion, hover, signatures |
+| **Memory** | Persistent external memory survives context limits |
+
+**MAINFRAME v6.0: 4,000+ functions | 117 libraries | 6,500+ tests**
 
 **MAINFRAME is the runtime layer that makes bash safe, efficient, and AI-friendly.**
 

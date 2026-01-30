@@ -7,7 +7,7 @@
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 ```
 
-This gives access to 1,100+ pure bash functions. Zero external dependencies required.
+This gives access to 4,000+ pure bash functions across 117 libraries. Zero external dependencies required.
 
 ## Preferred Functions Over External Tools
 
@@ -68,6 +68,50 @@ log_info "Starting at $(now_iso)"
 success "Done in $(format_duration $SECONDS)"
 ```
 
+## Agent Working Memory (AWM) - NEW in v6.0
+
+For AI agents that need persistent state across sessions:
+
+```bash
+# Initialize or resume session
+sid=$(awm_init "task-name")
+awm_resume "$sid"
+
+# Save and retrieve state
+awm_checkpoint "current_step" "3"
+step=$(awm_get "current_step" "1")
+
+# Track progress and discoveries
+awm_progress "processing" "50/100"
+awm_discovery "API rate limit is 100/min"
+
+# Generate summary for context injection
+summary=$(awm_summary)
+```
+
+## Multi-Agent IPC - NEW in v6.0
+
+For coordinating multiple agent instances:
+
+```bash
+# Register and discover agents
+agent_register "worker1" compute storage
+agents=$(agent_discover "compute")
+
+# Messaging
+agent_send "worker2" '{"task":"process"}'
+msg=$(agent_receive 10)
+
+# Work queues
+agent_work_queue "tasks"
+agent_work_push "tasks" '{"item":"data"}'
+item=$(agent_work_pop "tasks")
+
+# Synchronization
+agent_barrier "phase1" 3    # Wait for 3 agents
+agent_signal "ready"        # Signal event
+```
+
 ## Key Function Categories
 
 - **Logging**: `log_info`, `log_warn`, `log_error`, `success`, `failure`, `header`
@@ -83,7 +127,9 @@ success "Done in $(format_duration $SECONDS)"
 - **Async**: `parallel`, `parallel_limit`, `set_timeout`, `debounce`
 - **TypeScript**: `ts_file_imports`, `ts_import_graph`, `ts_breaking_changes`, `ts_import_cost`
 - **Python**: `py_file_imports`, `py_import_graph`, `py_parse_requirements`, `py_framework_detect`, `py_summary`
+- **AWM**: `awm_init`, `awm_checkpoint`, `awm_get`, `awm_discovery`, `awm_summary`
+- **Agent IPC**: `agent_register`, `agent_send`, `agent_receive`, `agent_work_queue`, `agent_barrier`
 
 ## Reference
 
-Full function signatures: `~/.mainframe/CHEATSHEET.md` (700+ entries with examples)
+Full function signatures: `~/.mainframe/CHEATSHEET.md` (4,000+ entries with examples)

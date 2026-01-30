@@ -236,7 +236,7 @@ All files          |   95.83 |   99.53 |
 
 ### Quick Start
 ```bash
-cd /home/gordontwatts/Documents/Projects/basher/lsp
+cd /home/gordontwatts/Documents/Projects/mainframe/lsp
 
 # Run all tests
 bun test
@@ -371,7 +371,7 @@ The LSP server is designed to integrate with:
 
 ### MAINFRAME Project
 - Reads `FUNCTIONS.lsp.json` from `$MAINFRAME_ROOT`
-- Supports all 2,000+ MAINFRAME functions
+- Supports all 4,000+ MAINFRAME v6.0 functions
 - Works with any valid metadata format
 
 ## Next Steps

@@ -8,6 +8,8 @@ This document catalogs common failure modes when AI coding assistants write and 
 
 **Key Recommendation**: Implement a layered defense strategy with pre-execution guards, runtime checks, and automatic cleanup. Every script should use `set -euo pipefail` and register cleanup handlers.
 
+**MAINFRAME v6.0 Enhancement**: Agent Working Memory (AWM) provides persistent external memory to prevent state loss at context boundaries - the sixth category of AI agent failures.
+
 ---
 
 ## Table of Contents
@@ -17,8 +19,9 @@ This document catalogs common failure modes when AI coding assistants write and 
 3. [Command Errors](#3-command-errors)
 4. [State Errors](#4-state-errors)
 5. [Input Validation Failures](#5-input-validation-failures)
-6. [Proposed MAINFRAME Guard Functions](#6-proposed-mainframe-guard-functions)
-7. [Implementation Roadmap](#7-implementation-roadmap)
+6. [Context Window Failures](#6-context-window-failures) (NEW - AWM)
+7. [Proposed MAINFRAME Guard Functions](#7-proposed-mainframe-guard-functions)
+8. [Implementation Roadmap](#8-implementation-roadmap)
 
 ---
 
@@ -2412,7 +2415,120 @@ parse_config() {
 
 ---
 
-## 6. Proposed MAINFRAME Guard Functions
+## 6. Context Window Failures (AWM)
+
+Context window failures are unique to AI agents. Unlike traditional programs, AI agents lose all state when their context window fills up or the session is interrupted.
+
+### 6.1 State Loss at Context Boundaries
+
+**How It Happens**:
+```bash
+# AI agent discovers critical information early in session
+# "The API uses JWT tokens with refresh mechanism"
+# "Config file is at /etc/myapp/config.yaml"
+#
+# After 100K tokens, context is truncated...
+# AI repeats the same discovery process, wasting tokens
+```
+
+**Real Example**: Agent spends 5,000 tokens discovering project structure, then loses it when context rolls over, repeating the work.
+
+**Prevention Pattern - AWM**:
+```bash
+# At session start
+session_id=$(awm_init)
+
+# Store discoveries persistently (OUTSIDE context window)
+awm_discovery "API uses JWT tokens with refresh mechanism"
+awm_checkpoint "config_path" "/etc/myapp/config.yaml"
+awm_log "info" "Discovered auth flow"
+
+# Later, even after context roll-over
+summary=$(awm_summary --tokens 2000)  # Get compressed state
+config=$(awm_get "config_path")        # Retrieve specific values
+```
+
+### 6.2 Sub-Agent Coordination Failures
+
+**How It Happens**:
+```bash
+# Parent agent spawns sub-agent for specific task
+# Sub-agent has no knowledge of parent's discoveries
+# Sub-agent duplicates work or makes conflicting decisions
+```
+
+**Prevention Pattern - AWM Inheritance**:
+```bash
+# Parent agent
+parent_id=$(awm_init)
+awm_discovery "Database uses PostgreSQL 15"
+awm_checkpoint "db_host" "localhost:5432"
+
+# Spawn sub-agent with inherited knowledge
+child_id=$(awm_init --parent "$parent_id" --namespace "db-migration")
+
+# Child agent automatically inherits parent discoveries
+db_host=$(awm_get "db_host")  # Gets parent's value
+awm_discovery "Migration requires downtime"  # Adds to child namespace
+```
+
+### 6.3 Session Resumption Failures
+
+**How It Happens**:
+```bash
+# Agent is interrupted (timeout, crash, user pause)
+# Next session has no memory of previous progress
+# Agent restarts from scratch or asks redundant questions
+```
+
+**Prevention Pattern - AWM Sessions**:
+```bash
+# Check for existing session
+existing=$(awm_list --active | jq -r '.[0].id // empty')
+
+if [[ -n "$existing" ]]; then
+    # Resume previous session
+    awm_resume "$existing"
+    progress=$(awm_recent "progress" 1)
+    echo "Resuming at: $progress"
+else
+    # Start fresh
+    session_id=$(awm_init)
+fi
+
+# Track progress for potential resumption
+awm_progress "migration" 45 100
+```
+
+### 6.4 Token Budget Exhaustion
+
+**How It Happens**:
+```bash
+# Agent reads back too much state into context
+# Context fills with historical data instead of current work
+# Agent cannot complete task due to context limit
+```
+
+**Prevention Pattern - AWM Token Budgeting**:
+```bash
+# Estimate tokens before reading
+tokens_available=50000
+tokens_needed=$(awm_estimate_read "summary" "--tokens" "10000")
+
+if [[ $tokens_needed -gt $tokens_available ]]; then
+    # Request less context
+    summary=$(awm_summary --tokens 5000)
+else
+    summary=$(awm_summary --tokens 10000)
+fi
+
+# Get task-specific context only
+context=$(awm_context_for "security-scan" --tokens 3000)
+```
+
+---
+
+## 7. Proposed MAINFRAME Guard Functions
 
 Based on the analysis above, here are the guard functions to add to MAINFRAME:
 
@@ -2558,7 +2674,7 @@ guard_cleanup() {
 
 ---
 
-## 7. Implementation Roadmap
+## 8. Implementation Roadmap
 
 ### Phase 1: Critical Guards (Week 1)
 
@@ -2609,6 +2725,7 @@ guard_cleanup() {
 
 ---
 
-*Research compiled: 2026-01-22*
-*Target: MAINFRAME Pure Bash Library*
+*Research compiled: 2026-01-22, Updated: 2026-01-30*
+*Target: MAINFRAME v6.0 Pure Bash Library*
 *Focus: AI Coding Assistant Failure Prevention*
+*New in v6.0: Agent Working Memory (AWM) for context window failures*

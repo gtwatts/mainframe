@@ -1,6 +1,13 @@
 # MAINFRAME MCP Server
 
-Exposes MAINFRAME's 2,000+ bash functions as MCP tools for AI agents.
+Exposes MAINFRAME v6.0's 4,000+ bash functions as MCP tools for AI agents.
+
+## Key Features
+
+- **4,000+ Functions**: Access to all MAINFRAME v6.0 libraries
+- **117 Libraries**: Complete coverage including Agent Working Memory (AWM)
+- **Tiered Access**: Core tier (~300 essential) or full tier (all functions)
+- **AWM Support**: Full support for Agent Working Memory functions
 
 ## Installation
 
@@ -34,8 +41,8 @@ Add to your `~/.claude/mcp.json`:
 
 ### Tiers
 
-- **core**: ~200 essential functions (json, validation, ensure, atomic, output)
-- **full**: All 1,500+ functions (set MAINFRAME_MCP_TIER=full)
+- **core**: ~300 essential functions (json, validation, ensure, atomic, output, awm)
+- **full**: All 4,000+ functions (set MAINFRAME_MCP_TIER=full)
 
 ## Tool Naming
 
@@ -182,6 +189,6 @@ pip install mcp
 ### Server Not Starting
 
 Check logs and ensure:
-- Python 3.7+ is installed
+- Python 3.10+ is installed
 - `mainframe-mcp-server` is executable (`chmod +x`)
-- MAINFRAME is properly installed at `$MAINFRAME_ROOT`
+- MAINFRAME v6.0 is properly installed at `$MAINFRAME_ROOT`

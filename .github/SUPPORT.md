@@ -6,7 +6,7 @@
 
 - **[README](../README.md)** - Quick start and overview
 - **[INSTALL.md](../INSTALL.md)** - Detailed installation guide
-- **[CHEATSHEET.md](../CHEATSHEET.md)** - Complete function reference (2,000+ functions)
+- **[CHEATSHEET.md](../CHEATSHEET.md)** - Complete function reference (4,000+ functions across 117 libraries)
 - **[CONTRIBUTING.md](../CONTRIBUTING.md)** - How to contribute
 - **[Wiki](https://github.com/gtwatts/mainframe/wiki)** - Extended documentation
 
@@ -34,6 +34,7 @@ If you're building autonomous systems that use MAINFRAME:
 2. **Structured Output** - Enable JSON output with `export MAINFRAME_OUTPUT=json`
 3. **Idempotency** - Use `ensure_*` functions for retry-safe operations
 4. **Validation** - Always validate untrusted input before use
+5. **Working Memory** - Use AWM (Agent Working Memory) for persistent state across sessions
 
 ## Response Time
 

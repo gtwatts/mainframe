@@ -18,6 +18,7 @@ body:
         - AI Agent Efficiency (caching, lazy loading, performance)
         - Structured Output (USOP, JSON envelopes)
         - Multi-Agent Coordination (messaging, tasks, state)
+        - Agent Working Memory (AWM - persistent state, context)
         - New Library (new domain of functionality)
         - Existing Library Enhancement
         - Documentation

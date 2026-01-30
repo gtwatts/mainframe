@@ -89,7 +89,7 @@ Add entry for new version:
 
 ### Added
 - Initial release
-- Autocomplete for 2,000+ functions
+- Autocomplete for 4,000+ functions
 - Hover documentation
 - Signature help
 

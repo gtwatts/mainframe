@@ -4,7 +4,7 @@ Complete implementation of the MAINFRAME Bash Language Support VS Code extension
 
 ## Overview
 
-This extension provides a production-ready VS Code client for the MAINFRAME LSP server, enabling IntelliSense for 2,000+ bash functions directly in VS Code.
+This extension provides a production-ready VS Code client for the MAINFRAME LSP server, enabling IntelliSense for 4,000+ bash functions (MAINFRAME v6.0) directly in VS Code.
 
 ## Architecture
 
@@ -387,7 +387,7 @@ export MAINFRAME_ROOT="$HOME/.mainframe"
 
 ### Language Features
 
-- ✅ **Autocomplete** - All 2,000+ MAINFRAME functions
+- ✅ **Autocomplete** - All 4,000+ MAINFRAME functions
 - ✅ **Hover** - Rich documentation with markdown
 - ✅ **Signature Help** - Parameter hints as you type
 - ✅ **Document Symbols** - Function outline (via server.ts)
@@ -583,7 +583,7 @@ The MAINFRAME Bash Language Support extension is production-ready and provides:
 
 - ✅ **Full LSP integration** with VS Code
 - ✅ **Auto-detection** of MAINFRAME installations
-- ✅ **Rich IntelliSense** for 2,000+ functions
+- ✅ **Rich IntelliSense** for 4,000+ functions
 - ✅ **User-friendly** configuration and status
 - ✅ **Production-quality** error handling and logging
 - ✅ **Comprehensive documentation** for users and developers

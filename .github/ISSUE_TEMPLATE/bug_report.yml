@@ -13,7 +13,7 @@ body:
     attributes:
       label: Function Name
       description: Which MAINFRAME function is affected?
-      placeholder: "e.g., json_object, validate_email, agent_exec"
+      placeholder: "e.g., json_object, validate_email, agent_exec, awm_get"
     validations:
       required: true
 

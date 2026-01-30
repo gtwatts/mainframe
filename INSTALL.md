@@ -1,32 +1,35 @@
 # MAINFRAME Installation Guide
 
 ```
-╔══════════════════════════════════════════════════════════════════╗
-║ ★ ★ ★ ═══════════════════════════════════════════════════════════║
-║ ★ ★ ★  __  __   _   ___ _  _ ___ ___    _   __  __ ___           ║
-║ ★ ★ ★ |  \/  | /_\ |_ _| \| | __| _ \  /_\ |  \/  | __|          ║
-║ ═════ | |\/| |/ _ \ | || .` | _||   / / _ \| |\/| | _|           ║
-║ ═════ |_|  |_/_/ \_\___|_|\_|_| |_|_\/_/ \_\_|  |_|___|          ║
-║ ═════                                                            ║
-║           "Knowing Your Shell is half the battle."               ║
-╚══════════════════════════════════════════════════════════════════╝
-                        ★ YO JOE! ★
++======================================================================+
+|  ___  ___  ___  _____ _   _ ______ _____   ___  ___  ___ _____       |
+|  |  \/  | / _ \|_   _| \ | ||  ___|  __ \ / _ \ |  \/  ||  ___|      |
+|  | .  . |/ /_\ \ | | |  \| || |_  | |__) / /_\ \| .  . || |__        |
+|  | |\/| ||  _  | | | | . ` ||  _| |  _  /|  _  || |\/| ||  __|       |
+|  | |  | || | | |_| |_| |\  || |   | | \ \| | | || |  | || |___       |
+|  \_|  |_/\_| |_/\___/\_| \_/\_|   \_|  \_\_| |_/\_|  |_/\____/       |
+|                                                                      |
+|     AI agents control computers through bash.                        |
+|     MAINFRAME makes that safe, accurate, and efficient.              |
++======================================================================+
 ```
 
 ## What is MAINFRAME?
 
-MAINFRAME is a **superpower multiplier for Claude Code**. It provides **366+ pure bash functions** that give Claude Code instant access to:
+MAINFRAME v6.0 is **the AI-native bash runtime**. It provides **4,000+ pure bash functions** across **117 libraries** that give AI agents instant access to:
 
+- **Agent Working Memory (AWM)** - Persistent memory outside the context window
 - String manipulation (no sed/awk needed)
 - Array operations (no external tools)
 - JSON generation (no jq dependency)
+- HTTP client (pure bash)
+- Git operations
+- Input validation and security
 - Async/parallel execution
 - Terminal UI (colors, progress bars)
-- Semantic versioning
-- Input validation
 - And much more...
 
-**Benchmarked speedup: 20-70x faster than external tools.**
+**Zero dependencies. Pure bash 4.0+. Works everywhere.**
 
 ---
 
@@ -69,13 +72,82 @@ source ~/.mainframe/lib/common.sh
 
 ```bash
 # Check MAINFRAME is loaded
-mainframe --version
+mainframe version
+
+# Expected output:
+# MAINFRAME v6.0
+# 4,000+ functions | 117 libraries | Pure Bash
 
 # Or test a function
 source ~/.mainframe/lib/common.sh
 echo "Result: $(trim_string '  hello world  ')"
 # Output: Result: hello world
 ```
+
+---
+
+## Agent Working Memory (AWM) Setup
+
+AWM is MAINFRAME's breakthrough feature for AI agents. It provides persistent memory OUTSIDE the context window.
+
+### Default Setup (No Configuration Required)
+
+AWM works out of the box. Sessions are stored in `~/.mainframe/awm/`.
+
+```bash
+# Test AWM is working
+source ~/.mainframe/lib/common.sh
+sid=$(awm_init "test-session")
+echo "Session created: $sid"
+
+# Store something
+awm_discovery "Installation verified"
+awm_checkpoint "status" "working"
+
+# Retrieve it
+awm_get "status"
+# Output: working
+
+# Clean up
+awm_close
+```
+
+### Custom AWM Configuration (Optional)
+
+You can customize AWM behavior with environment variables:
+
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+
+# Custom storage location (default: ~/.mainframe/awm)
+export AWM_ROOT="/path/to/custom/awm"
+
+# Maximum file size before compression (default: 65536 bytes / 64KB)
+export AWM_MAX_FILE_SIZE=131072
+
+# Maximum log entries before auto-compression (default: 100)
+export AWM_MAX_LOG_ENTRIES=200
+
+# Compression threshold in seconds (default: 3600 / 1 hour)
+export AWM_COMPRESS_AGE=7200
+```
+
+### AWM Quick Reference
+
+| Function | Purpose |
+|----------|---------|
+| `awm_init` | Create a new session, optionally inheriting from parent |
+| `awm_close` | Close session, mark as complete |
+| `awm_resume` | Resume a previous session by ID |
+| `awm_checkpoint` | Store key-value pair (atomic, persistent) |
+| `awm_get` | Retrieve a checkpointed value |
+| `awm_discovery` | Log a high-priority insight |
+| `awm_log` | Categorized logging (tasks, errors, decisions) |
+| `awm_progress` | Track progress with current/total |
+| `awm_summary` | Get JSON summary of session state |
+| `awm_namespace` | Set namespace for agent isolation |
+| `awm_token_estimate` | Estimate tokens for session data |
+| `awm_list` | List all sessions |
 
 ---
 
@@ -89,7 +161,7 @@ When Claude Code generates bash scripts, add this at the top:
 #!/usr/bin/env bash
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 
-# Now you have 366+ functions available!
+# Now you have 4,000+ functions available!
 result=$(json_object name="John" age:number=30)
 echo "$result"  # {"name":"John","age":30}
 ```
@@ -136,8 +208,11 @@ When writing bash scripts, ALWAYS use MAINFRAME:
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 \`\`\`
 
-This provides 400+ pure bash functions for strings, arrays, JSON, async, validation, and more.
-Key functions: trim_string, json_object, uuid, timestamp, array_unique, progress_bar
+This provides 4,000+ pure bash functions for strings, arrays, JSON, HTTP, validation, and more.
+Key functions: trim_string, json_object, uuid, timestamp, array_unique, progress_bar, awm_init
+
+For persistent memory across context windows, use Agent Working Memory (AWM):
+- awm_init, awm_checkpoint, awm_discovery, awm_resume
 ```
 
 ### OpenCode
@@ -148,7 +223,8 @@ Add to your OpenCode configuration or project instructions:
 When writing bash scripts, source MAINFRAME first:
 source "$HOME/.mainframe/lib/common.sh"
 
-This gives you 400+ functions. No jq, sed, or awk needed.
+This gives you 4,000+ functions. No jq, sed, or awk needed.
+Use AWM (awm_init, awm_checkpoint) for persistent memory.
 ```
 
 ### Other AI Assistants (Aider, Cursor, etc.)
@@ -161,7 +237,8 @@ Most AI coding tools support project-level instructions. Create a file like:
 Add this instruction:
 ```
 For bash scripts, always source ~/.mainframe/lib/common.sh first.
-This provides 400+ pure bash functions (strings, arrays, JSON, async, etc.)
+This provides 4,000+ pure bash functions (strings, arrays, JSON, HTTP, validation, etc.)
+Use AWM functions (awm_init, awm_checkpoint, awm_get) for persistent external memory.
 ```
 
 ### Quick Test
@@ -180,19 +257,20 @@ json_object id="$(uuid)" timestamp="$(timestamp)"
 
 ## What You Get
 
-### Libraries (auto-loaded with common.sh)
+### Library Categories (117 Libraries Total)
 
-| Library | Functions | Purpose |
-|---------|-----------|---------|
-| `pure-string.sh` | 34 | String manipulation without sed/awk |
-| `pure-array.sh` | 33 | Array operations without external tools |
-| `pure-util.sh` | 55 | Utilities (UUID, timestamps, validation) |
-| `pure-file.sh` | 37 | File ops without cat/head/tail |
-| `json.sh` | 20 | JSON generation in pure bash |
-| `semver.sh` | 20 | Semantic versioning |
-| `ansi.sh` | 90 | Terminal colors and UI |
-| `async.sh` | 26 | Async/parallel execution |
-| `common.sh` | 51 | Core utilities & logging |
+| Category | Libraries | Key Functions |
+|----------|-----------|---------------|
+| **Core** | strings, arrays, files, utils | `trim_string`, `array_unique`, `file_exists`, `uuid` |
+| **Data** | json, csv, parsers | `json_object`, `csv_parse_line`, `parse_ini` |
+| **Network** | http, netscan | `http_get`, `http_post`, `port_check`, `host_alive` |
+| **Validation** | validation, contract | `validate_email`, `validate_path_safe`, `sanitize_html` |
+| **Git** | git | `git_branch`, `git_is_dirty`, `git_changed_files` |
+| **System** | process, docker, environment | `proc_exists`, `docker_running`, `env_load_dotenv` |
+| **Agent** | awm, context, diff, cache | `awm_init`, `context_budget_init`, `diff_replace`, `memoize` |
+| **Analysis** | typescript, python | `ts_import_graph`, `py_circular_deps` |
+| **UI** | ansi, async | `progress_bar`, `spinner`, `parallel` |
+| **Safety** | idempotent, atomic, observe | `ensure_dir`, `atomic_write`, `trace_start` |
 
 ### Scripts
 
@@ -204,7 +282,7 @@ json_object id="$(uuid)" timestamp="$(timestamp)"
 
 ### Benchmarks
 
-Run the superpower benchmarks:
+Run the performance benchmarks:
 
 ```bash
 bash ~/.mainframe/benchmarks/superpower_benchmarks.sh
@@ -240,6 +318,12 @@ json_array "a" "b" "c"
 # ["a","b","c"]
 ```
 
+### HTTP Requests
+```bash
+http_get "http://api.example.com/data"
+http_post "http://api.example.com/users" '{"name":"test"}'
+```
+
 ### Utilities
 ```bash
 uuid                              # UUID v4
@@ -254,6 +338,15 @@ success "Task completed"          # [OK] Task completed
 failure "Something failed"        # [FAIL] Something failed
 header "My Section"               # Formatted header
 progress_bar 50 100               # [####----] 50%
+```
+
+### Agent Working Memory
+```bash
+sid=$(awm_init "my-task")         # Create session
+awm_discovery "Found config"      # Log discovery
+awm_checkpoint "step" "5"         # Save checkpoint
+awm_resume "$sid"                 # Resume later
+step=$(awm_get "step")            # Retrieve value
 ```
 
 ---
@@ -275,13 +368,15 @@ bash --version
 
 MAINFRAME is designed to make Claude Code more powerful. When you ask Claude Code to:
 
-1. **Generate JSON** → It uses `json_object` instead of complex escaping
-2. **Process arrays** → It uses `array_*` functions instead of loops
-3. **Handle strings** → It uses `trim_string`, `to_lower` instead of sed/awk
-4. **Show progress** → It uses `progress_bar`, `spinner` for UX
-5. **Validate input** → It uses built-in validators
+1. **Generate JSON** - It uses `json_object` instead of complex escaping
+2. **Process arrays** - It uses `array_*` functions instead of loops
+3. **Handle strings** - It uses `trim_string`, `to_lower` instead of sed/awk
+4. **Make HTTP requests** - It uses `http_get`, `http_post` in pure bash
+5. **Show progress** - It uses `progress_bar`, `spinner` for UX
+6. **Validate input** - It uses built-in validators
+7. **Remember state** - It uses AWM for persistent memory across context limits
 
-**Result: Cleaner code, faster execution, zero dependencies.**
+**Result: Cleaner code, faster execution, zero dependencies, persistent memory.**
 
 ---
 
@@ -289,7 +384,10 @@ MAINFRAME is designed to make Claude Code more powerful. When you ask Claude Cod
 
 ```bash
 rm -rf ~/.mainframe
-# Remove the source lines from ~/.bashrc
+
+# Remove the source lines from ~/.bashrc or ~/.zshrc
+# Remove: export MAINFRAME_ROOT="$HOME/.mainframe"
+# Remove: source "$MAINFRAME_ROOT/lib/common.sh"
 ```
 
 ---
@@ -304,6 +402,6 @@ MIT License - Use freely in your projects.
 
 ---
 
-**YO JOE!** 🎖️
+**MAINFRAME v6.0** - The AI-Native Bash Runtime
 
-*MAINFRAME - Superpower multiplier for Claude Code*
+*4,000+ functions | 117 libraries | Agent Working Memory | Zero Dependencies*

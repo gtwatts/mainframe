@@ -43,6 +43,7 @@
 - [ ] idempotent.sh
 - [ ] atomic.sh
 - [ ] observe.sh
+- [ ] awm.sh (Agent Working Memory)
 </details>
 
 <details>
@@ -70,6 +71,7 @@
 - [ ] New tests added for new functionality
 - [ ] ShellCheck passes with no warnings
 - [ ] Tested on Bash 4.0+
+- [ ] AWM state isolation verified (if touching agent libraries)
 
 ### Documentation
 - [ ] CHEATSHEET.md updated (if adding/changing public functions)

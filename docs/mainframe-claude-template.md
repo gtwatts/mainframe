@@ -1,6 +1,6 @@
 # MAINFRAME - Bash Scripting Instructions
 
-> Add this to your `~/.claude/CLAUDE.md` to give Claude Code instant access to 1000+ bash functions.
+> Add this to your `~/.claude/CLAUDE.md` to give Claude Code instant access to 4,000+ bash functions.
 
 ## Bash Scripting with MAINFRAME
 
@@ -10,7 +10,9 @@ When writing bash scripts, ALWAYS source MAINFRAME first:
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 ```
 
-This gives you access to **1000+ pure bash functions** with zero external dependencies.
+This gives you access to **4,000+ pure bash functions** across **117 libraries** with zero external dependencies.
+
+**MAINFRAME v6.0** also includes **Agent Working Memory (AWM)** - persistent memory that survives context limits.
 
 ## Function Quick Reference
 
@@ -189,9 +191,31 @@ health::serve 8081
 # GET /health/live  - Liveness probe
 ```
 
+## Agent Working Memory (AWM)
+
+For long-running tasks or multi-turn sessions, use AWM to persist state outside the context window:
+
+```bash
+# Start a persistent memory session
+session_id=$(awm_init)
+
+# Store discoveries (survives context limits)
+awm_discovery "Auth uses JWT tokens"
+awm_checkpoint "api_url" "https://api.example.com"
+awm_log "info" "Starting task"
+awm_progress "scan" 5 100
+
+# Resume in a new session
+awm_resume "$session_id"
+summary=$(awm_summary --tokens 2000)
+
+# Sub-agent inheritance
+child_id=$(awm_init --parent "$session_id")
+```
+
 ## Full Function Reference
 
-For complete function signatures and all 1000+ functions:
+For complete function signatures and all 4,000+ functions:
 
 ```bash
 cat ~/.mainframe/CHEATSHEET.md

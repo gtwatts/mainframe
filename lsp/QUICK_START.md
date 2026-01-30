@@ -1,13 +1,13 @@
 # MAINFRAME LSP - Quick Start Guide
 
-Get the MAINFRAME Bash Language Support extension running in 5 minutes.
+Get the MAINFRAME v6.0 Bash Language Support extension running in 5 minutes.
 
 ## Installation
 
 ### Option 1: From VSIX (Local Testing)
 
 ```bash
-cd /home/gordontwatts/Documents/Projects/basher/lsp
+cd /home/gordontwatts/Documents/Projects/mainframe/lsp
 npm install
 npm run compile
 npm run package
@@ -17,7 +17,7 @@ code --install-extension mainframe-bash-lsp-1.0.0.vsix
 ### Option 2: From Source (Development)
 
 ```bash
-cd /home/gordontwatts/Documents/Projects/basher/lsp
+cd /home/gordontwatts/Documents/Projects/mainframe/lsp
 npm install
 code .
 # Press F5 to launch Extension Development Host

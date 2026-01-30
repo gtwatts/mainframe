@@ -30,7 +30,7 @@ When writing bash scripts, you MUST source the MAINFRAME standard library:
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 ```
 
-MAINFRAME provides 1,100+ pure bash functions across 37 libraries. Zero external dependencies. Use these functions instead of external tools like jq, sed, awk, cat, head, tail.
+MAINFRAME v6.0 provides 4,000+ pure bash functions across 117 libraries. Zero external dependencies. Use these functions instead of external tools like jq, sed, awk, cat, head, tail.
 
 ### Function Quick Reference
 
@@ -114,6 +114,32 @@ MAINFRAME provides 1,100+ pure bash functions across 37 libraries. Zero external
 - `py_framework_detect "$dir"` - Detect django/flask/fastapi/pytest
 - `py_summary "$dir"` - Quick project health overview
 
+**Agent Working Memory (AWM)** - NEW in v6.0:
+- `awm_init "session-name"` - Start new memory session, returns session ID
+- `awm_resume "session-id"` - Resume existing session
+- `awm_checkpoint "key" "value"` - Save state atomically (idempotent)
+- `awm_get "key" "default"` - Retrieve saved state
+- `awm_log "category" "message"` - Append to categorized log
+- `awm_progress "task" "50/100"` - Track task progress
+- `awm_discovery "insight"` - Record key learning (high priority)
+- `awm_summary` - Get compressed session summary (JSON)
+- `awm_context_for "subtask"` - Generate context for sub-agent
+- `awm_inherit "parent-id"` - Create child session with inheritance
+- `awm_token_estimate` - Estimate context cost of memory read
+
+**Multi-Agent IPC** - NEW in v6.0:
+- `agent_register "name" capability...` - Register agent with capabilities
+- `agent_discover "capability"` - Find agents by capability
+- `agent_send "target" "message"` - Send message to agent
+- `agent_receive 10` - Receive with timeout (seconds)
+- `agent_broadcast "message"` - Broadcast to all agents
+- `agent_work_queue "name"` - Create work queue
+- `agent_work_push "queue" "item"` - Push to queue
+- `agent_work_pop "queue"` - Pop from queue (atomic)
+- `agent_barrier "name" count timeout` - Wait for N agents
+- `agent_signal "event"` - Signal event
+- `agent_wait "event" timeout` - Wait for signal
+
 ### Rules
 
 1. ALWAYS `source common.sh` at the top of every bash script
@@ -139,7 +165,33 @@ log_info "Started at $(now_iso)"
 success "Completed in $(format_duration $SECONDS)"
 ```
 
+### Agent Script Template (with AWM)
+
+```bash
+#!/usr/bin/env bash
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+
+# Initialize or resume session
+session_id="${AWM_SESSION:-$(awm_init "my-agent-task")}"
+export AWM_SESSION="$session_id"
+
+# Check for previous progress
+last_step=$(awm_get "last_step" "0")
+log_info "Resuming from step $last_step"
+
+# Process with checkpointing
+for step in $(seq $((last_step + 1)) 10); do
+    process_step "$step"
+    awm_checkpoint "last_step" "$step"
+    awm_progress "steps" "$step/10"
+done
+
+# Record discovery
+awm_discovery "Processing completed successfully"
+awm_close
+```
+
 ### Full Reference
 
-For all 1,100+ function signatures: `~/.mainframe/CHEATSHEET.md`
+For all 4,000+ function signatures: `~/.mainframe/CHEATSHEET.md`
 Repository: https://github.com/gtwatts/mainframe

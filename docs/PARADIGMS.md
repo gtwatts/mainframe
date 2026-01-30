@@ -1,8 +1,10 @@
-# MAINFRAME Pipeline Paradigms
+# MAINFRAME v6.0 Pipeline Paradigms
 
 > "The power of the shell is in the pipe." - Doug McIlroy
 
-This document covers the lethal shell pipeline patterns available in MAINFRAME.
+This document covers the lethal shell pipeline patterns available in MAINFRAME v6.0.
+
+**MAINFRAME v6.0**: 4,000+ functions | 117 libraries | 6,500+ tests
 
 ## Philosophy
 
@@ -284,9 +286,34 @@ cat data | cmd1 | pipe_assert_nonempty "Stage 1 produced no output"
 
 ---
 
+---
+
+## AWM Pipeline Integration
+
+Agent Working Memory (AWM) integrates with pipelines for persistent logging:
+
+```bash
+# Log pipeline progress to AWM
+cat large_file.txt \
+  | pipe_filter 'pattern' \
+  | tee >(wc -l | xargs -I{} awm_progress "filter" {} 0) \
+  | pipe_map 'process' \
+  | tee >(awm_log "info" "Processing complete")
+```
+
+```bash
+# Checkpoint intermediate results
+session_id=$(awm_init)
+result=$(cat data.csv | pipe_field 2 ',' | pipe_sum)
+awm_checkpoint "sum_result" "$result"
+```
+
+---
+
 ## See Also
 
 - `lib/pipe.sh` - Core pipeline functions
 - `lib/stream.sh` - Advanced streaming paradigms
 - `lib/csv.sh` - CSV-specific processing
 - `lib/json.sh` - JSON generation
+- `lib/awm.sh` - Agent Working Memory for persistent state

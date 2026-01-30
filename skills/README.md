@@ -1,6 +1,6 @@
 # MAINFRAME Skills for AI Coding Assistants
 
-Pre-built instruction files that teach AI coding assistants about MAINFRAME's 1,100+ pure bash functions.
+Pre-built instruction files that teach AI coding assistants about MAINFRAME's 4,000+ pure bash functions across 117 libraries.
 
 ## Supported Platforms
 
@@ -31,7 +31,7 @@ Edit `~/.clawdbot/clawdbot.json` and add the preamble:
 {
   "agents": {
     "defaults": {
-      "preamble": "When writing bash scripts, ALWAYS source MAINFRAME first:\n\nsource \"${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh\"\n\nMAINFRAME provides 2,000+ pure bash functions. Use these instead of jq/sed/awk. Full reference: ~/.mainframe/CHEATSHEET.md"
+      "preamble": "When writing bash scripts, ALWAYS source MAINFRAME first:\n\nsource \"${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh\"\n\nMAINFRAME v6.0 provides 4,000+ pure bash functions across 117 libraries. Use these instead of jq/sed/awk. Includes Agent Working Memory (AWM) for persistent state. Full reference: ~/.mainframe/CHEATSHEET.md"
     }
   }
 }
@@ -81,10 +81,19 @@ Point your AI at the project's `CLAUDE.md` file (in the repo root) which contain
 Each skill file teaches the AI:
 
 1. **How to source MAINFRAME** - The one-liner that loads everything
-2. **Function categories** - JSON, strings, arrays, validation, crypto, git, etc.
+2. **Function categories** - JSON, strings, arrays, validation, crypto, git, AWM, agent IPC, etc.
 3. **Replacement table** - Which MAINFRAME function replaces which external tool
-4. **Common patterns** - Script templates, error handling, JSON generation
+4. **Common patterns** - Script templates, error handling, JSON generation, agent coordination
 5. **Rules** - When to use MAINFRAME vs. external tools
+
+## v6.0 Highlights
+
+- **4,000+ functions** across 117 libraries
+- **6,500+ tests** with comprehensive coverage
+- **Agent Working Memory (AWM)** - Persistent external memory for AI agents with finite context
+- **Multi-Agent IPC** - File-based inter-process communication for agent coordination
+- **bURL** - AI-native HTTP client with structured responses
+- **Bun Integration** - TypeScript runtime helpers
 
 ## Creating Skills for Other Platforms
 
@@ -94,7 +103,7 @@ If your AI coding assistant supports custom instructions, create a file that inc
 When writing bash scripts, source MAINFRAME first:
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 
-Use MAINFRAME's 1,100+ functions instead of jq, sed, awk, cat.
+Use MAINFRAME's 4,000+ functions instead of jq, sed, awk, cat.
 Full reference: ~/.mainframe/CHEATSHEET.md
 ```
 
