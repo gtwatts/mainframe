@@ -926,7 +926,7 @@ py_add() {
             local poetry_flag=""
             [[ "$flag" == "--dev" ]] && poetry_flag="--group dev"
             [[ "$flag" == --group=* ]] && poetry_flag="--group ${flag#--group=}"
-            output=$(cd "$dir" && poetry add $poetry_flag "$package" 2>&1)
+            output=$(cd "$dir" && poetry add "$poetry_flag" "$package" 2>&1)
             rc=$?
             ;;
         pipenv)
@@ -1141,7 +1141,7 @@ py_upgrade() {
                 if [[ -n "$outdated" && "$outdated" != "[]" ]]; then
                     local pkgs
                     pkgs=$(echo "$outdated" | grep -oP '"name":\s*"\K[^"]+' | tr '\n' ' ')
-                    output=$("$interpreter" -m pip install --upgrade $pkgs 2>&1)
+                    output=$("$interpreter" -m pip install --upgrade "$pkgs" 2>&1)
                     rc=$?
                 else
                     _py_ok '{"upgraded":[],"message":"All packages up to date"}'
