@@ -575,6 +575,7 @@ _MAINFRAME_TIER_STANDARD=(
     log error tui template ci health
     device sysinfo service retry
     toml yaml collection queue regex
+    bun
 )
 
 # Extended tier: advanced/specialized libraries
@@ -792,6 +793,7 @@ else
     _mainframe_load_library "yaml"
     _mainframe_load_library "collection"
     _mainframe_load_library "queue"
+    _mainframe_load_library "bun"
 
     # Extended tier libraries
     _mainframe_load_library "k8s"
@@ -1005,6 +1007,12 @@ BASHER_COMMON_EXPORTS=(
     docker_volume_exists docker_volume_create docker_volume_remove docker_volumes
     docker_network_exists docker_network_create docker_network_remove docker_networks
     docker_prune_containers docker_prune_images docker_prune_volumes docker_prune_all
+    # Bun.js Runtime (from bun.sh) - Bun package manager and runtime helpers
+    bun_detect bun_version bun_is_project
+    bun_install bun_add bun_remove bun_list
+    bun_run bun_exec bun_test
+    bun_workspace_detect bun_workspace_run bun_workspace_list
+    bun_project_summary bun_config bun_suggest_command
     # Defensive Guards (from guard.sh) - AI coding assistant error prevention
     guard_init guard_on_exit
     guard_path_exists guard_path_safe guard_path_chars guard_symlink guard_destructive_path
