@@ -1022,7 +1022,7 @@ code_find_callers() {
         fi
 
         [[ $count -ge $MAINFRAME_CODESEARCH_MAX_RESULTS ]] && break
-    done < <(timeout "${MAINFRAME_CODESEARCH_TIMEOUT}s" grep $grep_opts "${grep_excludes[@]}" "${include_patterns[@]}" -E "$call_pattern" "$path" 2>/dev/null)
+    done < <(timeout "${MAINFRAME_CODESEARCH_TIMEOUT}s" grep "$grep_opts" "${grep_excludes[@]}" "${include_patterns[@]}" -E "$call_pattern" "$path" 2>/dev/null)
 
     [[ $count -eq 0 ]] && return 1
 

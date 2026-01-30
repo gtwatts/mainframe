@@ -52,12 +52,14 @@ jobs:
           # SC2294: eval "$@" intentional for fluent DSL action execution
           # SC2128: False positive for scalar variables named like arrays
           # SC2319: $? after condition (intentional pattern)
+          # SC2094: False positive about reading/writing same file in pipeline
+          # SC1078: Regex pattern with quotes
           shellcheck -x \
             -e SC1090 -e SC1091 -e SC2034 -e SC2178 -e SC2053 -e SC2206 \
             -e SC2059 -e SC1003 -e SC2004 -e SC2181 -e SC2012 \
             -e SC2120 -e SC2119 -e SC2016 -e SC2155 -e SC2188 \
             -e SC2295 -e SC2015 -e SC2030 -e SC2031 -e SC2317 -e SC2069 \
-            -e SC1130 -e SC2294 -e SC2128 -e SC2319 \
+            -e SC1130 -e SC2294 -e SC2128 -e SC2319 -e SC2094 -e SC1078 \
             lib/*.sh
 
       - name: Run ShellCheck on scripts

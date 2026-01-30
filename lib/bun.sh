@@ -847,7 +847,7 @@ bun_workspace_run() {
     fi
 
     local output exit_code
-    output=$(_bun_truncate "$(cd "$dir" && bun --filter "$package" $command 2>&1)")
+    output=$(_bun_truncate "$(cd "$dir" && bun --filter "$package" "$command" 2>&1)")
     exit_code=$?
 
     local success="true"
