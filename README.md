@@ -20,7 +20,7 @@
 
 **AI agents control computers through bash. MAINFRAME makes that safe, accurate, and efficient.**
 
-**3,500+ Pure Bash Functions** | **Zero Dependencies** | **Agent Working Memory** | **First-Time Correctness**
+**4,000+ Pure Bash Functions** | **Zero Dependencies** | **Agent Working Memory** | **First-Time Correctness**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Tests](https://img.shields.io/github/actions/workflow/status/gtwatts/mainframe/test.yml?label=tests)](https://github.com/gtwatts/mainframe/actions)
@@ -52,7 +52,7 @@ mainframe version
 **Expected output:**
 ```
 MAINFRAME v6.0
-3,500+ functions | 114 libraries | Pure Bash
+4,000+ functions | 117 libraries | Pure Bash
 ```
 
 **That's it.** Your AI agents now have a safe, efficient bash runtime with persistent memory.
@@ -65,7 +65,7 @@ For detailed installation options, see [INSTALL.md](INSTALL.md).
 
 **MAINFRAME is the runtime layer between AI agents and the operating system.**
 
-AI agents - whether Claude Code, GPT-4, autonomous coding assistants, or custom LLM-powered tools - interact with computers primarily through bash. They write shell commands to navigate filesystems, manipulate data, manage processes, and orchestrate system operations.
+AI agents - whether Claude Code, GPT-4o, Gemini, Cursor, or custom LLM-powered tools - interact with computers primarily through bash. They write shell commands to navigate filesystems, manipulate data, manage processes, and orchestrate system operations.
 
 The problem: **AI agents have finite context windows and bash is hostile territory.**
 
@@ -87,7 +87,7 @@ The problem: **AI agents have finite context windows and bash is hostile territo
 | **Zero Dependencies** | Pure bash. Works on any system with bash 4.0+. No jq, no sed, no awk required. |
 
 ```bash
-# One line gives AI access to 3,500+ battle-tested functions
+# One line gives AI access to 4,000+ battle-tested functions
 source "${MAINFRAME_ROOT}/lib/common.sh"
 ```
 
@@ -364,7 +364,7 @@ MAINFRAME reduces token usage by **71% per bash task**:
 
 ## Library Reference
 
-MAINFRAME provides **114 libraries** with **3,500+ functions** organized by category.
+MAINFRAME provides **117 libraries** with **4,000+ functions** organized by category.
 
 <details>
 <summary><strong>AI Agent Infrastructure</strong> - Memory, agents, context</summary>
@@ -397,7 +397,7 @@ MAINFRAME provides **114 libraries** with **3,500+ functions** organized by cate
 
 | Library | Functions | Purpose |
 |---------|-----------|---------|
-| `burl.sh` | 50+ | AI-native HTTP client - GET/POST/PUT/DELETE, retries, JSON responses |
+| `burl.sh` | 33 | AI-native HTTP client - GET/POST/PUT/DELETE, retries, JSON responses |
 | `http.sh` | 35 | HTTP utilities and helpers |
 | `git.sh` | 52 | Git workflow helpers - `git_branch`, `git_is_dirty` |
 
@@ -422,7 +422,7 @@ MAINFRAME provides **114 libraries** with **3,500+ functions** organized by cate
 
 | Library | Functions | Purpose |
 |---------|-----------|---------|
-| `bun.sh` | 40+ | Bun package manager - install, add, remove, run |
+| `bun.sh` | 20 | Bun package manager - install, add, remove, run |
 | `python.sh` | 40+ | Python/pip/venv management |
 
 </details>
@@ -469,7 +469,7 @@ MAINFRAME provides **114 libraries** with **3,500+ functions** organized by cate
 | Library | Functions | Purpose |
 |---------|-----------|---------|
 | `ci.sh` | 35+ | CI/CD portability across GitHub, GitLab, Jenkins, etc. |
-| `health.sh` | 35 | Health check framework with HTTP server |
+| `health.sh` | 27 | Health check framework with HTTP server |
 | `compat.sh` | 50+ | BSD/GNU compatibility, WSL detection |
 | `sysinfo.sh` | 40+ | System detection, resource monitoring |
 
@@ -516,16 +516,16 @@ bash benchmarks/superpower_benchmarks.sh
 
 ## Testing
 
-MAINFRAME has **1,400+ unit tests** with high coverage:
+MAINFRAME has **6,500+ tests** with comprehensive coverage:
 
 ```
 $ ./tests/bats/bin/bats tests/unit/
 ok 1 - trim_string removes leading/trailing whitespace
 ok 2 - to_lower converts to lowercase
 ...
-ok 1430 - regex_get: returned pattern works with bash regex
+ok 6538 - regex_get: returned pattern works with bash regex
 
-1430 tests, 0 failures
+6538 tests, 0 failures
 ```
 
 Run the test suite:
@@ -575,7 +575,7 @@ git submodule update --init
 ## Documentation
 
 - **[Installation Guide](INSTALL.md)** - Detailed setup instructions
-- **[Full Function Reference](CHEATSHEET.md)** - All 3,500+ function signatures
+- **[Full Function Reference](CHEATSHEET.md)** - All 4,000+ function signatures
 - **[AI Agent Integration](CLAUDE.md)** - Instructions for AI coding assistants
 - **[Contributing](CONTRIBUTING.md)** - How to contribute
 - **[Roadmap](ROADMAP.md)** - Planned features and improvements
@@ -623,6 +623,6 @@ MAINFRAME is that runtime.
 
 ---
 
-**3,500+ functions** | **Zero dependencies** | **Agent Working Memory** | **Pure Bash**
+**4,000+ functions** | **Zero dependencies** | **Agent Working Memory** | **Pure Bash**
 
 </div>
