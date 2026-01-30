@@ -65,7 +65,7 @@ For detailed installation options, see [INSTALL.md](INSTALL.md).
 
 **MAINFRAME is the runtime layer between AI agents and the operating system.**
 
-AI agents - whether Claude Code, GPT-4o, Gemini, Cursor, or custom LLM-powered tools - interact with computers primarily through bash. They write shell commands to navigate filesystems, manipulate data, manage processes, and orchestrate system operations.
+AI agents - whether Claude Code, Codex, Gemini, Cursor, or custom LLM-powered tools - interact with computers primarily through bash. They write shell commands to navigate filesystems, manipulate data, manage processes, and orchestrate system operations.
 
 The problem: **AI agents have finite context windows and bash is hostile territory.**
 
