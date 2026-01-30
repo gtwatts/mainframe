@@ -302,7 +302,7 @@ intent_classify() {
         if [[ $json_output -eq 1 ]]; then
             printf '{"error":"empty command","risk":%d,"risk_label":"low"}\n' "$INTENT_RISK_LOW"
         fi
-        return $INTENT_RISK_LOW
+        return "$INTENT_RISK_LOW"
     fi
 
     # Check against blocked commands first
@@ -374,7 +374,7 @@ intent_classify() {
         printf '%s\n' "${_INTENT_RISK_LABELS[$risk]}"
     fi
 
-    return $risk
+    return "$risk"
 }
 
 # intent_verify - Verify command safety with declared intent and path constraints

@@ -197,7 +197,9 @@ gen_int() {
     local min="${2:-$((-max))}"
 
     local range=$((max - min + 1))
-    local val=$(( (_prop_random 32767) % range + min ))
+    local rand_val
+    rand_val=$(_prop_random 32767)
+    local val=$(( rand_val % range + min ))
     printf '%d' "$val"
 }
 
@@ -220,7 +222,9 @@ gen_int_range() {
     fi
 
     local range=$((max - min + 1))
-    local val=$(( (_prop_random 32767) % range + min ))
+    local rand_val
+    rand_val=$(_prop_random 32767)
+    local val=$(( rand_val % range + min ))
     printf '%d' "$val"
 }
 
@@ -370,7 +374,7 @@ gen_string_pattern() {
 
     # Determine length based on quantifier
     if [[ "$pattern" == *'+' ]]; then
-        len=$((1 + _prop_random $((max_len - 1))))
+        local rand_len; rand_len=$(_prop_random $((max_len - 1))); len=$((1 + rand_len))
     elif [[ "$pattern" == *'*' ]]; then
         len=$(_prop_random "$max_len")
     else
