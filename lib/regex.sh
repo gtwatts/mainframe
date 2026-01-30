@@ -166,12 +166,15 @@ regex_complexity_score() {
     score=$((score + groups * 2))
 
     # Detect dangerous patterns: nested quantifiers (a+)+, (a*)*
-    if [[ "$pattern" =~ \([^)]*[*+]\)[*+] ]]; then
+    # Store pattern in variable to avoid shellcheck parse issues
+    local nested_quant_pattern='\\([^)]*[*+]\\)[*+]'
+    if [[ "$pattern" =~ $nested_quant_pattern ]]; then
         score=$((score + 50))
     fi
 
     # Detect overlapping alternations with quantifiers
-    if [[ "$pattern" =~ \([^)|]*\|[^)]*\)[*+] ]]; then
+    local overlap_alt_pattern='\\([^)|]*\\|[^)]*\\)[*+]'
+    if [[ "$pattern" =~ $overlap_alt_pattern ]]; then
         score=$((score + 30))
     fi
 

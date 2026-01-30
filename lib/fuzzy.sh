@@ -316,8 +316,9 @@ jaro_distance() {
     [[ "$len1" -eq 0 || "$len2" -eq 0 ]] && { printf '0.000'; return 0; }
 
     # Calculate match window
-    local match_window
-    match_window=$(( (_fuzzy_max "$len1" "$len2") / 2 - 1 ))
+    local match_window max_len
+    max_len=$(_fuzzy_max "$len1" "$len2")
+    match_window=$(( max_len / 2 - 1 ))
     (( match_window < 0 )) && match_window=0
 
     # Track matches
