@@ -406,18 +406,18 @@ _burl_validate_url() {
     local url="$1"
 
     # Parse first
-    _burl_parse_url "$url" || return $BURL_E_INVALID_URL
+    _burl_parse_url "$url" || return "$BURL_E_INVALID_URL"
 
     # Empty host check
     if [[ -z "$_BURL_HOST" ]]; then
-        return $BURL_E_INVALID_URL
+        return "$BURL_E_INVALID_URL"
     fi
 
     # Scheme validation
     case "$_BURL_SCHEME" in
         http|https) ;;
         *)
-            return $BURL_E_INVALID_URL
+            return "$BURL_E_INVALID_URL"
             ;;
     esac
 
@@ -431,7 +431,7 @@ _burl_validate_url() {
         read -ra octets <<< "$host"
         for octet in "${octets[@]}"; do
             if ! [[ "$octet" =~ ^[0-9]+$ ]] || (( octet > 255 )); then
-                return $BURL_E_INVALID_URL
+                return "$BURL_E_INVALID_URL"
             fi
         done
     # IPv6 check (basic)
@@ -440,7 +440,7 @@ _burl_validate_url() {
     # Hostname check
     else
         # Max length
-        [[ ${#host} -gt 253 ]] && return $BURL_E_INVALID_URL
+        [[ ${#host} -gt 253 ]] && return "$BURL_E_INVALID_URL"
 
         # Label validation
         local IFS='.'
@@ -449,16 +449,16 @@ _burl_validate_url() {
         local label_re='^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$'
 
         for label in "${labels[@]}"; do
-            [[ -z "$label" ]] && return $BURL_E_INVALID_URL
-            [[ ${#label} -gt 63 ]] && return $BURL_E_INVALID_URL
-            [[ ! "$label" =~ $label_re ]] && return $BURL_E_INVALID_URL
+            [[ -z "$label" ]] && return "$BURL_E_INVALID_URL"
+            [[ ${#label} -gt 63 ]] && return "$BURL_E_INVALID_URL"
+            [[ ! "$label" =~ $label_re ]] && return "$BURL_E_INVALID_URL"
         done
     fi
 
     # Port validation
     if [[ -n "$_BURL_PORT" ]]; then
         if ! [[ "$_BURL_PORT" =~ ^[0-9]+$ ]] || (( _BURL_PORT > 65535 )); then
-            return $BURL_E_INVALID_URL
+            return "$BURL_E_INVALID_URL"
         fi
     fi
 
@@ -466,7 +466,7 @@ _burl_validate_url() {
     if [[ "${BURL_BLOCK_PRIVATE:-0}" == "1" ]]; then
         case "$host" in
             127.*|10.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*|localhost)
-                return $BURL_E_INVALID_URL
+                return "$BURL_E_INVALID_URL"
                 ;;
         esac
     fi
@@ -539,7 +539,7 @@ _burl_connect_tcp() {
         # Fallback with bash read timeout
         {
             exec 3<>"/dev/tcp/${host}/${port}" 2>/dev/null || {
-                return $BURL_E_CONNECT_FAILED
+                return "$BURL_E_CONNECT_FAILED"
             }
 
             printf '%b' "$request" >&3
@@ -554,7 +554,7 @@ _burl_connect_tcp() {
     fi
 
     if [[ -z "$response" ]]; then
-        return $BURL_E_CONNECT_FAILED
+        return "$BURL_E_CONNECT_FAILED"
     fi
 
     printf '%s' "$response"
@@ -576,7 +576,7 @@ _burl_connect_tls() {
 
     # Check for openssl
     if ! command -v openssl &>/dev/null; then
-        return $BURL_E_SSL_FAILED
+        return "$BURL_E_SSL_FAILED"
     fi
 
     local ssl_opts="-connect ${host}:${port} -servername ${host} -quiet"
@@ -596,7 +596,7 @@ _burl_connect_tls() {
     local exit_code=$?
 
     if [[ $exit_code -ne 0 ]] && [[ -z "$response" ]]; then
-        return $BURL_E_SSL_FAILED
+        return "$BURL_E_SSL_FAILED"
     fi
 
     printf '%s' "$response"
@@ -625,7 +625,7 @@ _burl_with_timeout() {
             if (( $(echo "$elapsed > $timeout" | bc -l) )); then
                 kill -9 "$pid" 2>/dev/null
                 wait "$pid" 2>/dev/null
-                return $BURL_E_TIMEOUT
+                return "$BURL_E_TIMEOUT"
             fi
         done
 
@@ -1050,7 +1050,7 @@ burl() {
         _burl_semantic_error $BURL_E_CONNECT_FAILED "${_BURL_HOST}:${_BURL_PORT}"
         _burl_error $BURL_E_CONNECT_FAILED "$_BURL_ERROR_MSG" "$_BURL_ERROR_SUGGEST" \
             "url=$url" "retries=$retries" "duration_ms=$duration_ms"
-        return $BURL_E_CONNECT_FAILED
+        return "$BURL_E_CONNECT_FAILED"
     fi
 
     # Parse response
@@ -1065,7 +1065,7 @@ burl() {
             _burl_semantic_error $BURL_E_REDIRECT_LOOP "$url"
             _burl_error $BURL_E_REDIRECT_LOOP "$_BURL_ERROR_MSG" "$_BURL_ERROR_SUGGEST" \
                 "url=$url" "redirects=$redirect_count"
-            return $BURL_E_REDIRECT_LOOP
+            return "$BURL_E_REDIRECT_LOOP"
         fi
 
         local location
@@ -1104,7 +1104,7 @@ burl() {
         _burl_semantic_error $BURL_E_RATE_LIMITED "$url"
         _burl_error $BURL_E_RATE_LIMITED "$_BURL_ERROR_MSG" "$_BURL_ERROR_SUGGEST" \
             "url=$url" "status=$_BURL_STATUS" "retry_after=${retry_after:-unknown}"
-        return $BURL_E_RATE_LIMITED
+        return "$BURL_E_RATE_LIMITED"
     fi
 
     # Check for auth failure
@@ -1112,7 +1112,7 @@ burl() {
         _burl_semantic_error $BURL_E_AUTH_FAILED "$url"
         _burl_error $BURL_E_AUTH_FAILED "$_BURL_ERROR_MSG" "$_BURL_ERROR_SUGGEST" \
             "url=$url" "status=$_BURL_STATUS"
-        return $BURL_E_AUTH_FAILED
+        return "$BURL_E_AUTH_FAILED"
     fi
 
     # Truncate body if max-tokens set
