@@ -506,6 +506,45 @@ success "Complete!"
 | `git_log_oneline` | `git_log_oneline [n]` | `git_log_oneline 5` | Last 5 commits |
 | `git_changed_since` | `git_changed_since "ref"` | `git_changed_since "HEAD~5"` | Changed files |
 
+### Enhanced Git Functions (Repository & Provider Info)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `git_repo_name` | `git_repo_name` | `git_repo_name` | `mainframe` (from URL) |
+| `git_repo_url` | `git_repo_url [remote]` | `git_repo_url upstream` | Full remote URL |
+| `git_repo_owner` | `git_repo_owner` | `git_repo_owner` | `gtwatts` (from URL) |
+| `git_provider` | `git_provider` | `git_provider` | `github`, `gitlab`, `bitbucket`, `azure`, `codeberg`, `unknown` |
+| `git_web_url` | `git_web_url` | `git_web_url` | `https://github.com/user/repo` |
+| `git_upstream_branch` | `git_upstream_branch` | `git_upstream_branch` | `origin/main` |
+| `git_remotes_json` | `git_remotes_json` | `git_remotes_json` | `[{"name":"origin","fetch_url":"...","push_url":"..."}]` |
+| `git_changed_files` | `git_changed_files [filter]` | `git_changed_files staged` | Newline-separated paths |
+| `git_last_commit` | `git_last_commit` | `git_last_commit` | `{"hash":"abc123","author":"name","date":"ISO","message":"..."}` |
+| `git_summary_json` | `git_summary_json` | `git_summary_json` | Full repo status as JSON |
+
+**git_changed_files filter options:**
+- `staged` - Only staged files
+- `unstaged` - Only modified but not staged
+- `untracked` - Only untracked files
+- `all` (default) - All changed files (unique)
+
+**git_summary_json output fields:**
+```json
+{
+  "branch": "main",
+  "commit_hash": "abc1234",
+  "commit_count": 42,
+  "is_dirty": false,
+  "has_staged": false,
+  "has_unstaged": false,
+  "has_untracked": false,
+  "remote_url": "https://github.com/user/repo.git",
+  "provider": "github",
+  "owner": "user",
+  "repo_name": "repo",
+  "tag_latest": "v1.2.3"
+}
+```
+
 ---
 
 ## Crypto Functions (crypto.sh)
@@ -534,6 +573,27 @@ success "Complete!"
 | `password_verify` | `password_verify "pw" "hash"` | `password_verify "secret" "$h"` | (returns 0/1) |
 | `generate_password` | `generate_password [len]` | `generate_password 16` | Random password |
 | `rot13` | `rot13 "string"` | `rot13 "hello"` | `uryyb` |
+
+---
+
+## Download Functions (download.sh)
+
+Universal download helper with fallback chain: burl -> curl -> wget -> fetch
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `download_backend` | `download_backend` | `download_backend` | `curl`, `wget`, `burl`, `fetch`, or `none` |
+| `download` | `download "url" [output] [options]` | `download "https://x.com/f.tar.gz"` | `{"ok":true,"file":"f.tar.gz","size":N,"time_ms":N}` |
+| `download_stdout` | `download_stdout "url"` | `download_stdout "https://x.com/data"` | (file contents to stdout) |
+| `download_progress` | `download_progress "url" "output" [callback]` | `download_progress "https://x.com/f" "/tmp/f" fn` | Calls fn with progress JSON |
+| `download_batch` | `download_batch "url_file" "output_dir" [max_parallel]` | `download_batch "urls.txt" "/tmp" 4` | `{"ok":true,"downloaded":N,"failed":N}` |
+| `download_resume` | `download_resume "url" "partial_file"` | `download_resume "https://x.com/f" "/tmp/f"` | `{"ok":true,"resumed":true}` |
+| `download_verify` | `download_verify "file" "sha256"` | `download_verify "/tmp/f" "abc..."` | `{"ok":true,"valid":true}` |
+| `download_extract` | `download_extract "url" "output_dir"` | `download_extract "https://x.com/a.tar.gz" "/opt"` | `{"ok":true,"extracted_to":"/opt","files":N}` |
+
+**Options JSON**: `{"timeout":30,"retries":3,"quiet":true}`
+
+**Supported archive formats** (download_extract): `.tar.gz`, `.tgz`, `.tar.bz2`, `.tbz2`, `.tar.xz`, `.txz`, `.tar`, `.zip`, `.gz`
 
 ---
 
@@ -639,6 +699,36 @@ result=$(http_json_post "http://api.example.com" '{"name":"test"}')
 if http_is_success; then
     echo "Request succeeded"
 fi
+```
+
+### Download Files
+```bash
+# Simple download (auto-detects curl/wget/fetch)
+result=$(download "https://example.com/file.tar.gz")
+echo "$result"  # {"ok":true,"file":"file.tar.gz","size":1234,"time_ms":500}
+
+# Download to specific path with options
+download "https://example.com/data.zip" "/tmp/data.zip" '{"timeout":60,"retries":5}'
+
+# Download to stdout (pipe-friendly)
+download_stdout "https://example.com/config.json" | jq .
+
+# Download with progress callback
+download_progress "https://example.com/large.iso" "/tmp/large.iso" my_progress_fn
+
+# Batch download (parallel)
+echo "https://a.com/1.txt" > urls.txt
+echo "https://b.com/2.txt" >> urls.txt
+download_batch "urls.txt" "/tmp/downloads" 4  # 4 parallel
+
+# Resume interrupted download
+download_resume "https://example.com/big.file" "/tmp/partial.file"
+
+# Verify checksum after download
+download_verify "/tmp/file.tar.gz" "a1b2c3d4e5f6..."
+
+# Download and extract archive
+download_extract "https://example.com/app.tar.gz" "/opt/app"
 ```
 
 ### CSV Processing
@@ -2116,6 +2206,135 @@ echo "Took ${elapsed}s"
 
 # Structured error for AI parsing
 observe_error 1 "config file missing" "path=/etc/myapp.conf"
+```
+
+---
+
+## CI/CD Platform Detection (ci.sh)
+
+**Purpose**: Cross-platform CI/CD detection and portable output functions. Supports 17 CI platforms with unified interface for environment detection, outputs, logging, and PR info.
+
+### Platform Detection
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `ci_is_ci` | `ci_is_ci` | `ci_is_ci && echo "In CI"` | (returns 0 if in CI, 1 if not) |
+| `ci_platform` | `ci_platform` | `platform=$(ci_platform)` | `github`, `gitlab`, `jenkins`, etc. |
+| `ci_info` | `ci_info` | `info=$(ci_info)` | `{"platform":"github","build_id":"123","branch":"main",...}` |
+| `ci::name` | `ci::name` | `ci::name` | `GitHub Actions`, `GitLab CI`, etc. |
+| `ci::detect` | `ci::detect` | `ci::detect` | `github`, `gitlab`, `jenkins`, etc. |
+
+### Individual Platform Detectors
+
+| Function | CI Platform | Detection Method |
+|----------|-------------|------------------|
+| `ci_is_github_actions` | GitHub Actions | `GITHUB_ACTIONS` |
+| `ci_is_gitlab_ci` | GitLab CI | `GITLAB_CI` |
+| `ci_is_jenkins` | Jenkins | `JENKINS_URL` or `BUILD_ID`+`JOB_NAME` |
+| `ci_is_buildkite` | BuildKite | `BUILDKITE=true` |
+| `ci_is_bitbucket` | Bitbucket Pipelines | `BITBUCKET_BUILD_NUMBER` |
+| `ci_is_teamcity` | TeamCity | `TEAMCITY_VERSION` |
+| `ci_is_circleci` | CircleCI | `CIRCLECI` |
+| `ci_is_travis` | Travis CI | `TRAVIS` |
+| `ci_is_appveyor` | AppVeyor | `APPVEYOR=true` |
+| `ci_is_azure_pipelines` | Azure Pipelines | `TF_BUILD` or `AZURE_PIPELINES` |
+| `ci_is_aws_codebuild` | AWS CodeBuild | `CODEBUILD_BUILD_ID` |
+| `ci_is_gcp_cloud_build` | Google Cloud Build | `CLOUD_BUILD_ID` or `BUILD_ID`+`PROJECT_ID` |
+| `ci_is_drone` | Drone CI | `DRONE=true` |
+| `ci_is_semaphore` | Semaphore CI | `SEMAPHORE=true` |
+| `ci_is_buddy` | Buddy | `BUDDY=true` |
+| `ci_is_woodpecker` | Woodpecker CI | `CI_REPO`+`CI_SYSTEM_HOST` (not Drone) |
+| `ci_is_gitea_actions` | Gitea Actions | `GITEA_ACTIONS=true` |
+
+### Cross-CI Output
+
+| Function | Signature | Example | Purpose |
+|----------|-----------|---------|---------|
+| `ci::set_output` | `ci::set_output "key" "value"` | `ci::set_output "version" "1.2.3"` | Set output for subsequent steps |
+| `ci::set_env` | `ci::set_env "VAR" "value"` | `ci::set_env "BUILD_VERSION" "1.2.3"` | Set environment variable |
+| `ci::add_path` | `ci::add_path "/new/path"` | `ci::add_path "/opt/bin"` | Add directory to PATH |
+| `ci::group_start` | `ci::group_start "name"` | `ci::group_start "Tests"` | Start collapsible log group |
+| `ci::group_end` | `ci::group_end` | `ci::group_end` | End collapsible log group |
+
+### CI Logging / Annotations
+
+| Function | Signature | Example | Purpose |
+|----------|-----------|---------|---------|
+| `ci::warning` | `ci::warning "msg" [file] [line]` | `ci::warning "Deprecated API" "api.ts" 42` | Log warning (shows in UI) |
+| `ci::error` | `ci::error "msg" [file] [line]` | `ci::error "Test failed" "test.ts" 15` | Log error (shows in UI) |
+| `ci::notice` | `ci::notice "msg"` | `ci::notice "Build complete"` | Log notice/info |
+| `ci::debug` | `ci::debug "msg"` | `ci::debug "Cache hit"` | Debug message (if debug enabled) |
+
+### PR / Merge Request Info
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `ci::is_pull_request` | `ci::is_pull_request` | `ci::is_pull_request && echo "PR"` | (returns 0 if PR context) |
+| `ci::pr_number` | `ci::pr_number` | `pr=$(ci::pr_number)` | `123` |
+| `ci::pr_branch` | `ci::pr_branch` | `branch=$(ci::pr_branch)` | `feature/my-branch` |
+| `ci::pr_target` | `ci::pr_target` | `target=$(ci::pr_target)` | `main` |
+
+### Git Info in CI
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `ci::commit_sha` | `ci::commit_sha` | `sha=$(ci::commit_sha)` | `abc123def456...` |
+| `ci::commit_short` | `ci::commit_short` | `short=$(ci::commit_short)` | `abc123d` |
+| `ci::branch` | `ci::branch` | `branch=$(ci::branch)` | `main` |
+| `ci::tag` | `ci::tag` | `tag=$(ci::tag)` | `v1.2.3` (or empty) |
+| `ci::is_tag` | `ci::is_tag` | `ci::is_tag && echo "Tag build"` | (returns 0 if tag build) |
+
+### CI Environment
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `ci::runner` | `ci::runner` | `runner=$(ci::runner)` | `ubuntu-latest`, `self-hosted`, etc. |
+| `ci::build_number` | `ci::build_number` | `build=$(ci::build_number)` | `42` |
+| `ci::repository` | `ci::repository` | `repo=$(ci::repository)` | `owner/repo` |
+| `ci::mask_value` | `ci::mask_value "secret"` | `ci::mask_value "$API_KEY"` | Masks value in logs |
+| `ci::cache_key_prefix` | `ci::cache_key_prefix` | `key=$(ci::cache_key_prefix)` | `Linux-build` |
+
+### Quick Patterns (CI)
+
+```bash
+# Detect if running in CI
+if ci_is_ci; then
+    echo "Running in $(ci::name)"
+    echo "Platform: $(ci_platform)"
+fi
+
+# Platform-specific behavior
+if ci_is_github_actions; then
+    echo "GitHub-specific setup"
+elif ci_is_gitlab_ci; then
+    echo "GitLab-specific setup"
+fi
+
+# Get comprehensive CI info as JSON
+info=$(ci_info)
+echo "$info"
+# {"platform":"github","build_id":"12345","build_number":"42","branch":"main",...}
+
+# Portable logging (works across all CI platforms)
+ci::group_start "Running tests"
+npm test
+ci::group_end
+
+# PR-specific logic
+if ci::is_pull_request; then
+    pr=$(ci::pr_number)
+    ci::notice "Processing PR #$pr"
+    ci::warning "PR builds may take longer"
+fi
+
+# Set outputs for subsequent steps (portable)
+ci::set_output "version" "1.2.3"
+ci::set_env "BUILD_VERSION" "1.2.3"
+ci::add_path "/opt/myapp/bin"
+
+# Annotate errors with file locations
+ci::error "Lint failed" "src/app.ts" 42
+ci::warning "Deprecated API usage" "src/api.ts" 100
 ```
 
 ---
@@ -3991,6 +4210,313 @@ cat results.txt | stream_to_usop
 
 ---
 
-*2,100+ functions | 50 libraries | Zero dependencies | 20-72x faster*
+## System Information Functions (sysinfo.sh)
+
+**Purpose**: Cross-platform system information functions. Works on Linux (reads /proc/*, /sys/*) and macOS (uses sysctl, sw_vers). All functions are idempotent.
+
+### CPU Functions
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `cpu_count` | `cpu_count` | `cores=$(cpu_count)` | `8` |
+| `sysinfo_cpu_count` | `sysinfo_cpu_count` | `sysinfo_cpu_count` | `8` |
+| `sysinfo_cpu_model` | `sysinfo_cpu_model` | `sysinfo_cpu_model` | `Intel(R) Core(TM) i7-9750H` |
+| `sysinfo_cpu_usage` | `sysinfo_cpu_usage` | `sysinfo_cpu_usage` | `25` (percentage) |
+| `sysinfo_load` | `sysinfo_load` | `sysinfo_load` | `0.52 0.48 0.45` |
+| `sysinfo_load_1m` | `sysinfo_load_1m` | `sysinfo_load_1m` | `0.52` |
+| `load_average` | `load_average` | `load_average` | `{"1min":0.52,"5min":0.48,"15min":0.45}` |
+
+### Memory Functions
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `memory_total` | `memory_total` | `mem=$(memory_total)` | `17179869184` (bytes) |
+| `memory_available` | `memory_available` | `avail=$(memory_available)` | `8589934592` (bytes) |
+| `memory_usage_percent` | `memory_usage_percent` | `pct=$(memory_usage_percent)` | `50` (0-100) |
+| `sysinfo_mem_total` | `sysinfo_mem_total` | `sysinfo_mem_total` | `17179869184` |
+| `sysinfo_mem_available` | `sysinfo_mem_available` | `sysinfo_mem_available` | `8589934592` |
+| `sysinfo_mem_used` | `sysinfo_mem_used` | `sysinfo_mem_used` | `8589934592` |
+| `sysinfo_mem_usage` | `sysinfo_mem_usage` | `sysinfo_mem_usage` | `50` |
+| `sysinfo_mem_human` | `sysinfo_mem_human` | `sysinfo_mem_human` | `8.0G / 16.0G (50%)` |
+| `sysinfo_swap_total` | `sysinfo_swap_total` | `sysinfo_swap_total` | `2147483648` |
+| `sysinfo_swap_used` | `sysinfo_swap_used` | `sysinfo_swap_used` | `0` |
+| `sysinfo_swap_usage` | `sysinfo_swap_usage` | `sysinfo_swap_usage` | `0` |
+
+### Disk Functions
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `disk_usage` | `disk_usage [path]` | `disk_usage "/"` | `{"total":N,"used":N,"available":N,"percent":N}` |
+| `sysinfo_disk_total` | `sysinfo_disk_total [path]` | `sysinfo_disk_total "/"` | `500107862016` |
+| `sysinfo_disk_free` | `sysinfo_disk_free [path]` | `sysinfo_disk_free "/"` | `250053931008` |
+| `sysinfo_disk_usage` | `sysinfo_disk_usage [path]` | `sysinfo_disk_usage "/"` | `50` |
+
+### OS/System Functions
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `os_name` | `os_name` | `os=$(os_name)` | `linux` or `darwin` |
+| `os_version` | `os_version` | `ver=$(os_version)` | `22.04` or `14.0` |
+| `arch` | `arch` | `arch=$(arch)` | `x86_64` or `arm64` |
+| `hostname_get` | `hostname_get` | `host=$(hostname_get)` | `my-server` |
+| `uptime_seconds` | `uptime_seconds` | `up=$(uptime_seconds)` | `86400` |
+| `sysinfo_os` | `sysinfo_os` | `sysinfo_os` | `linux` |
+| `sysinfo_kernel` | `sysinfo_kernel` | `sysinfo_kernel` | `6.5.0-generic` |
+| `sysinfo_arch` | `sysinfo_arch` | `sysinfo_arch` | `x86_64` |
+| `sysinfo_hostname` | `sysinfo_hostname` | `sysinfo_hostname` | `my-server` |
+| `sysinfo_distro` | `sysinfo_distro` | `sysinfo_distro` | `Ubuntu 22.04.3 LTS` |
+| `sysinfo_uptime` | `sysinfo_uptime` | `sysinfo_uptime` | `86400` |
+| `sysinfo_uptime_human` | `sysinfo_uptime_human` | `sysinfo_uptime_human` | `1d 0h 0m` |
+| `sysinfo_boot_time` | `sysinfo_boot_time` | `sysinfo_boot_time` | `1705276800` (epoch) |
+| `sysinfo_users_logged_in` | `sysinfo_users_logged_in` | `sysinfo_users_logged_in` | `2` |
+
+### Network Functions
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `sysinfo_interfaces` | `sysinfo_interfaces` | `sysinfo_interfaces` | `eth0\nwlan0` |
+| `sysinfo_ip` | `sysinfo_ip "iface"` | `sysinfo_ip "eth0"` | `192.168.1.100` |
+| `sysinfo_ip6` | `sysinfo_ip6 "iface"` | `sysinfo_ip6 "eth0"` | `2001:db8::1` |
+| `sysinfo_mac` | `sysinfo_mac "iface"` | `sysinfo_mac "eth0"` | `00:11:22:33:44:55` |
+| `sysinfo_gateway` | `sysinfo_gateway` | `sysinfo_gateway` | `192.168.1.1` |
+| `sysinfo_dns` | `sysinfo_dns` | `sysinfo_dns` | `8.8.8.8\n8.8.4.4` |
+| `sysinfo_is_up` | `sysinfo_is_up "iface"` | `sysinfo_is_up "eth0"` | (returns 0/1) |
+| `sysinfo_public_ip` | `sysinfo_public_ip` | `sysinfo_public_ip` | `203.0.113.50` |
+| `sysinfo_rx_bytes` | `sysinfo_rx_bytes "iface"` | `sysinfo_rx_bytes "eth0"` | `1073741824` |
+| `sysinfo_tx_bytes` | `sysinfo_tx_bytes "iface"` | `sysinfo_tx_bytes "eth0"` | `536870912` |
+
+### Environment Detection
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `is_root` | `is_root` | `is_root && echo "root"` | (returns 0 if root, 1 if not) |
+| `is_container` | `is_container` | `is_container && echo "containerized"` | (returns 0 if in container) |
+| `is_vm` | `is_vm` | `is_vm && echo "virtualized"` | (returns 0 if VM, 1 if bare metal) |
+
+### Summary Functions
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `system_info` | `system_info` | `system_info` | `{"os":"linux","arch":"x86_64","cpus":8,...}` |
+| `sysinfo_summary` | `sysinfo_summary` | `sysinfo_summary` | `{"os":"linux","distro":"Ubuntu 22.04",...}` |
+| `sysinfo_oneliner` | `sysinfo_oneliner` | `sysinfo_oneliner` | `Ubuntu 22.04 \| 8 cores \| 16.0G \| 250.0G free` |
+
+### Quick Patterns (System Info)
+
+```bash
+# Check system requirements before installation
+if [[ $(cpu_count) -lt 4 ]] || [[ $(memory_total) -lt 8589934592 ]]; then
+    echo "Insufficient resources: need 4+ cores and 8+ GB RAM"
+    exit 1
+fi
+
+# Get disk usage as JSON for AI processing
+disk_json=$(disk_usage "/")
+echo "$disk_json"  # {"total":500107862016,"used":250053931008,...}
+
+# Full system summary for diagnostics
+system_info
+# {"os":"linux","arch":"x86_64","cpus":8,"memory_gb":16,"uptime_seconds":86400,...}
+
+# Check if running in production environment
+if is_container; then
+    echo "Running in container - using container-optimized settings"
+elif is_vm; then
+    echo "Running in VM - using VM-optimized settings"
+else
+    echo "Running on bare metal"
+fi
+
+# Security check
+if is_root; then
+    echo "WARNING: Running as root is not recommended"
+fi
+
+# Get load average as JSON
+load_average
+# {"1min":0.52,"5min":0.48,"15min":0.45}
+```
+
+---
+
+## Cloud Extension Modules (lib/ext/) - OPTIONAL
+
+**Purpose**: Convenience wrappers for cloud CLI tools. These are OPTIONAL modules requiring external CLIs. All output uses USOP JSON format for AI agent consumption.
+
+**Loading**: Extensions are NOT auto-loaded. Source them explicitly:
+
+```bash
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/ext/aws.sh"
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/ext/gcp.sh"
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/ext/k8s.sh"
+```
+
+### AWS (ext/aws.sh)
+
+**Requires**: `aws` CLI (https://aws.amazon.com/cli/)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `aws_available` | `aws_available` | `aws_available && echo "ready"` | (returns 0/1) |
+| `aws_account_id` | `aws_account_id` | `id=$(aws_account_id)` | `123456789012` |
+| `aws_region` | `aws_region` | `region=$(aws_region)` | `us-east-1` |
+| `aws_whoami` | `aws_whoami` | `aws_whoami` | `{"success":true,"data":{"account":"...","arn":"...","region":"..."}}` |
+| `aws_s3_list` | `aws_s3_list [prefix]` | `aws_s3_list "my-"` | `{"success":true,"data":["my-bucket1","my-bucket2"]}` |
+| `aws_s3_cp` | `aws_s3_cp "src" "dst"` | `aws_s3_cp "file.txt" "s3://bucket/"` | `{"success":true,"data":{...}}` |
+| `aws_s3_sync` | `aws_s3_sync "src" "dst" [--delete]` | `aws_s3_sync "./dist" "s3://bucket/"` | `{"success":true,"data":{...}}` |
+| `aws_ec2_list` | `aws_ec2_list [state]` | `aws_ec2_list "running"` | `{"success":true,"data":[{...}]}` |
+| `aws_ec2_start` | `aws_ec2_start "id"` | `aws_ec2_start "i-12345"` | `{"success":true,"data":{...}}` |
+| `aws_ec2_stop` | `aws_ec2_stop "id"` | `aws_ec2_stop "i-12345"` | `{"success":true,"data":{...}}` |
+| `aws_lambda_list` | `aws_lambda_list` | `aws_lambda_list` | `{"success":true,"data":[{...}]}` |
+| `aws_lambda_invoke` | `aws_lambda_invoke "fn" [payload]` | `aws_lambda_invoke "myFunc" '{"key":"val"}'` | `{"success":true,"data":{...}}` |
+
+### GCP (ext/gcp.sh)
+
+**Requires**: `gcloud` CLI (https://cloud.google.com/sdk/gcloud)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `gcp_available` | `gcp_available` | `gcp_available && echo "ready"` | (returns 0/1) |
+| `gcp_project` | `gcp_project` | `project=$(gcp_project)` | `my-project-123` |
+| `gcp_region` | `gcp_region` | `region=$(gcp_region)` | `us-central1` |
+| `gcp_whoami` | `gcp_whoami` | `gcp_whoami` | `{"success":true,"data":{"account":"...","project":"...","region":"..."}}` |
+| `gcp_gcs_list` | `gcp_gcs_list [prefix]` | `gcp_gcs_list "my-"` | `{"success":true,"data":["my-bucket1"]}` |
+| `gcp_gcs_cp` | `gcp_gcs_cp "src" "dst"` | `gcp_gcs_cp "file.txt" "gs://bucket/"` | `{"success":true,"data":{...}}` |
+| `gcp_compute_list` | `gcp_compute_list [zone]` | `gcp_compute_list "us-central1-a"` | `{"success":true,"data":[{...}]}` |
+| `gcp_compute_start` | `gcp_compute_start "name" "zone"` | `gcp_compute_start "vm1" "us-central1-a"` | `{"success":true,"data":{...}}` |
+| `gcp_compute_stop` | `gcp_compute_stop "name" "zone"` | `gcp_compute_stop "vm1" "us-central1-a"` | `{"success":true,"data":{...}}` |
+| `gcp_functions_list` | `gcp_functions_list [region]` | `gcp_functions_list` | `{"success":true,"data":[{...}]}` |
+
+### Kubernetes (ext/k8s.sh)
+
+**Requires**: `kubectl` CLI (https://kubernetes.io/docs/tasks/tools/)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `k8s_available` | `k8s_available` | `k8s_available && echo "ready"` | (returns 0/1) |
+| `k8s_context` | `k8s_context` | `ctx=$(k8s_context)` | `my-cluster-context` |
+| `k8s_namespace` | `k8s_namespace` | `ns=$(k8s_namespace)` | `default` |
+| `k8s_whoami` | `k8s_whoami` | `k8s_whoami` | `{"success":true,"data":{"context":"...","namespace":"...","cluster":"..."}}` |
+| `k8s_contexts` | `k8s_contexts` | `k8s_contexts` | `{"success":true,"data":["ctx1","ctx2"]}` |
+| `k8s_pods` | `k8s_pods [ns] [selector]` | `k8s_pods "default" "app=web"` | `{"success":true,"data":{...}}` |
+| `k8s_pod_logs` | `k8s_pod_logs "pod" [ns] [container] [lines]` | `k8s_pod_logs "web-abc" "default"` | `{"success":true,"data":{...}}` |
+| `k8s_pod_exec` | `k8s_pod_exec "pod" "cmd" [ns] [container]` | `k8s_pod_exec "web-abc" "ls -la"` | `{"success":true,"data":{...}}` |
+| `k8s_deployments` | `k8s_deployments [ns]` | `k8s_deployments "production"` | `{"success":true,"data":{...}}` |
+| `k8s_scale` | `k8s_scale "deploy" replicas [ns]` | `k8s_scale "web" 3 "default"` | `{"success":true,"data":{...}}` |
+| `k8s_restart` | `k8s_restart "deploy" [ns]` | `k8s_restart "web" "default"` | `{"success":true,"data":{...}}` |
+| `k8s_services` | `k8s_services [ns]` | `k8s_services "default"` | `{"success":true,"data":{...}}` |
+| `k8s_service_endpoints` | `k8s_service_endpoints "svc" [ns]` | `k8s_service_endpoints "web"` | `{"success":true,"data":{...}}` |
+| `k8s_configmaps` | `k8s_configmaps [ns]` | `k8s_configmaps "default"` | `{"success":true,"data":{...}}` |
+| `k8s_secrets` | `k8s_secrets [ns]` | `k8s_secrets "default"` | `{"success":true,"data":["secret1","secret2"]}` |
+
+### Quick Patterns (Cloud Extensions)
+
+```bash
+# Check cloud availability before operations
+if aws_available; then
+    echo "AWS CLI configured"
+    aws_whoami
+fi
+
+# List and manage S3 buckets
+aws_s3_list | json_get data | while read -r bucket; do
+    echo "Bucket: $bucket"
+done
+
+# Deploy to Kubernetes
+if k8s_available; then
+    k8s_scale "web-deployment" 5 "production"
+    k8s_restart "web-deployment" "production"
+fi
+
+# GCP Compute operations
+gcp_compute_list "us-central1-a"
+gcp_compute_start "my-vm" "us-central1-a"
+```
+
+---
+
+## BSD/GNU Compatibility Layer (compat.sh)
+
+**Purpose**: Cross-platform compatibility for macOS (BSD) and Linux (GNU). Provides portable wrappers (`p*` functions) that use GNU tools when available, ensuring scripts work identically on all platforms.
+
+### OS Detection
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `is_mac` | `is_mac` | `is_mac && echo "macOS"` | (returns 0/1) |
+| `has_gnu_coreutils` | `has_gnu_coreutils` | `has_gnu_coreutils && echo "GNU tools"` | (returns 0/1) |
+| `compat::get_os` | `compat::get_os` | `os=$(compat::get_os)` | `macos`, `linux`, `wsl`, etc. |
+| `compat::get_os_family` | `compat::get_os_family` | `family=$(compat::get_os_family)` | `bsd`, `gnu`, `unknown` |
+| `compat::is_macos` | `compat::is_macos` | `compat::is_macos && echo "macOS"` | (returns 0/1) |
+| `compat::is_linux` | `compat::is_linux` | `compat::is_linux && echo "Linux"` | (returns 0/1) |
+| `compat::is_bsd` | `compat::is_bsd` | `compat::is_bsd && echo "BSD"` | (returns 0/1) |
+| `compat::is_wsl` | `compat::is_wsl` | `compat::is_wsl && echo "WSL"` | (returns 0/1) |
+
+### Portable Tool Wrappers (p* namespace)
+
+| Function | Signature | Example | Notes |
+|----------|-----------|---------|-------|
+| `psed` | `psed 'expr' [file]` | `psed 's/old/new/g' f.txt` | GNU sed features |
+| `psed_i` | `psed_i 'expr' file` | `psed_i 's/old/new/' f.txt` | In-place edit |
+| `pawk` | `pawk 'prog' [file]` | `pawk '{print $2}' f.txt` | gawk on Mac |
+| `pgrep` | `pgrep 'pat' [file]` | `pgrep -E 'a\|b' f.txt` | ggrep on Mac |
+| `pfind` | `pfind path [opts]` | `pfind . -name "*.sh"` | gfind on Mac |
+| `pxargs` | `pxargs [opts] cmd` | `pxargs echo` | gxargs on Mac |
+| `pdate` | `pdate [opts]` | `pdate +%Y-%m-%d` | GNU date features |
+| `pstat` | `pstat [opts] file` | `pstat file.txt` | gstat on Mac |
+| `pstat_size` | `pstat_size file` | `pstat_size f.txt` | File size bytes |
+| `pstat_mtime` | `pstat_mtime file` | `pstat_mtime f.txt` | Mod time (Unix) |
+| `preadlink_f` | `preadlink_f path` | `preadlink_f ./f` | Canonical path |
+| `pmktemp` | `pmktemp [opts]` | `pmktemp` | gmktemp on Mac |
+| `psort` | `psort [opts]` | `psort -n f.txt` | gsort on Mac |
+| `psort_version` | `psort_version` | `psort_version` | Version sort |
+| `phead` | `phead [opts] [file]` | `phead -n 10 f.txt` | ghead on Mac |
+| `ptail` | `ptail [opts] [file]` | `ptail -n 20 f.txt` | gtail on Mac |
+| `pbase64_encode` | `pbase64_encode [str]` | `pbase64_encode "hi"` | `aGk=` |
+| `pbase64_decode` | `pbase64_decode [str]` | `pbase64_decode "aGk="` | `hi` |
+| `pmd5sum` | `pmd5sum [file]` | `pmd5sum f.txt` | MD5 hash |
+| `psha256sum` | `psha256sum [file]` | `psha256sum f.txt` | SHA-256 hash |
+| `pcut` | `pcut [opts]` | `pcut -d: -f2` | gcut on Mac |
+| `ptr` | `ptr [opts]` | `ptr A-Z a-z` | gtr on Mac |
+
+### Compatibility Utilities
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `compat_check` | `compat_check` | `compat_check` | JSON tool status |
+| `compat_status` | `compat_status` | `compat_status` | Human-readable |
+| `compat_install_gnu_tools` | `compat_install_gnu_tools` | `compat_install_gnu_tools` | Brew install (macOS) |
+| `compat::info` | `compat::info` | `compat::info` | Full compat info |
+
+### Quick Patterns (Compatibility)
+
+```bash
+# Portable script for macOS and Linux
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+
+# Use p* functions - works on both platforms
+psed 's/old/new/g' config.txt
+files=$(pfind . -name "*.sh" -type f)
+pdate +%Y-%m-%d
+
+# Check platform
+if is_mac && ! has_gnu_coreutils; then
+    echo "Tip: brew install coreutils gnu-sed"
+fi
+
+# Portable file stats
+size=$(pstat_size "file.txt")
+mtime=$(pstat_mtime "file.txt")
+abs_path=$(preadlink_f "relative/path")
+
+# Portable checksums
+md5=$(pmd5sum "file.txt")
+sha256=$(psha256sum "file.txt")
+```
+
+---
+
+*2,100+ functions | 50+ libraries | Zero dependencies | 20-72x faster*
 
 **YO JOE!**

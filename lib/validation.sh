@@ -847,3 +847,223 @@ validate_base64() {
     # Length must be multiple of 4
     [[ "$value" =~ ^[A-Za-z0-9+/]*={0,2}$ ]] && (( ${#value} % 4 == 0 ))
 }
+
+# =============================================================================
+# REGEX CONSTANTS
+# =============================================================================
+# Pre-defined regex patterns for common validation scenarios.
+# Inspired by DevOps-Bash-tools. Use with regex_match() or [[ =~ ]].
+# =============================================================================
+
+# Email validation (RFC 5322 simplified)
+readonly REGEX_EMAIL='^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+
+# Domain name (RFC 1123)
+readonly REGEX_DOMAIN='^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+
+# IPv4 address
+readonly REGEX_IPV4='^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'
+
+# IPv6 address (simplified - full 8 groups without compression)
+readonly REGEX_IPV6='^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$'
+
+# URL (http/https)
+readonly REGEX_URL='^https?://[a-zA-Z0-9.-]+(/[a-zA-Z0-9._~:/?#@!$&()*+,;=-]*)?$'
+
+# Semantic version (MAJOR.MINOR.PATCH with optional prerelease and build)
+readonly REGEX_SEMVER='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$'
+
+# UUID v4
+readonly REGEX_UUID='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+
+# UUID (any version)
+readonly REGEX_UUID_ANY='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+
+# Git commit hash (short or long)
+readonly REGEX_GIT_HASH='^[0-9a-fA-F]{7,40}$'
+
+# MAC address (colon-separated)
+readonly REGEX_MAC='^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$'
+
+# MAC address (colon or hyphen separated)
+readonly REGEX_MAC_ANY='^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$'
+
+# Phone number (E.164 international format)
+readonly REGEX_PHONE='^[+][1-9][0-9]{1,14}$'
+
+# Credit card (basic digit count, no Luhn check)
+readonly REGEX_CREDIT_CARD='^[0-9]{13,19}$'
+
+# ISO date (YYYY-MM-DD)
+readonly REGEX_ISO_DATE='^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
+
+# ISO datetime (YYYY-MM-DDTHH:MM:SS with optional timezone)
+readonly REGEX_ISO_DATETIME='^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](Z|[+-][0-9]{2}:[0-9]{2})?$'
+
+# Hexadecimal string
+readonly REGEX_HEX='^[0-9a-fA-F]+$'
+
+# Alphanumeric string
+readonly REGEX_ALNUM='^[a-zA-Z0-9]+$'
+
+# Alphanumeric with underscore
+readonly REGEX_ALNUM_UNDERSCORE='^[a-zA-Z0-9_]+$'
+
+# Slug (URL-safe identifier)
+readonly REGEX_SLUG='^[a-z0-9]+(-[a-z0-9]+)*$'
+
+# Port number (1-65535)
+readonly REGEX_PORT='^([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$'
+
+# CIDR notation (IPv4)
+readonly REGEX_CIDR='^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)/([0-9]|[12][0-9]|3[0-2])$'
+
+# Base64 encoded string
+readonly REGEX_BASE64='^[A-Za-z0-9+/]*={0,2}$'
+
+# JSON Web Token (JWT)
+readonly REGEX_JWT='^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$'
+
+# AWS ARN
+readonly REGEX_AWS_ARN='^arn:aws:[a-zA-Z0-9-]+:[a-zA-Z0-9-]*:[0-9]*:[a-zA-Z0-9:/_-]+$'
+
+# Docker image name (with optional tag)
+readonly REGEX_DOCKER_IMAGE='^[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*(:[a-zA-Z0-9._-]+)?$'
+
+# Environment variable name
+readonly REGEX_ENV_VAR='^[A-Za-z_][A-Za-z0-9_]*$'
+
+# Unix username
+readonly REGEX_UNIX_USER='^[a-z_][a-z0-9_-]*[$]?$'
+
+# =============================================================================
+# REGEX HELPER FUNCTIONS
+# =============================================================================
+
+# @idempotent Match string against named regex constant
+# @param $1 - regex name (email, domain, ipv4, ipv6, url, semver, uuid, uuid_v4,
+#             git_hash, mac, phone, credit_card, iso_date, iso_datetime, hex,
+#             alnum, slug, port, cidr, base64, jwt, aws_arn, docker_image,
+#             env_var, unix_user)
+# @param $2 - string to match
+# @return 0 if match, 1 if not, 2 if unknown regex name
+# @example regex_match email "user@example.com" && echo "valid"
+regex_match() {
+    local regex_name="${1:-}"
+    local value="${2:-}"
+
+    [[ -z "$regex_name" ]] && return 2
+    [[ -z "$value" ]] && return 1
+
+    local pattern
+    case "${regex_name,,}" in
+        email)          pattern="$REGEX_EMAIL" ;;
+        domain)         pattern="$REGEX_DOMAIN" ;;
+        ipv4)           pattern="$REGEX_IPV4" ;;
+        ipv6)           pattern="$REGEX_IPV6" ;;
+        url)            pattern="$REGEX_URL" ;;
+        semver)         pattern="$REGEX_SEMVER" ;;
+        uuid)           pattern="$REGEX_UUID_ANY" ;;
+        uuid_v4)        pattern="$REGEX_UUID" ;;
+        git_hash)       pattern="$REGEX_GIT_HASH" ;;
+        mac)            pattern="$REGEX_MAC_ANY" ;;
+        phone)          pattern="$REGEX_PHONE" ;;
+        credit_card)    pattern="$REGEX_CREDIT_CARD" ;;
+        iso_date)       pattern="$REGEX_ISO_DATE" ;;
+        iso_datetime)   pattern="$REGEX_ISO_DATETIME" ;;
+        hex)            pattern="$REGEX_HEX" ;;
+        alnum)          pattern="$REGEX_ALNUM" ;;
+        alnum_underscore) pattern="$REGEX_ALNUM_UNDERSCORE" ;;
+        slug)           pattern="$REGEX_SLUG" ;;
+        port)           pattern="$REGEX_PORT" ;;
+        cidr)           pattern="$REGEX_CIDR" ;;
+        base64)         pattern="$REGEX_BASE64" ;;
+        jwt)            pattern="$REGEX_JWT" ;;
+        aws_arn)        pattern="$REGEX_AWS_ARN" ;;
+        docker_image)   pattern="$REGEX_DOCKER_IMAGE" ;;
+        env_var)        pattern="$REGEX_ENV_VAR" ;;
+        unix_user)      pattern="$REGEX_UNIX_USER" ;;
+        *)              return 2 ;;  # Unknown regex name
+    esac
+
+    [[ "$value" =~ $pattern ]]
+}
+
+# @idempotent List all available regex patterns with descriptions
+# @return Prints list of regex names and descriptions to stdout
+# @example regex_list
+regex_list() {
+    cat <<'EOF'
+Available regex patterns for use with regex_match():
+
+  email           - Email address (RFC 5322 simplified)
+  domain          - Domain name (RFC 1123)
+  ipv4            - IPv4 address (0.0.0.0 - 255.255.255.255)
+  ipv6            - IPv6 address (full 8 groups, no compression)
+  url             - HTTP/HTTPS URL
+  semver          - Semantic version (MAJOR.MINOR.PATCH)
+  uuid            - UUID (any version)
+  uuid_v4         - UUID version 4 specifically
+  git_hash        - Git commit hash (7-40 hex chars)
+  mac             - MAC address (colon or hyphen separated)
+  phone           - Phone number (E.164 format: +1234567890)
+  credit_card     - Credit card number (13-19 digits)
+  iso_date        - ISO date (YYYY-MM-DD)
+  iso_datetime    - ISO datetime (YYYY-MM-DDTHH:MM:SS with optional TZ)
+  hex             - Hexadecimal string
+  alnum           - Alphanumeric string (a-zA-Z0-9)
+  alnum_underscore - Alphanumeric with underscore
+  slug            - URL-safe slug (lowercase-with-dashes)
+  port            - Port number (1-65535)
+  cidr            - CIDR notation (IPv4)
+  base64          - Base64 encoded string
+  jwt             - JSON Web Token
+  aws_arn         - AWS ARN
+  docker_image    - Docker image name (with optional tag)
+  env_var         - Environment variable name
+  unix_user       - Unix username
+
+Usage: regex_match <pattern_name> <value>
+       [[ "$value" =~ $REGEX_EMAIL ]]
+EOF
+}
+
+# @idempotent Get the raw regex pattern by name
+# @param $1 - regex name (same as regex_match)
+# @return Prints the regex pattern to stdout, returns 1 if unknown
+# @example pattern=$(regex_get email); [[ "$input" =~ $pattern ]]
+regex_get() {
+    local regex_name="${1:-}"
+
+    [[ -z "$regex_name" ]] && return 1
+
+    case "${regex_name,,}" in
+        email)          printf '%s\n' "$REGEX_EMAIL" ;;
+        domain)         printf '%s\n' "$REGEX_DOMAIN" ;;
+        ipv4)           printf '%s\n' "$REGEX_IPV4" ;;
+        ipv6)           printf '%s\n' "$REGEX_IPV6" ;;
+        url)            printf '%s\n' "$REGEX_URL" ;;
+        semver)         printf '%s\n' "$REGEX_SEMVER" ;;
+        uuid)           printf '%s\n' "$REGEX_UUID_ANY" ;;
+        uuid_v4)        printf '%s\n' "$REGEX_UUID" ;;
+        git_hash)       printf '%s\n' "$REGEX_GIT_HASH" ;;
+        mac)            printf '%s\n' "$REGEX_MAC_ANY" ;;
+        phone)          printf '%s\n' "$REGEX_PHONE" ;;
+        credit_card)    printf '%s\n' "$REGEX_CREDIT_CARD" ;;
+        iso_date)       printf '%s\n' "$REGEX_ISO_DATE" ;;
+        iso_datetime)   printf '%s\n' "$REGEX_ISO_DATETIME" ;;
+        hex)            printf '%s\n' "$REGEX_HEX" ;;
+        alnum)          printf '%s\n' "$REGEX_ALNUM" ;;
+        alnum_underscore) printf '%s\n' "$REGEX_ALNUM_UNDERSCORE" ;;
+        slug)           printf '%s\n' "$REGEX_SLUG" ;;
+        port)           printf '%s\n' "$REGEX_PORT" ;;
+        cidr)           printf '%s\n' "$REGEX_CIDR" ;;
+        base64)         printf '%s\n' "$REGEX_BASE64" ;;
+        jwt)            printf '%s\n' "$REGEX_JWT" ;;
+        aws_arn)        printf '%s\n' "$REGEX_AWS_ARN" ;;
+        docker_image)   printf '%s\n' "$REGEX_DOCKER_IMAGE" ;;
+        env_var)        printf '%s\n' "$REGEX_ENV_VAR" ;;
+        unix_user)      printf '%s\n' "$REGEX_UNIX_USER" ;;
+        *)              return 1 ;;
+    esac
+}

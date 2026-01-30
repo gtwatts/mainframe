@@ -402,3 +402,340 @@ sysinfo_oneliner() {
     disk_free=$(_sysinfo_bytes_human "$(sysinfo_disk_free /)")
     printf "%s | %s cores | %s | %s free\n" "$distro" "$cores" "$mem_total" "$disk_free"
 }
+
+# =============================================================================
+# ENVIRONMENT DETECTION
+# =============================================================================
+
+# @idempotent Check if running as root
+# @return 0 if root, 1 if not
+is_root() {
+    [[ "${EUID:-$(id -u)}" -eq 0 ]]
+}
+
+# @idempotent Check if running in a container
+# @return 0 if container, 1 if not
+is_container() {
+    # Check for Docker
+    if [[ -f /.dockerenv ]]; then
+        return 0
+    fi
+
+    # Check cgroup for docker/lxc/containerd
+    if [[ -f /proc/1/cgroup ]]; then
+        if grep -qE '(docker|lxc|containerd|kubepods|libpod)' /proc/1/cgroup 2>/dev/null; then
+            return 0
+        fi
+    fi
+
+    # Check for container environment variables
+    if [[ -n "${container:-}" || -n "${KUBERNETES_SERVICE_HOST:-}" ]]; then
+        return 0
+    fi
+
+    # Check /proc/1/environ for container runtime
+    if [[ -r /proc/1/environ ]]; then
+        if tr '\0' '\n' < /proc/1/environ 2>/dev/null | grep -qE '^container=' ; then
+            return 0
+        fi
+    fi
+
+    # Check for systemd-nspawn
+    if [[ -d /run/systemd/container ]]; then
+        return 0
+    fi
+
+    return 1
+}
+
+# @idempotent Check if running in a virtual machine
+# @return 0 if VM, 1 if bare metal (best effort detection)
+is_vm() {
+    # Check systemd-detect-virt first (most reliable)
+    if command -v systemd-detect-virt &>/dev/null; then
+        local virt
+        virt=$(systemd-detect-virt 2>/dev/null)
+        if [[ "$virt" != "none" && -n "$virt" ]]; then
+            return 0
+        fi
+    fi
+
+    # Check DMI/SMBIOS data on Linux
+    if _sysinfo_is_linux; then
+        # Check product name for common VM vendors
+        if [[ -r /sys/class/dmi/id/product_name ]]; then
+            local product
+            product=$(cat /sys/class/dmi/id/product_name 2>/dev/null)
+            case "$product" in
+                *VirtualBox*|*VMware*|*QEMU*|*KVM*|*Bochs*|*Parallels*|*Xen*|*HVM*|*Microsoft*Virtual*|*Virtual*)
+                    return 0
+                    ;;
+            esac
+        fi
+
+        # Check sys_vendor
+        if [[ -r /sys/class/dmi/id/sys_vendor ]]; then
+            local vendor
+            vendor=$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null)
+            case "$vendor" in
+                *VMware*|*innotek*|*QEMU*|*Xen*|*Bochs*|*Parallels*|*Microsoft*|*Amazon*EC2*|*Google*)
+                    return 0
+                    ;;
+            esac
+        fi
+
+        # Check for hypervisor flag in cpuinfo
+        if grep -q '^flags.*hypervisor' /proc/cpuinfo 2>/dev/null; then
+            return 0
+        fi
+
+        # Check for Xen
+        if [[ -d /proc/xen ]] || [[ -f /sys/hypervisor/type ]]; then
+            return 0
+        fi
+    fi
+
+    # macOS: check for VM by model identifier
+    if _sysinfo_is_macos; then
+        local model
+        model=$(sysctl -n hw.model 2>/dev/null)
+        case "$model" in
+            *VMware*|*VirtualBox*|*Parallels*)
+                return 0
+                ;;
+        esac
+
+        # Check for virtualization via sysctl
+        if sysctl -n machdep.cpu.features 2>/dev/null | grep -qi 'VMX'; then
+            # Has VMX but check if itself is virtualized
+            if system_profiler SPHardwareDataType 2>/dev/null | grep -qi 'VMware\|Parallels\|VirtualBox'; then
+                return 0
+            fi
+        fi
+    fi
+
+    return 1
+}
+
+# =============================================================================
+# SPECIFICATION-COMPLIANT ALIASES
+# =============================================================================
+# These functions match the specification interface exactly
+
+# @idempotent Get CPU count (cores)
+# Works on Linux, macOS, BSD
+# @return Number of CPU cores
+cpu_count() {
+    sysinfo_cpu_count
+}
+
+# @idempotent Get total memory in bytes
+# @return Memory in bytes
+memory_total() {
+    sysinfo_mem_total
+}
+
+# @idempotent Get available memory in bytes
+# @return Available memory in bytes
+memory_available() {
+    sysinfo_mem_available
+}
+
+# @idempotent Get memory usage as percentage
+# @return Percentage (0-100)
+memory_usage_percent() {
+    sysinfo_mem_usage
+}
+
+# @idempotent Get disk usage for path
+# @param $1 - path (default: /)
+# @return {"total":N,"used":N,"available":N,"percent":N}
+disk_usage() {
+    local path="${1:-/}"
+    local total used available percent
+
+    if _sysinfo_is_macos; then
+        # macOS df -B1 not available, use different approach
+        local df_output
+        df_output=$(df -k "$path" 2>/dev/null | awk 'NR==2{print $2,$3,$4,$5}')
+        read -r total used available percent <<< "$df_output"
+        # Convert from KB to bytes
+        total=$(( total * 1024 ))
+        used=$(( used * 1024 ))
+        available=$(( available * 1024 ))
+        percent="${percent%\%}"
+    else
+        total=$(df -B1 "$path" 2>/dev/null | awk 'NR==2{print $2}')
+        used=$(df -B1 "$path" 2>/dev/null | awk 'NR==2{print $3}')
+        available=$(df -B1 "$path" 2>/dev/null | awk 'NR==2{print $4}')
+        percent=$(df "$path" 2>/dev/null | awk 'NR==2{gsub(/%/,""); print $5}')
+    fi
+
+    printf '{"total":%s,"used":%s,"available":%s,"percent":%s}\n' \
+        "${total:-0}" "${used:-0}" "${available:-0}" "${percent:-0}"
+}
+
+# @idempotent Get OS name
+# @return "linux", "darwin", "freebsd", etc.
+os_name() {
+    sysinfo_os
+}
+
+# @idempotent Get OS version
+# @return Version string
+os_version() {
+    if _sysinfo_is_linux; then
+        # Try to get version from os-release
+        if [[ -f /etc/os-release ]]; then
+            (source /etc/os-release 2>/dev/null && echo "${VERSION_ID:-${VERSION:-unknown}}")
+        else
+            uname -r 2>/dev/null
+        fi
+    elif _sysinfo_is_macos; then
+        sw_vers -productVersion 2>/dev/null
+    else
+        uname -r 2>/dev/null
+    fi
+}
+
+# @idempotent Get architecture
+# @return "x86_64", "arm64", etc.
+arch() {
+    sysinfo_arch
+}
+
+# @idempotent Get hostname
+# @return Hostname string
+hostname_get() {
+    sysinfo_hostname
+}
+
+# @idempotent Get system uptime in seconds
+# @return Seconds since boot
+uptime_seconds() {
+    sysinfo_uptime
+}
+
+# @idempotent Get load average
+# @return {"1min":N,"5min":N,"15min":N}
+load_average() {
+    local load_str l1 l5 l15
+
+    if _sysinfo_is_linux; then
+        read -r l1 l5 l15 _ < /proc/loadavg 2>/dev/null
+    elif _sysinfo_is_macos; then
+        load_str=$(sysctl -n vm.loadavg 2>/dev/null | tr -d '{}')
+        read -r l1 l5 l15 <<< "$load_str"
+    else
+        echo '{"1min":0,"5min":0,"15min":0}'
+        return 1
+    fi
+
+    printf '{"1min":%s,"5min":%s,"15min":%s}\n' \
+        "${l1:-0}" "${l5:-0}" "${l15:-0}"
+}
+
+# @idempotent Full system summary as JSON
+# @return {"os":"linux","arch":"x86_64","cpus":8,"memory_gb":16,...}
+system_info() {
+    local os_val arch_val cpus mem_bytes mem_gb uptime_val hostname_val
+    local kernel_val is_root_val is_container_val is_vm_val
+
+    os_val=$(os_name)
+    arch_val=$(arch)
+    cpus=$(cpu_count)
+    mem_bytes=$(memory_total)
+    # Convert bytes to GB with integer math (divide by 1073741824)
+    mem_gb=$(( mem_bytes / 1073741824 ))
+    uptime_val=$(uptime_seconds)
+    hostname_val=$(hostname_get)
+    kernel_val=$(sysinfo_kernel)
+
+    # Boolean checks
+    is_root_val="false"
+    is_root && is_root_val="true"
+
+    is_container_val="false"
+    is_container && is_container_val="true"
+
+    is_vm_val="false"
+    is_vm && is_vm_val="true"
+
+    printf '{"os":"%s","arch":"%s","cpus":%s,"memory_gb":%s,"memory_bytes":%s,"uptime_seconds":%s,"hostname":"%s","kernel":"%s","is_root":%s,"is_container":%s,"is_vm":%s}\n' \
+        "$os_val" "$arch_val" "${cpus:-0}" "${mem_gb:-0}" "${mem_bytes:-0}" \
+        "${uptime_val:-0}" "$hostname_val" "$kernel_val" \
+        "$is_root_val" "$is_container_val" "$is_vm_val"
+}
+
+# =============================================================================
+# MODULE EXPORTS
+# =============================================================================
+
+MAINFRAME_SYSINFO_EXPORTS=(
+    # Internal helpers (prefixed)
+    _sysinfo_is_linux
+    _sysinfo_is_macos
+    _sysinfo_read_proc
+    _sysinfo_bytes_human
+    _sysinfo_meminfo_kb
+    # CPU
+    sysinfo_cpu_count
+    sysinfo_cpu_model
+    sysinfo_cpu_usage
+    sysinfo_load
+    sysinfo_load_1m
+    # Memory
+    sysinfo_mem_total
+    sysinfo_mem_available
+    sysinfo_mem_used
+    sysinfo_mem_usage
+    sysinfo_swap_total
+    sysinfo_swap_used
+    sysinfo_swap_usage
+    sysinfo_mem_human
+    # Network
+    sysinfo_interfaces
+    sysinfo_ip
+    sysinfo_ip6
+    sysinfo_mac
+    sysinfo_gateway
+    sysinfo_dns
+    sysinfo_is_up
+    sysinfo_public_ip
+    sysinfo_rx_bytes
+    sysinfo_tx_bytes
+    # OS/System
+    sysinfo_os
+    sysinfo_kernel
+    sysinfo_arch
+    sysinfo_hostname
+    sysinfo_distro
+    sysinfo_uptime
+    sysinfo_uptime_human
+    sysinfo_boot_time
+    sysinfo_users_logged_in
+    # Disk
+    sysinfo_disk_total
+    sysinfo_disk_free
+    sysinfo_disk_usage
+    # Summary
+    sysinfo_summary
+    sysinfo_oneliner
+    # Environment detection
+    is_root
+    is_container
+    is_vm
+    # Specification-compliant aliases
+    cpu_count
+    memory_total
+    memory_available
+    memory_usage_percent
+    disk_usage
+    os_name
+    os_version
+    arch
+    hostname_get
+    uptime_seconds
+    load_average
+    system_info
+)

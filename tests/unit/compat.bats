@@ -1,0 +1,569 @@
+#!/usr/bin/env bats
+# =============================================================================
+# MAINFRAME/tests/unit/compat.bats - Tests for BSD/GNU Compatibility Layer
+# =============================================================================
+# Tests the portable wrapper functions (p* namespace) and OS detection
+# These tests verify correct behavior on both Linux and macOS (BSD)
+# =============================================================================
+
+# Setup - load MAINFRAME
+setup() {
+    # Load BATS helpers if available
+    if [[ -f "$BATS_TEST_DIRNAME/../bats-support/load.bash" ]]; then
+        load "$BATS_TEST_DIRNAME/../bats-support/load.bash"
+    fi
+    if [[ -f "$BATS_TEST_DIRNAME/../bats-assert/load.bash" ]]; then
+        load "$BATS_TEST_DIRNAME/../bats-assert/load.bash"
+    fi
+
+    # Source MAINFRAME
+    MAINFRAME_ROOT="${BATS_TEST_DIRNAME}/../.."
+    source "$MAINFRAME_ROOT/lib/common.sh"
+
+    # Create temp directory for test files
+    TEST_TMPDIR=$(mktemp -d)
+}
+
+teardown() {
+    # Clean up temp files
+    [[ -d "$TEST_TMPDIR" ]] && rm -rf "$TEST_TMPDIR"
+}
+
+# =============================================================================
+# OS DETECTION TESTS
+# =============================================================================
+
+@test "is_mac returns correct value for current platform" {
+    # This test validates the function works without error
+    run is_mac
+    # Exit code should be 0 (true) on macOS, 1 (false) otherwise
+    [[ "$status" -eq 0 || "$status" -eq 1 ]]
+}
+
+@test "compat::get_os returns a valid OS name" {
+    run compat::get_os
+    [[ "$status" -eq 0 ]]
+    # Should return one of the known OS values
+    [[ "$output" =~ ^(macos|linux|wsl|freebsd|openbsd|netbsd|windows|unknown)$ ]]
+}
+
+@test "compat::get_os_family returns bsd or gnu" {
+    run compat::get_os_family
+    [[ "$status" -eq 0 ]]
+    [[ "$output" =~ ^(bsd|gnu|unknown)$ ]]
+}
+
+@test "compat::is_linux returns true on Linux" {
+    if [[ "$(uname -s)" == "Linux" ]]; then
+        run compat::is_linux
+        [[ "$status" -eq 0 ]]
+    else
+        skip "Not running on Linux"
+    fi
+}
+
+@test "compat::is_macos returns true on macOS" {
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        run compat::is_macos
+        [[ "$status" -eq 0 ]]
+    else
+        skip "Not running on macOS"
+    fi
+}
+
+@test "has_gnu_coreutils returns true on Linux" {
+    if [[ "$(uname -s)" == "Linux" ]]; then
+        run has_gnu_coreutils
+        [[ "$status" -eq 0 ]]
+    else
+        skip "Not running on Linux - test depends on platform"
+    fi
+}
+
+# =============================================================================
+# PORTABLE SED TESTS
+# =============================================================================
+
+@test "psed performs basic substitution" {
+    echo "hello world" > "$TEST_TMPDIR/test.txt"
+    run psed 's/world/universe/' "$TEST_TMPDIR/test.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "hello universe" ]]
+}
+
+@test "psed works with stdin" {
+    run bash -c 'echo "hello world" | psed "s/world/universe/"'
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "hello universe" ]]
+}
+
+@test "psed handles extended regex with -E" {
+    run bash -c 'echo "foo123bar" | psed -E "s/[0-9]+/_/"'
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "foo_bar" ]]
+}
+
+@test "psed global substitution works" {
+    run bash -c 'echo "aaa" | psed "s/a/b/g"'
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "bbb" ]]
+}
+
+# =============================================================================
+# PORTABLE AWK TESTS
+# =============================================================================
+
+@test "pawk extracts fields" {
+    run bash -c 'echo "a b c" | pawk "{print \$2}"'
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "b" ]]
+}
+
+@test "pawk handles custom field separator" {
+    run bash -c 'echo "a:b:c" | pawk -F: "{print \$2}"'
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "b" ]]
+}
+
+@test "pawk performs calculations" {
+    run bash -c 'echo -e "1\n2\n3" | pawk "{sum+=\$1} END {print sum}"'
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "6" ]]
+}
+
+# =============================================================================
+# PORTABLE GREP TESTS
+# =============================================================================
+
+@test "pgrep finds matching lines" {
+    echo -e "apple\nbanana\napricot" > "$TEST_TMPDIR/test.txt"
+    run pgrep "ap" "$TEST_TMPDIR/test.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "${lines[0]}" == "apple" ]]
+    [[ "${lines[1]}" == "apricot" ]]
+}
+
+@test "pgrep with -E extended regex" {
+    run bash -c 'echo -e "cat\ndog\nrat" | pgrep -E "cat|rat"'
+    [[ "$status" -eq 0 ]]
+    [[ "${lines[0]}" == "cat" ]]
+    [[ "${lines[1]}" == "rat" ]]
+}
+
+@test "pgrep with -v inverts match" {
+    run bash -c 'echo -e "apple\nbanana\napricot" | pgrep -v "ap"'
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "banana" ]]
+}
+
+@test "pgrep returns 1 when no match" {
+    run bash -c 'echo "hello" | pgrep "xyz"'
+    [[ "$status" -eq 1 ]]
+}
+
+# =============================================================================
+# PORTABLE FIND TESTS
+# =============================================================================
+
+@test "pfind locates files by name" {
+    mkdir -p "$TEST_TMPDIR/subdir"
+    touch "$TEST_TMPDIR/file.txt"
+    touch "$TEST_TMPDIR/subdir/other.txt"
+
+    run pfind "$TEST_TMPDIR" -name "*.txt" -type f
+    [[ "$status" -eq 0 ]]
+    [[ "$output" =~ "file.txt" ]]
+    [[ "$output" =~ "other.txt" ]]
+}
+
+@test "pfind with -type d finds directories" {
+    mkdir -p "$TEST_TMPDIR/subdir1" "$TEST_TMPDIR/subdir2"
+
+    run pfind "$TEST_TMPDIR" -type d -name "subdir*"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" =~ "subdir1" ]]
+    [[ "$output" =~ "subdir2" ]]
+}
+
+# =============================================================================
+# PORTABLE XARGS TESTS
+# =============================================================================
+
+@test "pxargs processes input" {
+    run bash -c 'echo -e "a\nb\nc" | pxargs echo'
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "a b c" ]]
+}
+
+@test "pxargs_null handles null-delimited input" {
+    run bash -c 'printf "a\0b\0c" | pxargs_null echo'
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "a b c" ]]
+}
+
+# =============================================================================
+# PORTABLE DATE TESTS
+# =============================================================================
+
+@test "pdate outputs current date" {
+    run pdate +%Y-%m-%d
+    [[ "$status" -eq 0 ]]
+    # Should match YYYY-MM-DD format
+    [[ "$output" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
+}
+
+@test "pdate_from_epoch converts timestamp" {
+    # Unix epoch for 2021-01-01 00:00:00 UTC
+    run pdate_from_epoch 1609459200 '%Y-%m-%d'
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "2021-01-01" ]]
+}
+
+# =============================================================================
+# PORTABLE STAT TESTS
+# =============================================================================
+
+@test "pstat_size returns file size" {
+    echo "hello" > "$TEST_TMPDIR/test.txt"
+    run pstat_size "$TEST_TMPDIR/test.txt"
+    [[ "$status" -eq 0 ]]
+    # "hello\n" is 6 bytes
+    [[ "$output" == "6" ]]
+}
+
+@test "pstat_mtime returns modification time" {
+    touch "$TEST_TMPDIR/test.txt"
+    run pstat_mtime "$TEST_TMPDIR/test.txt"
+    [[ "$status" -eq 0 ]]
+    # Should be a valid Unix timestamp (roughly current time)
+    [[ "$output" =~ ^[0-9]+$ ]]
+    # Timestamp should be recent (within last hour)
+    local now=$(date +%s)
+    local diff=$((now - output))
+    [[ $diff -ge 0 && $diff -lt 3600 ]]
+}
+
+@test "pstat_perms returns octal permissions" {
+    touch "$TEST_TMPDIR/test.txt"
+    chmod 644 "$TEST_TMPDIR/test.txt"
+    run pstat_perms "$TEST_TMPDIR/test.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "644" ]]
+}
+
+# =============================================================================
+# PORTABLE READLINK TESTS
+# =============================================================================
+
+@test "preadlink_f resolves symlinks" {
+    touch "$TEST_TMPDIR/original.txt"
+    ln -s "$TEST_TMPDIR/original.txt" "$TEST_TMPDIR/link.txt"
+
+    run preadlink_f "$TEST_TMPDIR/link.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "$TEST_TMPDIR/original.txt" ]]
+}
+
+@test "preadlink_f handles relative paths" {
+    local original_dir="$PWD"
+    cd "$TEST_TMPDIR"
+    touch "file.txt"
+
+    run preadlink_f "file.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "$TEST_TMPDIR/file.txt" ]]
+
+    cd "$original_dir"
+}
+
+# =============================================================================
+# PORTABLE MKTEMP TESTS
+# =============================================================================
+
+@test "pmktemp creates temporary file" {
+    run pmktemp
+    [[ "$status" -eq 0 ]]
+    [[ -f "$output" ]]
+    rm -f "$output"
+}
+
+@test "pmktemp_d creates temporary directory" {
+    run pmktemp_d
+    [[ "$status" -eq 0 ]]
+    [[ -d "$output" ]]
+    rmdir "$output"
+}
+
+# =============================================================================
+# PORTABLE SORT TESTS
+# =============================================================================
+
+@test "psort sorts lines alphabetically" {
+    run bash -c 'echo -e "banana\napple\ncherry" | psort'
+    [[ "$status" -eq 0 ]]
+    [[ "${lines[0]}" == "apple" ]]
+    [[ "${lines[1]}" == "banana" ]]
+    [[ "${lines[2]}" == "cherry" ]]
+}
+
+@test "psort with -n sorts numerically" {
+    run bash -c 'echo -e "10\n2\n1" | psort -n'
+    [[ "$status" -eq 0 ]]
+    [[ "${lines[0]}" == "1" ]]
+    [[ "${lines[1]}" == "2" ]]
+    [[ "${lines[2]}" == "10" ]]
+}
+
+@test "psort_version sorts version numbers" {
+    run bash -c 'echo -e "1.10\n1.2\n1.1" | psort_version'
+    [[ "$status" -eq 0 ]]
+    [[ "${lines[0]}" == "1.1" ]]
+    [[ "${lines[1]}" == "1.2" ]]
+    [[ "${lines[2]}" == "1.10" ]]
+}
+
+# =============================================================================
+# PORTABLE HEAD/TAIL TESTS
+# =============================================================================
+
+@test "phead returns first n lines" {
+    run bash -c 'echo -e "1\n2\n3\n4\n5" | phead -n 3'
+    [[ "$status" -eq 0 ]]
+    [[ "${#lines[@]}" -eq 3 ]]
+    [[ "${lines[0]}" == "1" ]]
+    [[ "${lines[2]}" == "3" ]]
+}
+
+@test "ptail returns last n lines" {
+    run bash -c 'echo -e "1\n2\n3\n4\n5" | ptail -n 2'
+    [[ "$status" -eq 0 ]]
+    [[ "${#lines[@]}" -eq 2 ]]
+    [[ "${lines[0]}" == "4" ]]
+    [[ "${lines[1]}" == "5" ]]
+}
+
+# =============================================================================
+# PORTABLE BASE64 TESTS
+# =============================================================================
+
+@test "pbase64_encode encodes text" {
+    run pbase64_encode "hello"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "aGVsbG8=" ]]
+}
+
+@test "pbase64_decode decodes text" {
+    run pbase64_decode "aGVsbG8="
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "hello" ]]
+}
+
+@test "pbase64 roundtrip preserves data" {
+    local original="Hello, World! 123 @#\$%"
+    local encoded=$(pbase64_encode "$original")
+    run pbase64_decode "$encoded"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "$original" ]]
+}
+
+# =============================================================================
+# PORTABLE CHECKSUM TESTS
+# =============================================================================
+
+@test "pmd5sum produces consistent hash" {
+    # Known MD5 hash for "hello"
+    run bash -c 'echo -n "hello" | pmd5sum'
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "5d41402abc4b2a76b9719d911017c592" ]]
+}
+
+@test "psha256sum produces consistent hash" {
+    # Known SHA256 hash for "hello"
+    run bash -c 'echo -n "hello" | psha256sum'
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824" ]]
+}
+
+@test "pmd5sum on file matches expected" {
+    echo -n "hello" > "$TEST_TMPDIR/test.txt"
+    run pmd5sum "$TEST_TMPDIR/test.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "5d41402abc4b2a76b9719d911017c592" ]]
+}
+
+# =============================================================================
+# PORTABLE UTILITY TESTS
+# =============================================================================
+
+@test "pcut extracts fields" {
+    run bash -c 'echo "a:b:c" | pcut -d: -f2'
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "b" ]]
+}
+
+@test "ptr translates characters" {
+    run bash -c 'echo "HELLO" | ptr "[:upper:]" "[:lower:]"'
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "hello" ]]
+}
+
+@test "pwc counts lines" {
+    echo -e "line1\nline2\nline3" > "$TEST_TMPDIR/test.txt"
+    run pwc -l "$TEST_TMPDIR/test.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" =~ "3" ]]
+}
+
+@test "puniq removes duplicates" {
+    run bash -c 'echo -e "a\na\nb\nb\nc" | puniq'
+    [[ "$status" -eq 0 ]]
+    [[ "${lines[0]}" == "a" ]]
+    [[ "${lines[1]}" == "b" ]]
+    [[ "${lines[2]}" == "c" ]]
+}
+
+@test "pbasename extracts filename" {
+    run pbasename "/path/to/file.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "file.txt" ]]
+}
+
+@test "pdirname extracts directory" {
+    run pdirname "/path/to/file.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "/path/to" ]]
+}
+
+# =============================================================================
+# COMPAT CHECK TESTS
+# =============================================================================
+
+@test "compat_check returns valid JSON" {
+    run compat_check
+    [[ "$status" -eq 0 ]]
+    # Should start with { and end with }
+    [[ "$output" =~ ^\{.*\}$ ]]
+    # Should contain expected keys
+    [[ "$output" =~ \"os\": ]]
+    [[ "$output" =~ \"tools\": ]]
+}
+
+@test "compat_status produces readable output" {
+    run compat_status
+    [[ "$status" -eq 0 ]]
+    # Should contain header
+    [[ "$output" =~ "Portable Tools Status" ]]
+    # Should list OS
+    [[ "$output" =~ "OS:" ]]
+    # Should list tools
+    [[ "$output" =~ "gsed" ]]
+}
+
+# =============================================================================
+# COMPAT::SED WRAPPER TESTS (existing functions)
+# =============================================================================
+
+@test "compat::sed_inplace modifies file in place" {
+    echo "hello world" > "$TEST_TMPDIR/test.txt"
+    compat::sed_inplace "$TEST_TMPDIR/test.txt" 's/world/universe/'
+    run cat "$TEST_TMPDIR/test.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "hello universe" ]]
+}
+
+@test "compat::sed_extended uses ERE" {
+    run bash -c 'echo "foo123bar" | compat::sed_extended "s/[0-9]+/_/"'
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "foo_bar" ]]
+}
+
+# =============================================================================
+# COMPAT::DATE WRAPPER TESTS (existing functions)
+# =============================================================================
+
+@test "compat::date_format formats timestamp" {
+    # Test with known timestamp
+    run compat::date_format '%Y' 1609459200
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "2021" ]]
+}
+
+@test "compat::date_add_days adds days" {
+    local base=1609459200  # 2021-01-01
+    run compat::date_add_days 1 $base
+    [[ "$status" -eq 0 ]]
+    # Should be 1609545600 (2021-01-02)
+    [[ "$output" == "1609545600" ]]
+}
+
+# =============================================================================
+# COMPAT::STAT WRAPPER TESTS (existing functions)
+# =============================================================================
+
+@test "compat::stat_size matches pstat_size" {
+    echo "test content" > "$TEST_TMPDIR/test.txt"
+    local size1=$(compat::stat_size "$TEST_TMPDIR/test.txt")
+    local size2=$(pstat_size "$TEST_TMPDIR/test.txt")
+    [[ "$size1" == "$size2" ]]
+}
+
+@test "compat::stat_owner returns username" {
+    touch "$TEST_TMPDIR/test.txt"
+    run compat::stat_owner "$TEST_TMPDIR/test.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "$(whoami)" ]]
+}
+
+# =============================================================================
+# BASH VERSION DETECTION TESTS
+# =============================================================================
+
+@test "BASH_HAS_ASSOC_ARRAYS is set correctly" {
+    # Should be 1 since MAINFRAME requires bash 4.0+
+    [[ "$BASH_HAS_ASSOC_ARRAYS" == "1" ]]
+}
+
+@test "bash version feature flags are consistent" {
+    # If we have namerefs (4.3+), we also have assoc arrays (4.0+)
+    if [[ "$BASH_HAS_NAMEREFS" == "1" ]]; then
+        [[ "$BASH_HAS_ASSOC_ARRAYS" == "1" ]]
+    fi
+
+    # If we have EPOCHREALTIME (5.0+), we also have namerefs (4.3+)
+    if [[ "$BASH_HAS_EPOCHREALTIME" == "1" ]]; then
+        [[ "$BASH_HAS_NAMEREFS" == "1" ]]
+    fi
+}
+
+# =============================================================================
+# EDGE CASE TESTS
+# =============================================================================
+
+@test "psed handles empty input" {
+    run bash -c 'echo "" | psed "s/foo/bar/"'
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "" ]]
+}
+
+@test "pgrep handles special characters in pattern" {
+    echo "hello.world" > "$TEST_TMPDIR/test.txt"
+    run pgrep -F "hello.world" "$TEST_TMPDIR/test.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "hello.world" ]]
+}
+
+@test "pstat functions handle spaces in filenames" {
+    touch "$TEST_TMPDIR/file with spaces.txt"
+    run pstat_size "$TEST_TMPDIR/file with spaces.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "0" ]]
+}
+
+@test "pfind handles spaces in directory names" {
+    mkdir -p "$TEST_TMPDIR/dir with spaces"
+    touch "$TEST_TMPDIR/dir with spaces/test.txt"
+
+    run pfind "$TEST_TMPDIR/dir with spaces" -name "*.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" =~ "test.txt" ]]
+}

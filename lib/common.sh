@@ -573,7 +573,7 @@ _MAINFRAME_TIER_STANDARD=(
     validation path env datetime http csv
     git docker crypto proc args config
     log error tui template ci health
-    device sysinfo service retry
+    device sysinfo service retry download
     toml yaml collection queue regex
     bun
 )
@@ -789,6 +789,7 @@ else
     _mainframe_load_library "sysinfo"
     _mainframe_load_library "service"
     _mainframe_load_library "retry"
+    _mainframe_load_library "download"
     _mainframe_load_library "toml"
     _mainframe_load_library "yaml"
     _mainframe_load_library "collection"
@@ -1128,4 +1129,19 @@ BASHER_COMMON_EXPORTS=(
     stream_count stream_any stream_all stream_none stream_find
     stream_take_while stream_drop_while stream_group_by stream_enumerate stream_zip
     stream_to_usop stream_from_usop stream_stats stream_compose stream_tap
+    # Download Helper (from download.sh) - Universal download with fallback chain
+    download_backend download download_stdout download_progress
+    download_batch download_resume download_verify download_extract
+    # CI/CD Platform Detection (from ci.sh) - 17 CI platform detectors
+    ci_is_ci ci_platform ci_info
+    ci_is_github_actions ci_is_gitlab_ci ci_is_jenkins ci_is_buildkite
+    ci_is_bitbucket ci_is_teamcity ci_is_circleci ci_is_travis ci_is_appveyor
+    ci_is_azure_pipelines ci_is_aws_codebuild ci_is_gcp_cloud_build
+    ci_is_drone ci_is_semaphore ci_is_buddy ci_is_woodpecker ci_is_gitea_actions
+    ci::is_ci ci::detect ci::name ci::set_output ci::set_env ci::add_path
+    ci::group_start ci::group_end ci::warning ci::error ci::notice ci::debug
+    ci::artifact_checksum ci::artifact_create ci::is_pull_request ci::pr_number
+    ci::pr_branch ci::pr_target ci::commit_sha ci::commit_short ci::branch
+    ci::tag ci::is_tag ci::runner ci::build_number ci::repository ci::mask_value
+    ci::cache_key_prefix
 )

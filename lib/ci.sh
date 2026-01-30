@@ -2,8 +2,11 @@
 # =============================================================================
 # MAINFRAME/lib/ci.sh - CI/CD Portability Functions
 # =============================================================================
-# Description: Cross-platform CI/CD detection and helpers for GitHub Actions,
-#              GitLab CI, Jenkins, CircleCI, Travis CI, and Azure Pipelines
+# Description: Cross-platform CI/CD detection and helpers for 17 CI platforms:
+#              GitHub Actions, GitLab CI, Jenkins, CircleCI, Travis CI, Azure
+#              Pipelines, BuildKite, Bitbucket Pipelines, TeamCity, AppVeyor,
+#              AWS CodeBuild, Google Cloud Build, Drone CI, Semaphore CI,
+#              Buddy, Woodpecker CI, and Gitea Actions.
 # Dependency: None (pure bash)
 # =============================================================================
 # "Mainframe can make a computer do anything short of tap dance."
@@ -21,7 +24,9 @@ readonly _MAINFRAME_CI_LOADED=1
 declare -g _CI_PLATFORM=""
 
 # Detect the current CI platform
-# Returns: github, gitlab, jenkins, circleci, travis, azure, none
+# Returns: github, gitlab, jenkins, circleci, travis, azure, buildkite, bitbucket,
+#          teamcity, appveyor, codebuild, cloudbuild, drone, semaphore, buddy,
+#          woodpecker, gitea, none
 _ci_detect_platform() {
     # Return cached result if available
     if [[ -n "$_CI_PLATFORM" ]]; then
@@ -36,7 +41,7 @@ _ci_detect_platform() {
     elif [[ -n "${GITLAB_CI:-}" ]]; then
         _CI_PLATFORM="gitlab"
     # Jenkins
-    elif [[ -n "${JENKINS_URL:-}" || -n "${BUILD_ID:-}" && -n "${JOB_NAME:-}" ]]; then
+    elif [[ -n "${JENKINS_URL:-}" ]] || { [[ -n "${BUILD_ID:-}" ]] && [[ -n "${JOB_NAME:-}" ]]; }; then
         _CI_PLATFORM="jenkins"
     # CircleCI
     elif [[ -n "${CIRCLECI:-}" ]]; then
@@ -45,14 +50,407 @@ _ci_detect_platform() {
     elif [[ -n "${TRAVIS:-}" ]]; then
         _CI_PLATFORM="travis"
     # Azure Pipelines
-    elif [[ -n "${TF_BUILD:-}" || -n "${AZURE_PIPELINES:-}" ]]; then
+    elif [[ -n "${TF_BUILD:-}" ]] || [[ -n "${AZURE_PIPELINES:-}" ]]; then
         _CI_PLATFORM="azure"
+    # BuildKite
+    elif [[ "${BUILDKITE:-}" == "true" ]]; then
+        _CI_PLATFORM="buildkite"
+    # Bitbucket Pipelines
+    elif [[ -n "${BITBUCKET_BUILD_NUMBER:-}" ]]; then
+        _CI_PLATFORM="bitbucket"
+    # TeamCity
+    elif [[ -n "${TEAMCITY_VERSION:-}" ]]; then
+        _CI_PLATFORM="teamcity"
+    # AppVeyor
+    elif [[ "${APPVEYOR:-}" == "True" ]] || [[ "${APPVEYOR:-}" == "true" ]]; then
+        _CI_PLATFORM="appveyor"
+    # AWS CodeBuild
+    elif [[ -n "${CODEBUILD_BUILD_ID:-}" ]]; then
+        _CI_PLATFORM="codebuild"
+    # Google Cloud Build
+    elif [[ -n "${CLOUD_BUILD_ID:-}" ]] || [[ -n "${BUILD_ID:-}" && -n "${PROJECT_ID:-}" && -z "${JENKINS_URL:-}" ]]; then
+        _CI_PLATFORM="cloudbuild"
+    # Drone CI
+    elif [[ "${DRONE:-}" == "true" ]]; then
+        _CI_PLATFORM="drone"
+    # Semaphore CI
+    elif [[ "${SEMAPHORE:-}" == "true" ]]; then
+        _CI_PLATFORM="semaphore"
+    # Buddy
+    elif [[ "${BUDDY:-}" == "true" ]]; then
+        _CI_PLATFORM="buddy"
+    # Woodpecker CI (check CI_REPO with woodpecker-specific marker)
+    elif [[ -n "${CI_REPO:-}" ]] && [[ -n "${CI_SYSTEM_HOST:-}" ]] && [[ -z "${DRONE:-}" ]]; then
+        _CI_PLATFORM="woodpecker"
+    # Gitea Actions
+    elif [[ "${GITEA_ACTIONS:-}" == "true" ]]; then
+        _CI_PLATFORM="gitea"
+    # Generic CI detection (fallback)
+    elif [[ "${CI:-}" == "true" ]]; then
+        _CI_PLATFORM="generic"
     # Not in CI
     else
         _CI_PLATFORM="none"
     fi
 
     printf '%s\n' "$_CI_PLATFORM"
+}
+
+# =============================================================================
+# INDIVIDUAL PLATFORM DETECTORS
+# =============================================================================
+
+# @idempotent Detect if running in GitHub Actions
+# @return 0 if in GitHub Actions, 1 if not
+ci_is_github_actions() {
+    [[ -n "${GITHUB_ACTIONS:-}" ]]
+}
+
+# @idempotent Detect if running in GitLab CI
+# @return 0 if in GitLab CI, 1 if not
+ci_is_gitlab_ci() {
+    [[ -n "${GITLAB_CI:-}" ]]
+}
+
+# @idempotent Detect if running in Jenkins
+# @return 0 if in Jenkins, 1 if not
+ci_is_jenkins() {
+    [[ -n "${JENKINS_URL:-}" ]] || { [[ -n "${BUILD_ID:-}" ]] && [[ -n "${JOB_NAME:-}" ]]; }
+}
+
+# @idempotent Detect if running in BuildKite
+# @return 0 if in BuildKite, 1 if not
+ci_is_buildkite() {
+    [[ "${BUILDKITE:-}" == "true" ]]
+}
+
+# @idempotent Detect if running in Bitbucket Pipelines
+# @return 0 if in Bitbucket Pipelines, 1 if not
+ci_is_bitbucket() {
+    [[ -n "${BITBUCKET_BUILD_NUMBER:-}" ]]
+}
+
+# @idempotent Detect if running in TeamCity
+# @return 0 if in TeamCity, 1 if not
+ci_is_teamcity() {
+    [[ -n "${TEAMCITY_VERSION:-}" ]]
+}
+
+# @idempotent Detect if running in CircleCI
+# @return 0 if in CircleCI, 1 if not
+ci_is_circleci() {
+    [[ -n "${CIRCLECI:-}" ]]
+}
+
+# @idempotent Detect if running in Travis CI
+# @return 0 if in Travis CI, 1 if not
+ci_is_travis() {
+    [[ -n "${TRAVIS:-}" ]]
+}
+
+# @idempotent Detect if running in AppVeyor
+# @return 0 if in AppVeyor, 1 if not
+ci_is_appveyor() {
+    [[ "${APPVEYOR:-}" == "True" ]] || [[ "${APPVEYOR:-}" == "true" ]]
+}
+
+# @idempotent Detect if running in Azure Pipelines
+# @return 0 if in Azure Pipelines, 1 if not
+ci_is_azure_pipelines() {
+    [[ -n "${TF_BUILD:-}" ]] || [[ -n "${AZURE_PIPELINES:-}" ]]
+}
+
+# @idempotent Detect if running in AWS CodeBuild
+# @return 0 if in AWS CodeBuild, 1 if not
+ci_is_aws_codebuild() {
+    [[ -n "${CODEBUILD_BUILD_ID:-}" ]]
+}
+
+# @idempotent Detect if running in Google Cloud Build
+# @return 0 if in GCP Cloud Build, 1 if not
+ci_is_gcp_cloud_build() {
+    [[ -n "${CLOUD_BUILD_ID:-}" ]] || { [[ -n "${BUILD_ID:-}" ]] && [[ -n "${PROJECT_ID:-}" ]] && [[ -z "${JENKINS_URL:-}" ]]; }
+}
+
+# @idempotent Detect if running in Drone CI
+# @return 0 if in Drone CI, 1 if not
+ci_is_drone() {
+    [[ "${DRONE:-}" == "true" ]]
+}
+
+# @idempotent Detect if running in Semaphore CI
+# @return 0 if in Semaphore CI, 1 if not
+ci_is_semaphore() {
+    [[ "${SEMAPHORE:-}" == "true" ]]
+}
+
+# @idempotent Detect if running in Buddy
+# @return 0 if in Buddy, 1 if not
+ci_is_buddy() {
+    [[ "${BUDDY:-}" == "true" ]]
+}
+
+# @idempotent Detect if running in Woodpecker CI
+# @return 0 if in Woodpecker CI, 1 if not
+ci_is_woodpecker() {
+    [[ -n "${CI_REPO:-}" ]] && [[ -n "${CI_SYSTEM_HOST:-}" ]] && [[ -z "${DRONE:-}" ]]
+}
+
+# @idempotent Detect if running in Gitea Actions
+# @return 0 if in Gitea Actions, 1 if not
+ci_is_gitea_actions() {
+    [[ "${GITEA_ACTIONS:-}" == "true" ]]
+}
+
+# =============================================================================
+# UNIVERSAL CI DETECTION FUNCTIONS
+# =============================================================================
+
+# @idempotent Detect if running in ANY CI environment
+# @return 0 if in CI, 1 if not
+ci_is_ci() {
+    local platform
+    platform=$(_ci_detect_platform)
+    [[ "$platform" != "none" ]]
+}
+
+# @idempotent Get CI platform name
+# @return Platform name (lowercase identifier) or "unknown" if not in CI
+ci_platform() {
+    local platform
+    platform=$(_ci_detect_platform)
+    if [[ "$platform" == "none" ]]; then
+        printf 'unknown\n'
+    else
+        printf '%s\n' "$platform"
+    fi
+}
+
+# @idempotent Get CI-specific variables as JSON
+# @return {"platform":"github","build_id":"123","branch":"main",...}
+ci_info() {
+    local platform
+    platform=$(_ci_detect_platform)
+
+    local build_id=""
+    local build_number=""
+    local branch=""
+    local commit=""
+    local pr_number=""
+    local repo=""
+    local job_name=""
+    local runner=""
+
+    case "$platform" in
+        github)
+            build_id="${GITHUB_RUN_ID:-}"
+            build_number="${GITHUB_RUN_NUMBER:-}"
+            branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+            commit="${GITHUB_SHA:-}"
+            pr_number=""
+            [[ "${GITHUB_REF:-}" =~ refs/pull/([0-9]+) ]] && pr_number="${BASH_REMATCH[1]}"
+            repo="${GITHUB_REPOSITORY:-}"
+            job_name="${GITHUB_JOB:-}"
+            runner="${RUNNER_NAME:-${RUNNER_OS:-}}"
+            ;;
+        gitlab)
+            build_id="${CI_PIPELINE_ID:-}"
+            build_number="${CI_PIPELINE_IID:-}"
+            branch="${CI_COMMIT_REF_NAME:-}"
+            commit="${CI_COMMIT_SHA:-}"
+            pr_number="${CI_MERGE_REQUEST_IID:-}"
+            repo="${CI_PROJECT_PATH:-}"
+            job_name="${CI_JOB_NAME:-}"
+            runner="${CI_RUNNER_DESCRIPTION:-}"
+            ;;
+        jenkins)
+            build_id="${BUILD_ID:-}"
+            build_number="${BUILD_NUMBER:-}"
+            branch="${GIT_BRANCH:-${BRANCH_NAME:-}}"
+            commit="${GIT_COMMIT:-}"
+            pr_number="${CHANGE_ID:-${ghprbPullId:-}}"
+            repo=""
+            job_name="${JOB_NAME:-}"
+            runner="${NODE_NAME:-}"
+            ;;
+        buildkite)
+            build_id="${BUILDKITE_BUILD_ID:-}"
+            build_number="${BUILDKITE_BUILD_NUMBER:-}"
+            branch="${BUILDKITE_BRANCH:-}"
+            commit="${BUILDKITE_COMMIT:-}"
+            pr_number="${BUILDKITE_PULL_REQUEST:-}"
+            [[ "$pr_number" == "false" ]] && pr_number=""
+            repo="${BUILDKITE_REPO:-}"
+            job_name="${BUILDKITE_LABEL:-}"
+            runner="${BUILDKITE_AGENT_NAME:-}"
+            ;;
+        bitbucket)
+            build_id="${BITBUCKET_PIPELINE_UUID:-}"
+            build_number="${BITBUCKET_BUILD_NUMBER:-}"
+            branch="${BITBUCKET_BRANCH:-}"
+            commit="${BITBUCKET_COMMIT:-}"
+            pr_number="${BITBUCKET_PR_ID:-}"
+            repo="${BITBUCKET_REPO_FULL_NAME:-}"
+            job_name="${BITBUCKET_STEP_UUID:-}"
+            runner=""
+            ;;
+        teamcity)
+            build_id="${BUILD_VCS_NUMBER:-}"
+            build_number="${BUILD_NUMBER:-}"
+            branch="${BRANCH_NAME:-}"
+            commit="${BUILD_VCS_NUMBER:-}"
+            pr_number=""
+            repo=""
+            job_name="${TEAMCITY_BUILDCONF_NAME:-}"
+            runner="${AGENT_NAME:-}"
+            ;;
+        circleci)
+            build_id="${CIRCLE_WORKFLOW_ID:-}"
+            build_number="${CIRCLE_BUILD_NUM:-}"
+            branch="${CIRCLE_BRANCH:-}"
+            commit="${CIRCLE_SHA1:-}"
+            pr_number="${CIRCLE_PULL_REQUEST##*/}"
+            repo="${CIRCLE_PROJECT_USERNAME:-}/${CIRCLE_PROJECT_REPONAME:-}"
+            job_name="${CIRCLE_JOB:-}"
+            runner="${CIRCLE_NODE_INDEX:-0}/${CIRCLE_NODE_TOTAL:-1}"
+            ;;
+        travis)
+            build_id="${TRAVIS_BUILD_ID:-}"
+            build_number="${TRAVIS_BUILD_NUMBER:-}"
+            branch="${TRAVIS_BRANCH:-}"
+            commit="${TRAVIS_COMMIT:-}"
+            pr_number="${TRAVIS_PULL_REQUEST:-}"
+            [[ "$pr_number" == "false" ]] && pr_number=""
+            repo="${TRAVIS_REPO_SLUG:-}"
+            job_name="${TRAVIS_JOB_NAME:-}"
+            runner=""
+            ;;
+        appveyor)
+            build_id="${APPVEYOR_BUILD_ID:-}"
+            build_number="${APPVEYOR_BUILD_NUMBER:-}"
+            branch="${APPVEYOR_REPO_BRANCH:-}"
+            commit="${APPVEYOR_REPO_COMMIT:-}"
+            pr_number="${APPVEYOR_PULL_REQUEST_NUMBER:-}"
+            repo="${APPVEYOR_REPO_NAME:-}"
+            job_name="${APPVEYOR_JOB_NAME:-}"
+            runner=""
+            ;;
+        azure)
+            build_id="${BUILD_BUILDID:-}"
+            build_number="${BUILD_BUILDNUMBER:-}"
+            branch="${BUILD_SOURCEBRANCH#refs/heads/}"
+            commit="${BUILD_SOURCEVERSION:-}"
+            pr_number="${SYSTEM_PULLREQUEST_PULLREQUESTID:-}"
+            repo="${BUILD_REPOSITORY_NAME:-}"
+            job_name="${SYSTEM_JOBNAME:-}"
+            runner="${AGENT_NAME:-}"
+            ;;
+        codebuild)
+            build_id="${CODEBUILD_BUILD_ID:-}"
+            build_number="${CODEBUILD_BUILD_NUMBER:-}"
+            branch="${CODEBUILD_SOURCE_VERSION:-}"
+            commit="${CODEBUILD_RESOLVED_SOURCE_VERSION:-}"
+            pr_number=""
+            repo="${CODEBUILD_SOURCE_REPO_URL:-}"
+            job_name="${CODEBUILD_BUILD_ID:-}"
+            runner=""
+            ;;
+        cloudbuild)
+            build_id="${BUILD_ID:-}"
+            build_number=""
+            branch="${BRANCH_NAME:-}"
+            commit="${COMMIT_SHA:-}"
+            pr_number=""
+            repo="${REPO_NAME:-}"
+            job_name="${TRIGGER_NAME:-}"
+            runner=""
+            ;;
+        drone)
+            build_id="${DRONE_BUILD_NUMBER:-}"
+            build_number="${DRONE_BUILD_NUMBER:-}"
+            branch="${DRONE_BRANCH:-}"
+            commit="${DRONE_COMMIT_SHA:-}"
+            pr_number="${DRONE_PULL_REQUEST:-}"
+            repo="${DRONE_REPO:-}"
+            job_name="${DRONE_STAGE_NAME:-}"
+            runner="${DRONE_RUNNER_HOST:-}"
+            ;;
+        semaphore)
+            build_id="${SEMAPHORE_WORKFLOW_ID:-}"
+            build_number="${SEMAPHORE_WORKFLOW_NUMBER:-}"
+            branch="${SEMAPHORE_GIT_BRANCH:-}"
+            commit="${SEMAPHORE_GIT_SHA:-}"
+            pr_number="${SEMAPHORE_GIT_PR_NUMBER:-}"
+            repo="${SEMAPHORE_GIT_URL:-}"
+            job_name="${SEMAPHORE_JOB_NAME:-}"
+            runner="${SEMAPHORE_AGENT_MACHINE_TYPE:-}"
+            ;;
+        buddy)
+            build_id="${BUDDY_EXECUTION_ID:-}"
+            build_number="${BUDDY_EXECUTION_ID:-}"
+            branch="${BUDDY_EXECUTION_BRANCH:-}"
+            commit="${BUDDY_EXECUTION_REVISION:-}"
+            pr_number="${BUDDY_EXECUTION_PULL_REQUEST_ID:-}"
+            repo="${BUDDY_REPO_SLUG:-}"
+            job_name="${BUDDY_PIPELINE_NAME:-}"
+            runner=""
+            ;;
+        woodpecker)
+            build_id="${CI_BUILD_NUMBER:-}"
+            build_number="${CI_BUILD_NUMBER:-}"
+            branch="${CI_COMMIT_BRANCH:-}"
+            commit="${CI_COMMIT_SHA:-}"
+            pr_number="${CI_COMMIT_PULL_REQUEST:-}"
+            repo="${CI_REPO:-}"
+            job_name="${CI_STEP_NAME:-}"
+            runner="${CI_MACHINE:-}"
+            ;;
+        gitea)
+            build_id="${GITEA_RUN_ID:-}"
+            build_number="${GITEA_RUN_NUMBER:-}"
+            branch="${GITEA_REF_NAME:-}"
+            commit="${GITEA_SHA:-}"
+            pr_number=""
+            repo="${GITEA_REPOSITORY:-}"
+            job_name="${GITEA_JOB:-}"
+            runner="${GITEA_RUNNER_NAME:-}"
+            ;;
+        generic)
+            # Generic CI - try common env vars
+            build_id="${CI_BUILD_ID:-${BUILD_ID:-}}"
+            build_number="${CI_BUILD_NUMBER:-${BUILD_NUMBER:-}}"
+            branch="${CI_BRANCH:-${BRANCH_NAME:-}}"
+            commit="${CI_COMMIT:-${GIT_COMMIT:-}}"
+            pr_number=""
+            repo=""
+            job_name="${CI_JOB_NAME:-${JOB_NAME:-}}"
+            runner=""
+            ;;
+    esac
+
+    # Build JSON output using json_object if available, otherwise manual construction
+    if declare -f json_object &>/dev/null; then
+        json_object \
+            "platform=${platform}" \
+            "build_id=${build_id}" \
+            "build_number=${build_number}" \
+            "branch=${branch}" \
+            "commit=${commit}" \
+            "pr_number=${pr_number}" \
+            "repository=${repo}" \
+            "job_name=${job_name}" \
+            "runner=${runner}"
+    else
+        # Manual JSON construction for standalone usage
+        printf '{"platform":"%s","build_id":"%s","build_number":"%s","branch":"%s","commit":"%s","pr_number":"%s","repository":"%s","job_name":"%s","runner":"%s"}\n' \
+            "$platform" "$build_id" "$build_number" "$branch" "$commit" "$pr_number" "$repo" "$job_name" "$runner"
+    fi
+}
+
+# Reset cached platform (useful for testing)
+# @internal
+_ci_reset_cache() {
+    _CI_PLATFORM=""
 }
 
 # =============================================================================
@@ -83,14 +481,26 @@ ci::name() {
     platform=$(_ci_detect_platform)
 
     case "$platform" in
-        github)   printf 'GitHub Actions\n' ;;
-        gitlab)   printf 'GitLab CI\n' ;;
-        jenkins)  printf 'Jenkins\n' ;;
-        circleci) printf 'CircleCI\n' ;;
-        travis)   printf 'Travis CI\n' ;;
-        azure)    printf 'Azure Pipelines\n' ;;
-        none)     printf 'Local\n' ;;
-        *)        printf 'Unknown\n' ;;
+        github)     printf 'GitHub Actions\n' ;;
+        gitlab)     printf 'GitLab CI\n' ;;
+        jenkins)    printf 'Jenkins\n' ;;
+        circleci)   printf 'CircleCI\n' ;;
+        travis)     printf 'Travis CI\n' ;;
+        azure)      printf 'Azure Pipelines\n' ;;
+        buildkite)  printf 'BuildKite\n' ;;
+        bitbucket)  printf 'Bitbucket Pipelines\n' ;;
+        teamcity)   printf 'TeamCity\n' ;;
+        appveyor)   printf 'AppVeyor\n' ;;
+        codebuild)  printf 'AWS CodeBuild\n' ;;
+        cloudbuild) printf 'Google Cloud Build\n' ;;
+        drone)      printf 'Drone CI\n' ;;
+        semaphore)  printf 'Semaphore CI\n' ;;
+        buddy)      printf 'Buddy\n' ;;
+        woodpecker) printf 'Woodpecker CI\n' ;;
+        gitea)      printf 'Gitea Actions\n' ;;
+        generic)    printf 'CI (Generic)\n' ;;
+        none)       printf 'Local\n' ;;
+        *)          printf 'Unknown\n' ;;
     esac
 }
 
@@ -940,7 +1350,29 @@ ci::cache_key_prefix() {
 
 # shellcheck disable=SC2034  # MAINFRAME_CI_EXPORTS is used by mainframe loader
 MAINFRAME_CI_EXPORTS=(
-    # Detection
+    # Universal Detection (underscore style)
+    ci_is_ci
+    ci_platform
+    ci_info
+    # Individual Platform Detectors
+    ci_is_github_actions
+    ci_is_gitlab_ci
+    ci_is_jenkins
+    ci_is_buildkite
+    ci_is_bitbucket
+    ci_is_teamcity
+    ci_is_circleci
+    ci_is_travis
+    ci_is_appveyor
+    ci_is_azure_pipelines
+    ci_is_aws_codebuild
+    ci_is_gcp_cloud_build
+    ci_is_drone
+    ci_is_semaphore
+    ci_is_buddy
+    ci_is_woodpecker
+    ci_is_gitea_actions
+    # Legacy Detection (namespaced style)
     ci::is_ci
     ci::detect
     ci::name

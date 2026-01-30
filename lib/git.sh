@@ -451,3 +451,310 @@ git_config_exists() {
 git_version() {
     git --version 2>/dev/null | awk '{print $3}'
 }
+
+# =============================================================================
+# REMOTE & PROVIDER INFO (Enhanced)
+# =============================================================================
+
+# @idempotent Get repository name from remote URL
+# @return Repository name (e.g., "mainframe" from github.com/user/mainframe)
+# Usage: name=$(git_repo_name)
+git_repo_name() {
+    local url
+    url=$(git_remote_url 2>/dev/null) || return 1
+    [[ -z "$url" ]] && return 1
+
+    # Extract repo name from URL patterns:
+    # https://github.com/owner/repo.git -> repo
+    # git@github.com:owner/repo.git -> repo
+    # https://github.com/owner/repo -> repo
+    local name
+    name="${url##*/}"         # Get last path component
+    name="${name%.git}"       # Remove .git suffix
+    printf '%s\n' "$name"
+}
+
+# @idempotent Get full remote URL
+# @param $1 - remote name (default: origin)
+# @return Full URL (https or git@)
+# Usage: url=$(git_repo_url)
+# Usage: url=$(git_repo_url upstream)
+git_repo_url() {
+    local remote="${1:-origin}"
+    git remote get-url "$remote" 2>/dev/null
+}
+
+# @idempotent Get current branch tracking remote
+# @return Remote branch name (e.g., "origin/main")
+# Usage: upstream=$(git_upstream_branch)
+git_upstream_branch() {
+    git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null
+}
+
+# @idempotent Get GitHub/GitLab/Bitbucket provider
+# @return "github", "gitlab", "bitbucket", "azure", "codeberg", "unknown"
+# Usage: provider=$(git_provider)
+git_provider() {
+    local url
+    url=$(git_remote_url 2>/dev/null) || {
+        printf 'unknown\n'
+        return 1
+    }
+    [[ -z "$url" ]] && { printf 'unknown\n'; return 1; }
+
+    # Normalize URL for comparison
+    local lower_url
+    lower_url="${url,,}"  # Lowercase
+
+    case "$lower_url" in
+        *github.com*)     printf 'github\n' ;;
+        *gitlab.com*)     printf 'gitlab\n' ;;
+        *bitbucket.org*)  printf 'bitbucket\n' ;;
+        *dev.azure.com*|*visualstudio.com*) printf 'azure\n' ;;
+        *codeberg.org*)   printf 'codeberg\n' ;;
+        *)                printf 'unknown\n'; return 1 ;;
+    esac
+}
+
+# @idempotent Get owner/org name from remote
+# @return Owner name (e.g., "gtwatts" from github.com/gtwatts/mainframe)
+# Usage: owner=$(git_repo_owner)
+git_repo_owner() {
+    local url
+    url=$(git_remote_url 2>/dev/null) || return 1
+    [[ -z "$url" ]] && return 1
+
+    local owner
+
+    # Handle SSH format: git@github.com:owner/repo.git
+    if [[ "$url" =~ ^git@[^:]+:([^/]+)/ ]]; then
+        owner="${BASH_REMATCH[1]}"
+    # Handle HTTPS format: https://github.com/owner/repo.git
+    elif [[ "$url" =~ https?://[^/]+/([^/]+)/ ]]; then
+        owner="${BASH_REMATCH[1]}"
+    # Handle HTTPS without trailing slash
+    elif [[ "$url" =~ https?://[^/]+/([^/]+)/[^/]+ ]]; then
+        owner="${BASH_REMATCH[1]}"
+    else
+        return 1
+    fi
+
+    printf '%s\n' "$owner"
+}
+
+# @idempotent Generate web URL for current repo
+# @return HTTPS URL for browser (e.g., https://github.com/user/repo)
+# Usage: url=$(git_web_url)
+git_web_url() {
+    local url provider
+    url=$(git_remote_url 2>/dev/null) || return 1
+    [[ -z "$url" ]] && return 1
+
+    provider=$(git_provider)
+
+    local owner repo
+    owner=$(git_repo_owner) || return 1
+    repo=$(git_repo_name) || return 1
+
+    case "$provider" in
+        github)    printf 'https://github.com/%s/%s\n' "$owner" "$repo" ;;
+        gitlab)    printf 'https://gitlab.com/%s/%s\n' "$owner" "$repo" ;;
+        bitbucket) printf 'https://bitbucket.org/%s/%s\n' "$owner" "$repo" ;;
+        azure)
+            # Azure URLs are more complex, try to extract org
+            if [[ "$url" =~ dev\.azure\.com/([^/]+)/([^/]+)/_git/([^/]+) ]]; then
+                printf 'https://dev.azure.com/%s/%s/_git/%s\n' \
+                    "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}"
+            else
+                return 1
+            fi
+            ;;
+        codeberg)  printf 'https://codeberg.org/%s/%s\n' "$owner" "$repo" ;;
+        *)
+            # For unknown providers, try to convert SSH to HTTPS
+            if [[ "$url" =~ ^git@([^:]+):(.+)\.git$ ]]; then
+                printf 'https://%s/%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+            elif [[ "$url" =~ ^https?:// ]]; then
+                # Already HTTPS, strip .git if present
+                printf '%s\n' "${url%.git}"
+            else
+                return 1
+            fi
+            ;;
+    esac
+}
+
+# @idempotent Get all remotes as JSON
+# @return [{"name":"origin","url":"...","fetch":true,"push":true}]
+# Usage: json=$(git_remotes_json)
+git_remotes_json() {
+    local remotes
+    remotes=$(git remote 2>/dev/null) || return 1
+    [[ -z "$remotes" ]] && { printf '[]\n'; return 0; }
+
+    local first=true
+    printf '['
+
+    while IFS= read -r remote; do
+        [[ -z "$remote" ]] && continue
+
+        $first || printf ','
+        first=false
+
+        local fetch_url push_url
+        fetch_url=$(git remote get-url "$remote" 2>/dev/null)
+        push_url=$(git remote get-url --push "$remote" 2>/dev/null)
+
+        # Escape JSON values
+        local esc_name esc_fetch esc_push
+        esc_name=$(printf '%s' "$remote" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        esc_fetch=$(printf '%s' "$fetch_url" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        esc_push=$(printf '%s' "$push_url" | sed 's/\\/\\\\/g; s/"/\\"/g')
+
+        printf '{"name":"%s","fetch_url":"%s","push_url":"%s"}' \
+            "$esc_name" "$esc_fetch" "$esc_push"
+    done <<< "$remotes"
+
+    printf ']\n'
+}
+
+# =============================================================================
+# CHANGED FILES (Enhanced)
+# =============================================================================
+
+# @idempotent Get list of changed files
+# @param $1 - "staged", "unstaged", "untracked", "all" (default: all)
+# @return Newline-separated file paths
+# Usage: git_changed_files
+# Usage: git_changed_files staged
+# Usage: git_changed_files unstaged
+git_changed_files() {
+    local filter="${1:-all}"
+
+    case "$filter" in
+        staged)
+            git diff --cached --name-only 2>/dev/null
+            ;;
+        unstaged)
+            git diff --name-only 2>/dev/null
+            ;;
+        untracked)
+            git ls-files --others --exclude-standard 2>/dev/null
+            ;;
+        all)
+            # Combine all: staged, unstaged, and untracked (unique)
+            {
+                git diff --cached --name-only 2>/dev/null
+                git diff --name-only 2>/dev/null
+                git ls-files --others --exclude-standard 2>/dev/null
+            } | sort -u
+            ;;
+        *)
+            # Invalid filter, show all
+            git_changed_files all
+            ;;
+    esac
+}
+
+# =============================================================================
+# COMMIT INFO (Enhanced)
+# =============================================================================
+
+# @idempotent Get commit count
+# @param $1 - branch/ref (default: HEAD)
+# @return Number of commits
+# Usage: count=$(git_commit_count)
+# Usage: count=$(git_commit_count main)
+# Note: Already exists, but enhanced to accept branch parameter
+# (Original implementation at line 155 handles this case)
+
+# @idempotent Get last commit info as JSON
+# @return {"hash":"abc123","hash_full":"abc123def...","author":"name","email":"x@y.com","date":"ISO","message":"..."}
+# Usage: json=$(git_last_commit)
+git_last_commit() {
+    git_is_repo || return 1
+
+    local hash hash_full author email date message
+
+    hash=$(git log -1 --format='%h' 2>/dev/null) || return 1
+    hash_full=$(git log -1 --format='%H' 2>/dev/null)
+    author=$(git log -1 --format='%an' 2>/dev/null)
+    email=$(git log -1 --format='%ae' 2>/dev/null)
+    date=$(git log -1 --format='%aI' 2>/dev/null)  # ISO 8601 format
+    message=$(git log -1 --format='%s' 2>/dev/null)
+
+    # Escape JSON values
+    local esc_hash esc_full esc_author esc_email esc_date esc_msg
+    esc_hash=$(printf '%s' "$hash" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    esc_full=$(printf '%s' "$hash_full" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    esc_author=$(printf '%s' "$author" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    esc_email=$(printf '%s' "$email" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    esc_date=$(printf '%s' "$date" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    esc_msg=$(printf '%s' "$message" | sed 's/\\/\\\\/g; s/"/\\"/g')
+
+    printf '{"hash":"%s","hash_full":"%s","author":"%s","email":"%s","date":"%s","message":"%s"}\n' \
+        "$esc_hash" "$esc_full" "$esc_author" "$esc_email" "$esc_date" "$esc_msg"
+}
+
+# =============================================================================
+# SUMMARY (Enhanced JSON)
+# =============================================================================
+
+# @idempotent Get comprehensive repository summary as JSON
+# @return JSON with branch, commit, remote, status info
+# Usage: json=$(git_summary_json)
+git_summary_json() {
+    git_is_repo || {
+        printf '{"error":"not a git repository"}\n'
+        return 1
+    }
+
+    local branch hash is_dirty has_staged has_unstaged has_untracked
+    local remote_url provider owner repo_name
+    local commit_count tag_latest
+
+    branch=$(git_branch)
+    hash=$(git_commit_hash)
+
+    # Status checks (return "true"/"false" strings for JSON)
+    if git_is_dirty; then is_dirty="true"; else is_dirty="false"; fi
+    if git_has_staged; then has_staged="true"; else has_staged="false"; fi
+    if git_has_unstaged; then has_unstaged="true"; else has_unstaged="false"; fi
+    if git_has_untracked; then has_untracked="true"; else has_untracked="false"; fi
+
+    # Remote info (may not exist)
+    remote_url=$(git_remote_url 2>/dev/null) || remote_url=""
+    provider=$(git_provider 2>/dev/null) || provider="unknown"
+    owner=$(git_repo_owner 2>/dev/null) || owner=""
+    repo_name=$(git_repo_name 2>/dev/null) || repo_name=""
+
+    # Counts and tags
+    commit_count=$(git_commit_count 2>/dev/null) || commit_count="0"
+    tag_latest=$(git_tag_latest 2>/dev/null) || tag_latest=""
+
+    # Escape JSON values
+    local esc_branch esc_hash esc_url esc_provider esc_owner esc_repo esc_tag
+    esc_branch=$(printf '%s' "$branch" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    esc_hash=$(printf '%s' "$hash" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    esc_url=$(printf '%s' "$remote_url" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    esc_provider=$(printf '%s' "$provider" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    esc_owner=$(printf '%s' "$owner" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    esc_repo=$(printf '%s' "$repo_name" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    esc_tag=$(printf '%s' "$tag_latest" | sed 's/\\/\\\\/g; s/"/\\"/g')
+
+    # Build JSON object
+    printf '{'
+    printf '"branch":"%s",' "$esc_branch"
+    printf '"commit_hash":"%s",' "$esc_hash"
+    printf '"commit_count":%s,' "$commit_count"
+    printf '"is_dirty":%s,' "$is_dirty"
+    printf '"has_staged":%s,' "$has_staged"
+    printf '"has_unstaged":%s,' "$has_unstaged"
+    printf '"has_untracked":%s,' "$has_untracked"
+    printf '"remote_url":"%s",' "$esc_url"
+    printf '"provider":"%s",' "$esc_provider"
+    printf '"owner":"%s",' "$esc_owner"
+    printf '"repo_name":"%s",' "$esc_repo"
+    printf '"tag_latest":"%s"' "$esc_tag"
+    printf '}\n'
+}

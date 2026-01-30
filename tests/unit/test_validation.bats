@@ -678,3 +678,550 @@ setup() {
     run validate_credit_card "4111111111111112"  # Invalid Luhn
     [ "$status" -eq 1 ]
 }
+
+# =============================================================================
+# REGEX CONSTANTS TESTS
+# =============================================================================
+
+@test "REGEX_EMAIL: matches valid emails" {
+    [[ "user@example.com" =~ $REGEX_EMAIL ]]
+    [[ "user.name@example.co.uk" =~ $REGEX_EMAIL ]]
+    [[ "user+tag@example.com" =~ $REGEX_EMAIL ]]
+    [[ "user_name@example.com" =~ $REGEX_EMAIL ]]
+    [[ "user123@example123.com" =~ $REGEX_EMAIL ]]
+}
+
+@test "REGEX_EMAIL: rejects invalid emails" {
+    [[ ! "@example.com" =~ $REGEX_EMAIL ]]
+    [[ ! "user@" =~ $REGEX_EMAIL ]]
+    [[ ! "user@.com" =~ $REGEX_EMAIL ]]
+    [[ ! "user" =~ $REGEX_EMAIL ]]
+    [[ ! "" =~ $REGEX_EMAIL ]]
+}
+
+@test "REGEX_DOMAIN: matches valid domains" {
+    [[ "example.com" =~ $REGEX_DOMAIN ]]
+    [[ "sub.example.com" =~ $REGEX_DOMAIN ]]
+    [[ "a.b.c.example.co.uk" =~ $REGEX_DOMAIN ]]
+    [[ "example-site.com" =~ $REGEX_DOMAIN ]]
+    [[ "123.example.com" =~ $REGEX_DOMAIN ]]
+}
+
+@test "REGEX_DOMAIN: rejects invalid domains" {
+    [[ ! "-example.com" =~ $REGEX_DOMAIN ]]
+    [[ ! "example-.com" =~ $REGEX_DOMAIN ]]
+    [[ ! "example" =~ $REGEX_DOMAIN ]]
+    [[ ! ".com" =~ $REGEX_DOMAIN ]]
+    [[ ! "example..com" =~ $REGEX_DOMAIN ]]
+}
+
+@test "REGEX_IPV4: matches valid IPv4 addresses" {
+    [[ "0.0.0.0" =~ $REGEX_IPV4 ]]
+    [[ "192.168.1.1" =~ $REGEX_IPV4 ]]
+    [[ "255.255.255.255" =~ $REGEX_IPV4 ]]
+    [[ "10.0.0.1" =~ $REGEX_IPV4 ]]
+    [[ "127.0.0.1" =~ $REGEX_IPV4 ]]
+}
+
+@test "REGEX_IPV4: rejects invalid IPv4 addresses" {
+    [[ ! "256.0.0.0" =~ $REGEX_IPV4 ]]
+    [[ ! "192.168.1" =~ $REGEX_IPV4 ]]
+    [[ ! "192.168.1.1.1" =~ $REGEX_IPV4 ]]
+    [[ ! "abc.def.ghi.jkl" =~ $REGEX_IPV4 ]]
+    [[ ! "" =~ $REGEX_IPV4 ]]
+}
+
+@test "REGEX_IPV6: matches valid full IPv6 addresses" {
+    [[ "2001:0db8:85a3:0000:0000:8a2e:0370:7334" =~ $REGEX_IPV6 ]]
+    [[ "fe80:0000:0000:0000:0000:0000:0000:0001" =~ $REGEX_IPV6 ]]
+    [[ "0000:0000:0000:0000:0000:0000:0000:0001" =~ $REGEX_IPV6 ]]
+}
+
+@test "REGEX_IPV6: rejects invalid IPv6" {
+    # Note: This simplified regex does not support :: compression
+    [[ ! "::1" =~ $REGEX_IPV6 ]]
+    [[ ! "2001:db8::1" =~ $REGEX_IPV6 ]]
+    [[ ! "not-ipv6" =~ $REGEX_IPV6 ]]
+}
+
+@test "REGEX_URL: matches valid URLs" {
+    [[ "http://example.com" =~ $REGEX_URL ]]
+    [[ "https://example.com" =~ $REGEX_URL ]]
+    [[ "https://example.com/path" =~ $REGEX_URL ]]
+    [[ "https://example.com/path/to/resource" =~ $REGEX_URL ]]
+    [[ "https://example.com/path?query=1" =~ $REGEX_URL ]]
+}
+
+@test "REGEX_URL: rejects invalid URLs" {
+    [[ ! "ftp://example.com" =~ $REGEX_URL ]]
+    [[ ! "example.com" =~ $REGEX_URL ]]
+    [[ ! "http://" =~ $REGEX_URL ]]
+    [[ ! "not a url" =~ $REGEX_URL ]]
+}
+
+@test "REGEX_SEMVER: matches valid semantic versions" {
+    [[ "1.0.0" =~ $REGEX_SEMVER ]]
+    [[ "0.0.1" =~ $REGEX_SEMVER ]]
+    [[ "10.20.30" =~ $REGEX_SEMVER ]]
+    [[ "1.0.0-alpha" =~ $REGEX_SEMVER ]]
+    [[ "1.0.0-alpha.1" =~ $REGEX_SEMVER ]]
+    [[ "1.0.0+build" =~ $REGEX_SEMVER ]]
+    [[ "1.0.0-alpha+build" =~ $REGEX_SEMVER ]]
+}
+
+@test "REGEX_SEMVER: rejects invalid semantic versions" {
+    [[ ! "1.0" =~ $REGEX_SEMVER ]]
+    [[ ! "v1.0.0" =~ $REGEX_SEMVER ]]
+    [[ ! "1.02.0" =~ $REGEX_SEMVER ]]
+    [[ ! "01.0.0" =~ $REGEX_SEMVER ]]
+    [[ ! "1.0.0." =~ $REGEX_SEMVER ]]
+}
+
+@test "REGEX_UUID: matches UUID v4" {
+    [[ "550e8400-e29b-41d4-a716-446655440000" =~ $REGEX_UUID ]]
+    [[ "550E8400-E29B-41D4-A716-446655440000" =~ $REGEX_UUID ]]
+}
+
+@test "REGEX_UUID: requires version 4" {
+    # V4 UUIDs have 4 in the version position
+    [[ "550e8400-e29b-41d4-a716-446655440000" =~ $REGEX_UUID ]]
+    # Version 1 UUID should not match REGEX_UUID (v4 only)
+    [[ ! "550e8400-e29b-11d4-a716-446655440000" =~ $REGEX_UUID ]]
+}
+
+@test "REGEX_UUID_ANY: matches any UUID version" {
+    [[ "550e8400-e29b-11d4-a716-446655440000" =~ $REGEX_UUID_ANY ]]
+    [[ "550e8400-e29b-21d4-a716-446655440000" =~ $REGEX_UUID_ANY ]]
+    [[ "550e8400-e29b-31d4-a716-446655440000" =~ $REGEX_UUID_ANY ]]
+    [[ "550e8400-e29b-41d4-a716-446655440000" =~ $REGEX_UUID_ANY ]]
+    [[ "550e8400-e29b-51d4-a716-446655440000" =~ $REGEX_UUID_ANY ]]
+}
+
+@test "REGEX_GIT_HASH: matches valid git hashes" {
+    [[ "abc1234" =~ $REGEX_GIT_HASH ]]  # Short hash (7 chars)
+    [[ "abc12345" =~ $REGEX_GIT_HASH ]]  # 8 chars
+    [[ "abc1234567890abc1234567890abc1234567890a" =~ $REGEX_GIT_HASH ]]  # 40 chars
+    [[ "DEADBEEF" =~ $REGEX_GIT_HASH ]]  # Uppercase
+}
+
+@test "REGEX_GIT_HASH: rejects invalid git hashes" {
+    [[ ! "abc123" =~ $REGEX_GIT_HASH ]]  # Too short (6 chars)
+    [[ ! "abc1234567890abc1234567890abc1234567890ab" =~ $REGEX_GIT_HASH ]]  # Too long (41 chars)
+    [[ ! "ghijklm" =~ $REGEX_GIT_HASH ]]  # Non-hex
+}
+
+@test "REGEX_MAC: matches colon-separated MAC addresses" {
+    [[ "00:1A:2B:3C:4D:5E" =~ $REGEX_MAC ]]
+    [[ "aa:bb:cc:dd:ee:ff" =~ $REGEX_MAC ]]
+    [[ "AA:BB:CC:DD:EE:FF" =~ $REGEX_MAC ]]
+}
+
+@test "REGEX_MAC_ANY: matches colon or hyphen separated" {
+    [[ "00:1A:2B:3C:4D:5E" =~ $REGEX_MAC_ANY ]]
+    [[ "00-1A-2B-3C-4D-5E" =~ $REGEX_MAC_ANY ]]
+}
+
+@test "REGEX_MAC: rejects invalid MAC addresses" {
+    [[ ! "00:1A:2B:3C:4D" =~ $REGEX_MAC ]]  # Too few octets
+    [[ ! "00:1A:2B:3C:4D:5E:FF" =~ $REGEX_MAC ]]  # Too many octets
+    [[ ! "00:1A:2B:3C:4D:GG" =~ $REGEX_MAC ]]  # Non-hex
+}
+
+@test "REGEX_PHONE: matches E.164 format" {
+    [[ "+1234567890" =~ $REGEX_PHONE ]]
+    [[ "+12345678901234" =~ $REGEX_PHONE ]]
+    [[ "+11" =~ $REGEX_PHONE ]]
+}
+
+@test "REGEX_PHONE: rejects invalid phone numbers" {
+    [[ ! "1234567890" =~ $REGEX_PHONE ]]  # No plus
+    [[ ! "+0123456789" =~ $REGEX_PHONE ]]  # Leading zero after plus
+    [[ ! "+1" =~ $REGEX_PHONE ]]  # Too short
+    [[ ! "+123456789012345678" =~ $REGEX_PHONE ]]  # Too long
+}
+
+@test "REGEX_CREDIT_CARD: matches valid card lengths" {
+    [[ "1234567890123" =~ $REGEX_CREDIT_CARD ]]  # 13 digits
+    [[ "1234567890123456" =~ $REGEX_CREDIT_CARD ]]  # 16 digits
+    [[ "1234567890123456789" =~ $REGEX_CREDIT_CARD ]]  # 19 digits
+}
+
+@test "REGEX_CREDIT_CARD: rejects invalid card numbers" {
+    [[ ! "123456789012" =~ $REGEX_CREDIT_CARD ]]  # Too short
+    [[ ! "12345678901234567890" =~ $REGEX_CREDIT_CARD ]]  # Too long
+    [[ ! "123456789012345a" =~ $REGEX_CREDIT_CARD ]]  # Non-digit
+}
+
+@test "REGEX_ISO_DATE: matches valid dates" {
+    [[ "2024-01-15" =~ $REGEX_ISO_DATE ]]
+    [[ "2024-12-31" =~ $REGEX_ISO_DATE ]]
+    [[ "1999-01-01" =~ $REGEX_ISO_DATE ]]
+}
+
+@test "REGEX_ISO_DATE: rejects invalid dates" {
+    [[ ! "2024-13-01" =~ $REGEX_ISO_DATE ]]  # Invalid month
+    [[ ! "2024-00-01" =~ $REGEX_ISO_DATE ]]  # Invalid month
+    [[ ! "2024-01-32" =~ $REGEX_ISO_DATE ]]  # Invalid day
+    [[ ! "2024-01-00" =~ $REGEX_ISO_DATE ]]  # Invalid day
+    [[ ! "01-15-2024" =~ $REGEX_ISO_DATE ]]  # Wrong format
+}
+
+@test "REGEX_ISO_DATETIME: matches valid datetimes" {
+    [[ "2024-01-15T14:30:00" =~ $REGEX_ISO_DATETIME ]]
+    [[ "2024-01-15T14:30:00Z" =~ $REGEX_ISO_DATETIME ]]
+    [[ "2024-01-15T14:30:00+05:00" =~ $REGEX_ISO_DATETIME ]]
+    [[ "2024-01-15T14:30:00-08:00" =~ $REGEX_ISO_DATETIME ]]
+}
+
+@test "REGEX_ISO_DATETIME: rejects invalid datetimes" {
+    [[ ! "2024-01-15 14:30:00" =~ $REGEX_ISO_DATETIME ]]  # Space instead of T
+    [[ ! "2024-01-15T25:30:00" =~ $REGEX_ISO_DATETIME ]]  # Invalid hour
+    [[ ! "2024-01-15T14:60:00" =~ $REGEX_ISO_DATETIME ]]  # Invalid minute
+}
+
+@test "REGEX_HEX: matches hexadecimal strings" {
+    [[ "abc123" =~ $REGEX_HEX ]]
+    [[ "DEADBEEF" =~ $REGEX_HEX ]]
+    [[ "0" =~ $REGEX_HEX ]]
+    [[ "ff00ff" =~ $REGEX_HEX ]]
+}
+
+@test "REGEX_HEX: rejects non-hex strings" {
+    [[ ! "ghijkl" =~ $REGEX_HEX ]]
+    [[ ! "0x123" =~ $REGEX_HEX ]]
+    [[ ! "" =~ $REGEX_HEX ]]
+}
+
+@test "REGEX_ALNUM: matches alphanumeric strings" {
+    [[ "abc123" =~ $REGEX_ALNUM ]]
+    [[ "ABC" =~ $REGEX_ALNUM ]]
+    [[ "123" =~ $REGEX_ALNUM ]]
+}
+
+@test "REGEX_ALNUM: rejects non-alphanumeric" {
+    [[ ! "abc_123" =~ $REGEX_ALNUM ]]
+    [[ ! "abc-123" =~ $REGEX_ALNUM ]]
+    [[ ! "abc 123" =~ $REGEX_ALNUM ]]
+}
+
+@test "REGEX_ALNUM_UNDERSCORE: matches alphanumeric with underscore" {
+    [[ "abc_123" =~ $REGEX_ALNUM_UNDERSCORE ]]
+    [[ "ABC_DEF" =~ $REGEX_ALNUM_UNDERSCORE ]]
+    [[ "_underscore" =~ $REGEX_ALNUM_UNDERSCORE ]]
+}
+
+@test "REGEX_SLUG: matches valid slugs" {
+    [[ "my-slug" =~ $REGEX_SLUG ]]
+    [[ "another-long-slug" =~ $REGEX_SLUG ]]
+    [[ "slug123" =~ $REGEX_SLUG ]]
+    [[ "a" =~ $REGEX_SLUG ]]
+}
+
+@test "REGEX_SLUG: rejects invalid slugs" {
+    [[ ! "MY-SLUG" =~ $REGEX_SLUG ]]  # Uppercase
+    [[ ! "slug_underscore" =~ $REGEX_SLUG ]]  # Underscore
+    [[ ! "--double" =~ $REGEX_SLUG ]]  # Leading dash
+    [[ ! "trailing-" =~ $REGEX_SLUG ]]  # Trailing dash
+}
+
+@test "REGEX_PORT: matches valid ports" {
+    [[ "1" =~ $REGEX_PORT ]]
+    [[ "80" =~ $REGEX_PORT ]]
+    [[ "443" =~ $REGEX_PORT ]]
+    [[ "8080" =~ $REGEX_PORT ]]
+    [[ "65535" =~ $REGEX_PORT ]]
+}
+
+@test "REGEX_PORT: rejects invalid ports" {
+    [[ ! "0" =~ $REGEX_PORT ]]
+    [[ ! "65536" =~ $REGEX_PORT ]]
+    [[ ! "100000" =~ $REGEX_PORT ]]
+    [[ ! "-1" =~ $REGEX_PORT ]]
+}
+
+@test "REGEX_CIDR: matches valid CIDR notation" {
+    [[ "192.168.1.0/24" =~ $REGEX_CIDR ]]
+    [[ "10.0.0.0/8" =~ $REGEX_CIDR ]]
+    [[ "0.0.0.0/0" =~ $REGEX_CIDR ]]
+    [[ "255.255.255.255/32" =~ $REGEX_CIDR ]]
+}
+
+@test "REGEX_CIDR: rejects invalid CIDR" {
+    [[ ! "192.168.1.0/33" =~ $REGEX_CIDR ]]  # Invalid prefix
+    [[ ! "256.0.0.0/24" =~ $REGEX_CIDR ]]  # Invalid IP
+    [[ ! "192.168.1.0" =~ $REGEX_CIDR ]]  # No prefix
+}
+
+@test "REGEX_BASE64: matches valid base64" {
+    [[ "aGVsbG8=" =~ $REGEX_BASE64 ]]
+    [[ "SGVsbG8gV29ybGQh" =~ $REGEX_BASE64 ]]
+    [[ "YWJjZA==" =~ $REGEX_BASE64 ]]
+    [[ "" =~ $REGEX_BASE64 ]]  # Empty is valid base64
+}
+
+@test "REGEX_BASE64: rejects invalid base64" {
+    [[ ! "not valid!" =~ $REGEX_BASE64 ]]
+    [[ ! "hello world" =~ $REGEX_BASE64 ]]  # Spaces not allowed
+    [[ ! "abc@def" =~ $REGEX_BASE64 ]]  # @ not in base64 alphabet
+}
+
+@test "REGEX_JWT: matches valid JWT format" {
+    [[ "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U" =~ $REGEX_JWT ]]
+    [[ "header.payload.signature" =~ $REGEX_JWT ]]
+    [[ "a.b.c" =~ $REGEX_JWT ]]
+}
+
+@test "REGEX_JWT: rejects invalid JWT" {
+    [[ ! "not.a.jwt!" =~ $REGEX_JWT ]]  # Invalid characters
+    [[ ! "only.two" =~ $REGEX_JWT ]]  # Only two parts
+    [[ ! "no-dots" =~ $REGEX_JWT ]]  # No dots
+}
+
+@test "REGEX_AWS_ARN: matches valid ARNs" {
+    [[ "arn:aws:s3:::my-bucket" =~ $REGEX_AWS_ARN ]]
+    [[ "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0" =~ $REGEX_AWS_ARN ]]
+    [[ "arn:aws:iam::123456789012:user/johndoe" =~ $REGEX_AWS_ARN ]]
+}
+
+@test "REGEX_AWS_ARN: rejects invalid ARNs" {
+    [[ ! "not-an-arn" =~ $REGEX_AWS_ARN ]]
+    [[ ! "arn:azure:storage:::bucket" =~ $REGEX_AWS_ARN ]]
+}
+
+@test "REGEX_DOCKER_IMAGE: matches valid image names" {
+    [[ "nginx" =~ $REGEX_DOCKER_IMAGE ]]
+    [[ "nginx:latest" =~ $REGEX_DOCKER_IMAGE ]]
+    [[ "myregistry/myimage" =~ $REGEX_DOCKER_IMAGE ]]
+    [[ "myregistry/myimage:v1.0" =~ $REGEX_DOCKER_IMAGE ]]
+    [[ "gcr.io/project/image" =~ $REGEX_DOCKER_IMAGE ]]
+}
+
+@test "REGEX_DOCKER_IMAGE: rejects invalid image names" {
+    [[ ! "UPPERCASE" =~ $REGEX_DOCKER_IMAGE ]]
+    [[ ! "image name" =~ $REGEX_DOCKER_IMAGE ]]  # Space
+}
+
+@test "REGEX_ENV_VAR: matches valid env var names" {
+    [[ "HOME" =~ $REGEX_ENV_VAR ]]
+    [[ "MY_VAR" =~ $REGEX_ENV_VAR ]]
+    [[ "_private" =~ $REGEX_ENV_VAR ]]
+    [[ "var123" =~ $REGEX_ENV_VAR ]]
+}
+
+@test "REGEX_ENV_VAR: rejects invalid env var names" {
+    [[ ! "123var" =~ $REGEX_ENV_VAR ]]  # Starts with digit
+    [[ ! "my-var" =~ $REGEX_ENV_VAR ]]  # Hyphen
+    [[ ! "my var" =~ $REGEX_ENV_VAR ]]  # Space
+}
+
+@test "REGEX_UNIX_USER: matches valid usernames" {
+    [[ "root" =~ $REGEX_UNIX_USER ]]
+    [[ "user123" =~ $REGEX_UNIX_USER ]]
+    [[ "_service" =~ $REGEX_UNIX_USER ]]
+    [[ "nfs-user" =~ $REGEX_UNIX_USER ]]
+}
+
+@test "REGEX_UNIX_USER: rejects invalid usernames" {
+    [[ ! "123user" =~ $REGEX_UNIX_USER ]]  # Starts with digit
+    [[ ! "-user" =~ $REGEX_UNIX_USER ]]  # Starts with hyphen
+    [[ ! "User" =~ $REGEX_UNIX_USER ]]  # Uppercase
+}
+
+# =============================================================================
+# REGEX HELPER FUNCTION TESTS
+# =============================================================================
+
+@test "regex_match: matches email" {
+    run regex_match email "user@example.com"
+    [ "$status" -eq 0 ]
+
+    run regex_match email "invalid"
+    [ "$status" -eq 1 ]
+}
+
+@test "regex_match: matches domain" {
+    run regex_match domain "example.com"
+    [ "$status" -eq 0 ]
+
+    run regex_match domain "invalid"
+    [ "$status" -eq 1 ]
+}
+
+@test "regex_match: matches ipv4" {
+    run regex_match ipv4 "192.168.1.1"
+    [ "$status" -eq 0 ]
+
+    run regex_match ipv4 "999.999.999.999"
+    [ "$status" -eq 1 ]
+}
+
+@test "regex_match: matches semver" {
+    run regex_match semver "1.2.3"
+    [ "$status" -eq 0 ]
+
+    run regex_match semver "v1.0"
+    [ "$status" -eq 1 ]
+}
+
+@test "regex_match: matches uuid" {
+    run regex_match uuid "550e8400-e29b-41d4-a716-446655440000"
+    [ "$status" -eq 0 ]
+
+    run regex_match uuid "not-a-uuid"
+    [ "$status" -eq 1 ]
+}
+
+@test "regex_match: matches uuid_v4" {
+    run regex_match uuid_v4 "550e8400-e29b-41d4-a716-446655440000"
+    [ "$status" -eq 0 ]
+
+    # V1 UUID should fail v4 check
+    run regex_match uuid_v4 "550e8400-e29b-11d4-a716-446655440000"
+    [ "$status" -eq 1 ]
+}
+
+@test "regex_match: matches git_hash" {
+    run regex_match git_hash "abc1234"
+    [ "$status" -eq 0 ]
+
+    run regex_match git_hash "abc123"  # Too short
+    [ "$status" -eq 1 ]
+}
+
+@test "regex_match: matches mac" {
+    run regex_match mac "00:1A:2B:3C:4D:5E"
+    [ "$status" -eq 0 ]
+
+    run regex_match mac "00-1A-2B-3C-4D-5E"
+    [ "$status" -eq 0 ]
+}
+
+@test "regex_match: matches phone" {
+    run regex_match phone "+1234567890"
+    [ "$status" -eq 0 ]
+
+    run regex_match phone "1234567890"
+    [ "$status" -eq 1 ]
+}
+
+@test "regex_match: matches iso_date" {
+    run regex_match iso_date "2024-01-15"
+    [ "$status" -eq 0 ]
+
+    run regex_match iso_date "01-15-2024"
+    [ "$status" -eq 1 ]
+}
+
+@test "regex_match: matches iso_datetime" {
+    run regex_match iso_datetime "2024-01-15T14:30:00Z"
+    [ "$status" -eq 0 ]
+
+    run regex_match iso_datetime "2024-01-15 14:30:00"
+    [ "$status" -eq 1 ]
+}
+
+@test "regex_match: matches port" {
+    run regex_match port "8080"
+    [ "$status" -eq 0 ]
+
+    run regex_match port "0"
+    [ "$status" -eq 1 ]
+}
+
+@test "regex_match: matches cidr" {
+    run regex_match cidr "192.168.1.0/24"
+    [ "$status" -eq 0 ]
+
+    run regex_match cidr "192.168.1.0"
+    [ "$status" -eq 1 ]
+}
+
+@test "regex_match: matches jwt" {
+    run regex_match jwt "header.payload.signature"
+    [ "$status" -eq 0 ]
+
+    run regex_match jwt "invalid"
+    [ "$status" -eq 1 ]
+}
+
+@test "regex_match: matches docker_image" {
+    run regex_match docker_image "nginx:latest"
+    [ "$status" -eq 0 ]
+
+    run regex_match docker_image "UPPERCASE"
+    [ "$status" -eq 1 ]
+}
+
+@test "regex_match: matches env_var" {
+    run regex_match env_var "MY_VAR"
+    [ "$status" -eq 0 ]
+
+    run regex_match env_var "123var"
+    [ "$status" -eq 1 ]
+}
+
+@test "regex_match: case insensitive pattern names" {
+    run regex_match EMAIL "user@example.com"
+    [ "$status" -eq 0 ]
+
+    run regex_match Email "user@example.com"
+    [ "$status" -eq 0 ]
+
+    run regex_match IPV4 "192.168.1.1"
+    [ "$status" -eq 0 ]
+}
+
+@test "regex_match: returns 2 for unknown regex name" {
+    run regex_match unknown_pattern "value"
+    [ "$status" -eq 2 ]
+}
+
+@test "regex_match: returns 2 for empty regex name" {
+    run regex_match "" "value"
+    [ "$status" -eq 2 ]
+}
+
+@test "regex_match: returns 1 for empty value" {
+    run regex_match email ""
+    [ "$status" -eq 1 ]
+}
+
+@test "regex_list: outputs available patterns" {
+    run regex_list
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"email"* ]]
+    [[ "$output" == *"domain"* ]]
+    [[ "$output" == *"ipv4"* ]]
+    [[ "$output" == *"semver"* ]]
+    [[ "$output" == *"uuid"* ]]
+    [[ "$output" == *"jwt"* ]]
+    [[ "$output" == *"docker_image"* ]]
+}
+
+@test "regex_get: returns pattern for known names" {
+    result=$(regex_get email)
+    [ -n "$result" ]
+    [[ "$result" == *"@"* ]]
+
+    result=$(regex_get ipv4)
+    [ -n "$result" ]
+
+    result=$(regex_get semver)
+    [ -n "$result" ]
+}
+
+@test "regex_get: fails for unknown names" {
+    run regex_get unknown_pattern
+    [ "$status" -eq 1 ]
+}
+
+@test "regex_get: fails for empty name" {
+    run regex_get ""
+    [ "$status" -eq 1 ]
+}
+
+@test "regex_get: returned pattern works with bash regex" {
+    pattern=$(regex_get email)
+    [[ "user@example.com" =~ $pattern ]]
+    [[ ! "invalid" =~ $pattern ]]
+}
