@@ -69,13 +69,16 @@ AI agents - whether Claude Code, GPT-4o, Gemini, Cursor, or custom LLM-powered t
 
 The problem: **AI agents have finite context windows and bash is hostile territory.**
 
-- Context windows fill up, losing critical state
-- Commands fail silently or with cryptic errors
-- Output is unstructured and unparseable
-- Security vulnerabilities are one typo away
-- Sub-agents can't inherit learnings from parent agents
+| Problem | MAINFRAME Solution |
+|---------|-------------------|
+| Context windows fill up, losing critical state | **Agent Working Memory (AWM)** - persistent storage outside context |
+| Commands fail silently or with cryptic errors | **Structured Output (USOP)** - JSON envelopes with clear error codes |
+| Output is unstructured and unparseable | **Typed Responses** - every operation returns parseable JSON |
+| Security vulnerabilities are one typo away | **Validation Layer** - input sanitization, path traversal prevention |
+| Sub-agents can't inherit learnings from parent agents | **AWM Inheritance** - child agents receive parent discoveries |
+| External tools (jq, sed, awk) may not exist | **Zero Dependencies** - pure bash 4.0+, no external tools required |
 
-**MAINFRAME solves this with:**
+**MAINFRAME provides:**
 
 | Capability | What It Means |
 |------------|---------------|

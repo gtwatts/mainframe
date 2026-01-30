@@ -39,25 +39,6 @@ Features:
 - Automatic summarization of session patterns
 - Integration with ChromaDB/Qdrant/Pinecone
 
-### MCP Server Integration
-
-**Priority: High**
-
-An MCP (Model Context Protocol) server that exposes MAINFRAME functions directly to AI agents, reducing the source/function-call friction.
-
-Benefits:
-- AI agents can call MAINFRAME functions without sourcing bash files
-- Structured JSON request/response built-in
-- Better integration with Claude, GPT, and other LLM tooling ecosystems
-- Function metadata and documentation exposed via MCP
-
-```
-# Proposed usage
-mcp__mainframe__json_object(key="value", typed="number:42")
-mcp__mainframe__ensure_dir(path="/app/data")
-mcp__mainframe__awm_checkpoint(key="progress", value="step-3")
-```
-
 ### Function Discovery CLI
 
 **Priority: Medium**
@@ -152,6 +133,15 @@ Privacy:
   - [x] USOP-formatted responses
   - [x] Request/response logging
   - [x] Header management
+- [x] **MCP Server** - Model Context Protocol integration (`mcp/`)
+  - [x] Direct function exposure to AI agents
+  - [x] Structured JSON request/response
+  - [x] Function metadata and documentation via MCP
+  - [x] Integration with Claude, GPT, and LLM tooling ecosystems
+- [x] **LSP Server** - Language Server Protocol support (`lsp/`)
+  - [x] IDE integration (VS Code, Neovim, etc.)
+  - [x] Function completion and documentation
+  - [x] Signature help and hover info
 - [x] **Bun package manager support** (`bun.sh`)
   - [x] Bun detection and version checking
   - [x] Package management wrappers
