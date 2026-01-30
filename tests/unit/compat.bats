@@ -18,10 +18,26 @@ setup() {
 
     # Source MAINFRAME
     MAINFRAME_ROOT="${BATS_TEST_DIRNAME}/../.."
+    export MAINFRAME_ROOT
     source "$MAINFRAME_ROOT/lib/common.sh"
 
     # Create temp directory for test files
     TEST_TMPDIR=$(mktemp -d)
+}
+
+# Helper function to run pipe commands with MAINFRAME functions available
+# Usage: run_with_mainframe 'echo "hello" | psed "s/hello/world/"'
+run_with_mainframe() {
+    local cmd="$1"
+    # Create a temp script that sources MAINFRAME then runs the command
+    local script="$TEST_TMPDIR/run_cmd.sh"
+    cat > "$script" <<EOF
+#!/usr/bin/env bash
+source "$MAINFRAME_ROOT/lib/common.sh"
+$cmd
+EOF
+    chmod +x "$script"
+    "$script"
 }
 
 teardown() {
@@ -92,19 +108,19 @@ teardown() {
 }
 
 @test "psed works with stdin" {
-    run bash -c 'echo "hello world" | psed "s/world/universe/"'
+    run run_with_mainframe 'echo "hello world" | psed "s/world/universe/"'
     [[ "$status" -eq 0 ]]
     [[ "$output" == "hello universe" ]]
 }
 
 @test "psed handles extended regex with -E" {
-    run bash -c 'echo "foo123bar" | psed -E "s/[0-9]+/_/"'
+    run run_with_mainframe 'echo "foo123bar" | psed -E "s/[0-9]+/_/"'
     [[ "$status" -eq 0 ]]
     [[ "$output" == "foo_bar" ]]
 }
 
 @test "psed global substitution works" {
-    run bash -c 'echo "aaa" | psed "s/a/b/g"'
+    run run_with_mainframe 'echo "aaa" | psed "s/a/b/g"'
     [[ "$status" -eq 0 ]]
     [[ "$output" == "bbb" ]]
 }
@@ -114,19 +130,19 @@ teardown() {
 # =============================================================================
 
 @test "pawk extracts fields" {
-    run bash -c 'echo "a b c" | pawk "{print \$2}"'
+    run run_with_mainframe 'echo "a b c" | pawk "{print \$2}"'
     [[ "$status" -eq 0 ]]
     [[ "$output" == "b" ]]
 }
 
 @test "pawk handles custom field separator" {
-    run bash -c 'echo "a:b:c" | pawk -F: "{print \$2}"'
+    run run_with_mainframe 'echo "a:b:c" | pawk -F: "{print \$2}"'
     [[ "$status" -eq 0 ]]
     [[ "$output" == "b" ]]
 }
 
 @test "pawk performs calculations" {
-    run bash -c 'echo -e "1\n2\n3" | pawk "{sum+=\$1} END {print sum}"'
+    run run_with_mainframe 'echo -e "1\n2\n3" | pawk "{sum+=\$1} END {print sum}"'
     [[ "$status" -eq 0 ]]
     [[ "$output" == "6" ]]
 }
@@ -144,20 +160,20 @@ teardown() {
 }
 
 @test "pgrep with -E extended regex" {
-    run bash -c 'echo -e "cat\ndog\nrat" | pgrep -E "cat|rat"'
+    run run_with_mainframe 'echo -e "cat\ndog\nrat" | pgrep -E "cat|rat"'
     [[ "$status" -eq 0 ]]
     [[ "${lines[0]}" == "cat" ]]
     [[ "${lines[1]}" == "rat" ]]
 }
 
 @test "pgrep with -v inverts match" {
-    run bash -c 'echo -e "apple\nbanana\napricot" | pgrep -v "ap"'
+    run run_with_mainframe 'echo -e "apple\nbanana\napricot" | pgrep -v "ap"'
     [[ "$status" -eq 0 ]]
     [[ "$output" == "banana" ]]
 }
 
 @test "pgrep returns 1 when no match" {
-    run bash -c 'echo "hello" | pgrep "xyz"'
+    run run_with_mainframe 'echo "hello" | pgrep "xyz"'
     [[ "$status" -eq 1 ]]
 }
 
@@ -190,13 +206,13 @@ teardown() {
 # =============================================================================
 
 @test "pxargs processes input" {
-    run bash -c 'echo -e "a\nb\nc" | pxargs echo'
+    run run_with_mainframe 'echo -e "a\nb\nc" | pxargs echo'
     [[ "$status" -eq 0 ]]
     [[ "$output" == "a b c" ]]
 }
 
 @test "pxargs_null handles null-delimited input" {
-    run bash -c 'printf "a\0b\0c" | pxargs_null echo'
+    run run_with_mainframe 'printf "a\0b\0c" | pxargs_null echo'
     [[ "$status" -eq 0 ]]
     [[ "$output" == "a b c" ]]
 }
@@ -299,7 +315,7 @@ teardown() {
 # =============================================================================
 
 @test "psort sorts lines alphabetically" {
-    run bash -c 'echo -e "banana\napple\ncherry" | psort'
+    run run_with_mainframe 'echo -e "banana\napple\ncherry" | psort'
     [[ "$status" -eq 0 ]]
     [[ "${lines[0]}" == "apple" ]]
     [[ "${lines[1]}" == "banana" ]]
@@ -307,7 +323,7 @@ teardown() {
 }
 
 @test "psort with -n sorts numerically" {
-    run bash -c 'echo -e "10\n2\n1" | psort -n'
+    run run_with_mainframe 'echo -e "10\n2\n1" | psort -n'
     [[ "$status" -eq 0 ]]
     [[ "${lines[0]}" == "1" ]]
     [[ "${lines[1]}" == "2" ]]
@@ -315,7 +331,7 @@ teardown() {
 }
 
 @test "psort_version sorts version numbers" {
-    run bash -c 'echo -e "1.10\n1.2\n1.1" | psort_version'
+    run run_with_mainframe 'echo -e "1.10\n1.2\n1.1" | psort_version'
     [[ "$status" -eq 0 ]]
     [[ "${lines[0]}" == "1.1" ]]
     [[ "${lines[1]}" == "1.2" ]]
@@ -327,7 +343,7 @@ teardown() {
 # =============================================================================
 
 @test "phead returns first n lines" {
-    run bash -c 'echo -e "1\n2\n3\n4\n5" | phead -n 3'
+    run run_with_mainframe 'echo -e "1\n2\n3\n4\n5" | phead -n 3'
     [[ "$status" -eq 0 ]]
     [[ "${#lines[@]}" -eq 3 ]]
     [[ "${lines[0]}" == "1" ]]
@@ -335,7 +351,7 @@ teardown() {
 }
 
 @test "ptail returns last n lines" {
-    run bash -c 'echo -e "1\n2\n3\n4\n5" | ptail -n 2'
+    run run_with_mainframe 'echo -e "1\n2\n3\n4\n5" | ptail -n 2'
     [[ "$status" -eq 0 ]]
     [[ "${#lines[@]}" -eq 2 ]]
     [[ "${lines[0]}" == "4" ]]
@@ -372,14 +388,14 @@ teardown() {
 
 @test "pmd5sum produces consistent hash" {
     # Known MD5 hash for "hello"
-    run bash -c 'echo -n "hello" | pmd5sum'
+    run run_with_mainframe 'echo -n "hello" | pmd5sum'
     [[ "$status" -eq 0 ]]
     [[ "$output" == "5d41402abc4b2a76b9719d911017c592" ]]
 }
 
 @test "psha256sum produces consistent hash" {
     # Known SHA256 hash for "hello"
-    run bash -c 'echo -n "hello" | psha256sum'
+    run run_with_mainframe 'echo -n "hello" | psha256sum'
     [[ "$status" -eq 0 ]]
     [[ "$output" == "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824" ]]
 }
@@ -396,13 +412,13 @@ teardown() {
 # =============================================================================
 
 @test "pcut extracts fields" {
-    run bash -c 'echo "a:b:c" | pcut -d: -f2'
+    run run_with_mainframe 'echo "a:b:c" | pcut -d: -f2'
     [[ "$status" -eq 0 ]]
     [[ "$output" == "b" ]]
 }
 
 @test "ptr translates characters" {
-    run bash -c 'echo "HELLO" | ptr "[:upper:]" "[:lower:]"'
+    run run_with_mainframe 'echo "HELLO" | ptr "[:upper:]" "[:lower:]"'
     [[ "$status" -eq 0 ]]
     [[ "$output" == "hello" ]]
 }
@@ -415,7 +431,7 @@ teardown() {
 }
 
 @test "puniq removes duplicates" {
-    run bash -c 'echo -e "a\na\nb\nb\nc" | puniq'
+    run run_with_mainframe 'echo -e "a\na\nb\nb\nc" | puniq'
     [[ "$status" -eq 0 ]]
     [[ "${lines[0]}" == "a" ]]
     [[ "${lines[1]}" == "b" ]]
@@ -472,7 +488,7 @@ teardown() {
 }
 
 @test "compat::sed_extended uses ERE" {
-    run bash -c 'echo "foo123bar" | compat::sed_extended "s/[0-9]+/_/"'
+    run run_with_mainframe 'echo "foo123bar" | compat::sed_extended "s/[0-9]+/_/"'
     [[ "$status" -eq 0 ]]
     [[ "$output" == "foo_bar" ]]
 }
@@ -540,7 +556,7 @@ teardown() {
 # =============================================================================
 
 @test "psed handles empty input" {
-    run bash -c 'echo "" | psed "s/foo/bar/"'
+    run run_with_mainframe 'echo "" | psed "s/foo/bar/"'
     [[ "$status" -eq 0 ]]
     [[ "$output" == "" ]]
 }
