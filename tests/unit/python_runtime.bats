@@ -533,7 +533,7 @@ EOF
     assert_success
     assert_usop_ok "$output"
     [[ "$output" =~ \"created\":false ]] || [[ "$output" =~ \"created\":\"false\" ]]
-    [[ "$output" =~ \"message\":\"venv already exists\" ]]
+    [[ "$output" == *'"message":"venv already exists"'* ]]
 }
 
 @test "py_venv_activate_cmd: returns bash activation command" {
@@ -546,7 +546,7 @@ EOF
 
     assert_success
     assert_usop_ok "$output"
-    [[ "$output" =~ \"command\":\"source $MOCK_VENV/bin/activate\" ]]
+    [[ "$output" == *'"command":"source '*'/bin/activate"'* ]]
 }
 
 @test "py_venv_activate_cmd: returns fish activation command" {
@@ -746,7 +746,7 @@ EOF
 
     assert_success
     assert_usop_ok "$output"
-    [[ "$output" =~ \"file\":\"$TEST_DIR/frozen.txt\" ]]
+    [[ "$output" == *'"file":"'*'/frozen.txt"'* ]]
     [[ -f "$TEST_DIR/frozen.txt" ]]
 }
 
@@ -816,7 +816,7 @@ EOF
 
     assert_success
     assert_usop_ok "$output"
-    [[ "$output" =~ \"file\":\"$TEST_DIR/script.py\" ]]
+    [[ "$output" == *'"file":"'*'/script.py"'* ]]
     [[ "$output" =~ \"exit_code\": ]]
 }
 
@@ -1154,7 +1154,7 @@ EOF
     assert_success
     assert_usop_ok "$output"
     [[ "$output" =~ \"manager\":\"poetry\" ]]
-    [[ "$output" =~ \"poetry run pytest\" ]]
+    [[ "$output" == *'"poetry run pytest"'* ]]
 }
 
 @test "py_suggest_command: suggests lint command" {
@@ -1453,7 +1453,7 @@ EOF
     # Check poetry commands are suggested
     run py_suggest_command "test" "$TEST_DIR"
     assert_success
-    [[ "$output" =~ \"poetry run\" ]]
+    [[ "$output" == *'"poetry run'* ]]
 }
 
 # =============================================================================

@@ -594,6 +594,7 @@ _MAINFRAME_TIER_AI=(
     agent workflow taskstate
     context diff parse_output symbols agent_exec
     agent_comm agent_safety
+    awm
 )
 
 # --- Profile Presets ---------------------------------------------------------
@@ -842,6 +843,7 @@ else
     _mainframe_load_library "agent_exec"
     _mainframe_load_library "agent_comm"
     _mainframe_load_library "agent_safety"
+    _mainframe_load_library "awm"
 
 fi # End of full loading (backward-compatible path)
 
@@ -1144,4 +1146,11 @@ BASHER_COMMON_EXPORTS=(
     ci::pr_branch ci::pr_target ci::commit_sha ci::commit_short ci::branch
     ci::tag ci::is_tag ci::runner ci::build_number ci::repository ci::mask_value
     ci::cache_key_prefix
+    # Agent Working Memory (from awm.sh) - Persistent external memory for AI agents
+    awm_init awm_resume awm_close awm_namespace
+    awm_checkpoint awm_log awm_progress awm_discovery
+    awm_get awm_recent awm_summary awm_context_for
+    awm_compress awm_export awm_inherit
+    awm_token_estimate awm_estimate_read
+    awm_list awm_cleanup awm_check_limits
 )
