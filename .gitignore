@@ -36,3 +36,12 @@ basher.conf
 
 # Cache directory
 cache/
+
+# AWM runtime sessions
+awm/
+
+# Temp test files
+result.txt
+test_export.txt
+test_introspect.sh
+test_state.sh
