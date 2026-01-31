@@ -266,6 +266,30 @@ post_install() {
 }
 
 # =============================================================================
+# AI DISCOVERY SETUP
+# =============================================================================
+
+setup_ai_discovery() {
+    info "Configuring AI tool discovery..."
+
+    # Source the AI discovery library
+    if [[ -f "$MAINFRAME_INSTALL_DIR/lib/ai_discovery.sh" ]]; then
+        export MAINFRAME_ROOT="$MAINFRAME_INSTALL_DIR"
+        source "$MAINFRAME_INSTALL_DIR/lib/ai_discovery.sh"
+
+        # Run the full discovery setup
+        mainframe_ai_discovery_setup_universal
+        mainframe_ai_discovery_setup_claude
+        mainframe_ai_discovery_setup_cursor
+        mainframe_ai_discovery_setup_aider
+
+        success "AI coding tools will now auto-detect MAINFRAME capabilities"
+    else
+        warn "AI discovery library not found, skipping"
+    fi
+}
+
+# =============================================================================
 # VERIFY INSTALLATION
 # =============================================================================
 
@@ -317,6 +341,13 @@ EOF
     printf "  3. See available operations:  ${YELLOW}mainframe list${NC}\n"
     printf "  4. Get help:                  ${YELLOW}mainframe help${NC}\n"
     printf "\n"
+    printf "${BOLD}AI Tool Integration:${NC}\n"
+    printf "  MAINFRAME is now auto-discoverable by AI coding tools!\n"
+    printf "  Claude Code, Cursor, Aider, and others will automatically\n"
+    printf "  know MAINFRAME capabilities are available in ANY project.\n"
+    printf "\n"
+    printf "  Check status: ${YELLOW}mainframe ai-discovery status${NC}\n"
+    printf "\n"
     printf "Documentation: https://github.com/mainframe-cli/mainframe\n"
     printf "\n"
     printf "${BOLD}YO JOE!${NC}\n"
@@ -341,6 +372,7 @@ Options:
   --branch BRANCH     Git branch to install (default: main)
   --no-shell          Skip shell configuration
   --no-claude         Skip Claude Code integration
+  --no-ai-discovery   Skip AI tool discovery setup
   --force             Force reinstall without prompting
 
 Environment Variables:
@@ -358,6 +390,7 @@ EOF
 main() {
     local skip_shell=false
     local skip_claude=false
+    local skip_ai_discovery=false
 
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -384,6 +417,10 @@ main() {
                 ;;
             --no-claude)
                 skip_claude=true
+                shift
+                ;;
+            --no-ai-discovery)
+                skip_ai_discovery=true
                 shift
                 ;;
             --force)
@@ -413,6 +450,7 @@ EOF
 
     [[ "$skip_shell" != "true" ]] && setup_shell
     [[ "$skip_claude" != "true" ]] && setup_claude_code
+    [[ "$skip_ai_discovery" != "true" ]] && setup_ai_discovery
 
     post_install
     verify_installation
