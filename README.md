@@ -34,19 +34,13 @@
 
 ## Quick Install
 
-### Option 1: One-Line Install (Recommended)
+### One-Line Install (Recommended)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gtwatts/mainframe/main/get-mainframe.sh | bash
 ```
 
-### Option 2: Homebrew (macOS/Linux)
-
-```bash
-brew install gtwatts/mainframe/mainframe
-```
-
-### Option 3: Manual
+### Manual Install
 
 ```bash
 git clone https://github.com/gtwatts/mainframe.git ~/.mainframe
