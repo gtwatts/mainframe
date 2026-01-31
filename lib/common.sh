@@ -593,7 +593,7 @@ _MAINFRAME_TIER_AI=(
     limits confirm safewrap safecontext
     agent workflow taskstate
     context diff parse_output symbols agent_exec
-    agent_comm agent_safety
+    agent_comm agent_safety agent_ai
     awm
 )
 
@@ -843,6 +843,7 @@ else
     _mainframe_load_library "agent_exec"
     _mainframe_load_library "agent_comm"
     _mainframe_load_library "agent_safety"
+    _mainframe_load_library "agent_ai"
     _mainframe_load_library "awm"
 
 fi # End of full loading (backward-compatible path)
