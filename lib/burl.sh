@@ -29,6 +29,26 @@
 _MAINFRAME_BURL_LOADED=1
 
 # =============================================================================
+# AUTO-SOURCE DEPENDENCIES
+# =============================================================================
+
+_BURL_LIB_DIR="${BASH_SOURCE[0]%/*}"
+
+# Source jsonpath.sh for query support
+if ! declare -F jsonpath_query &>/dev/null; then
+    if [[ -f "${_BURL_LIB_DIR}/jsonpath.sh" ]]; then
+        source "${_BURL_LIB_DIR}/jsonpath.sh"
+    fi
+fi
+
+# Source burl_session.sh for session support
+if ! declare -F burl_session_init &>/dev/null; then
+    if [[ -f "${_BURL_LIB_DIR}/burl_session.sh" ]]; then
+        source "${_BURL_LIB_DIR}/burl_session.sh"
+    fi
+fi
+
+# =============================================================================
 # ERROR CODES
 # =============================================================================
 
@@ -44,6 +64,8 @@ readonly BURL_E_AUTH_FAILED=8
 readonly BURL_E_BAD_REQUEST=9
 readonly BURL_E_SERVER_ERROR=10
 readonly BURL_E_PARSE_ERROR=11
+readonly BURL_E_QUERY_ERROR=12
+readonly BURL_E_SESSION_ERROR=13
 
 # =============================================================================
 # CONFIGURATION
@@ -878,6 +900,9 @@ burl() {
     local analyze=false
     local raw_output=false
     local headers=()
+    local -a query_paths=()
+    local allow_missing=false
+    local session_file=""
 
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -939,6 +964,18 @@ burl() {
                 raw_output=true
                 shift
                 ;;
+            -q|--query)
+                query_paths+=("$2")
+                shift 2
+                ;;
+            --allow-missing)
+                allow_missing=true
+                shift
+                ;;
+            --session)
+                session_file="$2"
+                shift 2
+                ;;
             -*)
                 # Unknown option - ignore for curl compatibility
                 shift
@@ -981,6 +1018,29 @@ burl() {
         local encoded_auth
         encoded_auth=$(_burl_base64_encode "$user_auth")
         headers+=("Authorization: Basic ${encoded_auth}")
+    fi
+
+    # Add session headers if --session
+    if [[ -n "$session_file" ]] && declare -F burl_session_init &>/dev/null; then
+        # Initialize or load session
+        burl_session_init "$session_file" 2>/dev/null || true
+
+        # Add cookie header (use || true to handle empty session case under set -e)
+        local cookie_header
+        cookie_header=$(burl_session_cookie_header 2>/dev/null) || true
+        [[ -n "$cookie_header" ]] && headers+=("$cookie_header")
+
+        # Add auth header (if not already set via -u)
+        if [[ -z "$auth" ]]; then
+            local auth_header
+            auth_header=$(burl_session_auth_header 2>/dev/null) || true
+            [[ -n "$auth_header" ]] && headers+=("$auth_header")
+        fi
+
+        # Add CSRF header
+        local csrf_header
+        csrf_header=$(burl_session_csrf_header 2>/dev/null) || true
+        [[ -n "$csrf_header" ]] && headers+=("$csrf_header")
     fi
 
     # Build path with query
@@ -1069,7 +1129,7 @@ burl() {
         fi
 
         local location
-        location=$(_burl_get_header "Location")
+        location=$(_burl_get_header "Location") || true
 
         if [[ -z "$location" ]]; then
             break
@@ -1084,23 +1144,38 @@ burl() {
             fi
         fi
 
-        # Recursive call for redirect
+        # Recursive call for redirect - pass along query and session flags
+        local redirect_args=(-X GET)
+        $skip_ssl && redirect_args+=(-k)
+        $verbose && redirect_args+=(-v)
+        $analyze && redirect_args+=(--analyze)
+        [[ "$max_tokens" -gt 0 ]] && redirect_args+=(--max-tokens "$max_tokens")
+        [[ -n "$session_file" ]] && redirect_args+=(--session "$session_file")
+        $allow_missing && redirect_args+=(--allow-missing)
+        for qp in "${query_paths[@]}"; do
+            redirect_args+=(-q "$qp")
+        done
         # shellcheck disable=SC2086  # Intentional word splitting for optional flags
-        burl -X GET ${skip_ssl:+-k} ${verbose:+-v} ${analyze:+--analyze} --max-tokens "$max_tokens" "$location"
+        burl "${redirect_args[@]}" "$location"
         return $?
     done
 
     # Handle chunked encoding
     local transfer_encoding
-    transfer_encoding=$(_burl_get_header "Transfer-Encoding")
+    transfer_encoding=$(_burl_get_header "Transfer-Encoding") || true
     if [[ "${transfer_encoding,,}" == "chunked" ]]; then
         _BURL_BODY=$(_burl_decode_chunked "$_BURL_BODY")
+    fi
+
+    # Update session from response headers if --session
+    if [[ -n "$session_file" ]] && declare -F burl_session_update_from_response &>/dev/null; then
+        burl_session_update_from_response "$_BURL_HEADERS" 2>/dev/null
     fi
 
     # Check for rate limiting
     if [[ "$_BURL_STATUS" == "429" ]]; then
         local retry_after
-        retry_after=$(_burl_get_header "Retry-After")
+        retry_after=$(_burl_get_header "Retry-After") || true
         _burl_semantic_error "$BURL_E_RATE_LIMITED" "$url"
         _burl_error "$BURL_E_RATE_LIMITED" "$_BURL_ERROR_MSG" "$_BURL_ERROR_SUGGEST" \
             "url=$url" "status=$_BURL_STATUS" "retry_after=${retry_after:-unknown}"
@@ -1138,11 +1213,77 @@ burl() {
         return 0
     fi
 
+    # JSONPath query extraction (-q/--query)
+    if [[ ${#query_paths[@]} -gt 0 ]] && declare -F jsonpath_query &>/dev/null; then
+        local query_result=""
+
+        if [[ ${#query_paths[@]} -eq 1 ]]; then
+            # Single query - return raw value
+            local path="${query_paths[0]}"
+            query_result=$(jsonpath_query "$final_body" "$path" 2>/dev/null)
+            local query_rc=$?
+
+            if [[ $query_rc -ne 0 ]]; then
+                if $allow_missing; then
+                    printf 'null'
+                    return 0
+                else
+                    _burl_error "$BURL_E_QUERY_ERROR" "Path not found: $path" \
+                        "Verify the JSONPath exists in the response, or use --allow-missing" \
+                        "path=$path"
+                    return "$BURL_E_QUERY_ERROR"
+                fi
+            fi
+
+            printf '%s' "$query_result"
+            return 0
+        else
+            # Multiple queries - return JSON object
+            local first=true
+            query_result="{"
+
+            for path in "${query_paths[@]}"; do
+                local value
+                value=$(jsonpath_query "$final_body" "$path" 2>/dev/null)
+                local query_rc=$?
+
+                $first || query_result+=","
+                first=false
+
+                if [[ $query_rc -ne 0 ]]; then
+                    if $allow_missing; then
+                        query_result+="\"${path}\":null"
+                    else
+                        _burl_error "$BURL_E_QUERY_ERROR" "Path not found: $path" \
+                            "Verify the JSONPath exists in the response, or use --allow-missing" \
+                            "path=$path"
+                        return "$BURL_E_QUERY_ERROR"
+                    fi
+                else
+                    # Determine if value needs quoting
+                    if [[ "$value" =~ ^(\{|\[|true|false|null|-?[0-9]) ]]; then
+                        query_result+="\"${path}\":${value}"
+                    else
+                        # Escape and quote string
+                        value="${value//\\/\\\\}"
+                        value="${value//\"/\\\"}"
+                        value="${value//$'\n'/\\n}"
+                        query_result+="\"${path}\":\"${value}\""
+                    fi
+                fi
+            done
+
+            query_result+="}"
+            printf '%s' "$query_result"
+            return 0
+        fi
+    fi
+
     # Build USOP response
     local content_type
-    content_type=$(_burl_get_header "Content-Type")
+    content_type=$(_burl_get_header "Content-Type") || true
     local content_length
-    content_length=$(_burl_get_header "Content-Length")
+    content_length=$(_burl_get_header "Content-Length") || true
 
     local meta_parts=(
         "status=$_BURL_STATUS"
@@ -1603,10 +1744,12 @@ EOF
 # Print bURL version and capabilities
 burl_version() {
     cat << 'EOF'
-bURL 1.0.0 - AI-Native HTTP Client for MAINFRAME
+bURL 1.1.0 - AI-Native HTTP Client for MAINFRAME
 
 Features:
   - USOP JSON envelope output
+  - JSONPath query extraction (-q/--query)
+  - Session state management (--session)
   - Semantic error messages with suggestions
   - Token-budget aware truncation
   - Smart retry with rate-limit awareness

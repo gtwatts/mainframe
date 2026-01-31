@@ -13,8 +13,8 @@
 
 # Setup: Load libraries and configure test environment
 setup() {
-    # Store original directory
-    BATS_TEST_DIR="$( cd "$( dirname "$BATS_TEST_FILE" )" && pwd )"
+    # Store original directory (use BATS_TEST_FILENAME, not BATS_TEST_FILE)
+    BATS_TEST_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
     MAINFRAME_ROOT="${BATS_TEST_DIR}/../.."
 
     # Create temp directory for test artifacts
@@ -42,6 +42,8 @@ setup() {
     # Reset bURL loaded state for fresh load in tests
     unset _MAINFRAME_BURL_LOADED
     unset _MAINFRAME_BURL_AI_LOADED
+    unset _MAINFRAME_JSONPATH_LOADED
+    unset _MAINFRAME_BURL_SESSION_LOADED
 }
 
 # Teardown: Clean up test artifacts
@@ -105,7 +107,7 @@ EOF
     chmod +x "$MOCK_BIN/curl"
 }
 
-# Mock /dev/tcp by overriding http_request
+# Mock /dev/tcp by overriding http_request and burl internal functions
 mock_http_response() {
     local body="$1"
     local status="${2:-200}"
@@ -140,6 +142,17 @@ mock_http_response() {
     http_head() {
         printf 'HTTP/1.1 %s OK\r\n%s\r\nConnection: close\r\n\r\n' \
             "$_MOCK_HTTP_STATUS" "$_MOCK_HTTP_HEADERS"
+    }
+
+    # Override burl internal connection functions for direct burl() testing
+    _burl_connect_tcp() {
+        printf 'HTTP/1.1 %s OK\r\n%s\r\nConnection: close\r\n\r\n%s' \
+            "$_MOCK_HTTP_STATUS" "$_MOCK_HTTP_HEADERS" "$_MOCK_HTTP_BODY"
+    }
+
+    _burl_connect_tls() {
+        printf 'HTTP/1.1 %s OK\r\n%s\r\nConnection: close\r\n\r\n%s' \
+            "$_MOCK_HTTP_STATUS" "$_MOCK_HTTP_HEADERS" "$_MOCK_HTTP_BODY"
     }
 }
 
@@ -1182,4 +1195,211 @@ mock_http_response() {
     _burl_parse_response "$response"
 
     [[ "$_BURL_STATUS" == "201" ]]
+}
+
+# =============================================================================
+# CATEGORY 15: JSONPATH QUERY FLAGS (-q/--query)
+# =============================================================================
+
+@test "burl: -q flag extracts single value" {
+    source "$MAINFRAME_ROOT/lib/burl.sh"
+    mock_http_response '{"user":{"name":"John","id":42}}' 200
+
+    result=$(burl -q '.user.name' "http://api.test.local/user")
+
+    [[ "$result" == "John" ]]
+}
+
+@test "burl: --query flag extracts nested value" {
+    source "$MAINFRAME_ROOT/lib/burl.sh"
+    mock_http_response '{"data":{"items":[{"id":1},{"id":2}]}}' 200
+
+    result=$(burl --query '.data.items[0].id' "http://api.test.local/items")
+
+    [[ "$result" == "1" ]]
+}
+
+@test "burl: multiple -q flags return JSON object" {
+    source "$MAINFRAME_ROOT/lib/burl.sh"
+    mock_http_response '{"name":"John","age":30,"city":"NYC"}' 200
+
+    result=$(burl -q '.name' -q '.age' "http://api.test.local/user")
+
+    [[ "$result" =~ '".name":"John"' ]]
+    [[ "$result" =~ '".age":30' ]]
+}
+
+@test "burl: -q with missing path returns error" {
+    source "$MAINFRAME_ROOT/lib/burl.sh"
+    mock_http_response '{"name":"John"}' 200
+
+    # Command returns non-zero, so we need to capture output and ignore exit code
+    local result
+    result=$(burl -q '.missing' "http://api.test.local/user" 2>&1) || true
+
+    [[ "$result" =~ '"ok":false' ]]
+    [[ "$result" =~ '"code":12' ]]  # BURL_E_QUERY_ERROR = 12
+}
+
+@test "burl: -q with --allow-missing returns null for missing path" {
+    source "$MAINFRAME_ROOT/lib/burl.sh"
+    mock_http_response '{"name":"John"}' 200
+
+    result=$(burl -q '.missing' --allow-missing "http://api.test.local/user")
+
+    [[ "$result" == "null" ]]
+}
+
+@test "burl: -q extracts array element" {
+    source "$MAINFRAME_ROOT/lib/burl.sh"
+    mock_http_response '{"items":["a","b","c"]}' 200
+
+    result=$(burl -q '.items[1]' "http://api.test.local/array")
+
+    [[ "$result" == "b" ]]
+}
+
+@test "burl: -q extracts negative array index" {
+    source "$MAINFRAME_ROOT/lib/burl.sh"
+    mock_http_response '{"items":[1,2,3,4,5]}' 200
+
+    result=$(burl -q '.items[-1]' "http://api.test.local/array")
+
+    [[ "$result" == "5" ]]
+}
+
+@test "burl: -q returns boolean value correctly" {
+    source "$MAINFRAME_ROOT/lib/burl.sh"
+    mock_http_response '{"active":true}' 200
+
+    result=$(burl -q '.active' "http://api.test.local/bool")
+
+    [[ "$result" == "true" ]]
+}
+
+@test "burl: -q returns numeric value correctly" {
+    source "$MAINFRAME_ROOT/lib/burl.sh"
+    mock_http_response '{"count":42}' 200
+
+    result=$(burl -q '.count' "http://api.test.local/num")
+
+    [[ "$result" == "42" ]]
+}
+
+@test "burl: -q returns null value correctly" {
+    source "$MAINFRAME_ROOT/lib/burl.sh"
+    mock_http_response '{"value":null}' 200
+
+    result=$(burl -q '.value' "http://api.test.local/null")
+
+    [[ "$result" == "null" ]]
+}
+
+# =============================================================================
+# CATEGORY 16: SESSION STATE MANAGEMENT (--session)
+# =============================================================================
+
+@test "burl: --session flag creates session file" {
+    source "$MAINFRAME_ROOT/lib/burl.sh"
+    mock_http_response '{"data":"test"}' 200
+
+    local session_file="$TEST_TMPDIR/session.json"
+    burl --session "$session_file" "http://api.test.local/create"
+
+    [[ -f "$session_file" ]]
+}
+
+@test "burl: --session stores Set-Cookie from response" {
+    source "$MAINFRAME_ROOT/lib/burl.sh"
+
+    # Mock response with Set-Cookie header
+    _MOCK_HTTP_BODY='{"logged_in":true}'
+    _MOCK_HTTP_STATUS="200"
+    _MOCK_HTTP_HEADERS=$'Content-Type: application/json\r\nSet-Cookie: session=abc123; Path=/'
+
+    _burl_connect_tcp() {
+        printf 'HTTP/1.1 %s OK\r\n%s\r\nConnection: close\r\n\r\n%s' \
+            "$_MOCK_HTTP_STATUS" "$_MOCK_HTTP_HEADERS" "$_MOCK_HTTP_BODY"
+    }
+    _burl_connect_tls() {
+        printf 'HTTP/1.1 %s OK\r\n%s\r\nConnection: close\r\n\r\n%s' \
+            "$_MOCK_HTTP_STATUS" "$_MOCK_HTTP_HEADERS" "$_MOCK_HTTP_BODY"
+    }
+
+    local session_file="$TEST_TMPDIR/session_cookie.json"
+    burl --session "$session_file" "http://api.test.local/login"
+
+    local content
+    content=$(<"$session_file")
+    [[ "$content" == *"session"* ]]
+    [[ "$content" == *"abc123"* ]]
+}
+
+@test "burl: --session persists across requests" {
+    source "$MAINFRAME_ROOT/lib/burl.sh"
+
+    local session_file="$TEST_TMPDIR/persist.json"
+
+    # First request - login
+    _MOCK_HTTP_BODY='{"status":"logged_in"}'
+    _MOCK_HTTP_STATUS="200"
+    _MOCK_HTTP_HEADERS=$'Content-Type: application/json\r\nSet-Cookie: auth=token123; Path=/'
+
+    _burl_connect_tcp() {
+        printf 'HTTP/1.1 %s OK\r\n%s\r\nConnection: close\r\n\r\n%s' \
+            "$_MOCK_HTTP_STATUS" "$_MOCK_HTTP_HEADERS" "$_MOCK_HTTP_BODY"
+    }
+    _burl_connect_tls() {
+        printf 'HTTP/1.1 %s OK\r\n%s\r\nConnection: close\r\n\r\n%s' \
+            "$_MOCK_HTTP_STATUS" "$_MOCK_HTTP_HEADERS" "$_MOCK_HTTP_BODY"
+    }
+
+    burl --session "$session_file" "http://api.test.local/login"
+
+    # Verify cookie is saved
+    local content
+    content=$(<"$session_file")
+    [[ "$content" == *"token123"* ]]
+}
+
+@test "burl: session combines with -q flag" {
+    source "$MAINFRAME_ROOT/lib/burl.sh"
+    mock_http_response '{"user":"john","role":"admin"}' 200
+
+    local session_file="$TEST_TMPDIR/combo.json"
+    result=$(burl --session "$session_file" -q '.role' "http://api.test.local/me")
+
+    [[ "$result" == "admin" ]]
+    [[ -f "$session_file" ]]
+}
+
+@test "burl: session file maintains format version" {
+    source "$MAINFRAME_ROOT/lib/burl.sh"
+    mock_http_response '{}' 200
+
+    local session_file="$TEST_TMPDIR/version.json"
+    burl --session "$session_file" "http://api.test.local/test"
+
+    local content
+    content=$(<"$session_file")
+    # Handle both compact and pretty-printed JSON formats
+    [[ "$content" == *'format_version'* ]]
+    [[ "$content" == *'1.0'* ]]
+}
+
+@test "burl: session preserves auth headers across requests" {
+    source "$MAINFRAME_ROOT/lib/burl.sh"
+    mock_http_response '{}' 200
+
+    local session_file="$TEST_TMPDIR/auth.json"
+
+    # Initialize session with auth
+    burl_session_init "$session_file"
+    burl_session_set_auth --type bearer --token "test_token"
+
+    # Verify auth is saved in session file
+    local content
+    content=$(<"$session_file")
+    [[ "$content" == *"bearer"* ]]
+    [[ "$content" == *"test_token"* ]]
 }
