@@ -4,17 +4,25 @@
 
 This roadmap outlines planned features and improvements for MAINFRAME. Items are organized by priority and status.
 
-**Current Stats**: 4,100+ functions | 121 libraries | 6,588 tests | Pure Bash
+**Current Stats**: 4,150+ functions | 122 libraries | 6,626 tests | Pure Bash
 
 ---
 
 ## In Progress
 
-### Security Hardening
+### Security Hardening (v6.2)
 
-- [ ] Security audit of remaining `eval` sites
-- [ ] TOCTOU race condition fixes in atomic operations
-- [ ] Capability-based security model (fine-grained permissions)
+- [ ] Security audit of remaining `eval` sites (design complete, implementation pending)
+- [ ] TOCTOU race condition fixes in atomic operations (design complete, implementation pending)
+- [x] **Capability-based security model** (`lib/capability.sh`)
+  - [x] Capability token format: `cap://domain/action/resource`
+  - [x] Grant, revoke, and check capabilities
+  - [x] Wildcard pattern matching
+  - [x] Capability profiles: minimal, readonly, developer, network, admin
+  - [x] Guarded operations: `cap_read_file`, `cap_write_file`, `cap_exec`, `cap_env_get`
+  - [x] Audit logging with JSON export
+  - [x] Capability delegation for agent handoffs
+  - [x] 38 unit tests
 
 ---
 
