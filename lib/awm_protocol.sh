@@ -461,6 +461,7 @@ awm_subscribe() {
     [[ -z "$_AWM_AGENT_ID" ]] && return 1
 
     # Create wrapper that filters by type
+    # shellcheck disable=SC2329  # Function used as callback via awm_store_subscribe
     _awm_subscription_handler() {
         local message="$1"
         local type

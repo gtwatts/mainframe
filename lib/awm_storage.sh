@@ -799,10 +799,18 @@ awm_storage_clear() {
 
     case "$_AWM_STORAGE_BACKEND" in
         redis)
-            _awm_redis_cmd KEYS "awm:*" | xargs -r _awm_redis_cmd DEL
+            # Use redis-cli directly with DEL to avoid xargs + function issue
+            local keys
+            keys=$(_awm_redis_cmd KEYS "awm:*")
+            if [[ -n "$keys" ]]; then
+                echo "$keys" | while read -r key; do
+                    _awm_redis_cmd DEL "$key" >/dev/null
+                done
+            fi
             ;;
         file|chromadb)
-            rm -rf "$_AWM_STORAGE_DIR"/*
+            # Use :? to ensure variable is set and non-empty
+            rm -rf "${_AWM_STORAGE_DIR:?}"/*
             ;;
     esac
 }
@@ -818,8 +826,8 @@ awm_storage_stats() {
 
     case "$_AWM_STORAGE_BACKEND" in
         redis)
-            kv_count=$(_awm_redis_cmd KEYS "awm:*" | grep -v "list:" | grep -v "channel:" | wc -l)
-            list_count=$(_awm_redis_cmd KEYS "awm:list:*" | wc -l)
+            kv_count=$(_awm_redis_cmd KEYS "awm:*" | grep -Evc "list:|channel:" || echo 0)
+            list_count=$(_awm_redis_cmd KEYS "awm:list:*" | grep -c . || echo 0)
             total_size=$(_awm_redis_cmd INFO memory | grep used_memory: | cut -d: -f2 | tr -d '\r')
             ;;
         file|chromadb)

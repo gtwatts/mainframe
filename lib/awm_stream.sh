@@ -318,7 +318,7 @@ awm_pointer_resolve() {
 
     # Extract hash from pointer
     local hash
-    hash=$(echo "$pointer" | sed 's|ptr://awm/||')
+    hash="${pointer#ptr://awm/}"
 
     local data
     data=$(awm_store_get "ptr:$hash")
@@ -334,7 +334,7 @@ awm_pointer_resolve() {
 awm_pointer_exists() {
     local pointer="$1"
     local hash
-    hash=$(echo "$pointer" | sed 's|ptr://awm/||')
+    hash="${pointer#ptr://awm/}"
 
     awm_store_exists "ptr:$hash"
 }
@@ -344,7 +344,7 @@ awm_pointer_exists() {
 awm_pointer_meta() {
     local pointer="$1"
     local hash
-    hash=$(echo "$pointer" | sed 's|ptr://awm/||')
+    hash="${pointer#ptr://awm/}"
 
     local data
     data=$(awm_store_get "ptr:$hash")
