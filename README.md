@@ -34,25 +34,29 @@
 
 ## Quick Install
 
-**Get MAINFRAME running in 30 seconds:**
+### Option 1: One-Line Install (Recommended)
 
 ```bash
-# 1. Clone MAINFRAME
+curl -fsSL https://raw.githubusercontent.com/gtwatts/mainframe/main/get-mainframe.sh | bash
+```
+
+### Option 2: Homebrew (macOS/Linux)
+
+```bash
+brew install gtwatts/mainframe/mainframe
+```
+
+### Option 3: Manual
+
+```bash
 git clone https://github.com/gtwatts/mainframe.git ~/.mainframe
-
-# 2. Add to your shell profile
-echo 'export MAINFRAME_ROOT="$HOME/.mainframe"' >> ~/.bashrc
-echo 'source "$MAINFRAME_ROOT/lib/common.sh"' >> ~/.bashrc
-
-# 3. Reload and verify
-source ~/.bashrc
-mainframe version
+~/.mainframe/install.sh
 ```
 
-**Expected output:**
-```
-MAINFRAME v6.0
-4,000+ functions | 117 libraries | Pure Bash
+**Verify installation:**
+```bash
+source ~/.bashrc  # or restart your terminal
+source "$MAINFRAME_ROOT/lib/common.sh" && uuid
 ```
 
 **That's it.** Your AI agents now have a safe, efficient bash runtime with persistent memory.
