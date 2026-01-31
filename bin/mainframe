@@ -8,7 +8,7 @@
 #   version     Show MAINFRAME version
 #   functions   List all available functions
 #   search      Search functions by name or description
-#   quickref    Show compact function signatures for a library
+#   quickref    Show compact function signatures (with --search for lookup)
 #   benchmark   Run performance benchmarks
 #   test        Run test suite
 #   doctor      Check MAINFRAME installation
@@ -39,7 +39,7 @@ Commands:
   functions   List all available functions (pipe to grep for filtering)
   search      Search functions by name pattern
   count       Count total functions available
-  quickref    Show compact function signatures for a library
+  quickref    Show compact function signatures (with --search for lookup)
   benchmark   Run performance benchmarks
   test        Run test suite (requires bats)
   doctor      Check MAINFRAME installation health
@@ -51,6 +51,7 @@ Examples:
   mainframe search "array"
   mainframe quickref json
   mainframe quickref --list
+  mainframe quickref --search hash
   mainframe quickref --all
   mainframe count
   mainframe doctor
@@ -320,12 +321,15 @@ _quickref_extract() {
 
 cmd_quickref() {
     local arg="${1:-}"
+    local arg2="${2:-}"
     local lib_dir="${MAINFRAME_ROOT}/lib"
 
     if [[ -z "$arg" ]]; then
         echo "Usage: mainframe quickref <library>"
-        echo "       mainframe quickref --list    List available libraries"
-        echo "       mainframe quickref --all     Show all functions (compact)"
+        echo "       mainframe quickref --list         List available libraries"
+        echo "       mainframe quickref --all          Show all functions (compact)"
+        echo "       mainframe quickref --search TERM  Search all functions"
+        echo "       mainframe quickref --json         Output FUNCTIONS.json path"
         return 1
     fi
 
@@ -333,6 +337,31 @@ cmd_quickref() {
         --list|-l)
             echo "Available libraries:"
             _quickref_list_libraries
+            ;;
+        --search|-s)
+            if [[ -z "$arg2" ]]; then
+                echo "Usage: mainframe quickref --search <term>"
+                return 1
+            fi
+            local lib_name lib_file
+            while IFS= read -r lib_name; do
+                lib_file="${lib_dir}/${lib_name}.sh"
+                local output
+                output=$(_quickref_extract "$lib_file" | grep -i "$arg2" || true)
+                if [[ -n "$output" ]]; then
+                    printf '## %s\n' "$lib_name"
+                    printf '%s\n\n' "$output"
+                fi
+            done < <(_quickref_list_libraries)
+            ;;
+        --json|-j)
+            local json_file="${MAINFRAME_ROOT}/FUNCTIONS.json"
+            if [[ -f "$json_file" ]]; then
+                echo "$json_file"
+            else
+                echo "FUNCTIONS.json not found at: $json_file"
+                return 1
+            fi
             ;;
         --all|-a)
             local lib_name lib_file

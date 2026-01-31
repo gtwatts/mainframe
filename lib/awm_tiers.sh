@@ -696,3 +696,182 @@ awm_tier_prefetch() {
 
     echo "$loaded"
 }
+
+# =============================================================================
+# TIER PROMOTION LATENCY TRACKING
+# =============================================================================
+
+# Track tier promotion latency (target: sub-100ms)
+declare -gA _AWM_TIER_LATENCY=()
+
+# @pre: none
+# @post: latency recorded
+# @returns: latency in milliseconds
+#
+# Measure tier promotion latency.
+#
+# Usage: awm_tier_latency "operation" start_time
+_awm_measure_latency() {
+    local operation="$1"
+    local start_ms="$2"
+
+    local end_ms
+    if [[ -n "${EPOCHREALTIME:-}" ]]; then
+        end_ms=$(printf '%.0f' "$(echo "${EPOCHREALTIME} * 1000" | bc 2>/dev/null)")
+    else
+        end_ms=$(($(date +%s) * 1000))
+    fi
+
+    local latency=$((end_ms - start_ms))
+    _AWM_TIER_LATENCY["$operation"]="$latency"
+
+    # Warn if exceeds target
+    if [[ $latency -gt 100 ]]; then
+        echo "[awm_tiers] WARN: $operation latency ${latency}ms exceeds 100ms target" >&2
+    fi
+
+    echo "$latency"
+}
+
+# @pre: none
+# @post: none (read-only)
+# @returns: latency statistics as JSON
+#
+# Get tier operation latency statistics.
+#
+# Usage: awm_tier_latency_stats
+awm_tier_latency_stats() {
+    local result='{'
+    local first=1
+
+    for op in "${!_AWM_TIER_LATENCY[@]}"; do
+        [[ $first -eq 0 ]] && result+=','
+        first=0
+        result+="\"${op}\":${_AWM_TIER_LATENCY[$op]}"
+    done
+
+    echo "${result}}"
+}
+
+# =============================================================================
+# CRASH-SAFE RECOVERY
+# =============================================================================
+
+# @pre: session_id exists
+# @post: hot tier restored from warm/cold
+# @returns: number of items recovered
+#
+# Recover hot tier state after crash/restart.
+#
+# Usage: awm_tier_recover session_id
+awm_tier_recover() {
+    local session_id="$1"
+
+    [[ -z "$session_id" ]] && return 1
+
+    local recovered=0
+
+    # Recover from warm tier checkpoint
+    local checkpoint_file="${AWM_WARM_DIR}/.checkpoint_${session_id}"
+    if [[ -f "$checkpoint_file" ]]; then
+        while IFS= read -r line; do
+            local key value
+            key=$(echo "$line" | jq -r '.key')
+            value=$(echo "$line" | jq -r '.value')
+            local importance
+            importance=$(echo "$line" | jq -r '.importance // "normal"')
+
+            awm_hot_set "$key" "$value" "$importance"
+            ((recovered++))
+        done < "$checkpoint_file"
+
+        rm -f "$checkpoint_file"
+    fi
+
+    echo "$recovered"
+}
+
+# @pre: active session
+# @post: hot tier checkpointed to warm
+# @returns: 0 on success
+#
+# Checkpoint hot tier for crash recovery (zero data loss).
+#
+# Usage: awm_tier_checkpoint session_id
+awm_tier_checkpoint() {
+    local session_id="$1"
+
+    [[ -z "$session_id" ]] && return 1
+
+    mkdir -p "$AWM_WARM_DIR"
+
+    local checkpoint_file="${AWM_WARM_DIR}/.checkpoint_${session_id}"
+    local tmpfile="${checkpoint_file}.tmp.$$"
+
+    # Write hot tier state to checkpoint
+    for key in "${!_AWM_HOT_TIER[@]}"; do
+        local value="${_AWM_HOT_TIER[$key]}"
+        local meta="${_AWM_HOT_META[$key]}"
+        local importance
+        importance=$(echo "$meta" | jq -r '.importance // "normal"' 2>/dev/null || echo "normal")
+
+        jq -nc \
+            --arg key "$key" \
+            --arg value "$value" \
+            --arg imp "$importance" \
+            '{key: $key, value: $value, importance: $imp}' >> "$tmpfile"
+    done
+
+    # Atomic rename
+    mv -f "$tmpfile" "$checkpoint_file" 2>/dev/null
+
+    return 0
+}
+
+# =============================================================================
+# MODULE EXPORTS
+# =============================================================================
+
+MAINFRAME_AWM_TIERS_EXPORTS=(
+    # Initialization
+    awm_tier_init
+    # Hot Tier Operations
+    awm_hot_set
+    awm_hot_get
+    awm_hot_delete
+    awm_hot_exists
+    awm_hot_size
+    awm_hot_keys
+    awm_hot_dump
+    # Warm Tier Operations
+    awm_warm_set
+    awm_warm_get
+    awm_warm_delete
+    awm_warm_exists
+    awm_warm_size
+    # Cold Tier Operations
+    awm_cold_set
+    awm_cold_get
+    awm_cold_delete
+    awm_cold_search
+    # Unified Operations
+    awm_tier_write
+    awm_tier_read
+    awm_tier_delete
+    awm_tier_promote
+    awm_tier_demote
+    awm_tier_prefetch
+    # Eviction
+    awm_evict_hot
+    awm_evict_warm
+    awm_evict_cold
+    awm_evict_all
+    # Statistics
+    awm_tier_stats
+    awm_tier_latency_stats
+    # Recovery
+    awm_tier_checkpoint
+    awm_tier_recover
+    # Management
+    awm_tier_clear
+)

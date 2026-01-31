@@ -860,3 +860,147 @@ awm_summarize_chunks() {
         --argjson chunks "$summaries" \
         '{chunk_count: $count, total_tokens: $total_tokens, chunks: $chunks}'
 }
+
+# =============================================================================
+# TRUNCATION STRATEGIES
+# =============================================================================
+
+# @pre: content is a string
+# @post: content truncated to fit token budget
+# @returns: truncated content
+#
+# Truncate content using specified strategy.
+#
+# Usage: awm_truncate "content" max_tokens [strategy]
+# strategy: head|tail|middle|smart (default: smart)
+awm_truncate() {
+    local content="$1"
+    local max_tokens="${2:-4000}"
+    local strategy="${3:-smart}"
+
+    local current_tokens
+    current_tokens=$(awm_estimate_tokens "$content")
+
+    [[ $current_tokens -le $max_tokens ]] && echo "$content" && return 0
+
+    local ratio
+    ratio=$(echo "scale=4; $max_tokens / $current_tokens" | bc)
+    local max_chars
+    max_chars=$(echo "scale=0; ${#content} * $ratio" | bc | cut -d. -f1)
+
+    case "$strategy" in
+        head)
+            echo "${content:0:$max_chars}..."
+            ;;
+        tail)
+            local start=$((${#content} - max_chars))
+            echo "...${content:$start}"
+            ;;
+        middle)
+            local half=$((max_chars / 2))
+            echo "${content:0:$half}...[truncated]...${content: -$half}"
+            ;;
+        smart|*)
+            # Smart: try to keep complete lines/sentences
+            local truncated="${content:0:$max_chars}"
+            # Find last complete sentence or line
+            local last_break
+            last_break=$(echo "$truncated" | grep -bo '[.!?\n]' | tail -1 | cut -d: -f1)
+            if [[ -n "$last_break" ]] && [[ $last_break -gt $((max_chars / 2)) ]]; then
+                echo "${content:0:$((last_break + 1))}..."
+            else
+                echo "$truncated..."
+            fi
+            ;;
+    esac
+}
+
+# @pre: files is an array of file paths
+# @post: read plan generated
+# @returns: JSON read plan
+#
+# Generate a read plan for files that fit in budget.
+#
+# Usage: awm_read_plan budget_tokens file1 file2 ...
+awm_read_plan() {
+    local budget="$1"
+    shift
+    local files=("$@")
+
+    local included='[]'
+    local excluded='[]'
+    local used=0
+
+    for file in "${files[@]}"; do
+        [[ ! -f "$file" ]] && continue
+
+        local tokens
+        tokens=$(awm_estimate_file_tokens "$file")
+
+        if [[ $((used + tokens)) -le $budget ]]; then
+            included=$(echo "$included" | jq \
+                --arg f "$file" \
+                --argjson t "$tokens" \
+                '. + [{file: $f, tokens: $t}]')
+            ((used += tokens))
+        else
+            excluded=$(echo "$excluded" | jq \
+                --arg f "$file" \
+                --argjson t "$tokens" \
+                --arg r "budget_exceeded" \
+                '. + [{file: $f, tokens: $t, reason: $r}]')
+        fi
+    done
+
+    jq -n \
+        --argjson budget "$budget" \
+        --argjson used "$used" \
+        --argjson remaining "$((budget - used))" \
+        --argjson included "$included" \
+        --argjson excluded "$excluded" \
+        '{budget: $budget, used: $used, remaining: $remaining, included: $included, excluded: $excluded}'
+}
+
+# =============================================================================
+# MODULE EXPORTS
+# =============================================================================
+
+MAINFRAME_AWM_STREAM_EXPORTS=(
+    # Budget Management
+    awm_budget_init
+    awm_budget_max
+    awm_budget_used
+    awm_budget_remaining
+    awm_budget_fits
+    awm_budget_use
+    awm_budget_reset
+    awm_budget_summary
+    # Token Estimation
+    awm_estimate_tokens
+    awm_estimate_file_tokens
+    awm_detect_content_type
+    # Memory Pointers
+    awm_pointer_create
+    awm_pointer_resolve
+    awm_pointer_exists
+    awm_pointer_meta
+    awm_wrap_result
+    # Semantic Chunking
+    awm_chunk
+    awm_chunk_code
+    awm_chunk_json
+    awm_chunk_markdown
+    awm_chunk_prose
+    awm_chunk_generic
+    # Compression
+    awm_compress
+    # Observation Masking
+    awm_mask_observations
+    awm_unmask_observations
+    # Streaming
+    awm_stream_chunks
+    awm_summarize_chunks
+    # Truncation
+    awm_truncate
+    awm_read_plan
+)

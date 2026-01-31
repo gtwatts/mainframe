@@ -841,3 +841,103 @@ awm_storage_stats() {
     printf '{"backend":"%s","kv_count":%d,"list_count":%d,"index_count":%d,"total_bytes":%d}' \
         "$_AWM_STORAGE_BACKEND" "$kv_count" "$list_count" "$index_count" "${total_size:-0}"
 }
+
+# =============================================================================
+# STORAGE HEALTH CHECK
+# =============================================================================
+
+# @pre: storage initialized
+# @post: none (read-only)
+# @returns: 0 if healthy, 1 if degraded
+#
+# Check storage backend health and connectivity.
+#
+# Usage: awm_storage_health
+awm_storage_health() {
+    [[ -z "$_AWM_STORAGE_BACKEND" ]] && awm_storage_init
+
+    case "$_AWM_STORAGE_BACKEND" in
+        chromadb)
+            _awm_check_chromadb "$_AWM_CHROMADB_URL"
+            return $?
+            ;;
+        redis)
+            _awm_check_redis "$_AWM_REDIS_HOST" "$_AWM_REDIS_PORT"
+            return $?
+            ;;
+        file)
+            [[ -d "$_AWM_STORAGE_DIR" ]] && [[ -w "$_AWM_STORAGE_DIR" ]]
+            return $?
+            ;;
+    esac
+
+    return 1
+}
+
+# @pre: none
+# @post: backend cache cleared
+# @returns: 0
+#
+# Force re-detection of storage backend (useful after service restart).
+#
+# Usage: awm_storage_reset
+awm_storage_reset() {
+    _AWM_STORAGE_BACKEND=""
+    awm_storage_init
+}
+
+# @pre: none
+# @post: none (read-only)
+# @returns: prints backend status as JSON
+#
+# Get storage backend status including latency estimate.
+#
+# Usage: awm_storage_status
+awm_storage_status() {
+    [[ -z "$_AWM_STORAGE_BACKEND" ]] && awm_storage_init
+
+    local healthy
+    awm_storage_health && healthy="true" || healthy="false"
+
+    local stats
+    stats=$(awm_storage_stats)
+
+    printf '{"backend":"%s","healthy":%s,"capabilities":%s,"stats":%s}' \
+        "$_AWM_STORAGE_BACKEND" \
+        "$healthy" \
+        "$(awm_storage_caps)" \
+        "$stats"
+}
+
+# =============================================================================
+# MODULE EXPORTS
+# =============================================================================
+
+MAINFRAME_AWM_STORAGE_EXPORTS=(
+    # Initialization
+    awm_storage_init
+    awm_storage_backend
+    awm_storage_caps
+    # Key-Value Operations
+    awm_store_set
+    awm_store_get
+    awm_store_delete
+    awm_store_exists
+    # List/Queue Operations
+    awm_store_push
+    awm_store_pop
+    awm_store_range
+    awm_store_len
+    # Search Operations
+    awm_store_search
+    awm_store_index
+    # Pub/Sub Operations
+    awm_store_publish
+    awm_store_subscribe
+    # Management
+    awm_storage_clear
+    awm_storage_stats
+    awm_storage_health
+    awm_storage_reset
+    awm_storage_status
+)

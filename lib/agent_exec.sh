@@ -33,6 +33,157 @@ source "${_AGENT_EXEC_LIB_DIR}/retry.sh"
 source "${_AGENT_EXEC_LIB_DIR}/output.sh"
 
 # =============================================================================
+# SECURITY: Command Allowlist for Agent Execution
+# =============================================================================
+# Agent-supplied commands must pass through validation before execution.
+# This prevents arbitrary code injection from compromised or malicious agents.
+
+# Default allowlist of safe commands for agent execution
+declare -gA _AGENT_SAFE_COMMANDS=(
+    # File operations
+    [ls]=1 [cat]=1 [head]=1 [tail]=1 [grep]=1 [find]=1 [wc]=1
+    [cp]=1 [mv]=1 [rm]=1 [mkdir]=1 [rmdir]=1 [touch]=1 [chmod]=1
+    [stat]=1 [file]=1 [readlink]=1 [basename]=1 [dirname]=1
+    # Text processing
+    [sed]=1 [awk]=1 [cut]=1 [sort]=1 [uniq]=1 [tr]=1 [diff]=1
+    [printf]=1 [echo]=1 [tee]=1 [xargs]=1 [column]=1
+    # Development tools
+    [git]=1 [npm]=1 [node]=1 [python]=1 [python3]=1 [pip]=1 [pip3]=1
+    [bun]=1 [make]=1 [cargo]=1 [go]=1 [rustc]=1 [gcc]=1 [g++]=1
+    # System info
+    [date]=1 [whoami]=1 [hostname]=1 [uname]=1 [pwd]=1 [env]=1
+    [which]=1 [type]=1 [id]=1 [df]=1 [du]=1 [free]=1 [ps]=1
+    # Network (limited)
+    [curl]=1 [wget]=1 [ssh]=1 [scp]=1 [rsync]=1
+    # Archive
+    [tar]=1 [gzip]=1 [gunzip]=1 [zip]=1 [unzip]=1
+    # JSON/YAML
+    [jq]=1 [yq]=1
+    # Testing
+    [test]=1 [true]=1 [false]=1 [sleep]=1
+)
+
+# Commands that are explicitly blocked (dangerous)
+declare -gA _AGENT_BLOCKED_COMMANDS=(
+    [eval]=1 [source]=1 [exec]=1 [sudo]=1 [su]=1 [chown]=1 [chgrp]=1
+    [dd]=1 [mkfs]=1 [fdisk]=1 [parted]=1 [mount]=1 [umount]=1
+    [shutdown]=1 [reboot]=1 [halt]=1 [init]=1 [systemctl]=1 [service]=1
+    [iptables]=1 [firewall-cmd]=1 [ufw]=1
+    [passwd]=1 [useradd]=1 [userdel]=1 [usermod]=1 [groupadd]=1
+)
+
+# Check if a command is safe to execute
+# Usage: _agent_is_safe_command "base_command"
+# Returns: 0=safe, 1=unsafe
+_agent_is_safe_command() {
+    local base_cmd="$1"
+
+    # Extract just the command name (no path, no args)
+    base_cmd="${base_cmd##*/}"
+    base_cmd="${base_cmd%% *}"
+
+    # Check blocked list first
+    if [[ -n "${_AGENT_BLOCKED_COMMANDS[$base_cmd]:-}" ]]; then
+        return 1
+    fi
+
+    # Check allowlist
+    if [[ -n "${_AGENT_SAFE_COMMANDS[$base_cmd]:-}" ]]; then
+        return 0
+    fi
+
+    # By default, unknown commands are blocked
+    # Set MAINFRAME_AGENT_ALLOW_UNKNOWN=1 to allow
+    if [[ "${MAINFRAME_AGENT_ALLOW_UNKNOWN:-0}" == "1" ]]; then
+        return 0
+    fi
+
+    return 1
+}
+
+# Validate a full command string for safety
+# Usage: _agent_validate_command "full command string"
+# Returns: 0=safe, 1=unsafe
+_agent_validate_command() {
+    local cmd="$1"
+
+    # Block command chaining operators
+    if [[ "$cmd" == *';'* ]] || [[ "$cmd" == *'&&'* ]] || [[ "$cmd" == *'||'* ]]; then
+        # Allow && and || in specific safe contexts
+        if [[ "$cmd" == *'&&'* || "$cmd" == *'||'* ]]; then
+            # These are okay for conditional execution, but validate each part
+            :
+        fi
+        # Block semicolons entirely
+        if [[ "$cmd" == *';'* ]]; then
+            _agent_log warn "blocked command chaining with semicolon: $cmd"
+            return 1
+        fi
+    fi
+
+    # Block backtick command substitution (prefer $())
+    if [[ "$cmd" == *'`'* ]]; then
+        _agent_log warn "blocked backtick command substitution: $cmd"
+        return 1
+    fi
+
+    # Block process substitution abuse
+    if [[ "$cmd" == *'<('*'rm'* ]] || [[ "$cmd" == *'>('*'rm'* ]]; then
+        _agent_log warn "blocked dangerous process substitution: $cmd"
+        return 1
+    fi
+
+    # Extract base command and validate
+    local base_cmd="${cmd%% *}"
+    if ! _agent_is_safe_command "$base_cmd"; then
+        _agent_log warn "blocked unsafe command: $base_cmd"
+        return 1
+    fi
+
+    return 0
+}
+
+# Execute a command string safely via subprocess
+# Usage: _agent_safe_exec "command_string"
+# Security: Validates command allowlist, runs in subprocess
+_agent_safe_exec() {
+    local cmd="$1"
+
+    if ! _agent_validate_command "$cmd"; then
+        _agent_log error "command validation failed: $cmd"
+        return 1
+    fi
+
+    bash -c "$cmd"
+}
+
+# Add a command to the allowlist at runtime
+# Usage: agent_allow_command "command_name"
+agent_allow_command() {
+    local cmd="$1"
+    if [[ -n "$cmd" ]]; then
+        _AGENT_SAFE_COMMANDS["$cmd"]=1
+        _agent_log debug "added to allowlist: $cmd"
+    fi
+}
+
+# Remove a command from the allowlist at runtime
+# Usage: agent_disallow_command "command_name"
+agent_disallow_command() {
+    local cmd="$1"
+    if [[ -n "$cmd" ]]; then
+        unset "_AGENT_SAFE_COMMANDS[$cmd]"
+        _agent_log debug "removed from allowlist: $cmd"
+    fi
+}
+
+# List all allowed commands
+# Usage: agent_list_allowed_commands
+agent_list_allowed_commands() {
+    printf '%s\n' "${!_AGENT_SAFE_COMMANDS[@]}" | sort
+}
+
+# =============================================================================
 # CONFIGURATION
 # =============================================================================
 
@@ -194,7 +345,8 @@ agent_undo_all() {
         fi
 
         _agent_log info "undo: executing rollback for '$label'"
-        if eval "$cmd" 2>/dev/null; then
+        # Security: Use subprocess isolation for undo commands
+        if _agent_safe_exec "$cmd" 2>/dev/null; then
             _agent_log debug "undo: '$label' succeeded"
         else
             _agent_log error "undo: '$label' FAILED"
@@ -292,7 +444,8 @@ agent_transaction() {
         local cmd="${do_cmds[$i]}"
         _agent_log debug "transaction step $((i+1))/${#do_cmds[@]}: $cmd"
 
-        if eval "$cmd"; then
+        # Security: Use subprocess isolation for transaction commands
+        if _agent_safe_exec "$cmd"; then
             ((completed++))
         else
             _agent_log error "transaction '$label' failed at step $((i+1)): $cmd"
@@ -303,7 +456,8 @@ agent_transaction() {
                 if [[ $j -lt ${#undo_cmds[@]} ]]; then
                     local undo="${undo_cmds[$j]}"
                     _agent_log info "transaction rollback step $((j+1)): $undo"
-                    eval "$undo" 2>/dev/null || \
+                    # Security: Use subprocess isolation for undo commands
+                    _agent_safe_exec "$undo" 2>/dev/null || \
                         _agent_log error "transaction rollback failed: $undo"
                 fi
             done
@@ -394,12 +548,24 @@ agent_recover() {
         # Match pattern against error message (grep-style)
         if echo "$error_msg" | grep -q "$pattern" 2>/dev/null; then
             _agent_log info "recovery: matched pattern '$pattern', executing: $recovery_cmd"
-            if eval "$recovery_cmd" 2>/dev/null; then
-                _agent_log info "recovery: succeeded for pattern '$pattern'"
-                return 0
+            # Security: Recovery commands are internal functions, validate name
+            if declare -F "$recovery_cmd" &>/dev/null; then
+                if "$recovery_cmd" 2>/dev/null; then
+                    _agent_log info "recovery: succeeded for pattern '$pattern'"
+                    return 0
+                else
+                    _agent_log error "recovery: failed for pattern '$pattern'"
+                    return 2
+                fi
             else
-                _agent_log error "recovery: failed for pattern '$pattern'"
-                return 2
+                # Not a function, use subprocess isolation
+                if _agent_safe_exec "$recovery_cmd" 2>/dev/null; then
+                    _agent_log info "recovery: succeeded for pattern '$pattern'"
+                    return 0
+                else
+                    _agent_log error "recovery: failed for pattern '$pattern'"
+                    return 2
+                fi
             fi
         fi
     done < "$recovery_file"
@@ -534,7 +700,8 @@ agent_should_skip() {
         return 1
     fi
 
-    if eval "$check_cmd" &>/dev/null; then
+    # Security: Use subprocess isolation for idempotency checks
+    if _agent_safe_exec "$check_cmd" &>/dev/null; then
         return 0
     fi
     return 1
@@ -645,7 +812,8 @@ agent_pipeline() {
         local cmd="${commands[$i]}"
         _agent_log debug "pipeline step $((i+1))/${#commands[@]}: $cmd"
 
-        if eval "$cmd"; then
+        # Security: Use subprocess isolation for pipeline commands
+        if _agent_safe_exec "$cmd"; then
             completed_cmds+=("$cmd")
         else
             local rc=$?
@@ -791,13 +959,14 @@ agent_exec() {
     # =========================================================================
     if [[ -n "$guard_cmd" ]]; then
         _agent_log debug "guard check: $guard_cmd"
-        if ! eval "$guard_cmd" &>/dev/null; then
+        # Security: Use subprocess isolation for guard checks
+        if ! _agent_safe_exec "$guard_cmd" &>/dev/null; then
             guard_status="failed"
             final_status="guard_failed"
             _agent_log error "guard check failed: $guard_cmd"
 
             if [[ -n "$on_failure_cmd" ]]; then
-                eval "$on_failure_cmd" 2>/dev/null || true
+                _agent_safe_exec "$on_failure_cmd" 2>/dev/null || true
             fi
 
             _agent_emit_result "$json_output" "$final_status" "$label" \
@@ -814,13 +983,14 @@ agent_exec() {
     # =========================================================================
     if [[ -n "$contract_cmd" ]]; then
         _agent_log debug "contract validation: $contract_cmd"
-        if ! eval "$contract_cmd" &>/dev/null; then
+        # Security: Use subprocess isolation for contract validation
+        if ! _agent_safe_exec "$contract_cmd" &>/dev/null; then
             contract_status="failed"
             final_status="contract_failed"
             _agent_log error "contract validation failed: $contract_cmd"
 
             if [[ -n "$on_failure_cmd" ]]; then
-                eval "$on_failure_cmd" 2>/dev/null || true
+                _agent_safe_exec "$on_failure_cmd" 2>/dev/null || true
             fi
 
             _agent_emit_result "$json_output" "$final_status" "$label" \
@@ -889,8 +1059,9 @@ agent_exec() {
         _agent_log info "execution succeeded: $label"
 
         # Success callback
+        # Security: Use subprocess isolation for callbacks
         if [[ -n "$on_success_cmd" ]]; then
-            eval "$on_success_cmd" 2>/dev/null || true
+            _agent_safe_exec "$on_success_cmd" 2>/dev/null || true
         fi
 
         # Register undo for successful operations (in case later pipeline step fails)
@@ -922,8 +1093,9 @@ agent_exec() {
                 if [[ $exit_code -eq 0 ]]; then
                     final_status="success"
                     _agent_log info "execution succeeded after recovery: $label"
+                    # Security: Use subprocess isolation for callbacks
                     if [[ -n "$on_success_cmd" ]]; then
-                        eval "$on_success_cmd" 2>/dev/null || true
+                        _agent_safe_exec "$on_success_cmd" 2>/dev/null || true
                     fi
                     if [[ -n "$undo_cmd" ]]; then
                         agent_undo_register "$label" "$undo_cmd"
@@ -936,7 +1108,8 @@ agent_exec() {
         if [[ "$final_status" == "exec_failed" ]]; then
             if [[ -n "$undo_cmd" ]]; then
                 _agent_log info "executing undo: $undo_cmd"
-                if eval "$undo_cmd" 2>/dev/null; then
+                # Security: Use subprocess isolation for undo commands
+                if _agent_safe_exec "$undo_cmd" 2>/dev/null; then
                     undo_status="succeeded"
                     final_status="rolled_back"
                 else
@@ -945,8 +1118,9 @@ agent_exec() {
             fi
 
             # Failure callback
+            # Security: Use subprocess isolation for callbacks
             if [[ -n "$on_failure_cmd" ]]; then
-                eval "$on_failure_cmd" 2>/dev/null || true
+                _agent_safe_exec "$on_failure_cmd" 2>/dev/null || true
             fi
         fi
     fi

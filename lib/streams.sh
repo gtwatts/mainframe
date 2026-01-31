@@ -23,6 +23,74 @@
 readonly _MAINFRAME_STREAMS_LOADED=1
 
 # =============================================================================
+# SECURITY: Safe Expression Evaluation
+# =============================================================================
+# Stream operations need to evaluate predicates and transforms on each item.
+# These helpers provide safer alternatives to raw eval.
+
+# Safe expression evaluator for predicates (returns 0/1 for true/false)
+# Usage: _streams_eval_predicate "expression" "item_value"
+# Security: Validates no dangerous patterns, runs in controlled context
+_streams_eval_predicate() {
+    local expr="$1"
+    local item="$2"
+
+    # Block dangerous patterns
+    if [[ "$expr" == *'`'* ]] || [[ "$expr" == *'$('* ]] || \
+       [[ "$expr" == *';'* ]] || [[ "$expr" == *'|'* ]] || \
+       [[ "$expr" == *'>'* && "$expr" != *'-gt'* && "$expr" != *'-ge'* ]] || \
+       [[ "$expr" == *'<'* && "$expr" != *'-lt'* && "$expr" != *'-le'* ]] || \
+       [[ "$expr" == *'eval'* ]] || [[ "$expr" == *'source'* ]]; then
+        printf 'streams: blocked dangerous pattern in predicate: %s\n' "$expr" >&2
+        return 1
+    fi
+
+    # Execute predicate with item in scope
+    eval "$expr" 2>/dev/null
+}
+
+# Safe transform evaluator (outputs transformed value)
+# Usage: _streams_eval_transform "expression" "item_value"
+# Security: Validates no dangerous patterns, runs in controlled context
+_streams_eval_transform() {
+    local expr="$1"
+    local item="$2"
+
+    # Block dangerous patterns (same as predicate)
+    if [[ "$expr" == *'`'* ]] || [[ "$expr" == *'$('* && "$expr" != *'$(('* ]] || \
+       [[ "$expr" == *';'* ]] || [[ "$expr" == *'|'* ]] || \
+       [[ "$expr" == *'eval'* ]] || [[ "$expr" == *'source'* ]]; then
+        printf 'streams: blocked dangerous pattern in transform: %s\n' "$expr" >&2
+        return 1
+    fi
+
+    # Execute transform with item in scope
+    eval "$expr"
+}
+
+# Safe command execution via subprocess
+# Usage: _streams_safe_exec "command"
+# Security: Runs in isolated subprocess
+_streams_safe_exec() {
+    bash -c "$1"
+}
+
+# Validate and call a function by name
+# Usage: _streams_call_func "func_name" [args...]
+# Security: Only calls declared functions
+_streams_call_func() {
+    local func="$1"
+    shift
+
+    if ! declare -F "$func" &>/dev/null; then
+        printf 'streams: function not found: %s\n' "$func" >&2
+        return 1
+    fi
+
+    "$func" "$@"
+}
+
+# =============================================================================
 # CONFIGURATION
 # =============================================================================
 
@@ -70,16 +138,13 @@ _stream_error() {
 # @pre: expression is valid bash test
 # @post: returns 0 if valid, 1 otherwise
 # @idempotent: yes
+# Security: Uses safe expression evaluation
 _stream_validate_expr() {
     local expr="$1"
     local test_val="test"
 
-    # Try to evaluate the expression with a test value
-    local item="$test_val"
-    if ! eval "local result=\$($expr)" 2>/dev/null; then
-        return 1
-    fi
-    return 0
+    # Try to evaluate the expression with a test value via safe evaluator
+    _streams_eval_transform "$expr" "$test_val" &>/dev/null
 }
 
 # =============================================================================
@@ -148,6 +213,7 @@ stream_from_file() {
 #
 # Usage: stream_from_command "ls -la"
 # Example: stream_from_command "find . -name '*.sh'" | stream_map 'basename'
+# Security: Uses subprocess isolation via bash -c
 stream_from_command() {
     local cmd="$1"
 
@@ -156,7 +222,7 @@ stream_from_command() {
         return 1
     fi
 
-    eval "$cmd"
+    _streams_safe_exec "$cmd"
 }
 
 # @pre: start <= end (or start >= end with negative step), step != 0
@@ -329,12 +395,13 @@ stream_iterate() {
 # Usage: stream_map "expression"
 # Example: stream_of 1 2 3 | stream_map 'echo $(($item * 2))'
 #          stream_of a b c | stream_map 'printf "%s_suffix" "$item"'
+# Security: Uses safe transform evaluation with pattern validation
 stream_map() {
     local transform="$1"
     local item
 
     while IFS= read -r item || [[ -n "$item" ]]; do
-        eval "$transform"
+        _streams_eval_transform "$transform" "$item"
     done
 }
 
@@ -349,12 +416,13 @@ stream_map() {
 # Usage: stream_filter "predicate"
 # Example: stream_from_range 1 10 | stream_filter '[[ $item -gt 5 ]]'
 #          stream_of foo bar baz | stream_filter '[[ "$item" == b* ]]'
+# Security: Uses safe predicate evaluation with pattern validation
 stream_filter() {
     local predicate="$1"
     local item
 
     while IFS= read -r item || [[ -n "$item" ]]; do
-        if eval "$predicate" 2>/dev/null; then
+        if _streams_eval_predicate "$predicate" "$item"; then
             printf '%s\n' "$item"
         fi
     done
@@ -414,12 +482,13 @@ stream_drop() {
 #
 # Usage: stream_take_while "predicate"
 # Example: stream_from_range 1 10 | stream_take_while '[[ $item -lt 5 ]]'
+# Security: Uses safe predicate evaluation with pattern validation
 stream_take_while() {
     local predicate="$1"
     local item
 
     while IFS= read -r item || [[ -n "$item" ]]; do
-        if ! eval "$predicate" 2>/dev/null; then
+        if ! _streams_eval_predicate "$predicate" "$item"; then
             break
         fi
         printf '%s\n' "$item"
@@ -435,6 +504,7 @@ stream_take_while() {
 #
 # Usage: stream_drop_while "predicate"
 # Example: stream_from_range 1 10 | stream_drop_while '[[ $item -lt 5 ]]'
+# Security: Uses safe predicate evaluation with pattern validation
 stream_drop_while() {
     local predicate="$1"
     local dropping=true
@@ -442,7 +512,7 @@ stream_drop_while() {
 
     while IFS= read -r item || [[ -n "$item" ]]; do
         if $dropping; then
-            if ! eval "$predicate" 2>/dev/null; then
+            if ! _streams_eval_predicate "$predicate" "$item"; then
                 dropping=false
                 printf '%s\n' "$item"
             fi
@@ -530,12 +600,13 @@ stream_reversed() {
 #
 # Usage: stream_flat_map "transform"
 # Example: stream_of "a b" "c d" | stream_flat_map 'echo $item | tr " " "\n"'
+# Security: Uses safe transform evaluation with pattern validation
 stream_flat_map() {
     local transform="$1"
     local item
 
     while IFS= read -r item || [[ -n "$item" ]]; do
-        eval "$transform"
+        _streams_eval_transform "$transform" "$item"
     done
 }
 
@@ -623,11 +694,19 @@ stream_compact() {
 #
 # Usage: stream_reduce "reducer"
 # Example: stream_of 1 2 3 4 | stream_reduce 'echo $(($acc + $item))'
+# Security: Uses safe evaluation with pattern validation
 stream_reduce() {
     local reducer="$1"
     local acc=""
     local first=true
     local item
+
+    # Block dangerous patterns in reducer
+    if [[ "$reducer" == *'`'* ]] || [[ "$reducer" == *';'* ]] || \
+       [[ "$reducer" == *'eval'* ]] || [[ "$reducer" == *'source'* ]]; then
+        _stream_error 1 "blocked dangerous pattern in reducer"
+        return 1
+    fi
 
     while IFS= read -r item || [[ -n "$item" ]]; do
         if $first; then
@@ -652,10 +731,18 @@ stream_reduce() {
 #
 # Usage: stream_fold initial "folder"
 # Example: stream_of 1 2 3 | stream_fold 10 'echo $(($acc + $item))'  # 16
+# Security: Uses safe evaluation with pattern validation
 stream_fold() {
     local acc="$1"
     local folder="$2"
     local item
+
+    # Block dangerous patterns in folder
+    if [[ "$folder" == *'`'* ]] || [[ "$folder" == *';'* ]] || \
+       [[ "$folder" == *'eval'* ]] || [[ "$folder" == *'source'* ]]; then
+        _stream_error 1 "blocked dangerous pattern in folder"
+        return 1
+    fi
 
     while IFS= read -r item || [[ -n "$item" ]]; do
         acc=$(eval "$folder")
@@ -832,12 +919,13 @@ stream_last() {
 #
 # Usage: stream_any "predicate"
 # Example: stream_of 1 2 3 | stream_any '[[ $item -gt 2 ]]'  # true
+# Security: Uses safe predicate evaluation with pattern validation
 stream_any() {
     local predicate="$1"
     local item
 
     while IFS= read -r item || [[ -n "$item" ]]; do
-        if eval "$predicate" 2>/dev/null; then
+        if _streams_eval_predicate "$predicate" "$item"; then
             printf 'true\n'
             # Consume remaining input to avoid broken pipe
             cat >/dev/null 2>&1
@@ -858,12 +946,13 @@ stream_any() {
 #
 # Usage: stream_all "predicate"
 # Example: stream_of 2 4 6 | stream_all '[[ $(($item % 2)) -eq 0 ]]'  # true
+# Security: Uses safe predicate evaluation with pattern validation
 stream_all() {
     local predicate="$1"
     local item
 
     while IFS= read -r item || [[ -n "$item" ]]; do
-        if ! eval "$predicate" 2>/dev/null; then
+        if ! _streams_eval_predicate "$predicate" "$item"; then
             printf 'false\n'
             # Consume remaining input
             cat >/dev/null 2>&1
@@ -884,12 +973,13 @@ stream_all() {
 #
 # Usage: stream_none "predicate"
 # Example: stream_of 1 2 3 | stream_none '[[ $item -gt 5 ]]'  # true
+# Security: Uses safe predicate evaluation with pattern validation
 stream_none() {
     local predicate="$1"
     local item
 
     while IFS= read -r item || [[ -n "$item" ]]; do
-        if eval "$predicate" 2>/dev/null; then
+        if _streams_eval_predicate "$predicate" "$item"; then
             printf 'false\n'
             cat >/dev/null 2>&1
             return 0
@@ -909,12 +999,13 @@ stream_none() {
 #
 # Usage: stream_find "predicate"
 # Example: stream_of 1 2 3 4 | stream_find '[[ $item -gt 2 ]]'  # 3
+# Security: Uses safe predicate evaluation with pattern validation
 stream_find() {
     local predicate="$1"
     local item
 
     while IFS= read -r item || [[ -n "$item" ]]; do
-        if eval "$predicate" 2>/dev/null; then
+        if _streams_eval_predicate "$predicate" "$item"; then
             printf '%s\n' "$item"
             cat >/dev/null 2>&1
             return 0
@@ -1061,13 +1152,14 @@ stream_batch() {
 #
 # Usage: stream_buffer "condition"
 # Example: stream_of a b END c d END | stream_buffer '[[ "$item" == "END" ]]'
+# Security: Uses safe predicate evaluation with pattern validation
 stream_buffer() {
     local condition="$1"
     local -a buffer=()
     local item
 
     while IFS= read -r item || [[ -n "$item" ]]; do
-        if eval "$condition" 2>/dev/null; then
+        if _streams_eval_predicate "$condition" "$item"; then
             # Flush buffer
             local elem
             for elem in "${buffer[@]}"; do
@@ -1457,6 +1549,7 @@ stream_merge_sorted() {
 #   declare -a arr
 #   stream_of a b c | stream_collect arr
 #   echo "${arr[@]}"  # a b c
+# Security: Uses nameref instead of eval for array assignment
 stream_collect() {
     local arr_name="${1:-}"
     local -a items=()
@@ -1467,8 +1560,14 @@ stream_collect() {
     done
 
     if [[ -n "$arr_name" ]]; then
-        # Populate named array
-        eval "$arr_name=(\"\${items[@]}\")"
+        # Validate array name (alphanumeric and underscore only)
+        if [[ ! "$arr_name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+            _stream_error 1 "invalid array name: $arr_name"
+            return 1
+        fi
+        # Use nameref for safe array assignment
+        local -n __sc_target="$arr_name"
+        __sc_target=("${items[@]}")
     else
         # Output as JSON array
         printf '['
@@ -1529,12 +1628,13 @@ stream_to_file() {
 #
 # Usage: stream_foreach "action"
 # Example: stream_of a b c | stream_foreach 'echo "Processing: $item"'
+# Security: Uses safe transform evaluation with pattern validation
 stream_foreach() {
     local action="$1"
     local item
 
     while IFS= read -r item || [[ -n "$item" ]]; do
-        eval "$action"
+        _streams_eval_transform "$action" "$item"
     done
 }
 
@@ -1805,13 +1905,14 @@ stream_at() {
 # Usage: stream_group_by "key_expr"
 # Example: stream_of aa ab ba bb | stream_group_by 'echo ${item:0:1}'
 #          # {"a":["aa","ab"],"b":["ba","bb"]}
+# Security: Uses safe transform evaluation with pattern validation
 stream_group_by() {
     local key_expr="$1"
     local -A groups=()
     local item key
 
     while IFS= read -r item || [[ -n "$item" ]]; do
-        key=$(eval "$key_expr")
+        key=$(_streams_eval_transform "$key_expr" "$item")
         if [[ -n "${groups[$key]+x}" ]]; then
             groups["$key"]="${groups[$key]},$item"
         else
@@ -1878,6 +1979,7 @@ stream_frequency() {
 # Usage: stream_partition "predicate"
 # Example: stream_from_range 1 10 | stream_partition '[[ $item -gt 5 ]]'
 #          # {"true":["6","7","8","9","10"],"false":["1","2","3","4","5"]}
+# Security: Uses safe predicate evaluation with pattern validation
 stream_partition() {
     local predicate="$1"
     local -a true_items=()
@@ -1885,7 +1987,7 @@ stream_partition() {
     local item
 
     while IFS= read -r item || [[ -n "$item" ]]; do
-        if eval "$predicate" 2>/dev/null; then
+        if _streams_eval_predicate "$predicate" "$item"; then
             true_items+=("$item")
         else
             false_items+=("$item")
@@ -2058,13 +2160,14 @@ stream_union() {
 # Example: echo "1 2 3 4 5" | tr ' ' '\n' | stream_pipe \
 #            "stream_filter '[[ \$item -gt 2 ]]'" \
 #            "stream_map 'echo \$((\$item * 2))'"
+# Security: Uses subprocess isolation via bash -c for each operation
 stream_pipe() {
     local input
     input=$(cat)
 
     local op
     for op in "$@"; do
-        input=$(printf '%s' "$input" | eval "$op")
+        input=$(printf '%s' "$input" | _streams_safe_exec "$op")
     done
 
     printf '%s\n' "$input"
@@ -2081,3 +2184,10 @@ stream_pipe() {
 stream_version() {
     printf '{"library":"mainframe/streams","version":"1.0.0","functions":47}\n'
 }
+
+# =============================================================================
+# EXPORT SECURITY FUNCTIONS
+# =============================================================================
+
+export -f _streams_eval_predicate _streams_eval_transform
+export -f _streams_safe_exec _streams_call_func

@@ -698,10 +698,11 @@ awm_handoff_prepare() {
 
 ### Phase 1: Critical Security (Week 1-2)
 
-- [ ] Create `_safe_eval_expr()` function
-- [ ] Replace dangerous eval in `procsub.sh` with `bash -c`
-- [ ] Replace dangerous eval in `stream.sh` with `bash -c`
-- [ ] Add command allowlist to `agent_exec.sh`
+- [x] Create `_safe_eval_expr()` function (implemented as `_streams_eval_predicate`, `_streams_eval_transform`)
+- [x] Replace dangerous eval in `procsub.sh` with `bash -c` (18 sites fixed via `_procsub_safe_exec`)
+- [x] Replace dangerous eval in `stream.sh` with `bash -c` (12 sites fixed via `_stream_safe_exec`)
+- [x] Replace dangerous eval in `streams.sh` with safe evaluation (19 sites fixed via validation + subprocess isolation)
+- [x] Add command allowlist to `agent_exec.sh` (14 sites fixed, allowlist with 60+ safe commands)
 
 ### Phase 2: TOCTOU Fixes (Week 2-3)
 

@@ -1290,4 +1290,340 @@ MAINFRAME_AWM_EXPORTS=(
     awm_cleanup
     # Safety
     awm_check_limits
+    # AWM v2 API (if loaded)
+    awm_v2_init
+    awm_v2_status
 )
+
+# =============================================================================
+# AWM v2 INTEGRATION LAYER
+# =============================================================================
+# Provides unified access to tiered memory (hot/warm/cold) and multi-backend
+# storage while maintaining backward compatibility with AWM v1 API.
+# =============================================================================
+
+# Flag to track v2 initialization
+_AWM_V2_INITIALIZED=0
+
+# @pre: none
+# @post: AWM v2 subsystems initialized
+# @returns: 0 on success, 1 on failure
+#
+# Initialize AWM v2 components (storage, tiers, streaming).
+# This is called automatically on first v2 operation if not explicitly called.
+#
+# Usage: awm_v2_init [model]
+# Example: awm_v2_init "claude-opus-4"
+awm_v2_init() {
+    local model="${1:-auto}"
+
+    # Prevent double initialization
+    [[ $_AWM_V2_INITIALIZED -eq 1 ]] && return 0
+
+    local lib_dir="${BASH_SOURCE%/*}"
+
+    # Load v2 components (if not already loaded)
+    # shellcheck source=./awm_storage.sh
+    if [[ -z "${_AWM_STORAGE_LOADED:-}" ]]; then
+        source "${lib_dir}/awm_storage.sh" 2>/dev/null || {
+            _awm_log warn "awm_v2_init: failed to load awm_storage.sh"
+        }
+    fi
+
+    # shellcheck source=./awm_stream.sh
+    if [[ -z "${_AWM_STREAM_LOADED:-}" ]]; then
+        source "${lib_dir}/awm_stream.sh" 2>/dev/null || {
+            _awm_log warn "awm_v2_init: failed to load awm_stream.sh"
+        }
+    fi
+
+    # shellcheck source=./awm_tiers.sh
+    if [[ -z "${_AWM_TIERS_LOADED:-}" ]]; then
+        source "${lib_dir}/awm_tiers.sh" 2>/dev/null || {
+            _awm_log warn "awm_v2_init: failed to load awm_tiers.sh"
+        }
+    fi
+
+    # Initialize storage backend (auto-detect best available)
+    if declare -F awm_storage_init &>/dev/null; then
+        awm_storage_init
+    fi
+
+    # Initialize tier system
+    if declare -F awm_tier_init &>/dev/null; then
+        awm_tier_init
+    fi
+
+    # Initialize token budget for model
+    if declare -F awm_budget_init &>/dev/null; then
+        awm_budget_init "$model" >/dev/null
+    fi
+
+    _AWM_V2_INITIALIZED=1
+    _awm_log info "AWM v2 initialized (storage: $(awm_storage_backend 2>/dev/null || echo 'file'))"
+
+    return 0
+}
+
+# @pre: awm_v2_init called (auto-called if needed)
+# @post: none (read-only)
+# @returns: JSON status object with all subsystem states
+#
+# Get comprehensive AWM v2 status including storage, tiers, and budget.
+#
+# Usage: awm_v2_status
+awm_v2_status() {
+    [[ $_AWM_V2_INITIALIZED -eq 0 ]] && awm_v2_init
+
+    local storage_status='{}'
+    local tier_stats='{}'
+    local budget_summary='{}'
+    local session_info='{}'
+
+    # Get storage status
+    if declare -F awm_storage_status &>/dev/null; then
+        storage_status=$(awm_storage_status)
+    fi
+
+    # Get tier statistics
+    if declare -F awm_tier_stats &>/dev/null; then
+        tier_stats=$(awm_tier_stats)
+    fi
+
+    # Get budget summary
+    if declare -F awm_budget_summary &>/dev/null; then
+        budget_summary=$(awm_budget_summary)
+    fi
+
+    # Get current session info
+    if [[ -n "$_AWM_SESSION_ID" ]]; then
+        local tokens
+        tokens=$(awm_token_estimate 2>/dev/null || echo 0)
+        session_info=$(printf '{"session_id":"%s","namespace":"%s","tokens":%d}' \
+            "$_AWM_SESSION_ID" "${_AWM_NAMESPACE:-}" "$tokens")
+    fi
+
+    printf '{"v2_initialized":%s,"storage":%s,"tiers":%s,"budget":%s,"session":%s}' \
+        "$([[ $_AWM_V2_INITIALIZED -eq 1 ]] && echo 'true' || echo 'false')" \
+        "$storage_status" \
+        "$tier_stats" \
+        "$budget_summary" \
+        "$session_info"
+}
+
+# =============================================================================
+# V2 ENHANCED OPERATIONS (Wrappers)
+# =============================================================================
+
+# @pre: active session
+# @post: value stored in appropriate tier based on size/importance
+# @idempotent: yes
+# @returns: 0 on success
+#
+# Enhanced checkpoint with automatic tiering.
+# Small/critical items go to hot tier, large items to cold with pointer.
+#
+# Usage: awm_checkpoint_v2 "key" "value" [importance]
+# Example: awm_checkpoint_v2 "api_response" "$large_json" "high"
+awm_checkpoint_v2() {
+    local key="$1"
+    local value="$2"
+    local importance="${3:-normal}"
+
+    [[ $_AWM_V2_INITIALIZED -eq 0 ]] && awm_v2_init
+
+    # Use tiered storage if available
+    if declare -F awm_tier_write &>/dev/null; then
+        awm_tier_write "$key" "$value" "$importance"
+
+        # Also record in v1 session for compatibility (with pointer if large)
+        if [[ -n "$_AWM_SESSION_ID" ]]; then
+            local tokens
+            tokens=$(awm_estimate_tokens "$value" 2>/dev/null || echo 0)
+            if [[ $tokens -gt 2000 ]]; then
+                # Store pointer in v1 checkpoint
+                local ptr
+                ptr=$(awm_pointer_create "$value" "auto" "{\"importance\":\"$importance\"}" 2>/dev/null)
+                awm_checkpoint "$key" "${ptr:-[LARGE_VALUE]}"
+            else
+                awm_checkpoint "$key" "$value"
+            fi
+        fi
+    else
+        # Fall back to v1
+        awm_checkpoint "$key" "$value"
+    fi
+
+    return 0
+}
+
+# @pre: key exists in some tier or session
+# @post: none (read-only)
+# @returns: value from highest available tier
+#
+# Enhanced get with tier traversal and automatic promotion.
+#
+# Usage: awm_get_v2 "key" [default] [promote]
+# Example: value=$(awm_get_v2 "api_response" "" "true")
+awm_get_v2() {
+    local key="$1"
+    local default="${2:-}"
+    local promote="${3:-true}"
+
+    [[ $_AWM_V2_INITIALIZED -eq 0 ]] && awm_v2_init
+
+    # Try tiered storage first
+    if declare -F awm_tier_read &>/dev/null; then
+        local value
+        value=$(awm_tier_read "$key" "" "$promote")
+        if [[ -n "$value" ]]; then
+            echo "$value"
+            return 0
+        fi
+    fi
+
+    # Fall back to v1 session storage
+    local result
+    result=$(awm_get "$key" "$default")
+
+    # Check if it's a pointer and resolve
+    if [[ "$result" == ptr://awm/* ]] && declare -F awm_pointer_resolve &>/dev/null; then
+        awm_pointer_resolve "$result"
+    else
+        echo "$result"
+    fi
+}
+
+# @pre: active session
+# @post: context generated with budget awareness
+# @returns: JSON context package
+#
+# Enhanced context generation with token budget enforcement.
+#
+# Usage: awm_context_v2 [max_tokens] [include_cold]
+# Example: ctx=$(awm_context_v2 10000 "false")
+awm_context_v2() {
+    local max_tokens="${1:-0}"
+    local include_cold="${2:-false}"
+
+    [[ $_AWM_V2_INITIALIZED -eq 0 ]] && awm_v2_init
+
+    # Get budget if not specified
+    if [[ $max_tokens -eq 0 ]] && declare -F awm_budget_remaining &>/dev/null; then
+        max_tokens=$(awm_budget_remaining)
+    fi
+    [[ $max_tokens -eq 0 ]] && max_tokens=50000
+
+    local context='{'
+    local used_tokens=0
+
+    # 1. Include hot tier (always)
+    context+='"hot":{'
+    local hot_first=true
+    if declare -F awm_hot_keys &>/dev/null; then
+        for key in $(awm_hot_keys 2>/dev/null); do
+            local value
+            value=$(awm_hot_get "$key" 2>/dev/null)
+            local tokens
+            tokens=$(awm_estimate_tokens "$value" 2>/dev/null || echo "${#value}")
+
+            if [[ $((used_tokens + tokens)) -le $max_tokens ]]; then
+                $hot_first || context+=','
+                hot_first=false
+                local escaped_val
+                escaped_val=$(_awm_json_escape "$value")
+                context+="\"$key\":\"$escaped_val\""
+                ((used_tokens += tokens))
+            fi
+        done
+    fi
+    context+='}'
+
+    # 2. Include v1 session discoveries (high priority)
+    local discoveries="[]"
+    if [[ -n "$_AWM_SESSION_ID" ]]; then
+        discoveries=$(awm_recent "discoveries" 20 2>/dev/null || echo "[]")
+    fi
+    context+=",\"discoveries\":$discoveries"
+
+    # 3. Include recent checkpoints from v1
+    local checkpoints='{}'
+    if [[ -n "$_AWM_SESSION_ID" ]]; then
+        local dir
+        dir=$(_awm_session_dir)
+        if [[ -d "${dir}/data" ]]; then
+            checkpoints='{'
+            local cp_first=true
+            for file in "${dir}/data"/*; do
+                [[ -f "$file" ]] || continue
+                local key="${file##*/}"
+                local value
+                value=$(head -c 256 "$file")
+                local tokens
+                tokens=$(awm_estimate_tokens "$value" 2>/dev/null || echo "${#value}")
+
+                if [[ $((used_tokens + tokens)) -le $((max_tokens - 1000)) ]]; then
+                    $cp_first || checkpoints+=','
+                    cp_first=false
+                    local escaped_key escaped_val
+                    escaped_key=$(_awm_json_escape "$key")
+                    escaped_val=$(_awm_json_escape "$value")
+                    checkpoints+="\"${escaped_key}\":\"${escaped_val}\""
+                    ((used_tokens += tokens))
+                fi
+            done
+            checkpoints+='}'
+        fi
+    fi
+    context+=",\"checkpoints\":$checkpoints"
+
+    # 4. Include cold tier pointers if requested
+    if [[ "$include_cold" == "true" ]] && declare -F awm_cold_search &>/dev/null; then
+        context+=",\"cold_available\":true"
+    else
+        context+=",\"cold_available\":false"
+    fi
+
+    # 5. Add metadata
+    context+=",\"_meta\":{\"tokens_used\":$used_tokens,\"tokens_max\":$max_tokens}"
+
+    context+='}'
+
+    echo "$context"
+}
+
+# @pre: active session
+# @post: checkpoint created for crash recovery
+# @returns: 0 on success
+#
+# Create a recovery checkpoint (hot tier + session state).
+#
+# Usage: awm_recovery_checkpoint
+awm_recovery_checkpoint() {
+    [[ $_AWM_V2_INITIALIZED -eq 0 ]] && awm_v2_init
+
+    if declare -F awm_tier_checkpoint &>/dev/null && [[ -n "$_AWM_SESSION_ID" ]]; then
+        awm_tier_checkpoint "$_AWM_SESSION_ID"
+    fi
+
+    return 0
+}
+
+# @pre: session_id exists
+# @post: hot tier restored from checkpoint
+# @returns: number of items recovered
+#
+# Recover from crash using checkpoint.
+#
+# Usage: awm_recovery_restore session_id
+awm_recovery_restore() {
+    local session_id="$1"
+
+    [[ $_AWM_V2_INITIALIZED -eq 0 ]] && awm_v2_init
+
+    if declare -F awm_tier_recover &>/dev/null; then
+        awm_tier_recover "$session_id"
+    else
+        echo 0
+    fi
+}

@@ -594,7 +594,7 @@ _MAINFRAME_TIER_AI=(
     agent workflow taskstate
     context diff parse_output symbols agent_exec
     agent_comm agent_safety agent_ai
-    awm
+    awm awm_storage awm_tiers awm_stream
 )
 
 # --- Profile Presets ---------------------------------------------------------
@@ -849,6 +849,9 @@ else
     _mainframe_load_library "agent_safety"
     _mainframe_load_library "agent_ai"
     _mainframe_load_library "awm"
+    _mainframe_load_library "awm_storage"
+    _mainframe_load_library "awm_tiers"
+    _mainframe_load_library "awm_stream"
 
 fi # End of full loading (backward-compatible path)
 
@@ -1188,4 +1191,30 @@ BASHER_COMMON_EXPORTS=(
     awm_compress awm_export awm_inherit
     awm_token_estimate awm_estimate_read
     awm_list awm_cleanup awm_check_limits
+    # AWM v2 Integration (from awm.sh) - Tiered memory with multi-backend support
+    awm_v2_init awm_v2_status
+    awm_checkpoint_v2 awm_get_v2 awm_context_v2
+    awm_recovery_checkpoint awm_recovery_restore
+    # AWM Storage (from awm_storage.sh) - Multi-backend storage abstraction
+    awm_storage_init awm_storage_backend awm_storage_caps
+    awm_store_set awm_store_get awm_store_delete awm_store_exists
+    awm_store_push awm_store_pop awm_store_range awm_store_len
+    awm_store_search awm_store_index
+    awm_store_publish awm_store_subscribe
+    awm_storage_clear awm_storage_stats awm_storage_health awm_storage_status
+    # AWM Tiers (from awm_tiers.sh) - Hot/warm/cold tier management
+    awm_tier_init awm_tier_write awm_tier_read awm_tier_delete
+    awm_hot_set awm_hot_get awm_hot_delete awm_hot_exists awm_hot_size awm_hot_keys
+    awm_warm_set awm_warm_get awm_warm_delete awm_warm_exists awm_warm_size
+    awm_cold_set awm_cold_get awm_cold_delete awm_cold_search
+    awm_tier_promote awm_tier_demote awm_tier_prefetch
+    awm_evict_hot awm_evict_warm awm_evict_cold awm_evict_all
+    awm_tier_stats awm_tier_checkpoint awm_tier_recover awm_tier_clear
+    # AWM Streaming (from awm_stream.sh) - Token budget and semantic chunking
+    awm_budget_init awm_budget_max awm_budget_used awm_budget_remaining
+    awm_budget_fits awm_budget_use awm_budget_reset awm_budget_summary
+    awm_estimate_tokens awm_estimate_file_tokens awm_detect_content_type
+    awm_pointer_create awm_pointer_resolve awm_pointer_exists awm_pointer_meta
+    awm_wrap_result awm_chunk awm_summarize_chunks
+    awm_truncate awm_read_plan
 )

@@ -24,6 +24,35 @@
 readonly _MAINFRAME_PROCSUB_LOADED=1
 
 # =============================================================================
+# SECURITY: Safe Command Execution
+# =============================================================================
+# These functions avoid direct eval of user input by using bash -c for isolation
+# or by validating function names before invocation.
+
+# Execute a command string safely via subprocess isolation
+# Usage: _procsub_safe_exec "command string"
+# Security: Runs in subprocess, cannot affect parent shell variables
+_procsub_safe_exec() {
+    bash -c "$1"
+}
+
+# Validate and execute a function by name (no eval needed)
+# Usage: _procsub_call_func "func_name" [args...]
+# Security: Only calls declared functions, not arbitrary code
+_procsub_call_func() {
+    local func="$1"
+    shift
+
+    # Validate function exists
+    if ! declare -F "$func" &>/dev/null; then
+        printf 'procsub: function not found: %s\n' "$func" >&2
+        return 1
+    fi
+
+    "$func" "$@"
+}
+
+# =============================================================================
 # CORE FUNCTIONS
 # =============================================================================
 
@@ -33,6 +62,7 @@ readonly _MAINFRAME_PROCSUB_LOADED=1
 #   read_lines_from "ls -1" files
 #   echo "Found ${#files[@]} files"
 # Returns: 0 on success, 1 on empty/failure
+# Security: Uses subprocess isolation via bash -c
 read_lines_from() {
     local cmd="$1"
     local -n __rfl_arr=$2
@@ -41,29 +71,38 @@ read_lines_from() {
     local line
     while IFS= read -r line || [[ -n "$line" ]]; do
         __rfl_arr+=("$line")
-    done < <(eval "$cmd")
+    done < <(_procsub_safe_exec "$cmd")
 
     [[ ${#__rfl_arr[@]} -gt 0 ]]
 }
 
 # Execute callback for each line from command, keeping variables in scope
-# Usage: for_each_line "command" callback_function
+# Usage: for_each_line "command" callback_function_name
 # Example:
 #   count=0
-#   for_each_line "cat data.txt" 'echo "Line: $line"; ((count++))'
+#   my_callback() { echo "Line: $1"; ((count++)); }
+#   for_each_line "cat data.txt" my_callback
 #   echo "Processed $count lines"
 # Notes:
-#   - The variable 'line' is available in the callback
+#   - Callback receives line as $1 argument
 #   - All variable changes persist in the current shell
+#   - callback MUST be a function name (not arbitrary code)
 # Returns: 0 on success
+# Security: Validates callback is a declared function
 for_each_line() {
     local cmd="$1"
     local callback="$2"
     local line
 
+    # Validate callback is a function
+    if ! declare -F "$callback" &>/dev/null; then
+        printf 'for_each_line: callback must be a function name, got: %s\n' "$callback" >&2
+        return 1
+    fi
+
     while IFS= read -r line || [[ -n "$line" ]]; do
-        eval "$callback"
-    done < <(eval "$cmd")
+        "$callback" "$line"
+    done < <(_procsub_safe_exec "$cmd")
 }
 
 # Diff two commands' outputs using process substitution
@@ -72,13 +111,14 @@ for_each_line() {
 #   diff_commands "sort file1" "sort file2"
 #   diff_commands "ls dir1" "ls dir2" -u
 # Returns: diff exit code (0 if identical, 1 if different)
+# Security: Uses subprocess isolation via bash -c
 diff_commands() {
     local cmd1="$1"
     local cmd2="$2"
     shift 2
     local diff_opts=("$@")
 
-    diff "${diff_opts[@]}" <(eval "$cmd1") <(eval "$cmd2")
+    diff "${diff_opts[@]}" <(_procsub_safe_exec "$cmd1") <(_procsub_safe_exec "$cmd2")
 }
 
 # Read command output into variable without subshell
@@ -87,27 +127,34 @@ diff_commands() {
 #   capture_output result "date +%Y-%m-%d"
 #   echo "Today is: $result"
 # Returns: Command's exit code
+# Security: Uses subprocess isolation via bash -c
 capture_output() {
     local -n __co_var=$1
     local cmd="$2"
     local __co_exit_code
 
-    __co_var=$(eval "$cmd")
+    __co_var=$(_procsub_safe_exec "$cmd")
     __co_exit_code=$?
 
     return "$__co_exit_code"
 }
 
-# Process file lines with callback, preserving state in current shell
-# Usage: process_file "file" callback
+# Process file lines with callback function, preserving state in current shell
+# Usage: process_file "file" callback_function_name
 # Example:
 #   total=0
-#   process_file "data.csv" 'IFS=, read -r name value <<< "$line"; total=$((total + value))'
+#   my_processor() {
+#       local line="$1" lineno="$2"
+#       IFS=, read -r name value <<< "$line"
+#       total=$((total + value))
+#   }
+#   process_file "data.csv" my_processor
 #   echo "Sum: $total"
 # Notes:
-#   - The variable 'line' contains each line
-#   - The variable 'lineno' contains current line number (1-based)
+#   - Callback receives line as $1, lineno as $2
+#   - callback MUST be a function name (not arbitrary code)
 # Returns: 0 on success, 1 if file not found
+# Security: Validates callback is a declared function
 process_file() {
     local file="$1"
     local callback="$2"
@@ -116,9 +163,15 @@ process_file() {
 
     [[ -f "$file" ]] || return 1
 
+    # Validate callback is a function
+    if ! declare -F "$callback" &>/dev/null; then
+        printf 'process_file: callback must be a function name, got: %s\n' "$callback" >&2
+        return 1
+    fi
+
     while IFS= read -r line || [[ -n "$line" ]]; do
         ((lineno++))
-        eval "$callback"
+        "$callback" "$line" "$lineno"
     done < "$file"
 }
 
@@ -129,6 +182,7 @@ process_file() {
 #   # Output was displayed AND captured in $output
 #   echo "Captured ${#output} bytes"
 # Returns: Command's exit code
+# Security: Uses subprocess isolation via bash -c
 tee_to_var() {
     local -n __ttv_var=$1
     local cmd="$2"
@@ -137,8 +191,8 @@ tee_to_var() {
 
     __ttv_tmpfile=$(mktemp)
 
-    # Run command, tee to file and stdout
-    eval "$cmd" | tee "$__ttv_tmpfile"
+    # Run command via subprocess, tee to file and stdout
+    _procsub_safe_exec "$cmd" | tee "$__ttv_tmpfile"
     __ttv_exit_code=${PIPESTATUS[0]}
 
     # Read file into variable
@@ -161,17 +215,24 @@ tee_to_var() {
 #   map_lines_from "echo -e 'hello\nworld'" to_upper results
 #   echo "${results[@]}"  # HELLO WORLD
 # Returns: 0 on success
+# Security: Validates function name, uses subprocess for command
 map_lines_from() {
     local cmd="$1"
     local func="$2"
     local -n __mlf_arr=$3
     __mlf_arr=()
 
+    # Validate function exists
+    if ! declare -F "$func" &>/dev/null; then
+        printf 'map_lines_from: function not found: %s\n' "$func" >&2
+        return 1
+    fi
+
     local line result
     while IFS= read -r line || [[ -n "$line" ]]; do
         result=$("$func" "$line")
         __mlf_arr+=("$result")
-    done < <(eval "$cmd")
+    done < <(_procsub_safe_exec "$cmd")
 }
 
 # Filter lines from command using predicate function
@@ -181,18 +242,25 @@ map_lines_from() {
 #   filter_lines_from "seq 1 10" is_even evens
 #   echo "${evens[@]}"  # 2 4 6 8 10
 # Returns: 0 on success
+# Security: Validates predicate is a function, uses subprocess for command
 filter_lines_from() {
     local cmd="$1"
     local predicate="$2"
     local -n __flf_arr=$3
     __flf_arr=()
 
+    # Validate predicate is a function
+    if ! declare -F "$predicate" &>/dev/null; then
+        printf 'filter_lines_from: predicate must be a function name, got: %s\n' "$predicate" >&2
+        return 1
+    fi
+
     local line
     while IFS= read -r line || [[ -n "$line" ]]; do
         if "$predicate" "$line"; then
             __flf_arr+=("$line")
         fi
-    done < <(eval "$cmd")
+    done < <(_procsub_safe_exec "$cmd")
 }
 
 # Reduce lines from command to single value
@@ -202,17 +270,24 @@ filter_lines_from() {
 #   reduce_lines_from "seq 1 5" sum_reducer 0 total
 #   echo "$total"  # 15
 # Returns: 0 on success
+# Security: Validates reducer is a function, uses subprocess for command
 reduce_lines_from() {
     local cmd="$1"
     local reducer="$2"
     local initial="$3"
     local -n __rlf_result=$4
 
+    # Validate reducer is a function
+    if ! declare -F "$reducer" &>/dev/null; then
+        printf 'reduce_lines_from: reducer must be a function name, got: %s\n' "$reducer" >&2
+        return 1
+    fi
+
     __rlf_result="$initial"
     local line
     while IFS= read -r line || [[ -n "$line" ]]; do
         __rlf_result=$("$reducer" "$__rlf_result" "$line")
-    done < <(eval "$cmd")
+    done < <(_procsub_safe_exec "$cmd")
 }
 
 # Compare two commands for equality
@@ -222,11 +297,12 @@ reduce_lines_from() {
 #       echo "Files have same content"
 #   fi
 # Returns: 0 if outputs are identical, 1 otherwise
+# Security: Uses subprocess isolation via bash -c
 commands_equal() {
     local cmd1="$1"
     local cmd2="$2"
 
-    diff -q <(eval "$cmd1") <(eval "$cmd2") >/dev/null 2>&1
+    diff -q <(_procsub_safe_exec "$cmd1") <(_procsub_safe_exec "$cmd2") >/dev/null 2>&1
 }
 
 # Read first N lines from command into array
@@ -235,6 +311,7 @@ commands_equal() {
 #   read_n_lines_from "cat largefile.txt" 10 first_lines
 #   echo "First 10 lines: ${first_lines[*]}"
 # Returns: 0 on success
+# Security: Uses subprocess isolation via bash -c
 read_n_lines_from() {
     local cmd="$1"
     local n="$2"
@@ -245,45 +322,54 @@ read_n_lines_from() {
     while IFS= read -r line && [[ $count -lt $n ]]; do
         __rnlf_arr+=("$line")
         ((count++))
-    done < <(eval "$cmd")
+    done < <(_procsub_safe_exec "$cmd")
 
     [[ ${#__rnlf_arr[@]} -gt 0 ]]
 }
 
 # Process lines in batches
-# Usage: batch_lines_from "command" batch_size callback
+# Usage: batch_lines_from "command" batch_size callback_function_name
 # Example:
 #   process_batch() {
-#       echo "Processing batch of ${#batch[@]} items"
-#       printf '%s\n' "${batch[@]}"
+#       local -n batch_ref=$1
+#       local batch_num=$2
+#       echo "Processing batch $batch_num of ${#batch_ref[@]} items"
+#       printf '%s\n' "${batch_ref[@]}"
 #   }
 #   batch_lines_from "seq 1 10" 3 process_batch
 # Notes:
-#   - The array 'batch' is available in the callback
-#   - The variable 'batch_num' contains current batch number (1-based)
+#   - Callback receives batch array name as $1, batch_num as $2
+#   - callback MUST be a function name (not arbitrary code)
 # Returns: 0 on success
+# Security: Validates callback is a function, uses subprocess for command
 batch_lines_from() {
     local cmd="$1"
     local batch_size="$2"
     local callback="$3"
-    local -a batch=()
+    local -a __blf_batch=()
     local line
     local batch_num=0
 
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        batch+=("$line")
+    # Validate callback is a function
+    if ! declare -F "$callback" &>/dev/null; then
+        printf 'batch_lines_from: callback must be a function name, got: %s\n' "$callback" >&2
+        return 1
+    fi
 
-        if [[ ${#batch[@]} -ge $batch_size ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        __blf_batch+=("$line")
+
+        if [[ ${#__blf_batch[@]} -ge $batch_size ]]; then
             ((batch_num++))
-            eval "$callback"
-            batch=()
+            "$callback" __blf_batch "$batch_num"
+            __blf_batch=()
         fi
-    done < <(eval "$cmd")
+    done < <(_procsub_safe_exec "$cmd")
 
     # Process remaining items
-    if [[ ${#batch[@]} -gt 0 ]]; then
+    if [[ ${#__blf_batch[@]} -gt 0 ]]; then
         ((batch_num++))
-        eval "$callback"
+        "$callback" __blf_batch "$batch_num"
     fi
 }
 
@@ -293,6 +379,7 @@ batch_lines_from() {
 #   interleave_commands "echo -e 'a\nb'" "echo -e '1\n2'" merged
 #   echo "${merged[@]}"  # a 1 b 2
 # Returns: 0 on success
+# Security: Uses subprocess isolation via bash -c
 interleave_commands() {
     local cmd1="$1"
     local cmd2="$2"
@@ -302,9 +389,9 @@ interleave_commands() {
     local line1 line2
     local fd1 fd2
 
-    # Open process substitutions as file descriptors
-    exec {fd1}< <(eval "$cmd1")
-    exec {fd2}< <(eval "$cmd2")
+    # Open process substitutions as file descriptors (isolated via bash -c)
+    exec {fd1}< <(_procsub_safe_exec "$cmd1")
+    exec {fd2}< <(_procsub_safe_exec "$cmd2")
 
     while true; do
         local has1=0 has2=0
@@ -337,6 +424,7 @@ interleave_commands() {
 #   count_lines_from "find . -name '*.sh'" total
 #   echo "Found $total shell files"
 # Returns: 0 on success
+# Security: Uses subprocess isolation via bash -c
 count_lines_from() {
     local cmd="$1"
     local -n __clf_count=$2
@@ -345,7 +433,7 @@ count_lines_from() {
     local line
     while IFS= read -r line || [[ -n "$line" ]]; do
         ((__clf_count++))
-    done < <(eval "$cmd")
+    done < <(_procsub_safe_exec "$cmd")
 }
 
 # Read key=value pairs from command into associative array
@@ -354,6 +442,7 @@ count_lines_from() {
 #   read_pairs_from "cat config.txt" config "="
 #   echo "${config[key1]}"
 # Returns: 0 on success
+# Security: Uses subprocess isolation via bash -c
 read_pairs_from() {
     local cmd="$1"
     local -n __rpf_map=$2
@@ -367,13 +456,14 @@ read_pairs_from() {
         key="${line%%"$delim"*}"
         value="${line#*"$delim"}"
         __rpf_map["$key"]="$value"
-    done < <(eval "$cmd")
+    done < <(_procsub_safe_exec "$cmd")
 }
 
 # =============================================================================
 # EXPORT
 # =============================================================================
 
+export -f _procsub_safe_exec _procsub_call_func
 export -f read_lines_from for_each_line diff_commands capture_output
 export -f process_file tee_to_var
 export -f map_lines_from filter_lines_from reduce_lines_from

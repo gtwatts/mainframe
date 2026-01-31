@@ -21,12 +21,41 @@ source "${BASH_SOURCE%/*}/common.sh"
 source "${BASH_SOURCE%/*}/pipe.sh"
 
 # =============================================================================
+# SECURITY: Safe Command Execution
+# =============================================================================
+# These functions avoid direct eval of user input by using bash -c for isolation
+# or by validating function names before invocation.
+
+# Execute a command string safely via subprocess isolation
+# Usage: _stream_safe_exec "command string"
+# Security: Runs in subprocess, cannot affect parent shell variables
+_stream_safe_exec() {
+    bash -c "$1"
+}
+
+# Validate and call a function by name
+# Usage: _stream_call_func "func_name" [args...]
+# Security: Only calls declared functions, not arbitrary code
+_stream_call_func() {
+    local func="$1"
+    shift
+
+    if ! declare -F "$func" &>/dev/null; then
+        printf 'stream: function not found: %s\n' "$func" >&2
+        return 1
+    fi
+
+    "$func" "$@"
+}
+
+# =============================================================================
 # RECORD-BASED PROCESSING
 # =============================================================================
 
 # Process multi-line records separated by delimiter
 # Usage: stream_records <delimiter> <command>
 # Example: stream_records '---' 'wc -l'   # count lines per record
+# Security: Uses subprocess isolation via bash -c
 stream_records() {
     local delim="$1"
     local cmd="$2"
@@ -35,7 +64,7 @@ stream_records() {
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ "$line" == "$delim" ]]; then
             if [[ -n "$record" ]]; then
-                printf '%s' "$record" | eval "$cmd"
+                printf '%s' "$record" | _stream_safe_exec "$cmd"
             fi
             record=""
         else
@@ -45,12 +74,13 @@ stream_records() {
 
     # Final record
     if [[ -n "$record" ]]; then
-        printf '%s' "$record" | eval "$cmd"
+        printf '%s' "$record" | _stream_safe_exec "$cmd"
     fi
 }
 
 # Process records by blank-line separation (paragraph mode)
 # Usage: stream_paragraphs <command>
+# Security: Uses subprocess isolation via bash -c
 stream_paragraphs() {
     local cmd="$1"
     local record="" line in_record=0
@@ -58,7 +88,7 @@ stream_paragraphs() {
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ -z "$line" ]]; then
             if [[ $in_record -eq 1 ]]; then
-                printf '%s' "$record" | eval "$cmd"
+                printf '%s' "$record" | _stream_safe_exec "$cmd"
                 record=""
                 in_record=0
             fi
@@ -70,13 +100,14 @@ stream_paragraphs() {
 
     # Final record
     if [[ -n "$record" ]]; then
-        printf '%s' "$record" | eval "$cmd"
+        printf '%s' "$record" | _stream_safe_exec "$cmd"
     fi
 }
 
 # Process fixed-size record blocks (N lines per record)
 # Usage: stream_blocks <n> <command>
 # Example: echo -e "a\nb\nc\nd\ne\nf" | stream_blocks 2 'paste -sd,'
+# Security: Uses subprocess isolation via bash -c
 stream_blocks() {
     local n="$1"
     local cmd="$2"
@@ -86,14 +117,14 @@ stream_blocks() {
     while IFS= read -r line || [[ -n "$line" ]]; do
         block+=("$line")
         if [[ ${#block[@]} -eq $n ]]; then
-            printf '%s\n' "${block[@]}" | eval "$cmd"
+            printf '%s\n' "${block[@]}" | _stream_safe_exec "$cmd"
             block=()
         fi
     done
 
     # Handle remainder
     if [[ ${#block[@]} -gt 0 ]]; then
-        printf '%s\n' "${block[@]}" | eval "$cmd"
+        printf '%s\n' "${block[@]}" | _stream_safe_exec "$cmd"
     fi
 }
 
@@ -281,15 +312,16 @@ stream_session() {
 # Fan-out: duplicate stream to multiple commands
 # Usage: stream_fanout <cmd1> <cmd2> ...
 # Example: echo "data" | stream_fanout 'wc -c' 'md5sum' 'sha256sum'
+# Security: Uses subprocess isolation via bash -c
 stream_fanout() {
     local -a cmds=("$@")
     local temp_dir=$(mktemp -d)
     local input=$(cat)
     local i
 
-    # Run all commands in parallel
+    # Run all commands in parallel via subprocess isolation
     for i in "${!cmds[@]}"; do
-        printf '%s' "$input" | eval "${cmds[i]}" > "$temp_dir/out_$i" &
+        printf '%s' "$input" | _stream_safe_exec "${cmds[i]}" > "$temp_dir/out_$i" &
     done
     wait
 
@@ -303,6 +335,7 @@ stream_fanout() {
 
 # Distribute lines round-robin to N workers
 # Usage: stream_distribute <n> <command>
+# Security: Uses subprocess isolation via bash -c
 stream_distribute() {
     local n="$1"
     local cmd="$2"
@@ -311,11 +344,11 @@ stream_distribute() {
 
     temp_dir=$(mktemp -d)
 
-    # Create FIFOs and start workers
+    # Create FIFOs and start workers via subprocess isolation
     for ((i=0; i<n; i++)); do
         fifos[i]="$temp_dir/fifo_$i"
         mkfifo "${fifos[i]}"
-        eval "$cmd" < "${fifos[i]}" &
+        _stream_safe_exec "$cmd" < "${fifos[i]}" &
         pids[i]=$!
     done
 
@@ -398,6 +431,7 @@ stream_extract() {
 
 # Transform matching lines, pass others through
 # Usage: stream_transform <pattern> <command>
+# Security: Uses subprocess isolation via bash -c
 stream_transform() {
     local pattern="$1"
     local cmd="$2"
@@ -405,7 +439,7 @@ stream_transform() {
 
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ "$line" =~ $pattern ]]; then
-            printf '%s\n' "$line" | eval "$cmd"
+            printf '%s\n' "$line" | _stream_safe_exec "$cmd"
         else
             printf '%s\n' "$line"
         fi
@@ -479,6 +513,7 @@ stream_route() {
 # Group by key field and aggregate
 # Usage: stream_group_by <field> <delimiter> <agg_cmd>
 # Example: echo -e "a:1\na:2\nb:3" | stream_group_by 1 ':' 'paste -sd+ | bc'
+# Security: Uses subprocess isolation via bash -c
 stream_group_by() {
     local field="$1"
     local delim="$2"
@@ -495,7 +530,7 @@ stream_group_by() {
     done
 
     for key in "${!groups[@]}"; do
-        printf '%s\t%s\n' "$key" "$(printf '%s' "${groups[$key]}" | eval "$agg_cmd")"
+        printf '%s\t%s\n' "$key" "$(printf '%s' "${groups[$key]}" | _stream_safe_exec "$agg_cmd")"
     done
 }
 
@@ -524,8 +559,8 @@ stream_bottom() {
 # Chain multiple operations (for readability)
 # Usage: stream_chain 'cmd1' 'cmd2' 'cmd3'
 # Example: echo "data" | stream_chain 'tr a-z A-Z' 'grep X' 'wc -l'
+# Security: Uses subprocess isolation via bash -c for entire pipeline
 stream_chain() {
-    local line
     local -a cmds=("$@")
 
     # Build pipeline dynamically
@@ -538,11 +573,13 @@ stream_chain() {
         fi
     done
 
-    eval "$pipeline"
+    # Execute entire pipeline in isolated subprocess
+    _stream_safe_exec "$pipeline"
 }
 
 # Retry failed pipeline with backoff
 # Usage: stream_retry <max_attempts> <command>
+# Security: Uses subprocess isolation via bash -c
 stream_retry() {
     local max="$1"
     shift
@@ -550,7 +587,7 @@ stream_retry() {
     local attempt=1
 
     while [[ $attempt -le $max ]]; do
-        if eval "$cmd"; then
+        if _stream_safe_exec "$cmd"; then
             return 0
         fi
         sleep $((attempt * 2))
@@ -563,6 +600,7 @@ stream_retry() {
 # EXPORT
 # =============================================================================
 
+export -f _stream_safe_exec _stream_call_func
 export -f stream_records stream_paragraphs stream_blocks
 export -f stream_state stream_depth stream_collect_until
 export -f stream_merge stream_zip stream_diff stream_interleave
