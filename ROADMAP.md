@@ -4,18 +4,11 @@
 
 This roadmap outlines planned features and improvements for MAINFRAME. Items are organized by priority and status.
 
-**Current Stats**: 4,003 functions | 117 libraries | 6,538 tests | Pure Bash
+**Current Stats**: 4,100+ functions | 121 libraries | 6,588 tests | Pure Bash
 
 ---
 
 ## In Progress
-
-### v6.1 - Multi-Agent Coordination
-
-- [ ] Formalized message passing protocol between concurrent agents
-- [ ] AWM namespace-based collaborative task execution
-- [ ] Agent handoff primitives for long-running tasks
-- [ ] Shared discovery broadcasting
 
 ### Security Hardening
 
@@ -27,17 +20,9 @@ This roadmap outlines planned features and improvements for MAINFRAME. Items are
 
 ## Planned
 
-### Semantic Memory Layer
+### Function Discovery CLI
 
-**Priority: High**
-
-Integration with vector databases for semantic search over AWM session history.
-
-Features:
-- Semantic search over past discoveries
-- Context-aware retrieval of relevant session history
-- Automatic summarization of session patterns
-- Integration with ChromaDB/Qdrant/Pinecone
+**Priority: Medium**
 
 ### Function Discovery CLI
 
@@ -115,7 +100,33 @@ Privacy:
 
 ## Completed
 
-### v6.0 - Agent Working Memory (Current)
+### v6.1 - Multi-Agent Coordination (Current)
+
+**Major milestone: Infinite agent memory with tiered storage and inter-agent protocols**
+
+- [x] **AWM v2 - Infinite Memory Architecture** (`awm_*.sh`)
+  - [x] Storage abstraction layer (`awm_storage.sh`) - Unified interface for file/Redis/ChromaDB
+  - [x] Auto-detection with graceful fallback (no dependencies required)
+  - [x] Context streaming engine (`awm_stream.sh`) - Prevent context overflow
+  - [x] Memory pointer system - Store large data, pass references (7x token reduction)
+  - [x] Semantic chunking for code, prose, JSON, markdown
+  - [x] Dynamic token budget based on model detection
+  - [x] Pre-rot threshold management (compress at 75% capacity)
+- [x] **Agent Communication Protocol** (`awm_protocol.sh`)
+  - [x] USOP v4 message envelope for agent-to-agent messaging
+  - [x] Agent cards for capability discovery
+  - [x] Message types: request, response, discovery, handoff, heartbeat
+  - [x] contextId for session continuity across agent boundaries
+  - [x] Handoff protocol for sub-agent delegation with context inheritance
+- [x] **Tiered Memory Manager** (`awm_tiers.sh`)
+  - [x] Hot tier (in-memory, fastest)
+  - [x] Warm tier (file/Redis, 1hr TTL)
+  - [x] Cold tier (persistent archive with semantic search)
+  - [x] Automatic promotion/eviction based on access patterns
+  - [x] Importance-based retention (critical items never evicted)
+- [x] 50 new unit tests for AWM v2 components
+
+### v6.0 - Agent Working Memory
 
 **Major milestone: Persistent memory for AI agents outside context window**
 
