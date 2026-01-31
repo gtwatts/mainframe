@@ -417,9 +417,10 @@ throttle() {
 # RETRY LOGIC
 # =============================================================================
 
-# Retry command with exponential backoff
-# Usage: retry 5 "curl http://example.com"
-retry() {
+# Retry command with exponential backoff (async version with positional args)
+# Note: For the more sophisticated retry with named options, use retry from retry.sh
+# Usage: async_retry 5 "curl http://example.com"
+async_retry() {
     local max_attempts="${1:-3}"
     local command="$2"
     local delay="${3:-1}"

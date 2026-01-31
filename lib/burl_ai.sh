@@ -1301,7 +1301,7 @@ burl_download_progress() {
         json_object \
             "ok:bool=false" \
             "error=url_and_output_required"
-        return 1
+        return 0  # USOP pattern: always return 0, use ok:false for errors
     fi
 
     # First, get content length via HEAD request

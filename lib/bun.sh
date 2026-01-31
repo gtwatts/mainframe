@@ -342,7 +342,7 @@ bun_add() {
         return 0
     fi
 
-    local output exit_code
+    local output exit_code raw_output
     local add_args=("add" "$package")
 
     # Handle dependency type flags
@@ -352,8 +352,10 @@ bun_add() {
         --optional)    add_args+=("--optional") ;;
     esac
 
-    output=$(_bun_truncate "$(cd "$dir" && bun "${add_args[@]}" 2>&1)")
+    # Capture exit code before truncation (avoid losing it in subshell)
+    raw_output=$(cd "$dir" && bun "${add_args[@]}" 2>&1)
     exit_code=$?
+    output=$(_bun_truncate "$raw_output")
 
     if [[ $exit_code -ne 0 ]]; then
         json_object \
@@ -422,9 +424,11 @@ bun_remove() {
         return 0
     fi
 
-    local output exit_code
-    output=$(_bun_truncate "$(cd "$dir" && bun remove "$package" 2>&1)")
+    local output exit_code raw_output
+    # Capture exit code before truncation (avoid losing it in subshell)
+    raw_output=$(cd "$dir" && bun remove "$package" 2>&1)
     exit_code=$?
+    output=$(_bun_truncate "$raw_output")
 
     if [[ $exit_code -ne 0 ]]; then
         json_object \
