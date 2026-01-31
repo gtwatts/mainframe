@@ -296,6 +296,103 @@ result=$(output_with_mode "json" output_success "data")
 
 ---
 
+## CLI Animation Functions (anim.sh)
+
+Rich terminal animations with 20+ spinner styles and theme support.
+
+### Spinner Functions
+
+| Function | Signature | Example | Description |
+|----------|-----------|---------|-------------|
+| `spinner_list` | `spinner_list [theme]` | `spinner_list` | List available spinner names |
+| `spinner_preview` | `spinner_preview name [duration] [theme]` | `spinner_preview dots 2` | Preview a spinner for N seconds |
+| `spinner_start` | `spinner_start name [message] [--color C] [--theme T]` | `spinner_start dots "Loading..."` | Start background spinner |
+| `spinner_stop` | `spinner_stop [message] [status]` | `spinner_stop "Done" success` | Stop spinner, show result |
+| `spinner_while` | `spinner_while name message cmd [args]` | `spinner_while moon "Installing" npm install` | Run command with spinner |
+
+### Progress Bar Functions
+
+| Function | Signature | Example | Description |
+|----------|-----------|---------|-------------|
+| `progress_bar` | `progress_bar cur total [--style S] [--label L]` | `progress_bar 50 100 --style gradient` | Animated progress bar |
+| `progress_indeterminate_start` | `progress_indeterminate_start [message]` | `progress_indeterminate_start "Loading..."` | Bouncing progress bar |
+| `progress_indeterminate_stop` | `progress_indeterminate_stop [message]` | `progress_indeterminate_stop "Done"` | Stop indeterminate progress |
+
+### Visual Effect Functions
+
+| Function | Signature | Example | Description |
+|----------|-----------|---------|-------------|
+| `typewriter` | `typewriter "text" [delay]` | `typewriter "Hello!" 0.05` | Type text character by character |
+| `rainbow` | `rainbow "text"` | `rainbow "Colorful!"` | Print text in rainbow colors |
+| `glitch` | `glitch "text" [iterations]` | `glitch "SYSTEM ONLINE"` | Glitchy text reveal effect |
+| `reveal` | `reveal "text" [delay]` | `reveal "Secret"` | Random character reveal |
+
+### Theme Functions
+
+| Function | Signature | Example | Description |
+|----------|-----------|---------|-------------|
+| `anim_theme` | `anim_theme name` | `anim_theme minimal` | Set theme (minimal/modern/nerd/playful) |
+| `anim_theme_auto` | `anim_theme_auto` | `anim_theme_auto` | Auto-detect best theme for terminal |
+
+### Available Spinner Styles (modern theme)
+
+| Category | Spinners |
+|----------|----------|
+| **Dots** | `dots`, `dots2`, `dots3`, `dots4`, `dots5`, `dots6`, `dots7`, `dots8`, `dots9`, `dots10`, `dots11` |
+| **Lines/Bars** | `line`, `line2`, `pipe`, `bouncingBar`, `bouncingBall`, `aesthetic` |
+| **Arrows** | `arrow`, `arrow2`, `arrow3` |
+| **Shapes** | `triangle`, `arc`, `circle`, `squareCorners`, `circleQuarters`, `circleHalves` |
+| **Toggles** | `toggle`, `toggle2`, `toggle3`, `toggle4`, `toggle5`, `toggle6`... `toggle13` |
+| **Bouncing** | `bounce`, `boxBounce`, `boxBounce2` |
+| **Time** | `clock` |
+| **Space** | `earth`, `moon` |
+| **Weather** | `weather` |
+| **Growing** | `growVertical`, `growHorizontal`, `balloon`, `balloon2` |
+| **Fun** | `shark`, `runner`, `smiley`, `monkey`, `hearts`, `star`, `christmas`, `santa` |
+
+### Progress Bar Styles
+
+| Style | Description | Example |
+|-------|-------------|---------|
+| `bar` | Standard filled/empty (default) | `████████░░░░` |
+| `gradient` | Dark to light gradient | `░░░▒▒▒▓▓▓███` |
+| `blocks` | Block characters | `▰▰▰▰▱▱▱▱` |
+| `dots` | Filled/empty circles | `●●●●○○○○` |
+
+### Quick Patterns (Animations)
+
+```bash
+# Simple spinner while running command
+spinner_start dots "Installing dependencies..."
+npm install >/dev/null 2>&1
+spinner_stop "Dependencies installed" success
+
+# Progress bar with style
+for i in {0..100..5}; do
+    progress_bar $i 100 --style gradient --label "Download"
+    sleep 0.1
+done
+echo ""
+
+# Colored spinner
+spinner_start moon "Syncing..." --color cyan
+sleep 3
+spinner_stop "Synced!" success
+
+# Theme switching for different terminals
+if [[ -z "$DISPLAY" ]]; then
+    anim_theme minimal  # SSH/basic terminal
+else
+    anim_theme modern   # Full Unicode support
+fi
+
+# Fun welcome message
+rainbow "Welcome to MAINFRAME!"
+typewriter "Initializing systems..." 0.03
+```
+
+---
+
 ## Async Functions (async.sh)
 
 | Function | Signature | Example | Output |
@@ -4640,6 +4737,247 @@ Sessions stored in `~/.mainframe/awm/sessions/{session_id}/`:
 
 ---
 
-*4,000+ functions | 117 libraries | Zero dependencies | 20-72x faster*
+## GitHub CLI Integration (github.sh)
+
+**Purpose**: Comprehensive wrapper around `gh` CLI with JSON output optimized for AI agents.
+
+### Authentication
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `gh_auth_status` | `gh_auth_status` | `gh_auth_status && echo "logged in"` | 0=authenticated |
+| `gh_auth_token` | `gh_auth_token` | `token=$(gh_auth_token)` | Auth token (masked) |
+| `gh_whoami` | `gh_whoami` | `user=$(gh_whoami)` | Current username |
+| `gh_config_get` | `gh_config_get "key"` | `gh_config_get "git_protocol"` | Config value |
+| `gh_config_set` | `gh_config_set "key" "value"` | `gh_config_set "editor" "vim"` | Sets config |
+
+### Repository Operations
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `gh_repo_view` | `gh_repo_view "owner/repo"` | `gh_repo_view "anthropics/claude"` | JSON repo info |
+| `gh_repo_list` | `gh_repo_list "owner" [limit]` | `gh_repo_list "anthropics" 50` | JSON array of repos |
+| `gh_repo_create` | `gh_repo_create "name" [--public\|--private]` | `gh_repo_create "my-app" --public` | Creates repo |
+| `gh_repo_clone` | `gh_repo_clone "owner/repo" [dir]` | `gh_repo_clone "owner/repo" ./local` | Clones repo |
+| `gh_repo_fork` | `gh_repo_fork "owner/repo"` | `gh_repo_fork "anthropics/claude"` | Forks repo |
+| `gh_repo_delete` | `gh_repo_delete "owner/repo"` | `gh_repo_delete "myuser/test"` | Deletes repo |
+| `gh_repo_archive` | `gh_repo_archive "owner/repo"` | `gh_repo_archive "owner/old-repo"` | Archives repo |
+| `gh_repo_topics` | `gh_repo_topics "owner/repo"` | `gh_repo_topics "owner/repo"` | JSON array of topics |
+| `gh_repo_languages` | `gh_repo_languages "owner/repo"` | `gh_repo_languages "owner/repo"` | JSON language breakdown |
+| `gh_repo_contributors` | `gh_repo_contributors "owner/repo"` | `gh_repo_contributors "owner/repo"` | JSON contributors |
+| `gh_repo_stars` | `gh_repo_stars "owner/repo"` | `count=$(gh_repo_stars "owner/repo")` | Star count |
+| `gh_repo_exists` | `gh_repo_exists "owner/repo"` | `gh_repo_exists "owner/repo" && echo "yes"` | 0=exists |
+| `gh_repo_default_branch` | `gh_repo_default_branch "owner/repo"` | `branch=$(gh_repo_default_branch "owner/repo")` | Branch name |
+| `gh_repo_visibility` | `gh_repo_visibility "owner/repo"` | `gh_repo_visibility "owner/repo"` | public/private |
+
+### Issues
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `gh_issue_list` | `gh_issue_list "repo" [--state open\|closed\|all]` | `gh_issue_list "owner/repo" --state open` | JSON issues |
+| `gh_issue_create` | `gh_issue_create "repo" "title" "body"` | `gh_issue_create "repo" "Bug" "Desc"` | Issue URL |
+| `gh_issue_view` | `gh_issue_view "repo" number` | `gh_issue_view "repo" 42` | JSON issue details |
+| `gh_issue_close` | `gh_issue_close "repo" number` | `gh_issue_close "repo" 42` | Closes issue |
+| `gh_issue_reopen` | `gh_issue_reopen "repo" number` | `gh_issue_reopen "repo" 42` | Reopens issue |
+| `gh_issue_comment` | `gh_issue_comment "repo" number "body"` | `gh_issue_comment "repo" 42 "Fixed!"` | Adds comment |
+| `gh_issue_labels` | `gh_issue_labels "repo" number` | `gh_issue_labels "repo" 42` | JSON labels |
+| `gh_issue_add_labels` | `gh_issue_add_labels "repo" number labels...` | `gh_issue_add_labels "repo" 42 "bug"` | Adds labels |
+| `gh_issue_assign` | `gh_issue_assign "repo" number users...` | `gh_issue_assign "repo" 42 "user1"` | Assigns users |
+| `gh_issue_search` | `gh_issue_search "query"` | `gh_issue_search "is:open label:bug"` | JSON results |
+
+### Pull Requests
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `gh_pr_list` | `gh_pr_list "repo" [--state open\|closed\|merged]` | `gh_pr_list "repo" --state open` | JSON PRs |
+| `gh_pr_create` | `gh_pr_create "repo" "title" --body "body"` | `gh_pr_create "repo" "Feature" --body "Adds X"` | PR URL |
+| `gh_pr_view` | `gh_pr_view "repo" number` | `gh_pr_view "repo" 123` | JSON PR details |
+| `gh_pr_diff` | `gh_pr_diff "repo" number` | `gh_pr_diff "repo" 123` | Unified diff |
+| `gh_pr_files` | `gh_pr_files "repo" number` | `gh_pr_files "repo" 123` | JSON changed files |
+| `gh_pr_merge` | `gh_pr_merge "repo" number [--squash\|--rebase]` | `gh_pr_merge "repo" 123 --squash` | Merges PR |
+| `gh_pr_close` | `gh_pr_close "repo" number` | `gh_pr_close "repo" 123` | Closes PR |
+| `gh_pr_review` | `gh_pr_review "repo" number [--approve\|--request-changes]` | `gh_pr_review "repo" 123 --approve` | Submits review |
+| `gh_pr_checks` | `gh_pr_checks "repo" number` | `gh_pr_checks "repo" 123` | JSON CI status |
+| `gh_pr_ready` | `gh_pr_ready "repo" number` | `gh_pr_ready "repo" 123` | Mark ready |
+| `gh_pr_draft` | `gh_pr_draft "repo" number` | `gh_pr_draft "repo" 123` | Convert to draft |
+| `gh_pr_checkout` | `gh_pr_checkout "repo" number` | `gh_pr_checkout "repo" 123` | Checkout locally |
+| `gh_pr_is_merged` | `gh_pr_is_merged "repo" number` | `gh_pr_is_merged "repo" 123 && echo "yes"` | 0=merged |
+
+### Releases
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `gh_release_list` | `gh_release_list "repo" [limit]` | `gh_release_list "repo" 10` | JSON releases |
+| `gh_release_latest` | `gh_release_latest "repo"` | `gh_release_latest "repo"` | JSON latest release |
+| `gh_release_create` | `gh_release_create "repo" "tag" --title "title"` | `gh_release_create "repo" "v1.0" --title "v1.0"` | Creates release |
+| `gh_release_view` | `gh_release_view "repo" "tag"` | `gh_release_view "repo" "v1.0"` | JSON release |
+| `gh_release_download` | `gh_release_download "repo" "tag" [pattern]` | `gh_release_download "repo" "v1.0" "*.tar.gz"` | Downloads assets |
+| `gh_release_upload` | `gh_release_upload "repo" "tag" file` | `gh_release_upload "repo" "v1.0" dist.tar.gz` | Uploads asset |
+| `gh_release_notes` | `gh_release_notes "repo" "tag"` | `gh_release_notes "repo" "v1.0"` | Generated notes |
+
+### Search
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `gh_search_repos` | `gh_search_repos "query" [limit]` | `gh_search_repos "language:rust stars:>1000"` | JSON repos |
+| `gh_search_code` | `gh_search_code "query" [limit]` | `gh_search_code "filename:package.json"` | JSON code results |
+| `gh_search_issues` | `gh_search_issues "query" [limit]` | `gh_search_issues "is:open label:bug"` | JSON issues |
+| `gh_search_users` | `gh_search_users "query" [limit]` | `gh_search_users "location:SF"` | JSON users |
+| `gh_search_commits` | `gh_search_commits "query" [limit]` | `gh_search_commits "fix author:user"` | JSON commits |
+
+### AI Agent Context Functions
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `gh_context_json` | `gh_context_json "owner/repo"` | `gh_context_json "anthropics/claude"` | Full repo context JSON |
+| `gh_pr_context` | `gh_pr_context "owner/repo" number` | `gh_pr_context "repo" 123` | PR context with diff stats |
+| `gh_issue_context` | `gh_issue_context "owner/repo" number` | `gh_issue_context "repo" 42` | Issue + comments JSON |
+| `gh_codeowners` | `gh_codeowners "owner/repo"` | `gh_codeowners "repo"` | Parsed CODEOWNERS JSON |
+| `gh_repo_summary` | `gh_repo_summary "owner/repo"` | `gh_repo_summary "repo"` | Compact summary string |
+| `gh_repo_tree` | `gh_repo_tree "owner/repo" [path] [depth]` | `gh_repo_tree "repo" "src" 3` | File tree JSON |
+| `gh_recent_commits` | `gh_recent_commits "owner/repo" [limit]` | `gh_recent_commits "repo" 10` | Recent commits JSON |
+
+---
+
+## GitHub Actions (github_actions.sh)
+
+**Purpose**: GitHub Actions workflow management, CI/CD automation, and YAML generation.
+
+### Workflow Management
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `gha_workflow_list` | `gha_workflow_list "repo"` | `gha_workflow_list "owner/repo"` | JSON workflows |
+| `gha_workflow_view` | `gha_workflow_view "repo" id` | `gha_workflow_view "repo" 12345` | JSON workflow details |
+| `gha_workflow_runs` | `gha_workflow_runs "repo" "workflow"` | `gha_workflow_runs "repo" "ci.yml"` | JSON runs |
+| `gha_workflow_run` | `gha_workflow_run "repo" "workflow" [ref]` | `gha_workflow_run "repo" "deploy.yml" "main"` | Triggers workflow |
+| `gha_workflow_enable` | `gha_workflow_enable "repo" id` | `gha_workflow_enable "repo" 12345` | Enables workflow |
+| `gha_workflow_disable` | `gha_workflow_disable "repo" id` | `gha_workflow_disable "repo" 12345` | Disables workflow |
+| `gha_workflow_file` | `gha_workflow_file "repo" "workflow"` | `gha_workflow_file "repo" "ci.yml"` | YAML content |
+
+### Run Management
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `gha_run_view` | `gha_run_view "repo" run_id` | `gha_run_view "repo" 9876543` | JSON run details |
+| `gha_run_logs` | `gha_run_logs "repo" run_id` | `gha_run_logs "repo" 9876543` | Download logs |
+| `gha_run_cancel` | `gha_run_cancel "repo" run_id` | `gha_run_cancel "repo" 9876543` | Cancels run |
+| `gha_run_rerun` | `gha_run_rerun "repo" run_id` | `gha_run_rerun "repo" 9876543` | Re-runs workflow |
+| `gha_run_rerun_failed` | `gha_run_rerun_failed "repo" run_id` | `gha_run_rerun_failed "repo" 9876543` | Re-runs failed only |
+| `gha_run_status` | `gha_run_status "repo" run_id` | `gha_run_status "repo" 9876543` | queued/in_progress/completed |
+| `gha_run_conclusion` | `gha_run_conclusion "repo" run_id` | `gha_run_conclusion "repo" 9876543` | success/failure/cancelled |
+| `gha_run_wait` | `gha_run_wait "repo" run_id [timeout]` | `gha_run_wait "repo" 9876543 600` | Waits for completion |
+| `gha_run_jobs` | `gha_run_jobs "repo" run_id` | `gha_run_jobs "repo" 9876543` | JSON jobs |
+| `gha_run_latest` | `gha_run_latest "repo" "workflow"` | `gha_run_latest "repo" "ci.yml"` | Latest run JSON |
+
+### Secrets & Variables
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `gha_secret_list` | `gha_secret_list "repo"` | `gha_secret_list "owner/repo"` | JSON secret names |
+| `gha_secret_set` | `gha_secret_set "repo" "name" "value"` | `gha_secret_set "repo" "API_KEY" "xxx"` | Sets secret |
+| `gha_secret_delete` | `gha_secret_delete "repo" "name"` | `gha_secret_delete "repo" "OLD_KEY"` | Deletes secret |
+| `gha_secret_exists` | `gha_secret_exists "repo" "name"` | `gha_secret_exists "repo" "API_KEY" && echo "yes"` | 0=exists |
+| `gha_variable_list` | `gha_variable_list "repo"` | `gha_variable_list "owner/repo"` | JSON variables |
+| `gha_variable_get` | `gha_variable_get "repo" "name"` | `gha_variable_get "repo" "NODE_VERSION"` | Variable value |
+| `gha_variable_set` | `gha_variable_set "repo" "name" "value"` | `gha_variable_set "repo" "ENV" "prod"` | Sets variable |
+
+### YAML Generation Helpers
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `gha_yaml_workflow` | `gha_yaml_workflow "name"` | `gha_yaml_workflow "CI"` | Workflow skeleton |
+| `gha_yaml_job` | `gha_yaml_job "name" "runs_on"` | `gha_yaml_job "build" "ubuntu-latest"` | Job block |
+| `gha_yaml_step` | `gha_yaml_step "name" "run"` | `gha_yaml_step "Test" "npm test"` | Step block |
+| `gha_yaml_checkout` | `gha_yaml_checkout` | `gha_yaml_checkout` | Checkout step |
+| `gha_yaml_setup_node` | `gha_yaml_setup_node "version"` | `gha_yaml_setup_node "20"` | Node setup step |
+| `gha_yaml_setup_python` | `gha_yaml_setup_python "version"` | `gha_yaml_setup_python "3.11"` | Python setup step |
+| `gha_yaml_cache` | `gha_yaml_cache "path" "key"` | `gha_yaml_cache "node_modules" "deps-$hash"` | Cache step |
+| `gha_yaml_matrix` | `gha_yaml_matrix "key" val1 val2...` | `gha_yaml_matrix "node" "18" "20" "22"` | Matrix strategy |
+
+### CI Status for AI Agents
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `gha_is_passing` | `gha_is_passing "repo"` | `gha_is_passing "repo" && echo "green"` | 0=passing |
+| `gha_last_success` | `gha_last_success "repo" "workflow"` | `gha_last_success "repo" "ci.yml"` | Last success JSON |
+| `gha_failure_rate` | `gha_failure_rate "repo" "workflow" days` | `gha_failure_rate "repo" "ci.yml" 30` | Failure percentage |
+| `gha_avg_duration` | `gha_avg_duration "repo" "workflow"` | `gha_avg_duration "repo" "ci.yml"` | Avg duration (s) |
+| `gha_context_json` | `gha_context_json "repo"` | `gha_context_json "owner/repo"` | Full CI context JSON |
+
+---
+
+## GitHub Security (github_security.sh)
+
+**Purpose**: Security alerts, vulnerability management, SBOM, and compliance for AI-driven security workflows.
+
+### Dependabot Alerts
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `ghs_dependabot_alerts` | `ghs_dependabot_alerts "repo" [state]` | `ghs_dependabot_alerts "repo" "open"` | JSON alerts |
+| `ghs_dependabot_alert_view` | `ghs_dependabot_alert_view "repo" id` | `ghs_dependabot_alert_view "repo" 42` | JSON alert details |
+| `ghs_dependabot_alert_dismiss` | `ghs_dependabot_alert_dismiss "repo" id "reason"` | `ghs_dependabot_alert_dismiss "repo" 42 "tolerable"` | Dismisses alert |
+| `ghs_dependabot_critical` | `ghs_dependabot_critical "repo"` | `ghs_dependabot_critical "repo"` | Critical alerts only |
+| `ghs_dependabot_high` | `ghs_dependabot_high "repo"` | `ghs_dependabot_high "repo"` | High severity only |
+| `ghs_dependabot_count` | `ghs_dependabot_count "repo"` | `ghs_dependabot_count "repo"` | Count by severity |
+| `ghs_dependabot_summary` | `ghs_dependabot_summary "repo"` | `ghs_dependabot_summary "repo"` | AI-friendly summary |
+
+### Secret Scanning
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `ghs_secret_alerts` | `ghs_secret_alerts "repo" [state]` | `ghs_secret_alerts "repo" "open"` | JSON secret alerts |
+| `ghs_secret_alert_view` | `ghs_secret_alert_view "repo" id` | `ghs_secret_alert_view "repo" 15` | Alert details |
+| `ghs_secret_alert_resolve` | `ghs_secret_alert_resolve "repo" id "resolution"` | `ghs_secret_alert_resolve "repo" 15 "revoked"` | Resolves alert |
+| `ghs_secret_types` | `ghs_secret_types "repo"` | `ghs_secret_types "repo"` | Detected secret types |
+| `ghs_secret_enabled` | `ghs_secret_enabled "repo"` | `ghs_secret_enabled "repo" && echo "yes"` | 0=enabled |
+| `ghs_secret_push_protection` | `ghs_secret_push_protection "repo"` | `ghs_secret_push_protection "repo"` | Push protection status |
+
+### Code Scanning (CodeQL)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `ghs_code_alerts` | `ghs_code_alerts "repo" [state]` | `ghs_code_alerts "repo" "open"` | JSON code alerts |
+| `ghs_code_alert_view` | `ghs_code_alert_view "repo" id` | `ghs_code_alert_view "repo" 99` | Alert details |
+| `ghs_code_alert_dismiss` | `ghs_code_alert_dismiss "repo" id "reason"` | `ghs_code_alert_dismiss "repo" 99 "false_positive"` | Dismisses |
+| `ghs_code_sarif_upload` | `ghs_code_sarif_upload "repo" file ref` | `ghs_code_sarif_upload "repo" results.sarif "main"` | Uploads SARIF |
+| `ghs_code_by_severity` | `ghs_code_by_severity "repo"` | `ghs_code_by_severity "repo"` | Alerts grouped |
+| `ghs_code_summary` | `ghs_code_summary "repo"` | `ghs_code_summary "repo"` | AI-friendly summary |
+
+### SBOM (Software Bill of Materials)
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `ghs_sbom_export` | `ghs_sbom_export "repo" [format]` | `ghs_sbom_export "repo" "spdx"` | SBOM document |
+| `ghs_sbom_dependencies` | `ghs_sbom_dependencies "repo"` | `ghs_sbom_dependencies "repo"` | JSON dependencies |
+| `ghs_sbom_licenses` | `ghs_sbom_licenses "repo"` | `ghs_sbom_licenses "repo"` | License breakdown |
+| `ghs_sbom_outdated` | `ghs_sbom_outdated "repo"` | `ghs_sbom_outdated "repo"` | Outdated deps |
+| `ghs_sbom_summary` | `ghs_sbom_summary "repo"` | `ghs_sbom_summary "repo"` | AI summary |
+
+### Branch Protection
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `ghs_branch_protection` | `ghs_branch_protection "repo" "branch"` | `ghs_branch_protection "repo" "main"` | Protection rules JSON |
+| `ghs_branch_required_checks` | `ghs_branch_required_checks "repo" "branch"` | `ghs_branch_required_checks "repo" "main"` | Required checks |
+| `ghs_branch_require_reviews` | `ghs_branch_require_reviews "repo" "branch"` | `ghs_branch_require_reviews "repo" "main"` | Required reviewers |
+| `ghs_branch_summary` | `ghs_branch_summary "repo" "branch"` | `ghs_branch_summary "repo" "main"` | Protection summary |
+
+### Security Overview
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `ghs_overview` | `ghs_overview "repo"` | `ghs_overview "owner/repo"` | Full security JSON |
+| `ghs_score` | `ghs_score "repo"` | `score=$(ghs_score "repo")` | Security score 0-100 |
+| `ghs_recommendations` | `ghs_recommendations "repo"` | `ghs_recommendations "repo"` | AI recommendations |
+| `ghs_vulnerability_count` | `ghs_vulnerability_count "repo"` | `ghs_vulnerability_count "repo"` | Total vuln count |
+| `ghs_enabled_features` | `ghs_enabled_features "repo"` | `ghs_enabled_features "repo"` | Enabled features |
+| `ghs_report_json` | `ghs_report_json "repo"` | `ghs_report_json "repo"` | Full report JSON |
+| `ghs_report_markdown` | `ghs_report_markdown "repo"` | `ghs_report_markdown "repo"` | Markdown report |
+
+---
+
+*4,230+ functions | 120 libraries | Zero dependencies | 20-72x faster*
 
 **YO JOE!**

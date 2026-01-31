@@ -4,7 +4,7 @@
 
 ## Quick Start
 
-One line gives you 4,000+ pure bash functions:
+One line gives you 4,230+ pure bash functions:
 
 ```bash
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
@@ -12,7 +12,7 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 
 ## What You Can Do
 
-MAINFRAME provides **117 libraries** with **4,000+ functions**. Here's what's available:
+MAINFRAME provides **120 libraries** with **4,230+ functions**. Here's what's available:
 
 ### Core Libraries
 
@@ -67,6 +67,21 @@ MAINFRAME provides **117 libraries** with **4,000+ functions**. Here's what's av
 | **Context** | `context_estimate_tokens`, `context_budget_init`, `context_truncate`, `context_read_plan` | Token estimation & budget |
 | **Diff** | `diff_replace`, `diff_apply`, `diff_strings`, `diff_validate_unique`, `diff_insert_after` | Surgical file editing |
 | **Cache** | `memoize`, `cas_store`, `cas_get`, `session_cache_set`, `cache_warm`, `cache_evict_lru` | Caching & memoization |
+
+### v6.0 Libraries (CLI Experience)
+
+| Library | Key Functions | Use For |
+|---------|--------------|---------|
+| **Anim** | `spinner_start`, `spinner_stop`, `spinner_while`, `progress_bar`, `typewriter`, `rainbow`, `glitch` | 20+ spinner styles, animated progress, visual effects |
+| **TUI** | `tui_box`, `tui_table`, `tui_spinner`, `tui_progress`, `tui_select`, `tui_confirm` | Terminal UI components |
+
+### v7.0 Libraries (GitHub Integration)
+
+| Library | Key Functions | Use For |
+|---------|--------------|---------|
+| **GitHub** | `gh_repo_view`, `gh_pr_create`, `gh_issue_list`, `gh_context_json`, `gh_search_repos` | GitHub CLI wrapper, 100+ functions |
+| **GitHub Actions** | `gha_workflow_run`, `gha_run_status`, `gha_secret_set`, `gha_yaml_workflow` | CI/CD automation, YAML generation |
+| **GitHub Security** | `ghs_dependabot_alerts`, `ghs_code_alerts`, `ghs_sbom_export`, `ghs_score` | Security alerts, SBOM, compliance |
 
 ### Formatting Functions
 

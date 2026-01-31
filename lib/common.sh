@@ -571,7 +571,7 @@ _MAINFRAME_TIER_CORE=(
 # Standard tier: common day-to-day libraries
 _MAINFRAME_TIER_STANDARD=(
     validation path env datetime http csv
-    git docker crypto proc args config
+    git github docker crypto proc args config
     log error tui template ci health
     device sysinfo service retry download
     toml yaml collection queue regex
@@ -775,6 +775,9 @@ else
     _mainframe_load_library "http"
     _mainframe_load_library "csv"
     _mainframe_load_library "git"
+    _mainframe_load_library "github"
+    _mainframe_load_library "github_actions"
+    _mainframe_load_library "github_security"
     _mainframe_load_library "docker"
     _mainframe_load_library "crypto"
     _mainframe_load_library "proc"
@@ -783,6 +786,7 @@ else
     _mainframe_load_library "log"
     _mainframe_load_library "error"
     _mainframe_load_library "tui"
+    _mainframe_load_library "anim"
     _mainframe_load_library "template"
     _mainframe_load_library "ci"
     _mainframe_load_library "health"
@@ -1147,6 +1151,36 @@ BASHER_COMMON_EXPORTS=(
     ci::pr_branch ci::pr_target ci::commit_sha ci::commit_short ci::branch
     ci::tag ci::is_tag ci::runner ci::build_number ci::repository ci::mask_value
     ci::cache_key_prefix
+    # GitHub CLI Wrapper (from github.sh) - 100+ GitHub operations
+    gh_auth_status gh_auth_token gh_whoami gh_config_get gh_config_set
+    gh_repo_view gh_repo_list gh_repo_create gh_repo_clone gh_repo_fork
+    gh_repo_delete gh_repo_archive gh_repo_topics gh_repo_languages
+    gh_repo_contributors gh_repo_stars gh_repo_forks gh_repo_exists
+    gh_repo_default_branch gh_repo_is_fork gh_repo_parent gh_repo_visibility
+    gh_repo_rename gh_repo_sync
+    gh_issue_list gh_issue_create gh_issue_view gh_issue_close gh_issue_reopen
+    gh_issue_comment gh_issue_labels gh_issue_add_labels gh_issue_assignees
+    gh_issue_assign gh_issue_search gh_issue_edit gh_issue_transfer
+    gh_issue_pin gh_issue_unpin
+    gh_pr_list gh_pr_create gh_pr_view gh_pr_diff gh_pr_files gh_pr_merge
+    gh_pr_close gh_pr_reopen gh_pr_review gh_pr_comment gh_pr_checks
+    gh_pr_ready gh_pr_draft gh_pr_labels gh_pr_reviewers gh_pr_checkout
+    gh_pr_is_merged gh_pr_merge_commit gh_pr_edit
+    gh_gist_list gh_gist_create gh_gist_view gh_gist_clone gh_gist_edit
+    gh_gist_delete gh_gist_rename
+    gh_release_list gh_release_latest gh_release_create gh_release_view
+    gh_release_delete gh_release_download gh_release_upload gh_release_notes
+    gh_release_edit
+    gh_search_repos gh_search_code gh_search_issues gh_search_users
+    gh_search_commits gh_search_topics
+    gh_user_info gh_user_repos gh_user_orgs gh_user_followers gh_user_following
+    gh_star_repo gh_unstar_repo gh_watch_repo gh_is_starred
+    gh_follow_user gh_unfollow_user
+    gh_notifications_list gh_notifications_count gh_notifications_mark_read
+    gh_notifications_mark_read_repo
+    gh_run_list gh_run_view gh_run_rerun gh_run_cancel gh_run_watch gh_run_download
+    gh_context_json gh_pr_context gh_issue_context gh_codeowners
+    gh_repo_summary gh_repo_tree gh_recent_commits
     # Agent Working Memory (from awm.sh) - Persistent external memory for AI agents
     awm_init awm_resume awm_close awm_namespace
     awm_checkpoint awm_log awm_progress awm_discovery
