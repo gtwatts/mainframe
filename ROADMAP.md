@@ -4,7 +4,7 @@
 
 This roadmap outlines planned features and improvements for MAINFRAME. Items are organized by priority and status.
 
-**Current Stats**: 4,350+ functions | 129 libraries | 9,600+ tests | Pure Bash
+**Current Stats**: 4,350+ functions | 129 libraries | 9,870+ tests | Pure Bash + Bindings
 
 ---
 
@@ -42,19 +42,16 @@ This roadmap outlines planned features and improvements for MAINFRAME. Items are
 - [ ] Test coverage expansion (52.3% → 80% target) - 9,600+ tests (in progress)
 - [ ] Distributed task scheduling across multiple hosts
 - [ ] Agent capability negotiation protocol
+- [x] **Language Bindings** (`bindings/`)
+  - [x] Python package (`pip install mainframe-bash`) - 126 tests
+  - [x] Node.js/Bun package (`npm install mainframe-bash`) - 142 tests
+  - [x] Subprocess wrapper pattern with USOP JSON parsing
+  - [x] Full type hints (Python) and TypeScript definitions
 - [ ] Orchestration metrics and dashboards
 
 ---
 
 ## Planned
-
-### Language Bindings
-
-**Priority: Medium**
-
-- Python bindings (`pip install mainframe-bash`)
-- Node.js bindings (`npm install mainframe-bash`)
-- Direct function calls without subprocess overhead
 
 ### Additional Libraries
 
