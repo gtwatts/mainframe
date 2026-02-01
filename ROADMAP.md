@@ -4,7 +4,7 @@
 
 This roadmap outlines planned features and improvements for MAINFRAME. Items are organized by priority and status.
 
-**Current Stats**: 4,310+ functions | 123 libraries | 6,750+ tests | Pure Bash
+**Current Stats**: 4,310+ functions | 123 libraries | 9,200+ tests | Pure Bash
 
 ---
 
@@ -17,9 +17,17 @@ This roadmap outlines planned features and improvements for MAINFRAME. Items are
   - [x] `mainframe fzf <library>` - Filter by library
   - [x] `mainframe explore` - TUI browser via dialog/whiptail
   - [x] Preview pane with function signatures
-- [ ] Security audit of remaining `eval` sites (audit complete, hardening in progress)
-- [ ] TOCTOU race condition fixes in atomic operations
-- [ ] Test coverage expansion (52.3% → 80% target)
+- [x] **Security hardening of eval sites** (8 critical, 4 high, 3 medium fixed)
+  - [x] events.sh - Callback validation, subprocess isolation
+  - [x] pipe.sh - Command validation, pattern blocking
+  - [x] streams.sh - Expression subprocess isolation
+  - [x] testing.sh - Variable/function name validation, printf -v
+  - [x] idempotent.sh - bash -c isolation for check commands
+- [x] **TOCTOU race condition fixes** in atomic operations
+  - [x] ensure_line - flock-based atomic check-and-append
+  - [x] ensure_symlink - temp-link + rename pattern
+  - [x] ensure_file - temp-file + atomic rename
+- [ ] Test coverage expansion (52.3% → 80% target) - 9,200+ tests (in progress)
 - [ ] Distributed task scheduling across multiple hosts
 - [ ] Agent capability negotiation protocol
 - [ ] Orchestration metrics and dashboards

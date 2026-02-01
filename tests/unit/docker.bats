@@ -64,8 +64,9 @@ EOF
 }
 
 @test "_docker_has_cli: returns false when docker is not available" {
-    export PATH="$TEST_TMPDIR/empty:$PATH"
-    run _docker_has_cli
+    # Test the function logic directly by checking behavior
+    # When 'command -v docker' fails, the function should return 1
+    run bash -c 'PATH=/nonexistent; source "'"$MAINFRAME_ROOT"'/lib/docker.sh" && _docker_has_cli'
     [[ "$status" -eq 1 ]]
 }
 
