@@ -4,7 +4,7 @@
 
 This roadmap outlines planned features and improvements for MAINFRAME. Items are organized by priority and status.
 
-**Current Stats**: 4,350+ functions | 129 libraries | 9,870+ tests | Pure Bash + Bindings
+**Current Stats**: 4,400+ functions | 131 libraries | 10,100+ tests | Pure Bash + Bindings
 
 ---
 
@@ -39,14 +39,27 @@ This roadmap outlines planned features and improvements for MAINFRAME. Items are
   - [x] `ext/aws.sh` - AWS CLI wrapper with structured output (10 functions)
   - [x] `ext/gcp.sh` - GCP CLI wrapper with gsutil fallback (10 functions)
   - [x] All USOP-compliant with comprehensive tests
-- [ ] Test coverage expansion (52.3% → 80% target) - 9,600+ tests (in progress)
-- [ ] Distributed task scheduling across multiple hosts
-- [ ] Agent capability negotiation protocol
 - [x] **Language Bindings** (`bindings/`)
   - [x] Python package (`pip install mainframe-bash`) - 126 tests
   - [x] Node.js/Bun package (`npm install mainframe-bash`) - 142 tests
   - [x] Subprocess wrapper pattern with USOP JSON parsing
   - [x] Full type hints (Python) and TypeScript definitions
+- [x] **Property-Based Testing** (`lib/proptest.sh`) - 67 tests
+  - [x] Built-in generators: gen_int, gen_string, gen_email, gen_uuid, etc.
+  - [x] Automatic shrinking for minimal failing examples
+  - [x] Reproducible via PROPTEST_SEED
+- [x] **Benchmark Tracking** (`lib/benchmark.sh`) - 71 tests
+  - [x] Statistical analysis: mean, median, stddev, p95, p99
+  - [x] Baseline comparison with regression detection
+  - [x] Multi-format reports (text/JSON/markdown)
+  - [x] Initial benchmarks in `benchmarks/`
+- [x] **AWM Usage Patterns Cookbook** (`docs/AWM_COOKBOOK.md`)
+  - [x] Quick reference with essential functions
+  - [x] Real-world examples (audit, research, handoff)
+  - [x] Best practices and troubleshooting guide
+- [ ] Test coverage expansion (52.3% → 80% target) - 10,000+ tests (in progress)
+- [ ] Distributed task scheduling across multiple hosts
+- [ ] Agent capability negotiation protocol
 - [ ] Orchestration metrics and dashboards
 
 ---
@@ -61,21 +74,17 @@ This roadmap outlines planned features and improvements for MAINFRAME. Items are
 
 ### Testing Improvements
 
-**Priority: Medium**
+**Priority: Low** (property-based and benchmark tracking complete)
 
-- Property-based testing with bash
 - Mutation testing for coverage gaps
-- Performance regression testing
-- Automated benchmark tracking
 
 ### Documentation
 
-**Priority: Low**
+**Priority: Low** (AWM cookbook complete)
 
 - Video tutorials
 - Interactive playground (WebAssembly bash)
 - More AI agent integration examples
-- AWM usage patterns cookbook
 
 ---
 
