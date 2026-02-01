@@ -4,7 +4,7 @@
 
 This roadmap outlines planned features and improvements for MAINFRAME. Items are organized by priority and status.
 
-**Current Stats**: 4,400+ functions | 131 libraries | 10,100+ tests | Pure Bash + Bindings
+**Current Stats**: 4,500+ functions | 135 libraries | 10,300+ tests | Pure Bash + Bindings
 
 ---
 
@@ -57,6 +57,23 @@ This roadmap outlines planned features and improvements for MAINFRAME. Items are
   - [x] Quick reference with essential functions
   - [x] Real-world examples (audit, research, handoff)
   - [x] Best practices and troubleshooting guide
+- [x] **Developer Pain Point Libraries** (4 libraries, 208 tests)
+  - [x] `lib/workpool.sh` - Parallel work pool (1,014 lines)
+    - Background job + temp file IPC pattern
+    - Functions: `pool_create`, `pool_submit`, `pool_wait`, `pool_map`, `pool_results`
+    - No external dependencies (pure bash parallel processing)
+  - [x] `lib/schema.sh` - JSON Schema validation (1,079 lines)
+    - Draft 2020-12 subset implementation
+    - Functions: `schema_define`, `schema_validate`, `schema_errors`
+    - Supports: type, properties, required, enum, pattern, min/max
+  - [x] `lib/forensics.sh` - Error context capture (911 lines)
+    - Stack traces, variable watches, forensic bundles
+    - Functions: `forensics_capture`, `forensics_stack`, `forensics_bundle`
+    - Integrates with bash ERR trap for auto-capture
+  - [x] `lib/compat.sh` - Enhanced BSD/GNU compatibility (453 lines)
+    - 20+ underscore-style wrappers
+    - Functions: `compat_sed_inplace`, `compat_date_parse`, `compat_stat_size`
+    - macOS vs Linux transparent compatibility
 - [ ] Test coverage expansion (52.3% → 80% target) - 10,000+ tests (in progress)
 - [ ] Distributed task scheduling across multiple hosts
 - [ ] Agent capability negotiation protocol
