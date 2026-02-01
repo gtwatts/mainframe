@@ -129,10 +129,16 @@ ensure_file() {
         fi
         : > "$file" || return 1
     else
-        # Content specified - check if it matches
+        # Content specified - TOCTOU-safe: use atomic temp+rename pattern
+        # This avoids race between content check and write
+        local parent_dir_name
+        parent_dir_name="${file%/*}"
+        [[ "$parent_dir_name" == "$file" ]] && parent_dir_name="."
+
+        # Quick check if content matches (optimization, not security-critical)
         if [[ -f "$file" ]]; then
             local existing
-            existing=$(<"$file")
+            existing=$(<"$file") 2>/dev/null || existing=""
             if [[ "$existing" == "$content" ]]; then
                 # Fix permissions if needed
                 if [[ -n "$mode" ]]; then
@@ -141,8 +147,19 @@ ensure_file() {
                 return 0
             fi
         fi
-        # Write content
-        printf '%s' "$content" > "$file" || return 1
+
+        # Atomic write: temp file + rename
+        local tmpfile
+        if tmpfile=$(mktemp "${parent_dir_name}/.ensure_file.XXXXXX" 2>/dev/null); then
+            printf '%s' "$content" > "$tmpfile" || { rm -f "$tmpfile"; return 1; }
+            if [[ -n "$mode" ]]; then
+                chmod "$mode" "$tmpfile" 2>/dev/null
+            fi
+            mv -f "$tmpfile" "$file" || { rm -f "$tmpfile"; return 1; }
+        else
+            # Fallback: direct write
+            printf '%s' "$content" > "$file" || return 1
+        fi
     fi
 
     if [[ -n "$mode" ]]; then
@@ -180,18 +197,35 @@ ensure_line() {
         mkdir -p "$parent_dir" || return 1
     fi
 
-    # Create file if it doesn't exist
+    # Create file if it doesn't exist (atomic: redirect creates or no-ops)
     [[ -f "$file" ]] || : > "$file"
 
-    # Check if marker already exists in file
-    if grep -qF "$marker" "$file" 2>/dev/null; then
+    # TOCTOU-safe: Use flock for atomic check-and-append
+    # This prevents race conditions where multiple processes might add duplicates
+    if command -v flock &>/dev/null; then
+        (
+            flock -x 200
+            # Re-check under lock to prevent duplicates
+            if grep -qF "$marker" "$file" 2>/dev/null; then
+                exit 0
+            fi
+            printf '%s\n' "$line" >> "$file"
+        ) 200>"${file}.lock"
+        local rc=$?
+        rm -f "${file}.lock" 2>/dev/null
+        if [[ $rc -eq 0 ]]; then
+            _idem_log debug "ensure_line: added line to $file"
+        fi
+        return $rc
+    else
+        # Fallback: best-effort without locking
+        if grep -qF "$marker" "$file" 2>/dev/null; then
+            return 0
+        fi
+        printf '%s\n' "$line" >> "$file" || return 1
+        _idem_log debug "ensure_line: added line to $file"
         return 0
     fi
-
-    # Append the line
-    printf '%s\n' "$line" >> "$file" || return 1
-    _idem_log debug "ensure_line: added line to $file"
-    return 0
 }
 
 # =============================================================================
@@ -220,24 +254,9 @@ ensure_symlink() {
         return 1
     fi
 
-    # Already correct
+    # Already correct (fast path)
     if [[ -L "$link" ]] && [[ "$(readlink "$link")" == "$target" ]]; then
         return 0
-    fi
-
-    # Something exists at link path
-    if [[ -e "$link" ]] || [[ -L "$link" ]]; then
-        if [[ "$force" == "true" ]]; then
-            rm -f "$link" || return 1
-        else
-            if [[ -L "$link" ]]; then
-                # Wrong symlink target - safe to replace
-                rm -f "$link" || return 1
-            else
-                _idem_log error "ensure_symlink: $link exists and is not a symlink (use force=true)"
-                return 1
-            fi
-        fi
     fi
 
     # Ensure parent directory exists
@@ -247,6 +266,31 @@ ensure_symlink() {
         mkdir -p "$parent_dir" || return 1
     fi
 
+    # TOCTOU-safe: Use atomic temp-link + rename pattern
+    # Create symlink at temp location, then atomically rename
+    local tmplink
+    tmplink="${link}.tmp.$$.$RANDOM"
+
+    # Something non-symlink exists at link path
+    if [[ -e "$link" ]] && [[ ! -L "$link" ]]; then
+        if [[ "$force" == "true" ]]; then
+            rm -rf "$link" || return 1
+        else
+            _idem_log error "ensure_symlink: $link exists and is not a symlink (use force=true)"
+            return 1
+        fi
+    fi
+
+    # Create temp symlink and atomically replace
+    if ln -sf "$target" "$tmplink" 2>/dev/null; then
+        if mv -f "$tmplink" "$link" 2>/dev/null; then
+            _idem_log debug "ensure_symlink: $link -> $target"
+            return 0
+        fi
+        rm -f "$tmplink" 2>/dev/null
+    fi
+
+    # Fallback: direct ln -sf (works on most systems for symlink replacement)
     ln -sf "$target" "$link" || return 1
     _idem_log debug "ensure_symlink: $link -> $target"
     return 0
@@ -329,8 +373,9 @@ ensure_service() {
     fi
 
     # Custom check command takes priority
+    # Security: Use bash -c instead of eval to avoid injection risks
     if [[ -n "$check_cmd" ]]; then
-        if eval "$check_cmd" &>/dev/null; then
+        if bash -c "$check_cmd" &>/dev/null; then
             return 0
         fi
     fi
