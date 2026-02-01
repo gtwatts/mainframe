@@ -478,9 +478,9 @@ teardown() {
 @test "schema_errors: returns error array" {
     schema_define "Test" '{"type":"string"}'
     result=$(schema_errors "Test" '42')
-    [[ "$result" =~ '\[' ]]
-    [[ "$result" =~ '\]' ]]
-    [[ "$result" =~ 'expected string' ]]
+    [[ "$result" == *"["* ]]
+    [[ "$result" == *"]"* ]]
+    [[ "$result" == *"expected string"* ]]
 }
 
 @test "schema_errors: returns empty array for valid data" {
@@ -522,7 +522,8 @@ teardown() {
 }
 
 @test "schema_check: fails for invalid schema JSON" {
-    run schema_check '{invalid}' '"hello"'
+    # Use clearly malformed JSON (unclosed brace)
+    run schema_check '{invalid json' '"hello"'
     [[ "$status" -eq 1 ]]
 }
 

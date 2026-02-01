@@ -407,7 +407,7 @@ forensics_error() {
 
     local error_id
     ((_FORENSICS_ERROR_COUNTER++)) || true
-    error_id="err_${$$}_${_FORENSICS_ERROR_COUNTER}"
+    error_id="err_$$_${_FORENSICS_ERROR_COUNTER}"
 
     local timestamp
     timestamp=$(_forensics_iso_time)
@@ -884,7 +884,7 @@ forensics_clear() {
 
     # Clear files
     if [[ -d "$MAINFRAME_FORENSICS_DIR" ]]; then
-        rm -rf "$MAINFRAME_FORENSICS_DIR"/*
+        rm -rf "${MAINFRAME_FORENSICS_DIR:?}"/*
     fi
 
     return 0

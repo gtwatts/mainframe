@@ -117,7 +117,13 @@ _schema_get_string() {
     local key="$2"
 
     if [[ "$json" =~ \"$key\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
-        printf '%s' "${BASH_REMATCH[1]}"
+        local value="${BASH_REMATCH[1]}"
+        # Unescape JSON string (common escapes)
+        value="${value//\\\\/\\}"  # \\ -> \
+        value="${value//\\\"/\"}"  # \" -> "
+        value="${value//\\n/$'\n'}"  # \n -> newline
+        value="${value//\\t/$'\t'}"  # \t -> tab
+        printf '%s' "$value"
         return 0
     fi
     return 1
