@@ -2225,7 +2225,8 @@ orch_init() {
     _ORCH_AGENTS=()
     _ORCH_SUBAGENTS=()
     _ORCH_TASKS=()
-    # Preserve _ORCH_WINDOWS if TMUX session already initialized
+    # Initialize _ORCH_WINDOWS if not already set (preserve existing TMUX session)
+    [[ ${#_ORCH_WINDOWS[@]} -eq 0 ]] 2>/dev/null || _ORCH_WINDOWS=()
 
     _orch_log info "Orchestration subsystem initialized (v${ORCH_VERSION})"
     return 0
@@ -2237,12 +2238,14 @@ orch_init() {
 ##
 orch_status() {
     local redis_status="unavailable"
-    [[ $_ORCH_REDIS_AVAILABLE -eq 1 ]] && redis_status="connected"
+    [[ ${_ORCH_REDIS_AVAILABLE:-0} -eq 1 ]] && redis_status="connected"
 
-    local team_count="${#_ORCH_TEAMS[@]}"
-    local agent_count="${#_ORCH_AGENTS[@]}"
-    local task_count="${#_ORCH_TASKS[@]}"
-    local window_count="${#_ORCH_WINDOWS[@]}"
+    # Safely get array counts (handle unset arrays)
+    local team_count=0 agent_count=0 task_count=0 window_count=0
+    [[ -v _ORCH_TEAMS ]] && team_count="${#_ORCH_TEAMS[@]}"
+    [[ -v _ORCH_AGENTS ]] && agent_count="${#_ORCH_AGENTS[@]}"
+    [[ -v _ORCH_TASKS ]] && task_count="${#_ORCH_TASKS[@]}"
+    [[ -v _ORCH_WINDOWS ]] && window_count="${#_ORCH_WINDOWS[@]}"
 
     local tmux_status="inactive"
     if tmux has-session -t "$ORCH_TMUX_SESSION" 2>/dev/null; then
