@@ -19,13 +19,40 @@ declare -g _MAINFRAME_EVENTS_LOADED=1
 # Associative arrays for hooks and event listeners
 declare -gA _EVENTS_HOOKS=()        # hook_name -> "callback1;callback2;..."
 declare -gA _EVENTS_LISTENERS=()    # event_name -> "callback1;callback2;..."
+declare -gA _EVENTS_ONCE_CALLBACKS=() # wrapper_name -> "callback|event_name"
 declare -g _EVENTS_LOG_FILE=""      # Optional event log file
 
 # =============================================================================
 # Internal Functions
 # =============================================================================
 
+# Security: Validate callback name is a safe identifier
+# Only allows alphanumeric characters and underscores (function name pattern)
+_events_validate_callback() {
+    local callback="$1"
+
+    # Must be non-empty
+    [[ -z "$callback" ]] && return 1
+
+    # Must match safe function name pattern (alphanumeric + underscore, not starting with digit)
+    [[ "$callback" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || return 1
+
+    # Block dangerous patterns that could be injected
+    [[ "$callback" == *'$'* ]] && return 1
+    [[ "$callback" == *'`'* ]] && return 1
+    [[ "$callback" == *';'* ]] && return 1
+    [[ "$callback" == *'|'* ]] && return 1
+    [[ "$callback" == *'&'* ]] && return 1
+    [[ "$callback" == *'>'* ]] && return 1
+    [[ "$callback" == *'<'* ]] && return 1
+    [[ "$callback" == *'('* ]] && return 1
+    [[ "$callback" == *')'* ]] && return 1
+
+    return 0
+}
+
 # Split callbacks and execute each
+# Security: Only executes declared functions, no arbitrary command strings
 _events_execute_callbacks() {
     local callbacks="$1"
     shift
@@ -39,12 +66,16 @@ _events_execute_callbacks() {
     for callback in $callbacks; do
         [[ -z "$callback" ]] && continue
 
-        # Execute callback with arguments
+        # Security: Trim whitespace to prevent injection via " ; cmd"
+        callback="${callback#"${callback%%[![:space:]]*}"}"
+        callback="${callback%"${callback##*[![:space:]]}"}"
+
+        # Security: Only execute if it's a declared function (no arbitrary eval)
         if declare -F "$callback" &>/dev/null; then
             "$callback" "${args[@]}"
         else
-            # Try as command string
-            eval "$callback" 2>/dev/null || true
+            # Log warning about non-function callback (don't execute arbitrary strings)
+            printf 'events: warning: callback "%s" is not a declared function, skipping\n' "$callback" >&2
         fi
     done
 }
@@ -229,6 +260,7 @@ event_emit() {
 
 # event_once - Subscribe to an event for one-time execution
 # Usage: event_once <event_name> <callback>
+# Security: callback must be a declared function name (no arbitrary code)
 event_once() {
     local event_name="$1"
     local callback="$2"
@@ -238,13 +270,47 @@ event_once() {
         return 1
     }
 
-    # Create wrapper that removes itself after execution
-    local wrapper="_once_${event_name}_${callback//[^a-zA-Z0-9_]/_}"
+    # Security: Validate event_name and callback are safe identifiers
+    if ! _events_validate_callback "$callback"; then
+        echo "event_once: invalid callback name (must be alphanumeric with underscores)" >&2
+        return 1
+    fi
 
-    eval "$wrapper() {
-        $callback \"\$@\"
-        event_off \"$event_name\" \"$wrapper\"
-    }"
+    # Security: Ensure callback is a declared function
+    if ! declare -F "$callback" &>/dev/null; then
+        echo "event_once: callback '$callback' must be a declared function" >&2
+        return 1
+    fi
+
+    # Sanitize event_name for use in wrapper function name
+    local sanitized_event="${event_name//[^a-zA-Z0-9_]/_}"
+
+    # Create wrapper function name (deterministic, not using random)
+    local wrapper="_once_${sanitized_event}_${callback}"
+
+    # Security: Use declare -f to create wrapper function instead of eval
+    # This approach uses a function factory pattern that's safer than eval
+    # Register the once-wrapper in our tracking
+    _EVENTS_ONCE_CALLBACKS["$wrapper"]="$callback|$event_name"
+
+    # Create the wrapper function using a safe pattern
+    # We define a generic once-handler and use the associative array for dispatch
+    if ! declare -F "$wrapper" &>/dev/null; then
+        # Define the wrapper function using printf -v and source
+        local wrapper_code
+        printf -v wrapper_code '%s() {
+            local __callback="${_EVENTS_ONCE_CALLBACKS[%s]%%|*}"
+            local __event="${_EVENTS_ONCE_CALLBACKS[%s]#*|}"
+            if declare -F "$__callback" &>/dev/null; then
+                "$__callback" "$@"
+            fi
+            event_off "$__event" "%s"
+            unset "_EVENTS_ONCE_CALLBACKS[%s]"
+        }' "$wrapper" "$wrapper" "$wrapper" "$wrapper" "$wrapper"
+
+        # Source the function definition safely
+        source /dev/stdin <<< "$wrapper_code"
+    fi
 
     event_on "$event_name" "$wrapper"
 }

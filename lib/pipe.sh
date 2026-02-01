@@ -17,6 +17,55 @@ source "${BASH_SOURCE%/*}/common.sh"
 source "${BASH_SOURCE%/*}/pure-string.sh"
 
 # =============================================================================
+# SECURITY: Command Validation
+# =============================================================================
+
+# Validate a command/expression for dangerous patterns
+# Usage: _pipe_validate_cmd "command"
+# Returns: 0 if safe, 1 if dangerous pattern detected
+_pipe_validate_cmd() {
+    local cmd="$1"
+
+    # Block command substitution
+    [[ "$cmd" == *'$('* ]] && return 1
+    [[ "$cmd" == *'`'* ]] && return 1
+
+    # Block dangerous operators
+    [[ "$cmd" == *';'* ]] && return 1
+    [[ "$cmd" == *'&&'* ]] && return 1
+    [[ "$cmd" == *'||'* ]] && return 1
+
+    # Block redirects that could write to arbitrary files
+    [[ "$cmd" == *'>'* ]] && return 1
+    [[ "$cmd" == *'>>'* ]] && return 1
+
+    # Block backgrounding
+    [[ "$cmd" == *'&'* ]] && return 1
+
+    # Block eval and source
+    [[ "$cmd" == *'eval '* ]] && return 1
+    [[ "$cmd" == *'eval$'* ]] && return 1
+    [[ "$cmd" == *'source '* ]] && return 1
+
+    return 0
+}
+
+# Safe command execution via subprocess isolation
+# Usage: _pipe_safe_exec "command" <<< "input"
+_pipe_safe_exec() {
+    local cmd="$1"
+
+    # Validate command before execution
+    if ! _pipe_validate_cmd "$cmd"; then
+        printf 'pipe: blocked dangerous command pattern\n' >&2
+        return 1
+    fi
+
+    # Execute in subprocess for isolation
+    bash -c "$cmd"
+}
+
+# =============================================================================
 # CORE STREAM PRIMITIVES
 # =============================================================================
 
@@ -35,6 +84,7 @@ _pipe_input() {
 # Usage: pipe_map <function> [args...]
 # Example: echo -e "hello\nworld" | pipe_map 'tr a-z A-Z'
 #          echo -e "foo\nbar" | pipe_map upper  # uses MAINFRAME upper()
+# Security: Commands are validated for dangerous patterns before execution
 pipe_map() {
     local func="$1"
     shift
@@ -43,11 +93,19 @@ pipe_map() {
 
     while IFS= read -r line || [[ -n "$line" ]]; do
         if declare -F "$func" &>/dev/null; then
-            # It's a bash function
+            # It's a bash function - safe to call directly
             "$func" "$line" "${extra_args[@]}"
+        elif type -p "$func" &>/dev/null; then
+            # It's an external command - execute directly without shell interpretation
+            printf '%s\n' "$line" | "$func" "${extra_args[@]}"
         else
-            # It's a command/expression - use eval
-            eval "printf '%s\n' \"\$line\" | $func"
+            # It's a command expression - validate and use subprocess
+            if _pipe_validate_cmd "$func"; then
+                printf '%s\n' "$line" | bash -c "$func"
+            else
+                printf 'pipe_map: blocked dangerous command pattern: %s\n' "$func" >&2
+                return 1
+            fi
         fi
     done
 }
@@ -76,17 +134,25 @@ pipe_reject() {
 # Reduce/fold stream to single value
 # Usage: pipe_reduce <function> [initial]
 # Example: echo -e "1\n2\n3" | pipe_reduce 'expr $acc + $line' 0
+# Security: Expression is validated for dangerous patterns
 pipe_reduce() {
     local func="$1"
     local acc="${2:-}"
     local line first=1
+
+    # Security: Validate the reducer expression upfront
+    if ! _pipe_validate_cmd "$func"; then
+        printf 'pipe_reduce: blocked dangerous expression pattern\n' >&2
+        return 1
+    fi
 
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ $first -eq 1 && -z "$acc" ]]; then
             acc="$line"
             first=0
         else
-            acc=$(eval "$func")
+            # Execute in subprocess with acc and line in environment
+            acc=$(acc="$acc" line="$line" bash -c "$func")
         fi
     done
     printf '%s\n' "$acc"
@@ -526,17 +592,39 @@ pipe_chunk() {
 # Apply different transforms based on condition
 # Usage: pipe_if <condition_pattern> <true_cmd> [false_cmd]
 # Example: echo -e "1\n2\n3" | pipe_if '^[12]$' 'tr 0-9 a-j' 'cat'
+# Security: Commands are validated for dangerous patterns
 pipe_if() {
     local pattern="$1"
     local true_cmd="$2"
     local false_cmd="${3:-cat}"
     local line
 
+    # Security: Validate both commands upfront
+    if ! _pipe_validate_cmd "$true_cmd"; then
+        printf 'pipe_if: blocked dangerous true_cmd pattern\n' >&2
+        return 1
+    fi
+    if ! _pipe_validate_cmd "$false_cmd"; then
+        printf 'pipe_if: blocked dangerous false_cmd pattern\n' >&2
+        return 1
+    fi
+
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ "$line" =~ $pattern ]]; then
-            printf '%s\n' "$line" | eval "$true_cmd"
+            # Check if it's an external command we can call directly
+            local first_word="${true_cmd%% *}"
+            if type -p "$first_word" &>/dev/null && [[ "$true_cmd" == "$first_word" || "$true_cmd" == "$first_word "* ]]; then
+                printf '%s\n' "$line" | $true_cmd
+            else
+                printf '%s\n' "$line" | bash -c "$true_cmd"
+            fi
         else
-            printf '%s\n' "$line" | eval "$false_cmd"
+            local first_word="${false_cmd%% *}"
+            if type -p "$first_word" &>/dev/null && [[ "$false_cmd" == "$first_word" || "$false_cmd" == "$first_word "* ]]; then
+                printf '%s\n' "$line" | $false_cmd
+            else
+                printf '%s\n' "$line" | bash -c "$false_cmd"
+            fi
         fi
     done
 }
@@ -642,7 +730,7 @@ pipe_length() {
 # EXPORT
 # =============================================================================
 
-export -f _pipe_input pipe_map pipe_filter pipe_reject pipe_reduce
+export -f _pipe_input _pipe_validate_cmd _pipe_safe_exec pipe_map pipe_filter pipe_reject pipe_reduce
 export -f pipe_take pipe_drop pipe_take_while pipe_drop_while
 export -f pipe_unique pipe_uniq pipe_sort pipe_reverse pipe_shuffle
 export -f pipe_field pipe_fields pipe_nf

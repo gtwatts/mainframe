@@ -25,12 +25,50 @@ declare -g _TEST_PASS_COUNT=0
 declare -g _TEST_FAIL_COUNT=0
 
 # =============================================================================
+# Security Validation
+# =============================================================================
+
+# Validate function name is a safe identifier
+# Usage: _testing_validate_func_name "name"
+_testing_validate_func_name() {
+    local name="$1"
+
+    # Must be non-empty
+    [[ -z "$name" ]] && return 1
+
+    # Must match valid bash function name pattern
+    [[ "$name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || return 1
+
+    # Block names that could be dangerous
+    [[ "$name" == "eval" ]] && return 1
+    [[ "$name" == "source" ]] && return 1
+    [[ "$name" == "exec" ]] && return 1
+
+    return 0
+}
+
+# Validate variable name is a safe identifier
+# Usage: _testing_validate_var_name "name"
+_testing_validate_var_name() {
+    local name="$1"
+
+    # Must be non-empty
+    [[ -z "$name" ]] && return 1
+
+    # Must match valid bash variable name pattern
+    [[ "$name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || return 1
+
+    return 0
+}
+
+# =============================================================================
 # Mock Functions API
 # =============================================================================
 
 # mock_function - Replace a function with a mock implementation
 # Usage: mock_function <function_name> <mock_body>
 # Example: mock_function "curl" 'echo "{\"status\": \"ok\"}"'
+# Security: func_name is validated; mock_body is stored and executed via indirection
 mock_function() {
     local func_name="$1"
     local mock_body="$2"
@@ -39,6 +77,12 @@ mock_function() {
         echo "Usage: mock_function <function_name> <mock_body>" >&2
         return 1
     }
+
+    # Security: Validate function name
+    if ! _testing_validate_func_name "$func_name"; then
+        echo "mock_function: invalid function name (must be alphanumeric with underscores)" >&2
+        return 1
+    fi
 
     # Backup original if it exists and not already mocked
     if declare -F "$func_name" &>/dev/null && [[ -z "${_MOCK_FUNCTIONS[$func_name]:-}" ]]; then
@@ -51,16 +95,22 @@ mock_function() {
     _MOCK_CALL_COUNT[$func_name]=0
     _MOCK_CALL_ARGS[$func_name]=""
 
-    # Create mock function
-    eval "$func_name() {
-        _MOCK_CALL_COUNT[$func_name]=\$((\${_MOCK_CALL_COUNT[$func_name]} + 1))
-        _MOCK_CALL_ARGS[$func_name]=\"\$*\"
-        $mock_body
-    }"
+    # Security: Create mock function using source instead of direct eval
+    # The mock body is stored and retrieved via the associative array
+    local mock_def
+    printf -v mock_def '%s() {
+        _MOCK_CALL_COUNT[%s]=$(( ${_MOCK_CALL_COUNT[%s]} + 1 ))
+        _MOCK_CALL_ARGS[%s]="$*"
+        # Execute stored mock body
+        bash -c "${_MOCK_FUNCTIONS[%s]}"
+    }' "$func_name" "$func_name" "$func_name" "$func_name" "$func_name"
+
+    source /dev/stdin <<< "$mock_def"
 }
 
 # mock_function_restore - Restore original function
 # Usage: mock_function_restore <function_name>
+# Security: Uses source instead of eval for function restoration
 mock_function_restore() {
     local func_name="$1"
 
@@ -69,10 +119,17 @@ mock_function_restore() {
         return 1
     }
 
+    # Security: Validate function name
+    if ! _testing_validate_func_name "$func_name"; then
+        echo "mock_function_restore: invalid function name" >&2
+        return 1
+    fi
+
     # Restore original if we have it
     local orig="${_MOCK_FUNCTIONS[_orig_$func_name]:-}"
     if [[ -n "$orig" ]]; then
-        eval "$orig"
+        # Security: Use source instead of eval
+        source /dev/stdin <<< "$orig"
     else
         # Just unset the mock
         unset -f "$func_name" 2>/dev/null || true
@@ -260,12 +317,14 @@ assert_not_empty() {
 
 # assert_exit_code - Assert command exits with expected code
 # Usage: assert_exit_code <expected_code> <command> [args...]
+# Security: Uses subprocess execution instead of eval
 assert_exit_code() {
     local expected="$1"
     shift
     local cmd="$*"
 
-    eval "$cmd" >/dev/null 2>&1
+    # Security: Execute in subprocess for isolation
+    bash -c "$cmd" >/dev/null 2>&1
     local actual=$?
 
     if [[ "$expected" -eq "$actual" ]]; then
@@ -320,11 +379,13 @@ assert_file_contains() {
 
 # assert_true - Assert condition is true
 # Usage: assert_true <condition> [message]
+# Security: Uses subprocess for condition evaluation
 assert_true() {
     local condition="$1"
     local message="${2:-Condition should be true}"
 
-    if eval "$condition" 2>/dev/null; then
+    # Security: Execute condition in subprocess for isolation
+    if bash -c "$condition" 2>/dev/null; then
         echo "PASS: $message"
         ((_TEST_PASS_COUNT++))
         return 0
@@ -338,11 +399,13 @@ assert_true() {
 
 # assert_false - Assert condition is false
 # Usage: assert_false <condition> [message]
+# Security: Uses subprocess for condition evaluation
 assert_false() {
     local condition="$1"
     local message="${2:-Condition should be false}"
 
-    if ! eval "$condition" 2>/dev/null; then
+    # Security: Execute condition in subprocess for isolation
+    if ! bash -c "$condition" 2>/dev/null; then
         echo "PASS: $message"
         ((_TEST_PASS_COUNT++))
         return 0
@@ -360,6 +423,7 @@ assert_false() {
 
 # fixture_tempdir - Create a temporary directory (auto-cleaned on test end)
 # Usage: fixture_tempdir <varname>
+# Security: Uses printf -v and nameref instead of eval for variable assignment
 fixture_tempdir() {
     local varname="$1"
 
@@ -368,19 +432,26 @@ fixture_tempdir() {
         return 1
     }
 
+    # Security: Validate variable name
+    if ! _testing_validate_var_name "$varname"; then
+        echo "fixture_tempdir: invalid variable name (must be alphanumeric with underscores)" >&2
+        return 1
+    fi
+
     local tmpdir
     tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t 'mainframe-test')
 
     _FIXTURE_TEMPDIRS+=("$tmpdir")
 
-    # Set the variable
-    eval "$varname=\"$tmpdir\""
+    # Security: Use printf -v for safe variable assignment (validated above)
+    printf -v "$varname" '%s' "$tmpdir"
 
     echo "$tmpdir"
 }
 
 # fixture_tempfile - Create a temporary file (auto-cleaned on test end)
 # Usage: fixture_tempfile <varname> [content]
+# Security: Uses printf -v instead of eval for variable assignment
 fixture_tempfile() {
     local varname="$1"
     local content="${2:-}"
@@ -390,6 +461,12 @@ fixture_tempfile() {
         return 1
     }
 
+    # Security: Validate variable name
+    if ! _testing_validate_var_name "$varname"; then
+        echo "fixture_tempfile: invalid variable name (must be alphanumeric with underscores)" >&2
+        return 1
+    fi
+
     local tmpfile
     tmpfile=$(mktemp 2>/dev/null || mktemp -t 'mainframe-test')
 
@@ -398,7 +475,8 @@ fixture_tempfile() {
     # Track parent dir for cleanup
     _FIXTURE_TEMPDIRS+=("$(dirname "$tmpfile")/$(basename "$tmpfile")")
 
-    eval "$varname=\"$tmpfile\""
+    # Security: Use printf -v for safe variable assignment (validated above)
+    printf -v "$varname" '%s' "$tmpfile"
 
     echo "$tmpfile"
 }

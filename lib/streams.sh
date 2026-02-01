@@ -30,7 +30,7 @@ readonly _MAINFRAME_STREAMS_LOADED=1
 
 # Safe expression evaluator for predicates (returns 0/1 for true/false)
 # Usage: _streams_eval_predicate "expression" "item_value"
-# Security: Validates no dangerous patterns, runs in controlled context
+# Security: Validates no dangerous patterns, runs in subprocess for isolation
 _streams_eval_predicate() {
     local expr="$1"
     local item="$2"
@@ -40,32 +40,35 @@ _streams_eval_predicate() {
        [[ "$expr" == *';'* ]] || [[ "$expr" == *'|'* ]] || \
        [[ "$expr" == *'>'* && "$expr" != *'-gt'* && "$expr" != *'-ge'* ]] || \
        [[ "$expr" == *'<'* && "$expr" != *'-lt'* && "$expr" != *'-le'* ]] || \
-       [[ "$expr" == *'eval'* ]] || [[ "$expr" == *'source'* ]]; then
+       [[ "$expr" == *'eval'* ]] || [[ "$expr" == *'source'* ]] || \
+       [[ "$expr" == *'&'* ]] || [[ "$expr" == *$'\n'* ]]; then
         printf 'streams: blocked dangerous pattern in predicate: %s\n' "$expr" >&2
         return 1
     fi
 
-    # Execute predicate with item in scope
-    eval "$expr" 2>/dev/null
+    # Security: Execute predicate in subprocess with item exported
+    item="$item" bash -c "$expr" 2>/dev/null
 }
 
 # Safe transform evaluator (outputs transformed value)
 # Usage: _streams_eval_transform "expression" "item_value"
-# Security: Validates no dangerous patterns, runs in controlled context
+# Security: Validates no dangerous patterns, runs in subprocess for isolation
 _streams_eval_transform() {
     local expr="$1"
     local item="$2"
 
-    # Block dangerous patterns (same as predicate)
+    # Block dangerous patterns (same as predicate plus more)
     if [[ "$expr" == *'`'* ]] || [[ "$expr" == *'$('* && "$expr" != *'$(('* ]] || \
        [[ "$expr" == *';'* ]] || [[ "$expr" == *'|'* ]] || \
-       [[ "$expr" == *'eval'* ]] || [[ "$expr" == *'source'* ]]; then
+       [[ "$expr" == *'eval'* ]] || [[ "$expr" == *'source'* ]] || \
+       [[ "$expr" == *'&'* ]] || [[ "$expr" == *$'\n'* ]] || \
+       [[ "$expr" == *'>'* ]] || [[ "$expr" == *'>>'* ]]; then
         printf 'streams: blocked dangerous pattern in transform: %s\n' "$expr" >&2
         return 1
     fi
 
-    # Execute transform with item in scope
-    eval "$expr"
+    # Security: Execute transform in subprocess with item exported
+    item="$item" bash -c "$expr"
 }
 
 # Safe command execution via subprocess
@@ -694,7 +697,7 @@ stream_compact() {
 #
 # Usage: stream_reduce "reducer"
 # Example: stream_of 1 2 3 4 | stream_reduce 'echo $(($acc + $item))'
-# Security: Uses safe evaluation with pattern validation
+# Security: Uses subprocess isolation with pattern validation
 stream_reduce() {
     local reducer="$1"
     local acc=""
@@ -703,7 +706,9 @@ stream_reduce() {
 
     # Block dangerous patterns in reducer
     if [[ "$reducer" == *'`'* ]] || [[ "$reducer" == *';'* ]] || \
-       [[ "$reducer" == *'eval'* ]] || [[ "$reducer" == *'source'* ]]; then
+       [[ "$reducer" == *'eval'* ]] || [[ "$reducer" == *'source'* ]] || \
+       [[ "$reducer" == *'&'* ]] || [[ "$reducer" == *$'\n'* ]] || \
+       [[ "$reducer" == *'>'* ]] || [[ "$reducer" == *'|'* ]]; then
         _stream_error 1 "blocked dangerous pattern in reducer"
         return 1
     fi
@@ -713,7 +718,8 @@ stream_reduce() {
             acc="$item"
             first=false
         else
-            acc=$(eval "$reducer")
+            # Security: Execute in subprocess with acc and item exported
+            acc=$(acc="$acc" item="$item" bash -c "$reducer")
         fi
     done
 
@@ -731,7 +737,7 @@ stream_reduce() {
 #
 # Usage: stream_fold initial "folder"
 # Example: stream_of 1 2 3 | stream_fold 10 'echo $(($acc + $item))'  # 16
-# Security: Uses safe evaluation with pattern validation
+# Security: Uses subprocess isolation with pattern validation
 stream_fold() {
     local acc="$1"
     local folder="$2"
@@ -739,13 +745,16 @@ stream_fold() {
 
     # Block dangerous patterns in folder
     if [[ "$folder" == *'`'* ]] || [[ "$folder" == *';'* ]] || \
-       [[ "$folder" == *'eval'* ]] || [[ "$folder" == *'source'* ]]; then
+       [[ "$folder" == *'eval'* ]] || [[ "$folder" == *'source'* ]] || \
+       [[ "$folder" == *'&'* ]] || [[ "$folder" == *$'\n'* ]] || \
+       [[ "$folder" == *'>'* ]] || [[ "$folder" == *'|'* ]]; then
         _stream_error 1 "blocked dangerous pattern in folder"
         return 1
     fi
 
     while IFS= read -r item || [[ -n "$item" ]]; do
-        acc=$(eval "$folder")
+        # Security: Execute in subprocess with acc and item exported
+        acc=$(acc="$acc" item="$item" bash -c "$folder")
     done
 
     printf '%s\n' "$acc"
