@@ -1,10 +1,10 @@
 # MAINFRAME Roadmap
 
-> The AI-Native Bash Runtime - v7.2
+> The AI-Native Bash Runtime - v7.3
 
 This roadmap outlines planned features and improvements for MAINFRAME. Items are organized by priority and status.
 
-**Current Stats**: 4,310+ functions | 123 libraries | 9,200+ tests | Pure Bash
+**Current Stats**: 4,350+ functions | 129 libraries | 9,600+ tests | Pure Bash
 
 ---
 
@@ -27,7 +27,19 @@ This roadmap outlines planned features and improvements for MAINFRAME. Items are
   - [x] ensure_line - flock-based atomic check-and-append
   - [x] ensure_symlink - temp-link + rename pattern
   - [x] ensure_file - temp-file + atomic rename
-- [ ] Test coverage expansion (52.3% → 80% target) - 9,200+ tests (in progress)
+- [x] **Telemetry System** (`lib/telemetry.sh`)
+  - [x] Opt-in with `MAINFRAME_TELEMETRY=1`
+  - [x] Local aggregation to `~/.mainframe/telemetry/`
+  - [x] Functions: telemetry_enabled, telemetry_init, telemetry_track, telemetry_flush, telemetry_report
+  - [x] No PII collection, privacy-first design
+- [x] **New ext/ Libraries** (6 libraries, 62 functions)
+  - [x] `ext/go.sh` - Go project analysis (10 functions)
+  - [x] `ext/rust.sh` - Rust/Cargo project analysis (10 functions)
+  - [x] `ext/terraform.sh` - Terraform CLI wrapper (12 functions)
+  - [x] `ext/aws.sh` - AWS CLI wrapper with structured output (10 functions)
+  - [x] `ext/gcp.sh` - GCP CLI wrapper with gsutil fallback (10 functions)
+  - [x] All USOP-compliant with comprehensive tests
+- [ ] Test coverage expansion (52.3% → 80% target) - 9,600+ tests (in progress)
 - [ ] Distributed task scheduling across multiple hosts
 - [ ] Agent capability negotiation protocol
 - [ ] Orchestration metrics and dashboards
@@ -36,30 +48,9 @@ This roadmap outlines planned features and improvements for MAINFRAME. Items are
 
 ## Planned
 
-### Telemetry & Analytics
-
-**Priority: Low**
-
-Opt-in telemetry to understand function usage patterns and guide development.
-
-Features:
-- Track which functions are called most frequently
-- Identify unused or underutilized functions
-- Surface common error patterns
-- Guide deprecation decisions
-- Completely opt-in with `MAINFRAME_TELEMETRY=1`
-
-Privacy:
-- No PII collection
-- Local aggregation option
-- Anonymous usage stats only
-- Open-source telemetry implementation
-
----
-
-## Future Considerations
-
 ### Language Bindings
+
+**Priority: Medium**
 
 - Python bindings (`pip install mainframe-bash`)
 - Node.js bindings (`npm install mainframe-bash`)
@@ -67,14 +58,13 @@ Privacy:
 
 ### Additional Libraries
 
-- `aws.sh` - AWS CLI wrapper with structured output
-- `gcp.sh` - GCP CLI wrapper
-- `terraform.sh` - Terraform workflow helpers
+**Priority: Low**
+
 - `ansible.sh` - Ansible integration
-- `go.sh` - Go project analysis (like typescript.sh/python.sh)
-- `rust.sh` - Rust project analysis
 
 ### Testing Improvements
+
+**Priority: Medium**
 
 - Property-based testing with bash
 - Mutation testing for coverage gaps
@@ -82,6 +72,8 @@ Privacy:
 - Automated benchmark tracking
 
 ### Documentation
+
+**Priority: Low**
 
 - Video tutorials
 - Interactive playground (WebAssembly bash)
@@ -263,4 +255,4 @@ Have ideas for the roadmap?
 
 ---
 
-*Last updated: January 2026*
+*Last updated: February 2026*
