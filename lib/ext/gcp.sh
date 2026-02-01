@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # =============================================================================
-# MAINFRAME/lib/ext/gcp.sh - Google Cloud CLI Wrapper Functions (OPTIONAL)
+# MAINFRAME/lib/ext/gcp.sh - Google Cloud Platform CLI Wrapper Functions (OPTIONAL)
 # =============================================================================
-# Description: Convenience wrappers for Google Cloud (gcloud) CLI operations
-# Requires: gcloud CLI (https://cloud.google.com/sdk/gcloud)
-# Status: STUB - Framework for future expansion
+# Description: Convenience wrappers for gcloud CLI operations
+# Requires: gcloud CLI (https://cloud.google.com/sdk/docs/install)
+# Status: Production - Core GCP operations with structured JSON output
 # =============================================================================
 # "Mainframe can make a computer do anything short of tap dance."
 # =============================================================================
@@ -25,86 +25,146 @@ _gcp_has_cli() {
 # Require gcloud CLI or return error JSON
 _gcp_require_cli() {
     if ! _gcp_has_cli; then
-        printf '{"success":false,"error":"gcloud CLI not installed","hint":"Install from https://cloud.google.com/sdk/gcloud"}'
+        printf '{"success":false,"error":"gcloud CLI not installed","hint":"Install from https://cloud.google.com/sdk/docs/install"}'
         return 1
     fi
     return 0
 }
 
+# Check if gsutil is available (bundled with gcloud SDK)
+_gcp_has_gsutil() {
+    command -v gsutil &>/dev/null
+}
+
+# Escape string for JSON output
+_gcp_json_escape() {
+    local str="$1"
+    str="${str//\\/\\\\}"
+    str="${str//\"/\\\"}"
+    str="${str//$'\n'/\\n}"
+    str="${str//$'\r'/\\r}"
+    str="${str//$'\t'/\\t}"
+    printf '%s' "$str"
+}
+
 # =============================================================================
-# AVAILABILITY & IDENTITY
+# AVAILABILITY & CONFIGURATION
 # =============================================================================
 
 # Check if gcloud CLI is available and configured
-# Usage: gcp_available
-# Returns: 0 if gcloud CLI is installed and authenticated, 1 otherwise
+# Usage: gcp_configured
+# Returns: 0 if gcloud CLI is installed and has active configuration, 1 otherwise
+# Output: JSON with configuration status
 # @idempotent
-gcp_available() {
-    _gcp_has_cli || return 1
-    # Verify authentication
-    gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null | grep -q .
+gcp_configured() {
+    _gcp_require_cli || return 1
+
+    local account project
+    account=$(gcloud config get-value account 2>/dev/null)
+    project=$(gcloud config get-value project 2>/dev/null)
+
+    if [[ -z "$account" ]]; then
+        printf '{"success":false,"error":"No active account configured","hint":"Run gcloud auth login"}'
+        return 1
+    fi
+
+    printf '{"success":true,"data":{"account":"%s","project":"%s","configured":true}}' \
+        "$(_gcp_json_escape "$account")" "$(_gcp_json_escape "${project:-}")"
 }
 
-# Get current GCP project ID
-# Usage: gcp_project
-# Returns: Project ID string
-# @idempotent
+# Get or set current project
+# Usage: gcp_project [project_id]
+# Returns: JSON with current or newly set project
+# @idempotent (when reading)
 gcp_project() {
     _gcp_require_cli || return 1
-    gcloud config get-value project 2>/dev/null
+
+    local project_id="${1:-}"
+
+    if [[ -n "$project_id" ]]; then
+        # Set project
+        if gcloud config set project "$project_id" &>/dev/null; then
+            printf '{"success":true,"data":{"project":"%s","action":"set"}}' \
+                "$(_gcp_json_escape "$project_id")"
+        else
+            printf '{"success":false,"error":"Failed to set project","project":"%s"}' \
+                "$(_gcp_json_escape "$project_id")"
+            return 1
+        fi
+    else
+        # Get current project
+        local current
+        current=$(gcloud config get-value project 2>/dev/null)
+
+        if [[ -z "$current" ]]; then
+            printf '{"success":false,"error":"No project configured","hint":"Run gcloud config set project PROJECT_ID"}'
+            return 1
+        fi
+
+        printf '{"success":true,"data":{"project":"%s"}}' "$(_gcp_json_escape "$current")"
+    fi
 }
 
-# Get current GCP region
-# Usage: gcp_region
-# Returns: Region string (e.g., "us-central1")
-# @idempotent
+# Get or set current region
+# Usage: gcp_region [region]
+# Returns: JSON with current or newly set region
+# @idempotent (when reading)
 gcp_region() {
     _gcp_require_cli || return 1
-    gcloud config get-value compute/region 2>/dev/null || echo "${CLOUDSDK_COMPUTE_REGION:-us-central1}"
-}
 
-# Get caller identity as JSON (USOP format)
-# Usage: gcp_whoami
-# Returns: JSON with account, project, and region
-# @idempotent
-gcp_whoami() {
-    _gcp_require_cli || return 1
+    local region="${1:-}"
 
-    local account project region
-    account=$(gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null | head -1)
+    if [[ -n "$region" ]]; then
+        # Set region
+        if gcloud config set compute/region "$region" &>/dev/null; then
+            printf '{"success":true,"data":{"region":"%s","action":"set"}}' \
+                "$(_gcp_json_escape "$region")"
+        else
+            printf '{"success":false,"error":"Failed to set region","region":"%s"}' \
+                "$(_gcp_json_escape "$region")"
+            return 1
+        fi
+    else
+        # Get current region
+        local current
+        current=$(gcloud config get-value compute/region 2>/dev/null)
 
-    [[ -z "$account" ]] && {
-        printf '{"success":false,"error":"No active GCP account","hint":"Run gcloud auth login"}'
-        return 1
-    }
-
-    project=$(gcp_project)
-    region=$(gcp_region)
-
-    printf '{"success":true,"data":{"account":"%s","project":"%s","region":"%s"}}' \
-        "$account" "$project" "$region"
+        if [[ -z "$current" ]]; then
+            printf '{"success":true,"data":{"region":null,"hint":"Run gcloud config set compute/region REGION"}}'
+        else
+            printf '{"success":true,"data":{"region":"%s"}}' "$(_gcp_json_escape "$current")"
+        fi
+    fi
 }
 
 # =============================================================================
-# GCS (GOOGLE CLOUD STORAGE) HELPERS
+# CLOUD STORAGE HELPERS
 # =============================================================================
 
-# List GCS buckets
-# Usage: gcp_gcs_list [prefix]
+# List Cloud Storage buckets
+# Usage: gcp_storage_list [prefix]
 # Returns: JSON array of bucket names
-gcp_gcs_list() {
+# @idempotent
+gcp_storage_list() {
     _gcp_require_cli || return 1
 
     local prefix="${1:-}"
     local buckets
 
-    buckets=$(gcloud storage buckets list --format="value(name)" 2>/dev/null) || {
-        printf '{"success":false,"error":"Failed to list GCS buckets"}'
-        return 1
-    }
-
-    # Filter by prefix if provided
-    [[ -n "$prefix" ]] && buckets=$(echo "$buckets" | grep "^${prefix}")
+    if _gcp_has_gsutil; then
+        if [[ -n "$prefix" ]]; then
+            buckets=$(gsutil ls 2>/dev/null | grep -E "^gs://${prefix}" | sed 's|gs://||;s|/$||')
+        else
+            buckets=$(gsutil ls 2>/dev/null | sed 's|gs://||;s|/$||')
+        fi
+    else
+        # Fallback to gcloud storage
+        buckets=$(gcloud storage buckets list --format="value(name)" 2>/dev/null) || {
+            printf '{"success":false,"error":"Failed to list Cloud Storage buckets"}'
+            return 1
+        }
+        [[ -n "$prefix" ]] && buckets=$(printf '%s' "$buckets" | grep "^${prefix}")
+    fi
 
     if [[ -z "$buckets" ]]; then
         printf '{"success":true,"data":[]}'
@@ -115,33 +175,86 @@ gcp_gcs_list() {
     local json_array="["
     local first=true
     while IFS= read -r bucket; do
+        [[ -z "$bucket" ]] && continue
         $first || json_array+=","
         first=false
-        json_array+="\"$bucket\""
+        json_array+="\"$(_gcp_json_escape "$bucket")\""
     done <<< "$buckets"
     json_array+="]"
 
     printf '{"success":true,"data":%s}' "$json_array"
 }
 
-# Copy file to/from GCS
-# Usage: gcp_gcs_cp "source" "destination"
+# Upload file to Cloud Storage
+# Usage: gcp_storage_upload "local_path" "gs://bucket/path"
 # Returns: USOP JSON result
-gcp_gcs_cp() {
+gcp_storage_upload() {
     _gcp_require_cli || return 1
 
     local source="$1"
-    local dest="$2"
+    local destination="$2"
 
-    [[ -z "$source" || -z "$dest" ]] && {
+    [[ -z "$source" || -z "$destination" ]] && {
         printf '{"success":false,"error":"Source and destination required"}'
         return 1
     }
 
-    if gcloud storage cp "$source" "$dest" &>/dev/null; then
-        printf '{"success":true,"data":{"source":"%s","destination":"%s"}}' "$source" "$dest"
+    [[ ! -f "$source" ]] && {
+        printf '{"success":false,"error":"Source file not found","source":"%s"}' \
+            "$(_gcp_json_escape "$source")"
+        return 1
+    }
+
+    # Ensure destination starts with gs://
+    [[ "$destination" != gs://* ]] && destination="gs://$destination"
+
+    local copy_result=0
+    if _gcp_has_gsutil; then
+        gsutil cp "$source" "$destination" &>/dev/null || copy_result=1
     else
-        printf '{"success":false,"error":"GCS copy failed","source":"%s","destination":"%s"}' "$source" "$dest"
+        gcloud storage cp "$source" "$destination" &>/dev/null || copy_result=1
+    fi
+
+    if [[ $copy_result -eq 0 ]]; then
+        printf '{"success":true,"data":{"source":"%s","destination":"%s","action":"upload"}}' \
+            "$(_gcp_json_escape "$source")" "$(_gcp_json_escape "$destination")"
+    else
+        printf '{"success":false,"error":"Upload failed","source":"%s","destination":"%s"}' \
+            "$(_gcp_json_escape "$source")" "$(_gcp_json_escape "$destination")"
+        return 1
+    fi
+}
+
+# Download file from Cloud Storage
+# Usage: gcp_storage_download "gs://bucket/path" "local_path"
+# Returns: USOP JSON result
+gcp_storage_download() {
+    _gcp_require_cli || return 1
+
+    local source="$1"
+    local destination="$2"
+
+    [[ -z "$source" || -z "$destination" ]] && {
+        printf '{"success":false,"error":"Source and destination required"}'
+        return 1
+    }
+
+    # Ensure source starts with gs://
+    [[ "$source" != gs://* ]] && source="gs://$source"
+
+    local copy_result=0
+    if _gcp_has_gsutil; then
+        gsutil cp "$source" "$destination" &>/dev/null || copy_result=1
+    else
+        gcloud storage cp "$source" "$destination" &>/dev/null || copy_result=1
+    fi
+
+    if [[ $copy_result -eq 0 ]]; then
+        printf '{"success":true,"data":{"source":"%s","destination":"%s","action":"download"}}' \
+            "$(_gcp_json_escape "$source")" "$(_gcp_json_escape "$destination")"
+    else
+        printf '{"success":false,"error":"Download failed","source":"%s","destination":"%s"}' \
+            "$(_gcp_json_escape "$source")" "$(_gcp_json_escape "$destination")"
         return 1
     fi
 }
@@ -153,107 +266,137 @@ gcp_gcs_cp() {
 # List Compute Engine instances
 # Usage: gcp_compute_list [zone]
 # Returns: JSON array of instance info
+# @idempotent
 gcp_compute_list() {
     _gcp_require_cli || return 1
 
     local zone="${1:-}"
-    local zone_args=()
+    local args=("compute" "instances" "list" "--format=json")
 
-    [[ -n "$zone" ]] && zone_args=(--zones="$zone")
+    [[ -n "$zone" ]] && args+=("--zones=$zone")
 
     local result
-    result=$(gcloud compute instances list "${zone_args[@]}" \
-        --format="json(name,zone.basename(),status,machineType.basename())" 2>/dev/null) || {
+    result=$(gcloud "${args[@]}" 2>/dev/null) || {
         printf '{"success":false,"error":"Failed to list Compute Engine instances"}'
         return 1
     }
 
+    # If result is empty or null, return empty array
+    if [[ -z "$result" || "$result" == "[]" ]]; then
+        printf '{"success":true,"data":[]}'
+        return 0
+    fi
+
     printf '{"success":true,"data":%s}' "$result"
 }
 
-# Start Compute Engine instance
-# Usage: gcp_compute_start "instance_name" "zone"
-# Returns: USOP JSON result
-gcp_compute_start() {
+# Get Compute Engine instance status
+# Usage: gcp_compute_status "instance_name" [zone]
+# Returns: JSON with instance status
+# @idempotent
+gcp_compute_status() {
     _gcp_require_cli || return 1
 
     local instance_name="$1"
-    local zone="$2"
+    local zone="${2:-}"
 
     [[ -z "$instance_name" ]] && {
         printf '{"success":false,"error":"Instance name required"}'
         return 1
     }
 
-    # Use default zone if not provided
-    [[ -z "$zone" ]] && zone=$(gcloud config get-value compute/zone 2>/dev/null)
+    local args=("compute" "instances" "describe" "$instance_name" "--format=json")
+    [[ -n "$zone" ]] && args+=("--zone=$zone")
 
-    [[ -z "$zone" ]] && {
-        printf '{"success":false,"error":"Zone required (set default with gcloud config set compute/zone)"}'
+    local result
+    result=$(gcloud "${args[@]}" 2>/dev/null) || {
+        printf '{"success":false,"error":"Failed to get instance status","instance":"%s"}' \
+            "$(_gcp_json_escape "$instance_name")"
         return 1
     }
 
-    if gcloud compute instances start "$instance_name" --zone="$zone" &>/dev/null; then
-        printf '{"success":true,"data":{"instance":"%s","zone":"%s","action":"start"}}' "$instance_name" "$zone"
-    else
-        printf '{"success":false,"error":"Failed to start instance","instance":"%s","zone":"%s"}' "$instance_name" "$zone"
-        return 1
-    fi
-}
+    # Extract key fields for simplified response
+    local status name zone_val machine_type
+    status=$(printf '%s' "$result" | grep -o '"status"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4)
+    name=$(printf '%s' "$result" | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4)
+    zone_val=$(printf '%s' "$result" | grep -o '"zone"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4)
+    machine_type=$(printf '%s' "$result" | grep -o '"machineType"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4)
 
-# Stop Compute Engine instance
-# Usage: gcp_compute_stop "instance_name" "zone"
-# Returns: USOP JSON result
-gcp_compute_stop() {
-    _gcp_require_cli || return 1
+    # Extract just the zone name from the full URL
+    zone_val="${zone_val##*/}"
+    machine_type="${machine_type##*/}"
 
-    local instance_name="$1"
-    local zone="$2"
-
-    [[ -z "$instance_name" ]] && {
-        printf '{"success":false,"error":"Instance name required"}'
-        return 1
-    }
-
-    # Use default zone if not provided
-    [[ -z "$zone" ]] && zone=$(gcloud config get-value compute/zone 2>/dev/null)
-
-    [[ -z "$zone" ]] && {
-        printf '{"success":false,"error":"Zone required (set default with gcloud config set compute/zone)"}'
-        return 1
-    }
-
-    if gcloud compute instances stop "$instance_name" --zone="$zone" &>/dev/null; then
-        printf '{"success":true,"data":{"instance":"%s","zone":"%s","action":"stop"}}' "$instance_name" "$zone"
-    else
-        printf '{"success":false,"error":"Failed to stop instance","instance":"%s","zone":"%s"}' "$instance_name" "$zone"
-        return 1
-    fi
+    printf '{"success":true,"data":{"name":"%s","status":"%s","zone":"%s","machine_type":"%s"}}' \
+        "$(_gcp_json_escape "$name")" \
+        "$(_gcp_json_escape "$status")" \
+        "$(_gcp_json_escape "$zone_val")" \
+        "$(_gcp_json_escape "$machine_type")"
 }
 
 # =============================================================================
-# CLOUD FUNCTIONS HELPERS (STUB)
+# CLOUD FUNCTIONS HELPERS
 # =============================================================================
 
 # List Cloud Functions
 # Usage: gcp_functions_list [region]
 # Returns: JSON array of function info
+# @idempotent
 gcp_functions_list() {
     _gcp_require_cli || return 1
 
     local region="${1:-}"
-    local region_args=()
+    local args=("functions" "list" "--format=json")
 
-    [[ -n "$region" ]] && region_args=(--regions="$region")
+    [[ -n "$region" ]] && args+=("--regions=$region")
 
     local result
-    result=$(gcloud functions list "${region_args[@]}" \
-        --format="json(name,status,runtime,entryPoint)" 2>/dev/null) || {
+    result=$(gcloud "${args[@]}" 2>/dev/null) || {
         printf '{"success":false,"error":"Failed to list Cloud Functions"}'
         return 1
     }
 
+    # If result is empty or null, return empty array
+    if [[ -z "$result" || "$result" == "[]" ]]; then
+        printf '{"success":true,"data":[]}'
+        return 0
+    fi
+
     printf '{"success":true,"data":%s}' "$result"
+}
+
+# Invoke Cloud Function
+# Usage: gcp_functions_invoke "function_name" [data_json] [region]
+# Returns: USOP JSON with function response
+gcp_functions_invoke() {
+    _gcp_require_cli || return 1
+
+    local function_name="$1"
+    local data="${2:-{}}"
+    local region="${3:-}"
+
+    [[ -z "$function_name" ]] && {
+        printf '{"success":false,"error":"Function name required"}'
+        return 1
+    }
+
+    local args=("functions" "call" "$function_name" "--data=$data")
+    [[ -n "$region" ]] && args+=("--region=$region")
+
+    local output
+    output=$(gcloud "${args[@]}" 2>&1)
+    local exit_code=$?
+
+    if [[ $exit_code -eq 0 ]]; then
+        # Extract the result - gcloud functions call outputs result in a specific format
+        local response
+        response="$(_gcp_json_escape "$output")"
+        printf '{"success":true,"data":{"function":"%s","response":"%s"}}' \
+            "$(_gcp_json_escape "$function_name")" "$response"
+    else
+        printf '{"success":false,"error":"Function invocation failed","function":"%s","details":"%s"}' \
+            "$(_gcp_json_escape "$function_name")" "$(_gcp_json_escape "$output")"
+        return 1
+    fi
 }
 
 # =============================================================================
@@ -261,18 +404,18 @@ gcp_functions_list() {
 # =============================================================================
 
 MAINFRAME_EXT_GCP_EXPORTS=(
-    # Availability & Identity
-    gcp_available
+    # Availability & Configuration
+    gcp_configured
     gcp_project
     gcp_region
-    gcp_whoami
-    # GCS
-    gcp_gcs_list
-    gcp_gcs_cp
+    # Cloud Storage
+    gcp_storage_list
+    gcp_storage_upload
+    gcp_storage_download
     # Compute Engine
     gcp_compute_list
-    gcp_compute_start
-    gcp_compute_stop
+    gcp_compute_status
     # Cloud Functions
     gcp_functions_list
+    gcp_functions_invoke
 )

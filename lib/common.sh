@@ -646,7 +646,7 @@ _MAINFRAME_TIER_STANDARD=(
 _MAINFRAME_TIER_EXTENDED=(
     k8s semver functional compose stream streaming pipe
     procsub async meta cli fzf
-    compat safe guard
+    compat safe guard telemetry
 )
 
 # Phase 3 AI tier: agent-optimized modules
@@ -943,6 +943,7 @@ else
     _mainframe_load_library "compat"
     _mainframe_load_library "safe"
     _mainframe_load_library "guard"
+    _mainframe_load_library "telemetry"
 
     # AI tier libraries
     _mainframe_load_library "idempotent"
@@ -1345,4 +1346,6 @@ BASHER_COMMON_EXPORTS=(
     awm_pointer_create awm_pointer_resolve awm_pointer_exists awm_pointer_meta
     awm_wrap_result awm_chunk awm_summarize_chunks
     awm_truncate awm_read_plan
+    # Telemetry (from telemetry.sh) - Opt-in anonymous usage telemetry
+    telemetry_enabled telemetry_init telemetry_track telemetry_flush telemetry_report
 )
