@@ -14,6 +14,47 @@
 readonly _MAINFRAME_COMMON_LOADED=1
 
 # =============================================================================
+# CONFIG FILE LOADING
+# =============================================================================
+# Load config file if present. Supports key=value format with comments.
+# Config file location: $MAINFRAME_CONFIG or ~/.mainframe/config
+# All keys are uppercased and prefixed with MAINFRAME_ when exported.
+#
+# Example config file:
+#   profile=standard
+#   log_level=info
+#   quiet=0
+#
+# Results in: MAINFRAME_PROFILE=standard, MAINFRAME_LOG_LEVEL=info, etc.
+# =============================================================================
+
+_mainframe_load_config() {
+    local config_file="${MAINFRAME_CONFIG:-$HOME/.mainframe/config}"
+    [[ -f "$config_file" ]] || return 0
+
+    local key value
+    while IFS='=' read -r key value || [[ -n "$key" ]]; do
+        # Skip comments and empty lines
+        [[ "$key" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "${key// /}" ]] && continue
+
+        # Trim whitespace from key and value
+        key="${key#"${key%%[![:space:]]*}"}"
+        key="${key%"${key##*[![:space:]]}"}"
+        value="${value#"${value%%[![:space:]]*}"}"
+        value="${value%"${value##*[![:space:]]}"}"
+
+        # Skip if key is empty after trimming
+        [[ -z "$key" ]] && continue
+
+        # Uppercase the key and export with MAINFRAME_ prefix
+        key=$(printf '%s' "$key" | tr '[:lower:]' '[:upper:]')
+        export "MAINFRAME_$key"="$value"
+    done < "$config_file"
+}
+_mainframe_load_config
+
+# =============================================================================
 # CONSTANTS
 # =============================================================================
 
@@ -163,6 +204,29 @@ debug() { log_debug "$@"; }
 info()  { log_info "$@"; }
 warn()  { log_warn "$@"; }
 error() { log_error "$@"; }
+
+# =============================================================================
+# CENTRALIZED INTERNAL LOGGING
+# =============================================================================
+# Provides consistent logging for all MAINFRAME libraries. Each library calls
+# _mainframe_log with its module name, eliminating duplicate _*_log() helpers.
+#
+# Usage from libraries:
+#   _mainframe_log "awm" "info" "Session initialized"
+#   _mainframe_log "cache" "error" "Cache miss for key: $key"
+# =============================================================================
+
+# Centralized internal logging for all libraries
+# Usage: _mainframe_log "module" "level" "message..."
+_mainframe_log() {
+    local module="$1" level="$2"
+    shift 2
+    if declare -F log_"$level" &>/dev/null; then
+        log_"$level" "[$module] $*"
+    elif [[ "${MAINFRAME_QUIET:-}" != "1" ]]; then
+        printf '[%s] %s: %s\n' "$module" "$level" "$*" >&2
+    fi
+}
 
 # =============================================================================
 # ERROR HANDLING
@@ -597,6 +661,68 @@ _MAINFRAME_TIER_AI=(
     awm awm_storage awm_tiers awm_stream
 )
 
+# --- Bundle Presets ---------------------------------------------------------
+# Pre-defined library bundles for common use cases.
+# Bundles provide finer granularity than tier-based profiles.
+#
+# Usage:
+#   source common.sh
+#   mainframe_bundle "agent_minimal"   # Load specific bundle
+#   mainframe_bundle "data"            # Load data processing bundle
+# =============================================================================
+
+declare -gA MAINFRAME_BUNDLES=(
+    [agent_minimal]="core,agent,awm,validation"
+    [data]="core,json,csv,datetime,parsers"
+    [net]="core,http,burl,github"
+    [devops]="core,git,docker,github_actions"
+    [tui]="core,ansi,tui,anim,output"
+    [full]="all"
+)
+
+# Load a specific bundle by name
+# Usage: mainframe_bundle "agent_minimal"
+# Returns: 0 on success, 1 if bundle not found
+mainframe_bundle() {
+    local bundle="${1:-agent_minimal}"
+    local libs="${MAINFRAME_BUNDLES[$bundle]:-}"
+
+    [[ -z "$libs" ]] && {
+        # Use printf for error since log_error may not be loaded yet
+        printf '[ERROR] Unknown bundle: %s\n' "$bundle" >&2
+        printf '[INFO] Available bundles: %s\n' "${!MAINFRAME_BUNDLES[*]}" >&2
+        return 1
+    }
+
+    # Handle 'all' special case
+    if [[ "$libs" == "all" ]]; then
+        mainframe_load_all
+        return 0
+    fi
+
+    # Load each library in the bundle
+    local IFS=','
+    local lib
+    for lib in $libs; do
+        # Handle 'core' as a tier reference
+        if [[ "$lib" == "core" ]]; then
+            _mainframe_load_tier "core"
+        else
+            _mainframe_load_library "$lib"
+        fi
+    done
+}
+
+# List available bundles
+# Usage: mainframe_bundles
+# Output: One bundle name per line with description
+mainframe_bundles() {
+    local bundle
+    for bundle in "${!MAINFRAME_BUNDLES[@]}"; do
+        printf '%s: %s\n' "$bundle" "${MAINFRAME_BUNDLES[$bundle]}"
+    done | sort
+}
+
 # --- Profile Presets ---------------------------------------------------------
 
 # Resolve MAINFRAME_PROFILE to MAINFRAME_LIBS if profile is set
@@ -919,6 +1045,8 @@ BASHER_COMMON_EXPORTS=(
     # Lazy Loading API
     mainframe_load mainframe_load_all mainframe_loaded mainframe_available
     _mainframe_lazy_init
+    # Bundle API
+    mainframe_bundle mainframe_bundles
     # Logging
     log_debug log_info log_warn log_error log_fatal
     debug info warn error

@@ -36,13 +36,14 @@ MAINFRAME_DIFF_BACKUP="${MAINFRAME_DIFF_BACKUP:-1}"
 # INTERNAL HELPERS
 # =============================================================================
 
+# Delegate to centralized logging (with fallback for standalone testing)
 _diff_log() {
-    local level="$1"
-    shift
-    if declare -F log_"$level" &>/dev/null; then
-        log_"$level" "$*"
-    elif [[ "${MAINFRAME_QUIET:-}" != "1" ]]; then
-        printf '[diff] %s: %s\n' "${level}" "$*" >&2
+    if declare -F _mainframe_log &>/dev/null; then
+        _mainframe_log "diff" "$@"
+    else
+        local level="$1"; shift
+        [[ "${MAINFRAME_QUIET:-}" != "1" ]] && printf '[diff] %s: %s\n' "$level" "$*" >&2
+        :  # Ensure return 0 even when quiet mode suppresses output
     fi
 }
 

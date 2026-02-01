@@ -159,14 +159,9 @@ health::is_live() {
 # =============================================================================
 
 # Escape string for JSON
+# Delegates to canonical json_escape from lib/json.sh (core tier, always loaded)
 _health_json_escape() {
-    local str="$1"
-    str="${str//\\/\\\\}"
-    str="${str//\"/\\\"}"
-    str="${str//$'\n'/\\n}"
-    str="${str//$'\r'/\\r}"
-    str="${str//$'\t'/\\t}"
-    printf '%s' "$str"
+    json_escape "$@"
 }
 
 # Get status as JSON

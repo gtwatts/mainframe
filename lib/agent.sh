@@ -32,21 +32,35 @@ _MAINFRAME_AGENT_RECV_TIMEOUT=5
 # INTERNAL HELPERS
 # =============================================================================
 
+# Delegate to centralized logging (with fallback for standalone testing)
 _agent_log() {
-    local level="$1"
-    shift
-    if declare -F log_"$level" &>/dev/null; then
-        log_"$level" "$*"
-    elif [[ "${MAINFRAME_QUIET:-}" != "1" ]]; then
-        printf '[agent] %s: %s\n' "${level}" "$*" >&2
+    if declare -F _mainframe_log &>/dev/null; then
+        _mainframe_log "agent" "$@"
+    else
+        local level="$1"; shift
+        [[ "${MAINFRAME_QUIET:-}" != "1" ]] && printf '[agent] %s: %s\n' "$level" "$*" >&2
+        :  # Ensure return 0 even when quiet mode suppresses output
     fi
 }
 
 # Generate a monotonic message filename for FIFO ordering
 # Uses nanosecond timestamp + PID + sequence counter for uniqueness
+# Priority: EPOCHREALTIME > EPOCHSECONDS > printf builtin > date
 _agent_msg_filename() {
     local ts
-    ts="$(date +%s%N 2>/dev/null || date +%s)"
+    # Fastest: Bash 5.0+ EPOCHREALTIME (microsecond precision, remove decimal)
+    if [[ -n "${EPOCHREALTIME:-}" ]]; then
+        ts="${EPOCHREALTIME/./}"
+    # Fast: Bash 5.0+ EPOCHSECONDS (add zeros for consistent length)
+    elif [[ -n "${EPOCHSECONDS:-}" ]]; then
+        ts="${EPOCHSECONDS}000000000"
+    # Medium: Bash 4.2+ printf builtin (~100x faster than date)
+    elif printf -v ts '%(%s)T' -1 2>/dev/null && [[ -n "$ts" ]]; then
+        ts="${ts}000000000"
+    # Fallback: external date command
+    else
+        ts="$(date +%s%N 2>/dev/null || date +%s)"
+    fi
     _MAINFRAME_AGENT_SEQ="${_MAINFRAME_AGENT_SEQ:-0}"
     _MAINFRAME_AGENT_SEQ=$(( _MAINFRAME_AGENT_SEQ + 1 ))
     printf 'msg_%s_%s_%s' "$ts" "$$" "$_MAINFRAME_AGENT_SEQ"
@@ -76,34 +90,39 @@ _agent_exists() {
     [[ -f "$(_agent_dir "$name")/registered" ]]
 }
 
-# Escape a string for JSON embedding (minimal pure-bash)
+# Escape a string for JSON embedding
+# Delegates to canonical json_escape from lib/json.sh (core tier, always loaded)
 _agent_json_escape() {
-    local str="$1"
-    local result=""
-    local i char
-
-    for ((i = 0; i < ${#str}; i++)); do
-        char="${str:i:1}"
-        case "$char" in
-            '"')  result+='\"' ;;
-            '\')  result+='\\' ;;
-            $'\n') result+='\n' ;;
-            $'\r') result+='\r' ;;
-            $'\t') result+='\t' ;;
-            *)    result+="$char" ;;
-        esac
-    done
-    printf '%s' "$result"
+    json_escape "$@"
 }
 
 # Get current ISO timestamp
+# Uses printf builtin when available (Bash 4.2+)
 _agent_timestamp() {
-    date -u +"%Y-%m-%dT%H:%M:%S.%NZ" 2>/dev/null || date -u +"%Y-%m-%dT%H:%M:%SZ"
+    local ts
+    # Bash 4.2+ printf builtin for ISO format
+    if printf -v ts '%(%Y-%m-%dT%H:%M:%SZ)T' -1 2>/dev/null && [[ -n "$ts" ]]; then
+        printf '%s' "$ts"
+    # Fallback: external date command
+    else
+        date -u +"%Y-%m-%dT%H:%M:%S.%NZ" 2>/dev/null || date -u +"%Y-%m-%dT%H:%M:%SZ"
+    fi
 }
 
 # Get current epoch (seconds)
+# Priority: EPOCHSECONDS (Bash 5.0+) > printf builtin > date
 _agent_epoch() {
-    date +%s
+    local ts
+    # Fastest: Bash 5.0+ EPOCHSECONDS variable
+    if [[ -n "${EPOCHSECONDS:-}" ]]; then
+        printf '%s' "$EPOCHSECONDS"
+    # Fast: Bash 4.2+ printf builtin (~100x faster than date)
+    elif printf -v ts '%(%s)T' -1 2>/dev/null && [[ -n "$ts" ]]; then
+        printf '%s' "$ts"
+    # Fallback: external date command
+    else
+        date +%s
+    fi
 }
 
 # =============================================================================

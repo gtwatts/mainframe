@@ -57,37 +57,62 @@ _AWM_NAMESPACE=""
 # INTERNAL HELPERS
 # =============================================================================
 
+# Delegate to centralized logging (with fallback for standalone testing)
 _awm_log() {
-    local level="$1"
-    shift
-    if declare -F log_"$level" &>/dev/null; then
-        log_"$level" "[awm] $*"
-    elif [[ "${MAINFRAME_QUIET:-}" != "1" ]]; then
-        printf '[awm] %s: %s\n' "${level}" "$*" >&2
+    if declare -F _mainframe_log &>/dev/null; then
+        _mainframe_log "awm" "$@"
+    else
+        local level="$1"; shift
+        [[ "${MAINFRAME_QUIET:-}" != "1" ]] && printf '[awm] %s: %s\n' "$level" "$*" >&2
+        :  # Ensure return 0 even when quiet mode suppresses output
     fi
 }
 
-# Get epoch seconds
+# Get epoch seconds (optimized: EPOCHSECONDS > printf builtin > date fallback)
 _awm_epoch() {
+    local ts
+    # Fastest: Bash 5.0+ EPOCHSECONDS variable
     if [[ -n "${EPOCHSECONDS:-}" ]]; then
         printf '%s' "$EPOCHSECONDS"
+    # Fast: Bash 4.2+ printf builtin (~100x faster than date)
+    elif printf -v ts '%(%s)T' -1 2>/dev/null && [[ -n "$ts" ]]; then
+        printf '%s' "$ts"
+    # Fallback: external date command
     else
         date +%s
     fi
 }
 
 # Get high-resolution timestamp for ordering
+# Priority: EPOCHREALTIME (Bash 5.0+) > EPOCHSECONDS > printf builtin > date
 _awm_timestamp() {
+    local ts
+    # Fastest: Bash 5.0+ EPOCHREALTIME (microsecond precision)
     if [[ -n "${EPOCHREALTIME:-}" ]]; then
         printf '%s' "$EPOCHREALTIME"
+    # Fast: Bash 5.0+ EPOCHSECONDS (second precision)
+    elif [[ -n "${EPOCHSECONDS:-}" ]]; then
+        printf '%s.000000' "$EPOCHSECONDS"
+    # Medium: Bash 4.2+ printf builtin (~100x faster than date)
+    elif printf -v ts '%(%s)T' -1 2>/dev/null && [[ -n "$ts" ]]; then
+        printf '%s.000000' "$ts"
+    # Fallback: external date command
     else
         date '+%s.%N' 2>/dev/null || date +%s
     fi
 }
 
 # ISO 8601 timestamp for human readability
+# Uses printf builtin when available (Bash 4.2+)
 _awm_iso_timestamp() {
-    date '+%Y-%m-%dT%H:%M:%S%z' 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S'
+    local ts
+    # Bash 4.2+ printf builtin for ISO format
+    if printf -v ts '%(%Y-%m-%dT%H:%M:%S%z)T' -1 2>/dev/null && [[ -n "$ts" ]]; then
+        printf '%s' "$ts"
+    # Fallback: external date command
+    else
+        date '+%Y-%m-%dT%H:%M:%S%z' 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S'
+    fi
 }
 
 # Generate 12-character hex session ID
@@ -113,23 +138,9 @@ _awm_session_dir() {
 }
 
 # JSON-escape a string
+# Delegates to canonical json_escape from lib/json.sh (core tier, always loaded)
 _awm_json_escape() {
-    local str="$1"
-    local result=""
-    local i char
-
-    for ((i=0; i<${#str}; i++)); do
-        char="${str:i:1}"
-        case "$char" in
-            '"')  result+='\"' ;;
-            '\')  result+='\\' ;;
-            $'\n') result+='\n' ;;
-            $'\r') result+='\r' ;;
-            $'\t') result+='\t' ;;
-            *)    result+="$char" ;;
-        esac
-    done
-    printf '%s' "$result"
+    json_escape "$@"
 }
 
 # Atomic write using temp file + rename

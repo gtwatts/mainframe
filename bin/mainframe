@@ -7,6 +7,7 @@
 # Commands:
 #   version     Show MAINFRAME version
 #   functions   List all available functions
+#   help        Show detailed help for a specific function
 #   search      Search functions by name or description
 #   quickref    Show compact function signatures (with --search for lookup)
 #   benchmark   Run performance benchmarks
@@ -37,6 +38,7 @@ Usage: mainframe <command> [options]
 Commands:
   version     Show MAINFRAME version and environment info
   functions   List all available functions (pipe to grep for filtering)
+  help        Show detailed help for a specific function
   search      Search functions by name pattern
   count       Count total functions available
   quickref    Show compact function signatures (with --search for lookup)
@@ -48,6 +50,8 @@ Commands:
 Examples:
   mainframe version
   mainframe functions | grep json
+  mainframe help json_object
+  mainframe help validate_email
   mainframe search "array"
   mainframe quickref json
   mainframe quickref --list
@@ -58,6 +62,104 @@ Examples:
 
 Documentation: https://github.com/gtwatts/mainframe
 EOF
+}
+
+cmd_help() {
+    local func="${1:-}"
+    local json_file="${MAINFRAME_ROOT}/FUNCTIONS.json"
+
+    if [[ -z "$func" ]]; then
+        echo "Usage: mainframe help <function_name>"
+        echo ""
+        echo "Examples:"
+        echo "  mainframe help json_object"
+        echo "  mainframe help validate_email"
+        echo "  mainframe help awm_init"
+        echo ""
+        echo "Use 'mainframe search <keyword>' to find functions"
+        return 0
+    fi
+
+    # Check if FUNCTIONS.json exists
+    if [[ ! -f "$json_file" ]]; then
+        echo "Error: FUNCTIONS.json not found at: $json_file"
+        echo "Run 'make docs' to generate function documentation."
+        return 1
+    fi
+
+    # Search FUNCTIONS.json for the function across all libraries
+    local entry lib_name lib_desc
+    entry=$(jq -r --arg f "$func" '
+        .libraries | to_entries[] |
+        select(.value.functions[$f] != null) |
+        {
+            library: .key,
+            library_file: .value.file,
+            library_desc: .value.description,
+            func: .value.functions[$f]
+        }
+    ' "$json_file" 2>/dev/null)
+
+    if [[ -z "$entry" ]]; then
+        echo "Function '$func' not found in FUNCTIONS.json"
+        echo ""
+        echo "Use 'mainframe search $func' to search for similar functions."
+        return 1
+    fi
+
+    # Extract and display function information
+    lib_name=$(echo "$entry" | jq -r '.library')
+    lib_desc=$(echo "$entry" | jq -r '.library_desc // "No description"')
+
+    local signature description returns params_json examples_json
+    signature=$(echo "$entry" | jq -r '.func.signature // "()"')
+    description=$(echo "$entry" | jq -r '.func.description // "No description available"')
+    returns=$(echo "$entry" | jq -r '.func.returns // "unspecified"')
+    params_json=$(echo "$entry" | jq -r '.func.params // []')
+    examples_json=$(echo "$entry" | jq -r '.func.examples // []')
+
+    # Display formatted help
+    echo ""
+    echo "$func"
+    printf '%*s\n' "${#func}" '' | tr ' ' '='
+    echo ""
+    echo "Library:     $lib_name (lib/${lib_name}.sh)"
+    echo "Signature:   $signature"
+    echo "Returns:     $returns"
+    echo ""
+    echo "Description:"
+    echo "  $description"
+
+    # Show parameters if present
+    local param_count
+    param_count=$(echo "$params_json" | jq 'length')
+    if [[ "$param_count" -gt 0 ]]; then
+        echo ""
+        echo "Parameters:"
+        echo "$params_json" | jq -r '.[] | "  \(.position). \(.name)\(if .required then " (required)" else " (optional)" end)\(if .default then " [default: \(.default)]" else "" end)"'
+    fi
+
+    # Show examples if present
+    local example_count
+    example_count=$(echo "$examples_json" | jq 'length')
+    if [[ "$example_count" -gt 0 ]]; then
+        echo ""
+        echo "Examples:"
+        echo "$examples_json" | jq -r '.[] | "  \(.)"'
+    fi
+
+    # Show idempotent/pure flags if available
+    local idempotent pure
+    idempotent=$(echo "$entry" | jq -r '.func.idempotent // "unknown"')
+    pure=$(echo "$entry" | jq -r '.func.pure // "unknown"')
+    if [[ "$idempotent" != "unknown" || "$pure" != "unknown" ]]; then
+        echo ""
+        echo "Properties:"
+        [[ "$idempotent" != "unknown" ]] && echo "  Idempotent: $idempotent"
+        [[ "$pure" != "unknown" ]] && echo "  Pure:       $pure"
+    fi
+
+    echo ""
 }
 
 cmd_version() {
@@ -80,6 +182,7 @@ cmd_functions() {
 
 cmd_search() {
     local query="${1:-}"
+    local json_file="${MAINFRAME_ROOT}/FUNCTIONS.json"
 
     if [[ -z "$query" ]]; then
         echo "Usage: mainframe search <pattern>"
@@ -87,15 +190,41 @@ cmd_search() {
         return 1
     fi
 
-    local results
-    results=$(declare -F | awk '{print $3}' | grep -i "$query" | sort)
+    # If FUNCTIONS.json exists, use it for richer search results
+    if [[ -f "$json_file" ]]; then
+        local results
+        results=$(jq -r --arg q "$query" '
+            .libraries | to_entries[] |
+            .key as $lib |
+            .value.functions | to_entries[] |
+            select(.key | test($q; "i")) |
+            "\(.key) - \($lib)"
+        ' "$json_file" 2>/dev/null | head -30)
 
-    if [[ -z "$results" ]]; then
-        echo "No functions matching '$query'"
-        return 1
+        if [[ -z "$results" ]]; then
+            echo "No functions matching '$query'"
+            echo ""
+            echo "Tip: Use 'mainframe quickref --search $query' for description search"
+            return 1
+        fi
+
+        echo "Functions matching '$query':"
+        echo ""
+        echo "$results"
+        echo ""
+        echo "Use 'mainframe help <function>' for detailed information"
+    else
+        # Fallback to declared functions
+        local results
+        results=$(declare -F | awk '{print $3}' | grep -i "$query" | sort)
+
+        if [[ -z "$results" ]]; then
+            echo "No functions matching '$query'"
+            return 1
+        fi
+
+        echo "$results"
     fi
-
-    echo "$results"
 }
 
 cmd_count() {
@@ -407,6 +536,9 @@ case "${1:-help}" in
     functions|funcs|list)
         cmd_functions
         ;;
+    help|info|describe)
+        cmd_help "${2:-}"
+        ;;
     search|find|grep)
         cmd_search "${2:-}"
         ;;
@@ -428,7 +560,10 @@ case "${1:-help}" in
     update|upgrade)
         cmd_update
         ;;
-    help|-h|--help|*)
+    -h|--help)
+        show_help
+        ;;
+    *)
         show_help
         ;;
 esac

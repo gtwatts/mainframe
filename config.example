@@ -1,0 +1,48 @@
+# =============================================================================
+# MAINFRAME Configuration File
+# =============================================================================
+# Copy this file to ~/.mainframe/config to enable configuration.
+#
+# All keys are uppercased and prefixed with MAINFRAME_ when exported.
+# For example: profile=standard becomes MAINFRAME_PROFILE=standard
+#
+# Lines starting with # are comments and are ignored.
+# =============================================================================
+
+# Default profile (minimal, standard, full, ai, lazy)
+# - minimal:  Core tier only (fastest startup)
+# - standard: Core + Standard tiers (common day-to-day use)
+# - full:     All libraries loaded (backward compatible)
+# - ai:       Core + AI tiers (agent-optimized)
+# - lazy:     Function-level lazy loading (most efficient)
+profile=standard
+
+# Logging level (debug, info, warn, error)
+# Controls which log messages are displayed
+log_level=info
+
+# Enable quiet mode (1 to suppress non-error output)
+# When enabled, only errors are shown
+quiet=0
+
+# AWM (Agent Working Memory) storage directory
+# Where persistent agent memory is stored
+awm_dir=~/.mainframe/awm
+
+# Default bundle for mainframe_bundle() when called without args
+# Available bundles: agent_minimal, data, net, devops, tui, full
+default_bundle=agent_minimal
+
+# =============================================================================
+# Advanced Settings
+# =============================================================================
+
+# Enable debug mode for MAINFRAME internals (0 or 1)
+# debug=0
+
+# Custom library path (additional libraries to load from)
+# lib_path=
+
+# Strict mode for validation functions (0 or 1)
+# When enabled, validation failures are fatal
+# strict=0

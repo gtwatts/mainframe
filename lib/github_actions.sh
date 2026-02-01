@@ -77,15 +77,10 @@ _gha_error() {
 }
 
 # JSON escape a string
+# Delegates to canonical json_escape from lib/json.sh (core tier, always loaded)
 # Usage: escaped=$(_gha_json_escape "$string")
 _gha_json_escape() {
-    local s="$1"
-    s="${s//\\/\\\\}"
-    s="${s//\"/\\\"}"
-    s="${s//$'\n'/\\n}"
-    s="${s//$'\r'/\\r}"
-    s="${s//$'\t'/\\t}"
-    printf '%s' "$s"
+    json_escape "$@"
 }
 
 # =============================================================================

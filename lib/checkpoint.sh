@@ -177,14 +177,9 @@ _checkpoint_hash_file() {
 }
 
 # JSON escape helper
+# Delegates to canonical json_escape from lib/json.sh (core tier, always loaded)
 _checkpoint_json_escape() {
-    local str="$1"
-    str="${str//\\/\\\\}"
-    str="${str//\"/\\\"}"
-    str="${str//$'\n'/\\n}"
-    str="${str//$'\t'/\\t}"
-    str="${str//$'\r'/\\r}"
-    printf '%s' "$str"
+    json_escape "$@"
 }
 
 # Ensure checkpoint directory exists with proper permissions

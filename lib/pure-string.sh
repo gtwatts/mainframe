@@ -322,3 +322,81 @@ escape_regex() {
 escape_shell() {
     printf '%q\n' "$1"
 }
+
+# =============================================================================
+# NAMEREF VARIANTS (High-Performance)
+# =============================================================================
+# These _v variants use bash namerefs to avoid subshell overhead.
+# Instead of: result=$(trim_string "  hello  ")  # Creates subshell
+# Use:        trim_string_v result "  hello  "   # No subshell (~3.3x faster)
+# =============================================================================
+
+# Trim leading and trailing whitespace into variable
+# Usage: trim_string_v result_var "  hello world  "
+trim_string_v() {
+    local -n __tsv_out=$1
+    local var="${2#"${2%%[![:space:]]*}"}"
+    __tsv_out="${var%"${var##*[![:space:]]}"}"
+}
+
+# Convert to lowercase into variable
+# Usage: to_lower_v result_var "HELLO"
+to_lower_v() {
+    local -n __tlv_out=$1
+    __tlv_out="${2,,}"
+}
+
+# Convert to uppercase into variable
+# Usage: to_upper_v result_var "hello"
+to_upper_v() {
+    local -n __tuv_out=$1
+    __tuv_out="${2^^}"
+}
+
+# Get substring into variable
+# Usage: substring_v result_var "hello" 1 3
+substring_v() {
+    local -n __ssv_out=$1
+    __ssv_out="${2:$3:$4}"
+}
+
+# Replace first occurrence into variable
+# Usage: replace_first_v result_var "hello" "l" "L"
+replace_first_v() {
+    local -n __rfv_out=$1
+    __rfv_out="${2/$3/$4}"
+}
+
+# Replace all occurrences into variable
+# Usage: replace_all_v result_var "hello" "l" "L"
+replace_all_v() {
+    local -n __rav_out=$1
+    __rav_out="${2//$3/$4}"
+}
+
+# URL encode into variable
+# Usage: urlencode_v result_var "hello world"
+urlencode_v() {
+    local -n __uev_out=$1
+    local LC_ALL=C
+    local string="$2"
+    local length=${#string}
+    local i c
+
+    __uev_out=""
+    for ((i=0; i<length; i++)); do
+        c="${string:i:1}"
+        case "$c" in
+            [a-zA-Z0-9.~_-]) __uev_out+="$c" ;;
+            *) printf -v c '%%%02X' "'$c"; __uev_out+="$c" ;;
+        esac
+    done
+}
+
+# URL decode into variable
+# Usage: urldecode_v result_var "hello%20world"
+urldecode_v() {
+    local -n __udv_out=$1
+    local var="${2//+/ }"
+    printf -v __udv_out '%b' "${var//%/\\x}"
+}

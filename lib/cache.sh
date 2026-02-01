@@ -43,20 +43,27 @@ declare -gi _MAINFRAME_CACHE_MISSES=0
 # INTERNAL HELPERS
 # =============================================================================
 
+# Delegate to centralized logging (with fallback for standalone testing)
 _cache_log() {
-    local level="$1"
-    shift
-    if declare -F log_"$level" &>/dev/null; then
-        log_"$level" "$*"
-    elif [[ "${MAINFRAME_QUIET:-}" != "1" ]]; then
-        printf '[cache] %s: %s\n' "${level}" "$*" >&2
+    if declare -F _mainframe_log &>/dev/null; then
+        _mainframe_log "cache" "$@"
+    else
+        local level="$1"; shift
+        [[ "${MAINFRAME_QUIET:-}" != "1" ]] && printf '[cache] %s: %s\n' "$level" "$*" >&2
+        :  # Ensure return 0 even when quiet mode suppresses output
     fi
 }
 
-# Get epoch seconds
+# Get epoch seconds (optimized: EPOCHSECONDS > printf builtin > date fallback)
 _cache_epoch() {
+    local ts
+    # Fastest: Bash 5.0+ EPOCHSECONDS variable
     if [[ -n "${EPOCHSECONDS:-}" ]]; then
         printf '%s' "$EPOCHSECONDS"
+    # Fast: Bash 4.2+ printf builtin (~100x faster than date)
+    elif printf -v ts '%(%s)T' -1 2>/dev/null && [[ -n "$ts" ]]; then
+        printf '%s' "$ts"
+    # Fallback: external date command
     else
         date +%s
     fi

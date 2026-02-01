@@ -529,33 +529,10 @@ sanitize_html() {
 }
 
 # Sanitize for JSON string (escape special chars)
+# Delegates to canonical json_escape from lib/json.sh (core tier, always loaded)
 # Usage: sanitize_json "value"
 sanitize_json() {
-    local value="$1"
-    local result=""
-    local i char
-
-    for ((i=0; i<${#value}; i++)); do
-        char="${value:i:1}"
-        case "$char" in
-            '"')  result+='\"' ;;
-            '\')  result+='\\' ;;
-            $'\b') result+='\b' ;;
-            $'\f') result+='\f' ;;
-            $'\n') result+='\n' ;;
-            $'\r') result+='\r' ;;
-            $'\t') result+='\t' ;;
-            *)
-                # Escape control characters as \uXXXX
-                if [[ "$char" < $'\x20' ]]; then
-                    printf -v char '\\u%04x' "'$char"
-                fi
-                result+="$char"
-                ;;
-        esac
-    done
-
-    printf '%s' "$result"
+    json_escape "$@"
 }
 
 # =============================================================================

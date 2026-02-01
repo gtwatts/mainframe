@@ -583,6 +583,38 @@ git submodule update --init
 
 ---
 
+## Shell Completion
+
+MAINFRAME includes tab completion for both bash and zsh.
+
+### Bash
+
+```bash
+# Source directly (add to ~/.bashrc for persistence)
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/completions/mainframe.bash"
+
+# Or install system-wide
+sudo cp completions/mainframe.bash /etc/bash_completion.d/mainframe
+```
+
+### Zsh
+
+```zsh
+# Source directly (add to ~/.zshrc for persistence)
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/completions/mainframe.zsh"
+
+# Or add to fpath for autoloading
+fpath=("${MAINFRAME_ROOT:-$HOME/.mainframe}/completions" $fpath)
+autoload -Uz compinit && compinit
+
+# For Oh My Zsh users
+cp completions/mainframe.zsh ~/.oh-my-zsh/completions/_mainframe
+```
+
+After setup, type `mainframe ` and press Tab to see available commands.
+
+---
+
 ## Contributing
 
 We welcome contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

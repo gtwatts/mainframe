@@ -34,13 +34,14 @@ _TASKSTATE_CURRENT_ID=""
 # INTERNAL HELPERS
 # =============================================================================
 
+# Delegate to centralized logging (with fallback for standalone testing)
 _task_log() {
-    local level="$1"
-    shift
-    if declare -F log_"$level" &>/dev/null; then
-        log_"$level" "[taskstate] $*"
-    elif [[ "${MAINFRAME_QUIET:-}" != "1" ]]; then
-        printf '[taskstate] %s: %s\n' "${level}" "$*" >&2
+    if declare -F _mainframe_log &>/dev/null; then
+        _mainframe_log "taskstate" "$@"
+    else
+        local level="$1"; shift
+        [[ "${MAINFRAME_QUIET:-}" != "1" ]] && printf '[taskstate] %s: %s\n' "$level" "$*" >&2
+        :  # Ensure return 0 even when quiet mode suppresses output
     fi
 }
 

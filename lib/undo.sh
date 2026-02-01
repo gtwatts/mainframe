@@ -44,12 +44,14 @@ _undo_escape() {
     printf '%s' "$str"
 }
 
+# Delegate to centralized logging (with fallback for standalone testing)
 _undo_log() {
-    local level="$1"; shift
-    if declare -F log_"$level" &>/dev/null; then
-        log_"$level" "$*"
-    elif [[ "${MAINFRAME_QUIET:-}" != "1" ]]; then
-        printf '[undo] %s: %s\n' "$level" "$*" >&2
+    if declare -F _mainframe_log &>/dev/null; then
+        _mainframe_log "undo" "$@"
+    else
+        local level="$1"; shift
+        [[ "${MAINFRAME_QUIET:-}" != "1" ]] && printf '[undo] %s: %s\n' "$level" "$*" >&2
+        :  # Ensure return 0 even when quiet mode suppresses output
     fi
 }
 

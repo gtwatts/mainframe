@@ -292,3 +292,339 @@ Error response?       -> output_error "code" "msg" ["suggestion"]
 Typed result?         -> output_int 42 / output_bool true
 JSON mode?            -> export MAINFRAME_OUTPUT=json
 ```
+
+## AWM (Agent Working Memory)
+
+### I need to manage AWM sessions
+```
+Is this a new session?
+├── Yes: sid=$(awm_init "task_name" ["parent_session_id"])
+└── No: Are you resuming an existing session?
+    ├── Yes: awm_resume "session_id"
+    └── No: Read summary: awm_summary
+
+Need to close session?
+├── Mark complete: awm_close
+├── List all sessions: awm_list [--status active|completed]
+└── Cleanup old: awm_cleanup [days]
+```
+
+### I need to store data in AWM
+```
+What type of data?
+├── Key-value (checkpoint): awm_checkpoint "key" "value"
+├── Important discovery: awm_discovery "insight text"
+├── Progress tracking: awm_progress "task_id" "47/200" ["status msg"]
+├── Categorized log: awm_log "category" "message"
+└── Sub-agent context: ctx=$(awm_context_for "subtask_name")
+```
+
+### I need to read AWM data
+```
+What do you need?
+├── Single key: value=$(awm_get "key" ["default"])
+├── Recent log entries: awm_recent "category" [count]
+├── Full summary: awm_summary
+├── Token estimate: awm_token_estimate
+└── Specific read cost: awm_estimate_read "summary|recent|get" [args]
+```
+
+### I need AWM v2 features
+```
+Initialize v2: awm_v2_init ["model"]
+Get v2 status: awm_v2_status
+Tiered checkpoint: awm_checkpoint_v2 "key" "value" [importance]
+Tiered get: awm_get_v2 "key" ["default"] ["promote"]
+Budget-aware context: awm_context_v2 [max_tokens] [include_cold]
+Recovery checkpoint: awm_recovery_checkpoint
+Recover from crash: awm_recovery_restore "session_id"
+```
+
+## Error Handling
+
+### I need try/catch style error handling
+```
+Wrap command with structured error?
+├── Yes: output_try command [args...]
+└── No, just capture result: result=$(observe_command cmd args...)
+
+Need structured error object?
+├── Rich error with context: output_structured_error CODE "msg" ["suggestion"] ["key=val"...]
+├── Simple JSON error: output_error "code" "message" ["suggestion"]
+└── Observe error: observe_error 1 "message" ["context"]
+```
+
+### I need stack traces
+```
+Get current stack trace?     -> trace=$(stack_trace)
+Debug format (JSON)?         -> {"stack":[{func,file,line}...],"depth":N}
+```
+
+### I need error recovery patterns
+```
+What pattern?
+├── Exit on error with message: die 1 "error message"
+├── Retry with backoff: retry 5 "command"
+├── Timeout protection: with_timeout 30 "command"
+├── Lock protection: with_lock "/tmp/lock" "command"
+└── Conditional execution: cmd || { handle_error; return 1; }
+```
+
+## Caching & Memoization
+
+### I need to cache function calls
+```
+One-time memoization?
+├── Yes: result=$(memoize [--ttl 300] func args...)
+│   └── With file deps: memoize --invalidate-on config.json func args
+└── Decorator pattern (persistent)?
+    ├── Wrap function: memo_wrap "function_name" [ttl_seconds]
+    ├── Unwrap: memo_unwrap "function_name"
+    └── Clear func cache: memo_clear "function_name"
+```
+
+### I need to cache commands
+```
+Shell command caching?       -> cache_command TTL cmd [args...]
+File content caching?        -> content=$(cache_file "/path/to/file")
+Invalidate file cache?       -> cache_file_invalidate "/path/to/file"
+Computation with deps?       -> cache_compute "key" compute_fn dep1.json dep2.json
+```
+
+### I need content-addressable storage
+```
+Store by hash?               -> hash=$(cas_store "$content")
+Retrieve by hash?            -> content=$(cas_get "$hash")
+Check if exists?             -> cas_exists "$hash" && echo "found"
+Garbage collect?             -> cas_gc --older-than 30
+```
+
+### I need session cache (in-memory)
+```
+Set value?                   -> session_cache_set "key" "value"
+Get value?                   -> val=$(session_cache_get "key" ["default"])
+Check exists?                -> session_cache_has "key"
+Clear all?                   -> session_cache_clear
+```
+
+### I need cache management
+```
+View statistics?             -> cache_stats [--json]
+Clear all caches?            -> cache_clear --force
+Invalidate pattern?          -> cache_invalidate "pattern*"
+Set max size?                -> cache_max_size "256MB"
+LRU eviction?                -> cache_evict_lru [max_size_mb]
+Prewarm cache?               -> cache_prewarm git|project|system|all
+```
+
+## Streaming & Process Substitution
+
+### I need to process lines without losing variables
+```
+Problem: Variables lost in pipe?
+├── Read lines into array: read_lines_from "command" array_name
+├── Process with callback: for_each_line "command" callback_func
+└── Process file lines: process_file "file" callback_func
+
+Callback receives: $1=line, $2=lineno (for process_file)
+Variables persist in current shell.
+```
+
+### I need to compare command outputs
+```
+Diff two commands?           -> diff_commands "cmd1" "cmd2" [-u]
+```
+
+### I need to capture output
+```
+Capture to variable?         -> capture_output result_var "command"
+Tee to var AND stdout?       -> tee_to_var output_var "command"
+```
+
+## Regex Operations
+
+### I need pattern matching
+```
+Test if string matches?      -> regex_match "string" "pattern" && echo "yes"
+Find first match?            -> match=$(regex_find "hello123" "[0-9]+")
+Find all matches?            -> regex_find_all "a1b2c3" "[0-9]" | while read m; do...
+Extract capture groups?      -> regex_groups "hello123" "([a-z]+)([0-9]+)"
+Full string match?           -> regex_full_match "hello" "^[a-z]+$"
+```
+
+### I need replacements
+```
+Replace first?               -> result=$(regex_replace "str" "pattern" "replacement")
+Replace all?                 -> result=$(regex_replace_all "a1b2" "[0-9]" "X")
+With backreferences?         -> result=$(regex_sub "hello world" "(\w+) (\w+)" "\2 \1")
+With callback?               -> result=$(regex_replace_callback "str" "pat" my_func)
+```
+
+### I need splitting
+```
+Split by pattern?            -> regex_split "a-b-c" "-" | while read part; do...
+Split with limit?            -> regex_split_limit "a-b-c-d" "-" 2
+```
+
+### I need pattern building
+```
+Build alternation?           -> pattern=$(regex_any_of "cat" "dog" "bird")
+Make optional?               -> pattern=$(regex_optional "[a-z]+")
+Add repetition?              -> pattern=$(regex_repeat "[a-z]" 2 5)
+Add anchors?                 -> pattern=$(regex_anchor "pattern" "both|start|end")
+Escape metacharacters?       -> escaped=$(regex_escape "file.txt")
+Convert glob to regex?       -> pattern=$(glob_to_regex "*.txt")
+```
+
+### I need validation
+```
+Validate email?              -> regex_validate_email "user@example.com"
+Validate URL?                -> regex_validate_url "https://example.com"
+Validate UUID?               -> regex_validate_uuid "$uuid"
+Validate semver?             -> regex_validate_semver "1.2.3"
+Check pattern safety?        -> regex_compile_safe "$pattern" || echo "risky"
+```
+
+## USOP Protocol (Structured Output)
+
+### I need to set output mode
+```
+Set mode?                    -> output_mode "json|minimal|debug|raw"
+Check if JSON mode?          -> output_is_json && echo "JSON active"
+Temporary mode?              -> output_with_mode "json" command args...
+```
+
+### I need typed output
+```
+String?                      -> output_string "data" ["hint"]
+Integer?                     -> output_int 42 ["hint"]
+Float?                       -> output_float 3.14 ["hint"]
+Boolean?                     -> output_bool true ["hint"]
+JSON object?                 -> output_json_object '{"key":"value"}'
+JSON array?                  -> output_json_array '["a","b"]'
+Void/null?                   -> output_void ["hint"]
+```
+
+### I need USOP command execution
+```
+Execute with envelope?       -> result=$(usop_exec command args...)
+Get field from result?       -> stdout=$(usop_get "$result" "stdout")
+Check success?               -> usop_ok "$result" && echo "success"
+File operations?
+├── Read file: result=$(usop_read_file "/path")
+├── Write file: result=$(usop_write_file "/path" "content")
+└── List directory: result=$(usop_list_dir "/path")
+```
+
+### I need USOP errors
+```
+Not found error?             -> usop_error_not_found "file" "/path"
+Permission error?            -> usop_error_permission "/path" "read"
+Validation error?            -> usop_error_validation "field" "value" "expected"
+Timeout error?               -> usop_error_timeout "operation" "30"
+Command failed?              -> usop_error_command_failed "cmd" 1 "stderr msg"
+```
+
+## Observability & Tracing
+
+### I need to trace operations
+```
+Start trace?                 -> tid=$(trace_start "operation_name")
+Record step?                 -> trace_step "$tid" "step_name" "ok|error" ["detail"]
+End trace?                   -> summary=$(trace_end "$tid" "success|failed")
+```
+
+### I need function tracing
+```
+Trace a function?            -> trace_function "my_func"
+Untrace?                     -> trace_untrace "my_func"
+Trace all in file?           -> trace_all_in_file "lib/utils.sh"
+Enable/disable tracing?      -> trace_enable / trace_disable
+```
+
+### I need variable watching
+```
+Watch variable?              -> trace_variable "MY_VAR"
+Stop watching?               -> trace_unwatch "MY_VAR"
+Capture snapshot?            -> trace_snapshot "before_op"
+Diff snapshots?              -> diff=$(trace_diff "snap1" "snap2")
+```
+
+### I need timing
+```
+Start timer?                 -> trace_timer_start "operation"
+Stop and get elapsed?        -> elapsed=$(trace_timer_stop "operation")
+Time a command?              -> trace_timing "label" command args...
+Simple timing?               -> start=$(observe_time); ... elapsed=$(observe_elapsed "$start")
+```
+
+### I need OpenTelemetry (OTEL)
+```
+Start OTEL trace?            -> tid=$(otel_trace_start "operation" ['{"attr":"val"}'])
+End OTEL trace?              -> otel_trace_end ["$trace_id"]
+Create span?                 -> sid=$(otel_span_create "name" ["$parent_id"])
+End span?                    -> otel_span_end "$sid" "OK|ERROR"
+Add attribute?               -> otel_span_attribute "$sid" "key" "value"
+Add event?                   -> otel_span_event "$sid" "event.name" ['{"attrs":...}']
+Record exception?            -> otel_span_exception "$sid" "message" ["$stacktrace"]
+
+Context propagation?
+├── Get traceparent: tp=$(otel_traceparent)
+├── Inject to env: otel_context_inject
+├── Extract from env: otel_context_extract
+└── Parse traceparent: otel_parse_traceparent "$tp"
+
+Export traces?
+├── To OTLP endpoint: otel_export_otlp ["http://collector:4318"]
+├── To JSON file: otel_export_json "/tmp/traces.json"
+├── To console: otel_export_console
+└── Flush pending: otel_flush
+```
+
+## Security & Capabilities
+
+### I need capability-based permissions
+```
+Grant capability?            -> cap_grant "agent_id" "cap://domain/action/resource"
+Revoke capability?           -> cap_revoke "agent_id" "cap://..."
+Revoke all?                  -> cap_revoke_all "agent_id"
+Check has capability?        -> cap_has "agent_id" "cap://..."
+Use (check + log)?           -> cap_use "agent_id" "cap://..." || return 1
+List agent caps?             -> cap_list "agent_id"
+```
+
+### I need capability profiles
+```
+Grant profile?               -> cap_grant_profile "agent_id" PROFILE
+
+Profiles:
+├── minimal: tmp read/write, echo only
+├── readonly: read anywhere, safe commands (ls, cat, grep...)
+├── developer: read all, write home/tmp, git, npm, python, make...
+├── network: HTTP/TCP, curl, wget
+└── admin: full access (use sparingly)
+```
+
+### I need guarded operations
+```
+Read file with cap check?    -> content=$(cap_read_file "agent" "/path")
+Write file with cap check?   -> cap_write_file "agent" "/path" "content"
+Execute with cap check?      -> cap_exec "agent" "git status"
+Read env var?                -> home=$(cap_env_get "agent" "HOME")
+Set env var?                 -> cap_env_set "agent" "MY_VAR" "value"
+```
+
+### I need capability delegation
+```
+Export agent's caps?         -> caps_json=$(cap_export "parent_agent")
+Import caps to agent?        -> cap_import "child_agent" "$caps_json"
+Delegate subset?             -> cap_delegate "parent" "child" "cap://fs/*"
+```
+
+### I need audit logging
+```
+Get audit log?               -> cap_audit_log [limit]
+Audit log as JSON?           -> cap_audit_log_json
+Count denied?                -> denied=$(cap_denied_count "agent")
+Get stats?                   -> cap_stats
+```

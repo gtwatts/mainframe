@@ -29,13 +29,14 @@ MAINFRAME_TRASH_DIR="${MAINFRAME_TRASH_DIR:-${TMPDIR:-/tmp}/mainframe_trash}"
 # INTERNAL HELPERS
 # =============================================================================
 
+# Delegate to centralized logging (with fallback for standalone testing)
 _atomic_log() {
-    local level="$1"
-    shift
-    if declare -F log_"$level" &>/dev/null; then
-        log_"$level" "$*"
-    elif [[ "${MAINFRAME_QUIET:-}" != "1" ]]; then
-        printf '[atomic] %s: %s\n' "${level}" "$*" >&2
+    if declare -F _mainframe_log &>/dev/null; then
+        _mainframe_log "atomic" "$@"
+    else
+        local level="$1"; shift
+        [[ "${MAINFRAME_QUIET:-}" != "1" ]] && printf '[atomic] %s: %s\n' "$level" "$*" >&2
+        :  # Ensure return 0 even when quiet mode suppresses output
     fi
 }
 
@@ -99,11 +100,13 @@ atomic_write() {
         return 1
     fi
 
-    # Ensure parent directory exists
+    # Ensure parent directory exists (atomic, idempotent)
     local parent_dir
     parent_dir="${target%/*}"
-    if [[ "$parent_dir" != "$target" ]] && [[ ! -d "$parent_dir" ]]; then
-        mkdir -p "$parent_dir" || return 1
+    if [[ "$parent_dir" != "$target" ]]; then
+        mkdir -p "$parent_dir" 2>/dev/null || {
+            [[ -d "$parent_dir" ]] || return 1
+        }
     fi
 
     # Write to temp file in same directory (same filesystem = atomic rename)
@@ -123,12 +126,13 @@ atomic_write() {
             rm -f "$tmpfile" 2>/dev/null
             return 1
         }
-    elif [[ -f "$target" ]]; then
-        # Preserve existing file permissions
+    else
+        # Preserve existing file permissions (atomic: single stat+chmod, best-effort)
+        # No TOCTOU: stat and chmod in single subshell, failure is non-fatal
         if [[ "$OSTYPE" == darwin* ]]; then
-            chmod "$(stat -f '%Lp' "$target")" "$tmpfile" 2>/dev/null
+            chmod "$(stat -f '%Lp' "$target" 2>/dev/null)" "$tmpfile" 2>/dev/null || true
         else
-            chmod --reference="$target" "$tmpfile" 2>/dev/null
+            chmod --reference="$target" "$tmpfile" 2>/dev/null || true
         fi
     fi
 
@@ -163,11 +167,13 @@ atomic_append() {
         return 1
     fi
 
-    # Ensure parent directory exists
+    # Ensure parent directory exists (atomic, idempotent)
     local parent_dir
     parent_dir="${target%/*}"
-    if [[ "$parent_dir" != "$target" ]] && [[ ! -d "$parent_dir" ]]; then
-        mkdir -p "$parent_dir" || return 1
+    if [[ "$parent_dir" != "$target" ]]; then
+        mkdir -p "$parent_dir" 2>/dev/null || {
+            [[ -d "$parent_dir" ]] || return 1
+        }
     fi
 
     # Use flock if available for concurrent safety
@@ -207,14 +213,18 @@ atomic_replace() {
         return 1
     fi
 
-    # Create backup if file exists
+    # Create backup if file exists (atomic: attempt cp directly, no TOCTOU)
     local backup=""
-    if [[ -f "$target" ]]; then
-        backup="${target}.bak.$(date +%s)"
-        cp -p "$target" "$backup" || {
-            _atomic_log error "atomic_replace: backup failed"
-            return 1
-        }
+    backup="${target}.bak.$(date +%s)"
+    if cp -p "$target" "$backup" 2>/dev/null; then
+        : # backup created successfully
+    elif [[ -f "$target" ]]; then
+        # File exists but copy failed for other reason
+        _atomic_log error "atomic_replace: backup failed"
+        return 1
+    else
+        # File doesn't exist, no backup needed
+        backup=""
     fi
 
     # Write atomically
@@ -265,13 +275,10 @@ safe_remove() {
         return 1
     fi
 
-    # Nothing to remove
-    if [[ ! -e "$path" ]] && [[ ! -L "$path" ]]; then
-        return 0
-    fi
-
-    # Ensure trash directory exists
-    mkdir -p "$MAINFRAME_TRASH_DIR" || return 1
+    # Ensure trash directory exists (atomic, idempotent)
+    mkdir -p "$MAINFRAME_TRASH_DIR" 2>/dev/null || {
+        [[ -d "$MAINFRAME_TRASH_DIR" ]] || return 1
+    }
 
     # Generate trash filename with timestamp and original path info
     local basename
@@ -280,18 +287,26 @@ safe_remove() {
     trash_name="${basename}.$(date +%s).$$"
     local trash_path="${MAINFRAME_TRASH_DIR}/${trash_name}"
 
-    # Store original path for restore
-    printf '%s\n' "$path" > "${trash_path}.origin" || return 1
-
-    # Move to trash
-    if ! mv -f "$path" "$trash_path"; then
-        rm -f "${trash_path}.origin" 2>/dev/null
+    # Move to trash (atomic: attempt mv directly, no TOCTOU check-then-act)
+    # If path doesn't exist, mv fails and we check afterward (idempotent)
+    if mv -f "$path" "$trash_path" 2>/dev/null; then
+        # Store original path for restore (only if move succeeded)
+        printf '%s\n' "$path" > "${trash_path}.origin" || {
+            # Best effort: move back if origin write fails
+            mv -f "$trash_path" "$path" 2>/dev/null
+            return 1
+        }
+        _atomic_log debug "safe_remove: $path -> $trash_path"
+        return 0
+    else
+        # Move failed: check if path exists (race-free idempotent behavior)
+        if [[ ! -e "$path" ]] && [[ ! -L "$path" ]]; then
+            # Path doesn't exist - idempotent success
+            return 0
+        fi
         _atomic_log error "safe_remove: failed to move $path to trash"
         return 1
     fi
-
-    _atomic_log debug "safe_remove: $path -> $trash_path"
-    return 0
 }
 
 # @pre: trashed file exists
@@ -373,21 +388,25 @@ file_checkpoint() {
         return 1
     fi
 
-    if [[ ! -f "$file" ]]; then
-        _atomic_log error "file_checkpoint: file does not exist: $file"
-        return 1
-    fi
-
-    # Create checkpoint directory
-    mkdir -p "$MAINFRAME_CHECKPOINT_DIR" || return 1
+    # Create checkpoint directory (atomic, idempotent)
+    mkdir -p "$MAINFRAME_CHECKPOINT_DIR" 2>/dev/null || {
+        [[ -d "$MAINFRAME_CHECKPOINT_DIR" ]] || return 1
+    }
 
     # Generate checkpoint filename
     local file_id
     file_id=$(_checkpoint_id "$file")
     local checkpoint_path="${MAINFRAME_CHECKPOINT_DIR}/${file_id}__${name}"
 
-    # Store the checkpoint with metadata
-    cp -p "$file" "$checkpoint_path" || return 1
+    # Store the checkpoint with metadata (atomic: attempt cp directly, no TOCTOU)
+    if ! cp -p "$file" "$checkpoint_path" 2>/dev/null; then
+        if [[ ! -f "$file" ]]; then
+            _atomic_log error "file_checkpoint: file does not exist: $file"
+        else
+            _atomic_log error "file_checkpoint: failed to copy: $file"
+        fi
+        return 1
+    fi
     printf '%s\n' "$file" > "${checkpoint_path}.meta" || return 1
 
     _atomic_log debug "file_checkpoint: saved $file as checkpoint '$name'"

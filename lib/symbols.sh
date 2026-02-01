@@ -75,13 +75,9 @@ _symbols_is_comment_line() {
 }
 
 # Escape a string for JSON output
+# Delegates to canonical json_escape from lib/json.sh (core tier, always loaded)
 _symbols_json_escape() {
-    local str="$1"
-    str="${str//\\/\\\\}"
-    str="${str//\"/\\\"}"
-    str="${str//$'\t'/\\t}"
-    str="${str//$'\n'/\\n}"
-    printf '%s' "$str"
+    json_escape "$@"
 }
 
 # =============================================================================

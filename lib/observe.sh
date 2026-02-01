@@ -37,20 +37,35 @@ MAINFRAME_TRACE_DIR="${MAINFRAME_TRACE_DIR:-${TMPDIR:-/tmp}/mainframe_traces_$$}
 # =============================================================================
 
 # Get current time in seconds (with microseconds if available)
+# Priority: EPOCHREALTIME (Bash 5.0+) > EPOCHSECONDS > printf builtin > date
 _observe_now() {
+    local ts
+    # Fastest: Bash 5.0+ EPOCHREALTIME (microsecond precision)
     if [[ -n "${EPOCHREALTIME:-}" ]]; then
         printf '%s' "$EPOCHREALTIME"
+    # Fast: Bash 5.0+ EPOCHSECONDS (second precision)
     elif [[ -n "${EPOCHSECONDS:-}" ]]; then
         printf '%s.000000' "$EPOCHSECONDS"
+    # Medium: Bash 4.2+ printf builtin (~100x faster than date)
+    elif printf -v ts '%(%s)T' -1 2>/dev/null && [[ -n "$ts" ]]; then
+        printf '%s.000000' "$ts"
+    # Fallback: external date command
     else
         date +%s.%N 2>/dev/null || date +%s
     fi
 }
 
 # Get epoch seconds (integer)
+# Priority: EPOCHSECONDS (Bash 5.0+) > printf builtin > date
 _observe_epoch() {
+    local ts
+    # Fastest: Bash 5.0+ EPOCHSECONDS variable
     if [[ -n "${EPOCHSECONDS:-}" ]]; then
         printf '%s' "$EPOCHSECONDS"
+    # Fast: Bash 4.2+ printf builtin (~100x faster than date)
+    elif printf -v ts '%(%s)T' -1 2>/dev/null && [[ -n "$ts" ]]; then
+        printf '%s' "$ts"
+    # Fallback: external date command
     else
         date +%s
     fi

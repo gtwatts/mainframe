@@ -170,70 +170,21 @@ output_timer_elapsed() {
 # JSON ESCAPE HELPER
 # =============================================================================
 
-# Escape a string for safe JSON embedding
-# Handles: quotes, backslashes, newlines, tabs, carriage returns,
-#          backspace, form feed, and all control characters (< 0x20)
+# Delegate to canonical json_escape from lib/json.sh (core tier, always loaded)
 # Usage: escaped=$(_output_escape "hello \"world\"")
 _output_escape() {
-    local str="$1"
-    local result=""
-    local i char
-
-    for ((i=0; i<${#str}; i++)); do
-        char="${str:i:1}"
-        case "$char" in
-            \\)    result+='\\\\' ;;
-            '"')   result+='\\\"' ;;
-            $'\b') result+='\\b' ;;
-            $'\f') result+='\\f' ;;
-            $'\n') result+='\\n' ;;
-            $'\r') result+='\\r' ;;
-            $'\t') result+='\\t' ;;
-            *)
-                # Check for control characters (< 0x20)
-                if [[ "$char" < $'\x20' ]]; then
-                    printf -v char '\\u%04x' "'$char"
-                fi
-                result+="$char"
-                ;;
-        esac
-    done
-
-    printf '%s' "$result"
+    json_escape "$@"
 }
 
 # Nameref variant for performance (avoids subshell)
 # Usage: _output_escape_v result_var "hello \"world\""
 _output_escape_v() {
-    local -n __oev_out=$1
-    local str="$2"
-    local i char
-
-    __oev_out=""
-    for ((i=0; i<${#str}; i++)); do
-        char="${str:i:1}"
-        case "$char" in
-            \\)    __oev_out+='\\\\' ;;
-            '"')   __oev_out+='\\\"' ;;
-            $'\b') __oev_out+='\\b' ;;
-            $'\f') __oev_out+='\\f' ;;
-            $'\n') __oev_out+='\\n' ;;
-            $'\r') __oev_out+='\\r' ;;
-            $'\t') __oev_out+='\\t' ;;
-            *)
-                # Check for control characters (< 0x20)
-                if [[ "$char" < $'\x20' ]]; then
-                    printf -v char '\\u%04x' "'$char"
-                fi
-                __oev_out+="$char"
-                ;;
-        esac
-    done
+    json_escape_v "$@"
 }
 
 # Public alias for backward compatibility
 output_json_escape() {
-    _output_escape "$@"
+    json_escape "$@"
 }
 
 # =============================================================================

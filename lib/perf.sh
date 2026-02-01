@@ -175,11 +175,19 @@ bash_features() {
 # =============================================================================
 
 # Internal: get high-res timestamp without subshell if possible
+# Priority: EPOCHREALTIME (Bash 5.0+) > EPOCHSECONDS > printf builtin > date
 _perf_now() {
+    local ts
+    # Fastest: Bash 5.0+ EPOCHREALTIME (microsecond precision)
     if [[ -n "${EPOCHREALTIME:-}" ]]; then
         printf '%s' "$EPOCHREALTIME"
+    # Fast: Bash 5.0+ EPOCHSECONDS (second precision)
     elif [[ -n "${EPOCHSECONDS:-}" ]]; then
         printf '%s.000000' "$EPOCHSECONDS"
+    # Medium: Bash 4.2+ printf builtin (~100x faster than date)
+    elif printf -v ts '%(%s)T' -1 2>/dev/null && [[ -n "$ts" ]]; then
+        printf '%s.000000' "$ts"
+    # Fallback: external date command
     else
         date +%s.%N 2>/dev/null || date +%s
     fi

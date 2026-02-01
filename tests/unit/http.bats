@@ -491,7 +491,7 @@ mock_response() {
 }
 
 @test "url_encode: handles all special URL characters" {
-    result=$(url_encode '!@#$%^&*(){}[]|\\:";\'<>?,/')
+    result=$(url_encode '!@#$%^&*(){}[]|\\:";'"'"'<>?,/')
     # Should not contain any of these unencoded
     [[ ! "$result" =~ [!@#\$%^*\(\)\{\}\[\]|\\:\"\;\'\<\>\?,/] ]] || [[ "$result" =~ "%" ]]
 }
