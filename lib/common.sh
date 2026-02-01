@@ -647,6 +647,7 @@ _MAINFRAME_TIER_EXTENDED=(
     k8s semver functional compose stream streaming pipe
     procsub async meta cli fzf
     compat safe guard telemetry
+    proptest testing benchmark
 )
 
 # Phase 3 AI tier: agent-optimized modules
@@ -677,6 +678,7 @@ declare -gA MAINFRAME_BUNDLES=(
     [net]="core,http,burl,github"
     [devops]="core,git,docker,github_actions"
     [tui]="core,ansi,tui,anim,output"
+    [testing]="core,testing,proptest,validation"
     [full]="all"
 )
 
@@ -944,6 +946,9 @@ else
     _mainframe_load_library "safe"
     _mainframe_load_library "guard"
     _mainframe_load_library "telemetry"
+    _mainframe_load_library "proptest"
+    _mainframe_load_library "testing"
+    _mainframe_load_library "benchmark"
 
     # AI tier libraries
     _mainframe_load_library "idempotent"
@@ -1348,4 +1353,11 @@ BASHER_COMMON_EXPORTS=(
     awm_truncate awm_read_plan
     # Telemetry (from telemetry.sh) - Opt-in anonymous usage telemetry
     telemetry_enabled telemetry_init telemetry_track telemetry_flush telemetry_report
+    # Property-Based Testing (from proptest.sh) - Random input generation and shrinking
+    proptest_run proptest_check proptest_shrink proptest_suite proptest proptest_reset proptest_stats
+    proptest_assert_eq proptest_assert_ne proptest_assert_match
+    gen_int gen_positive_int gen_nat gen_string gen_ascii gen_alpha gen_lower gen_upper
+    gen_choice gen_bool gen_array gen_email gen_uuid gen_json_object gen_url gen_date
+    gen_ipv4 gen_port gen_oneof gen_hex gen_float
+    proptest_shrink_int proptest_shrink_string proptest_usop_result
 )
