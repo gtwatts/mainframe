@@ -12,8 +12,14 @@ This roadmap outlines planned features and improvements for MAINFRAME. Items are
 
 ### v7.3 - Advanced Orchestration (Current)
 
-- [ ] Security audit of remaining `eval` sites (design complete, implementation pending)
-- [ ] TOCTOU race condition fixes in atomic operations (design complete, implementation pending)
+- [x] **Function Discovery CLI** (implemented)
+  - [x] `mainframe fzf` - Interactive fuzzy search via fzf
+  - [x] `mainframe fzf <library>` - Filter by library
+  - [x] `mainframe explore` - TUI browser via dialog/whiptail
+  - [x] Preview pane with function signatures
+- [ ] Security audit of remaining `eval` sites (audit complete, hardening in progress)
+- [ ] TOCTOU race condition fixes in atomic operations
+- [ ] Test coverage expansion (52.3% → 80% target)
 - [ ] Distributed task scheduling across multiple hosts
 - [ ] Agent capability negotiation protocol
 - [ ] Orchestration metrics and dashboards
@@ -21,30 +27,6 @@ This roadmap outlines planned features and improvements for MAINFRAME. Items are
 ---
 
 ## Planned
-
-### Function Discovery CLI
-
-**Priority: Medium**
-
-### Function Discovery CLI
-
-**Priority: Medium**
-
-Interactive fuzzy finder for exploring available functions.
-
-```bash
-# Proposed commands
-mainframe fzf              # Interactive fuzzy search all functions
-mainframe fzf json         # Fuzzy search within json.sh
-mainframe fzf --preview    # Show function signature and docs
-mainframe explore          # TUI for browsing libraries
-```
-
-Features:
-- fzf-based interactive search
-- Preview pane with function signature and examples
-- Filter by library, category, or keyword
-- Copy function name or usage example to clipboard
 
 ### Telemetry & Analytics
 
