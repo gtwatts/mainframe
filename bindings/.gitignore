@@ -1,0 +1,16 @@
+# Node.js
+nodejs/node_modules/
+nodejs/dist/
+nodejs/bun.lock
+nodejs/*.tsbuildinfo
+
+# Python
+python/__pycache__/
+python/**/__pycache__/
+python/*.egg-info/
+python/.pytest_cache/
+python/dist/
+python/build/
+python/*.pyc
+python/.mypy_cache/
+python/.ruff_cache/
