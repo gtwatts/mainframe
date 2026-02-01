@@ -1705,3 +1705,456 @@ compat_install_gnu_tools() {
     printf '  export PATH="$(brew --prefix)/opt/gnu-sed/libexec/gnubin:\$PATH"\n'
     printf '  export PATH="$(brew --prefix)/opt/grep/libexec/gnubin:\$PATH"\n'
 }
+
+# =============================================================================
+# UNDERSCORE-STYLE WRAPPER FUNCTIONS (compat_*)
+# =============================================================================
+# These functions provide an alternative naming convention that follows the
+# pattern: compat_tool_operation. They wrap the compat::* namespace functions
+# for users who prefer underscore-separated names.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# DETECTION FUNCTIONS
+# -----------------------------------------------------------------------------
+
+# Detect the operating system
+# Usage: os=$(compat_detect_os)
+# Returns: "linux", "macos", "bsd", "freebsd", "openbsd", "netbsd", "wsl", "windows", or "unknown"
+compat_detect_os() {
+    _compat_detect_os
+    printf '%s' "$_COMPAT_OS"
+}
+
+# Check if GNU coreutils are available
+# Usage: compat_has_gnu_coreutils && echo "GNU tools available"
+# Returns: 0 if available, 1 otherwise
+compat_has_gnu_coreutils() {
+    has_gnu_coreutils
+}
+
+# Preference setting for GNU tools when available
+# Sets global preference to use GNU tools over BSD when both are available
+# Usage: compat_prefer_gnu [on|off]
+# Default: on
+declare -g _COMPAT_PREFER_GNU=1
+
+compat_prefer_gnu() {
+    local setting="${1:-on}"
+    case "$setting" in
+        on|1|true|yes)
+            _COMPAT_PREFER_GNU=1
+            ;;
+        off|0|false|no)
+            _COMPAT_PREFER_GNU=0
+            ;;
+        status)
+            [[ "$_COMPAT_PREFER_GNU" -eq 1 ]] && printf 'on\n' || printf 'off\n'
+            ;;
+        *)
+            printf 'Usage: compat_prefer_gnu [on|off|status]\n' >&2
+            return 1
+            ;;
+    esac
+}
+
+# -----------------------------------------------------------------------------
+# SED WRAPPERS (underscore naming)
+# -----------------------------------------------------------------------------
+
+# In-place sed edit that works on both BSD and GNU
+# Usage: compat_sed_inplace FILE PATTERN
+# Example: compat_sed_inplace config.txt 's/old/new/g'
+compat_sed_inplace() {
+    local file="$1"
+    local pattern="$2"
+
+    [[ -z "$file" || -z "$pattern" ]] && {
+        printf 'Usage: compat_sed_inplace FILE PATTERN\n' >&2
+        return 1
+    }
+
+    compat::sed_inplace "$file" "$pattern"
+}
+
+# Extended regex sed that works on both BSD and GNU
+# Usage: compat_sed_extended FILE PATTERN
+# Example: compat_sed_extended config.txt 's/(foo|bar)/baz/g'
+compat_sed_extended() {
+    local file="$1"
+    local pattern="$2"
+
+    [[ -z "$file" || -z "$pattern" ]] && {
+        printf 'Usage: compat_sed_extended FILE PATTERN\n' >&2
+        return 1
+    }
+
+    compat::sed_inplace_extended "$file" "$pattern"
+}
+
+# -----------------------------------------------------------------------------
+# DATE WRAPPERS (underscore naming)
+# -----------------------------------------------------------------------------
+
+# Parse a date string to Unix timestamp
+# Usage: compat_date_parse DATESTR [FORMAT]
+# Example: compat_date_parse "2024-01-15" "%Y-%m-%d"
+# Returns: Unix timestamp
+compat_date_parse() {
+    local datestr="$1"
+    local format="${2:-%Y-%m-%d}"
+
+    [[ -z "$datestr" ]] && {
+        printf 'Usage: compat_date_parse DATESTR [FORMAT]\n' >&2
+        return 1
+    }
+
+    compat::date_parse "$datestr" "$format"
+}
+
+# Add days to date (or current date)
+# Usage: compat_date_add DAYS [BASE_TIMESTAMP]
+# Example: compat_date_add 7
+# Returns: Unix timestamp of resulting date
+compat_date_add() {
+    local days="$1"
+    local base="${2:-$(date +%s)}"
+
+    [[ -z "$days" ]] && {
+        printf 'Usage: compat_date_add DAYS [BASE_TIMESTAMP]\n' >&2
+        return 1
+    }
+
+    compat::date_add_days "$days" "$base"
+}
+
+# Calculate difference in days between two dates
+# Usage: compat_date_diff DATE1 DATE2
+# Both dates can be Unix timestamps or date strings (YYYY-MM-DD)
+# Returns: Number of days (DATE2 - DATE1, can be negative)
+compat_date_diff() {
+    local date1="$1"
+    local date2="$2"
+
+    [[ -z "$date1" || -z "$date2" ]] && {
+        printf 'Usage: compat_date_diff DATE1 DATE2\n' >&2
+        return 1
+    }
+
+    local ts1 ts2
+
+    # Convert to timestamps if needed
+    if [[ "$date1" =~ ^[0-9]+$ ]]; then
+        ts1="$date1"
+    else
+        ts1=$(compat::date_parse "$date1" "%Y-%m-%d") || return 1
+    fi
+
+    if [[ "$date2" =~ ^[0-9]+$ ]]; then
+        ts2="$date2"
+    else
+        ts2=$(compat::date_parse "$date2" "%Y-%m-%d") || return 1
+    fi
+
+    # Calculate difference in days
+    local diff_seconds=$((ts2 - ts1))
+    local diff_days=$((diff_seconds / 86400))
+
+    printf '%d' "$diff_days"
+}
+
+# -----------------------------------------------------------------------------
+# GREP WRAPPERS (underscore naming)
+# -----------------------------------------------------------------------------
+
+# Extended regex grep - portable -E
+# Usage: compat_grep_extended PATTERN [FILE...]
+# Example: compat_grep_extended '(foo|bar)' file.txt
+compat_grep_extended() {
+    local pattern="$1"
+    shift
+
+    [[ -z "$pattern" ]] && {
+        printf 'Usage: compat_grep_extended PATTERN [FILE...]\n' >&2
+        return 1
+    }
+
+    compat::grep_extended "$pattern" "$@"
+}
+
+# Perl-compatible regex grep with fallback
+# Usage: compat_grep_perl PATTERN [FILE...]
+# Note: Falls back to grep -E on systems without -P support
+# Example: compat_grep_perl '\bword\b' file.txt
+compat_grep_perl() {
+    local pattern="$1"
+    shift
+
+    [[ -z "$pattern" ]] && {
+        printf 'Usage: compat_grep_perl PATTERN [FILE...]\n' >&2
+        return 1
+    }
+
+    compat::grep_perl "$pattern" "$@"
+}
+
+# -----------------------------------------------------------------------------
+# FIND WRAPPERS (underscore naming)
+# -----------------------------------------------------------------------------
+
+# Find files by modification time
+# Usage: compat_find_mtime PATH DAYS
+# Finds files modified within the last DAYS days
+# Use negative DAYS for files older than N days
+# Example: compat_find_mtime /var/log 7  # Files modified in last 7 days
+# Example: compat_find_mtime /var/log -7  # Files NOT modified in last 7 days
+compat_find_mtime() {
+    local path="$1"
+    local days="$2"
+
+    [[ -z "$path" || -z "$days" ]] && {
+        printf 'Usage: compat_find_mtime PATH DAYS\n' >&2
+        return 1
+    }
+
+    if [[ "$days" =~ ^- ]]; then
+        # Older than N days (+ prefix in find means older)
+        find "$path" -type f -mtime +"${days#-}"
+    else
+        # Within last N days (- prefix in find means within)
+        find "$path" -type f -mtime -"$days"
+    fi
+}
+
+# Find files matching pattern and execute command
+# Usage: compat_find_exec PATH PATTERN CMD
+# CMD uses {} as placeholder for found file
+# Example: compat_find_exec /tmp "*.log" "rm -f {}"
+# Example: compat_find_exec . "*.sh" "chmod +x {}"
+compat_find_exec() {
+    local path="$1"
+    local pattern="$2"
+    local cmd="$3"
+
+    [[ -z "$path" || -z "$pattern" || -z "$cmd" ]] && {
+        printf 'Usage: compat_find_exec PATH PATTERN CMD\n' >&2
+        return 1
+    }
+
+    _compat_detect_os
+
+    # Build the command parts from the cmd string
+    # Replace {} with the find placeholder
+    local find_cmd="$cmd"
+
+    # Use -exec with + for better performance on both BSD and GNU
+    # The {} \; syntax works identically on both
+    if [[ "$find_cmd" =~ \{\} ]]; then
+        # cmd contains {}, use -exec directly
+        # Need to split the command properly for -exec
+        # shellcheck disable=SC2086
+        find "$path" -type f -name "$pattern" -exec sh -c "$find_cmd" sh {} \;
+    else
+        # Append {} if not present
+        find "$path" -type f -name "$pattern" -exec sh -c "$find_cmd \"\$1\"" sh {} \;
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# STAT WRAPPERS (underscore naming)
+# -----------------------------------------------------------------------------
+
+# Get file size in bytes
+# Usage: compat_stat_size FILE
+# Returns: Size in bytes
+compat_stat_size() {
+    local file="$1"
+
+    [[ -z "$file" ]] && {
+        printf 'Usage: compat_stat_size FILE\n' >&2
+        return 1
+    }
+
+    [[ -e "$file" ]] || {
+        printf 'File not found: %s\n' "$file" >&2
+        return 1
+    }
+
+    compat::stat_size "$file"
+}
+
+# Get file modification time as Unix timestamp
+# Usage: compat_stat_mtime FILE
+# Returns: Unix timestamp
+compat_stat_mtime() {
+    local file="$1"
+
+    [[ -z "$file" ]] && {
+        printf 'Usage: compat_stat_mtime FILE\n' >&2
+        return 1
+    }
+
+    [[ -e "$file" ]] || {
+        printf 'File not found: %s\n' "$file" >&2
+        return 1
+    }
+
+    compat::stat_mtime "$file"
+}
+
+# -----------------------------------------------------------------------------
+# ADDITIONAL UTILITY FUNCTIONS
+# -----------------------------------------------------------------------------
+
+# Get the OS family
+# Usage: family=$(compat_get_os_family)
+# Returns: "bsd", "gnu", or "unknown"
+compat_get_os_family() {
+    compat::get_os_family
+}
+
+# Check if running on a specific OS
+# Usage: compat_is_os "linux" && echo "Linux!"
+# Returns: 0 if match, 1 otherwise
+compat_is_os() {
+    local target_os="$1"
+    _compat_detect_os
+    [[ "$_COMPAT_OS" == "$target_os" ]]
+}
+
+# Universal sed wrapper with auto-detection of in-place vs streaming
+# Usage: compat_sed [OPTIONS] PATTERN [FILE]
+# If FILE provided: in-place edit
+# If no FILE: reads from stdin
+# Supports: -i (in-place), -E (extended regex)
+compat_sed() {
+    local inplace=0
+    local extended=0
+    local pattern=""
+    local file=""
+
+    # Parse options
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -i) inplace=1; shift ;;
+            -E|-r) extended=1; shift ;;
+            -*)
+                printf 'Unknown option: %s\n' "$1" >&2
+                return 1
+                ;;
+            *)
+                if [[ -z "$pattern" ]]; then
+                    pattern="$1"
+                else
+                    file="$1"
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    [[ -z "$pattern" ]] && {
+        printf 'Usage: compat_sed [-i] [-E] PATTERN [FILE]\n' >&2
+        return 1
+    }
+
+    if [[ -n "$file" ]]; then
+        # File mode
+        if [[ $inplace -eq 1 && $extended -eq 1 ]]; then
+            compat::sed_inplace_extended "$file" "$pattern"
+        elif [[ $inplace -eq 1 ]]; then
+            compat::sed_inplace "$file" "$pattern"
+        elif [[ $extended -eq 1 ]]; then
+            sed -E "$pattern" "$file"
+        else
+            sed "$pattern" "$file"
+        fi
+    else
+        # Stdin mode
+        if [[ $extended -eq 1 ]]; then
+            sed -E "$pattern"
+        else
+            sed "$pattern"
+        fi
+    fi
+}
+
+# Check if a command supports a specific flag
+# Usage: compat_cmd_has_flag CMD FLAG
+# Example: compat_cmd_has_flag grep -P && grep -P 'pattern' file
+compat_cmd_has_flag() {
+    local cmd="$1"
+    local flag="$2"
+
+    [[ -z "$cmd" || -z "$flag" ]] && {
+        printf 'Usage: compat_cmd_has_flag CMD FLAG\n' >&2
+        return 1
+    }
+
+    # Try to run command with flag on null input
+    case "$cmd" in
+        grep)
+            "$cmd" "$flag" '' /dev/null 2>/dev/null
+            return $?
+            ;;
+        sed)
+            echo '' | "$cmd" "$flag" '' 2>/dev/null
+            return $?
+            ;;
+        *)
+            # Generic approach: try --help and look for flag
+            "$cmd" --help 2>&1 | grep -q -- "$flag"
+            return $?
+            ;;
+    esac
+}
+
+# Get numeric epoch timestamp
+# Usage: compat_now
+# Returns: Current Unix timestamp
+compat_now() {
+    date +%s
+}
+
+# Format a timestamp portably
+# Usage: compat_date_format FORMAT [TIMESTAMP]
+# Example: compat_date_format '%Y-%m-%d' 1609459200
+compat_date_format() {
+    local format="${1:-%Y-%m-%d %H:%M:%S}"
+    local timestamp="${2:-$(date +%s)}"
+
+    compat::date_format "$format" "$timestamp"
+}
+
+# Subtract days from date
+# Usage: compat_date_sub DAYS [BASE_TIMESTAMP]
+# Returns: Unix timestamp
+compat_date_sub() {
+    local days="$1"
+    local base="${2:-$(date +%s)}"
+
+    [[ -z "$days" ]] && {
+        printf 'Usage: compat_date_sub DAYS [BASE_TIMESTAMP]\n' >&2
+        return 1
+    }
+
+    compat::date_sub_days "$days" "$base"
+}
+
+# USOP output: Print compatibility info as JSON
+# Usage: compat_info_json
+# Output: JSON object with OS and tool availability
+compat_info_json() {
+    compat_check
+}
+
+# Human-readable compatibility summary
+# Usage: compat_summary
+compat_summary() {
+    _compat_detect_os
+
+    printf 'Platform: %s (%s)\n' "$_COMPAT_OS" "$_COMPAT_OS_FAMILY"
+    printf 'Bash: %s\n' "${BASH_VERSION:-unknown}"
+    printf 'GNU Coreutils: %s\n' "$(has_gnu_coreutils && echo 'yes' || echo 'no')"
+    printf 'Prefer GNU: %s\n' "$([[ "${_COMPAT_PREFER_GNU:-1}" -eq 1 ]] && echo 'yes' || echo 'no')"
+}

@@ -638,7 +638,7 @@ _MAINFRAME_TIER_STANDARD=(
     git github docker crypto proc args config
     log error tui template ci health
     device sysinfo service retry download
-    toml yaml collection queue regex
+    toml yaml collection queue regex schema
     bun
 )
 
@@ -648,12 +648,13 @@ _MAINFRAME_TIER_EXTENDED=(
     procsub async meta cli fzf
     compat safe guard telemetry
     proptest testing benchmark
+    workpool
 )
 
 # Phase 3 AI tier: agent-optimized modules
 _MAINFRAME_TIER_AI=(
     idempotent atomic observe project
-    contract perf netscan parsers trace
+    contract perf netscan parsers trace forensics
     risk dryrun undo
     limits confirm safewrap safecontext
     agent workflow taskstate
@@ -927,6 +928,7 @@ else
     _mainframe_load_library "yaml"
     _mainframe_load_library "collection"
     _mainframe_load_library "queue"
+    _mainframe_load_library "schema"
     _mainframe_load_library "bun"
 
     # Extended tier libraries
@@ -949,6 +951,7 @@ else
     _mainframe_load_library "proptest"
     _mainframe_load_library "testing"
     _mainframe_load_library "benchmark"
+    _mainframe_load_library "workpool"
 
     # AI tier libraries
     _mainframe_load_library "idempotent"
@@ -960,6 +963,7 @@ else
     _mainframe_load_library "netscan"
     _mainframe_load_library "parsers"
     _mainframe_load_library "trace"
+    _mainframe_load_library "forensics"
     _mainframe_load_library "cache"
     _mainframe_load_library "scope"
     _mainframe_load_library "risk"
@@ -1360,4 +1364,12 @@ BASHER_COMMON_EXPORTS=(
     gen_choice gen_bool gen_array gen_email gen_uuid gen_json_object gen_url gen_date
     gen_ipv4 gen_port gen_oneof gen_hex gen_float
     proptest_shrink_int proptest_shrink_string proptest_usop_result
+    # Error Forensics (from forensics.sh) - Deep debugging for multi-agent systems
+    forensics_stack forensics_stack_json forensics_caller
+    forensics_capture forensics_snapshot forensics_diff
+    forensics_error forensics_chain_add forensics_chain_dump forensics_root_cause
+    forensics_watch forensics_unwatch forensics_watched_changes
+    forensics_bundle forensics_bundle_save forensics_bundle_load
+    forensics_trap_install forensics_trap_uninstall
+    forensics_clear forensics_status
 )

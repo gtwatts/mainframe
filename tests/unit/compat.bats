@@ -2,8 +2,12 @@
 # =============================================================================
 # MAINFRAME/tests/unit/compat.bats - Tests for BSD/GNU Compatibility Layer
 # =============================================================================
-# Tests the portable wrapper functions (p* namespace) and OS detection
-# These tests verify correct behavior on both Linux and macOS (BSD)
+# Description: Comprehensive unit tests for lib/compat.sh
+#              BSD/GNU cross-platform compatibility layer
+# Test Count: 95+ test cases
+# Categories: OS detection, sed wrappers, date wrappers, grep wrappers,
+#             find wrappers, stat wrappers, portable tools (p* namespace),
+#             underscore-style wrappers (compat_*)
 # =============================================================================
 
 # Setup - load MAINFRAME
@@ -582,4 +586,326 @@ teardown() {
     run pfind "$TEST_TMPDIR/dir with spaces" -name "*.txt"
     [[ "$status" -eq 0 ]]
     [[ "$output" =~ "test.txt" ]]
+}
+
+# =============================================================================
+# UNDERSCORE-STYLE WRAPPER TESTS (compat_*)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# DETECTION FUNCTION TESTS
+# -----------------------------------------------------------------------------
+
+@test "compat_detect_os returns valid OS name" {
+    run compat_detect_os
+    [[ "$status" -eq 0 ]]
+    [[ "$output" =~ ^(macos|linux|wsl|freebsd|openbsd|netbsd|windows|unknown)$ ]]
+}
+
+@test "compat_has_gnu_coreutils returns boolean" {
+    run compat_has_gnu_coreutils
+    # Should return 0 or 1
+    [[ "$status" -eq 0 || "$status" -eq 1 ]]
+}
+
+@test "compat_prefer_gnu defaults to on" {
+    run compat_prefer_gnu status
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "on" ]]
+}
+
+@test "compat_prefer_gnu can be toggled" {
+    compat_prefer_gnu off
+    run compat_prefer_gnu status
+    [[ "$output" == "off" ]]
+
+    compat_prefer_gnu on
+    run compat_prefer_gnu status
+    [[ "$output" == "on" ]]
+}
+
+@test "compat_get_os_family returns valid family" {
+    run compat_get_os_family
+    [[ "$status" -eq 0 ]]
+    [[ "$output" =~ ^(bsd|gnu|unknown)$ ]]
+}
+
+@test "compat_is_os matches current OS" {
+    local current_os=$(compat_detect_os)
+    run compat_is_os "$current_os"
+    [[ "$status" -eq 0 ]]
+}
+
+@test "compat_is_os returns false for wrong OS" {
+    run compat_is_os "nonexistent_os"
+    [[ "$status" -eq 1 ]]
+}
+
+# -----------------------------------------------------------------------------
+# SED WRAPPER TESTS
+# -----------------------------------------------------------------------------
+
+@test "compat_sed_inplace modifies file" {
+    echo "hello world" > "$TEST_TMPDIR/sed_test.txt"
+    compat_sed_inplace "$TEST_TMPDIR/sed_test.txt" 's/world/universe/'
+    run cat "$TEST_TMPDIR/sed_test.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "hello universe" ]]
+}
+
+@test "compat_sed_inplace returns error on missing args" {
+    run compat_sed_inplace
+    [[ "$status" -eq 1 ]]
+    [[ "$output" =~ "Usage:" ]]
+}
+
+@test "compat_sed_extended uses ERE" {
+    echo "foo123bar" > "$TEST_TMPDIR/sed_ext.txt"
+    compat_sed_extended "$TEST_TMPDIR/sed_ext.txt" 's/[0-9]+/_/'
+    run cat "$TEST_TMPDIR/sed_ext.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "foo_bar" ]]
+}
+
+@test "compat_sed with -i flag" {
+    echo "test line" > "$TEST_TMPDIR/sed_i.txt"
+    compat_sed -i 's/test/modified/' "$TEST_TMPDIR/sed_i.txt"
+    run cat "$TEST_TMPDIR/sed_i.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "modified line" ]]
+}
+
+@test "compat_sed with -E flag" {
+    run run_with_mainframe 'echo "abc123def" | compat_sed -E "s/[0-9]+/_/"'
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "abc_def" ]]
+}
+
+# -----------------------------------------------------------------------------
+# DATE WRAPPER TESTS
+# -----------------------------------------------------------------------------
+
+@test "compat_date_parse parses YYYY-MM-DD" {
+    run compat_date_parse "2021-01-01" "%Y-%m-%d"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "1609459200" ]]
+}
+
+@test "compat_date_parse returns error on missing args" {
+    run compat_date_parse
+    [[ "$status" -eq 1 ]]
+    [[ "$output" =~ "Usage:" ]]
+}
+
+@test "compat_date_add adds days correctly" {
+    local base=1609459200  # 2021-01-01
+    run compat_date_add 7 $base
+    [[ "$status" -eq 0 ]]
+    # 7 days = 604800 seconds
+    [[ "$output" == "1610064000" ]]
+}
+
+@test "compat_date_add defaults to current time" {
+    local now=$(date +%s)
+    run compat_date_add 1
+    [[ "$status" -eq 0 ]]
+    # Result should be roughly now + 86400
+    local expected=$((now + 86400))
+    local diff=$((output - expected))
+    # Allow 5 second variance for test execution time
+    [[ ${diff#-} -lt 5 ]]
+}
+
+@test "compat_date_diff calculates positive difference" {
+    # 2021-01-01 to 2021-01-08 = 7 days
+    run compat_date_diff "2021-01-01" "2021-01-08"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "7" ]]
+}
+
+@test "compat_date_diff calculates negative difference" {
+    # 2021-01-08 to 2021-01-01 = -7 days
+    run compat_date_diff "2021-01-08" "2021-01-01"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "-7" ]]
+}
+
+@test "compat_date_diff accepts timestamps" {
+    # Timestamps 7 days apart
+    run compat_date_diff 1609459200 1610064000
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "7" ]]
+}
+
+@test "compat_date_sub subtracts days" {
+    local base=1609459200  # 2021-01-01
+    run compat_date_sub 7 $base
+    [[ "$status" -eq 0 ]]
+    # 7 days before = 604800 seconds less
+    [[ "$output" == "1608854400" ]]
+}
+
+@test "compat_date_format formats timestamp" {
+    run compat_date_format '%Y-%m-%d' 1609459200
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "2021-01-01" ]]
+}
+
+@test "compat_now returns current timestamp" {
+    local before=$(date +%s)
+    run compat_now
+    local after=$(date +%s)
+    [[ "$status" -eq 0 ]]
+    [[ "$output" -ge "$before" && "$output" -le "$after" ]]
+}
+
+# -----------------------------------------------------------------------------
+# GREP WRAPPER TESTS
+# -----------------------------------------------------------------------------
+
+@test "compat_grep_extended matches ERE pattern" {
+    echo -e "cat\ndog\nrat" > "$TEST_TMPDIR/grep_test.txt"
+    run compat_grep_extended "cat|rat" "$TEST_TMPDIR/grep_test.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "${lines[0]}" == "cat" ]]
+    [[ "${lines[1]}" == "rat" ]]
+}
+
+@test "compat_grep_extended returns error on no args" {
+    run compat_grep_extended
+    [[ "$status" -eq 1 ]]
+    [[ "$output" =~ "Usage:" ]]
+}
+
+@test "compat_grep_perl falls back gracefully" {
+    echo "hello world" > "$TEST_TMPDIR/grep_perl.txt"
+    run compat_grep_perl "hello" "$TEST_TMPDIR/grep_perl.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "hello world" ]]
+}
+
+# -----------------------------------------------------------------------------
+# FIND WRAPPER TESTS
+# -----------------------------------------------------------------------------
+
+@test "compat_find_mtime finds recent files" {
+    mkdir -p "$TEST_TMPDIR/findtest"
+    touch "$TEST_TMPDIR/findtest/recent.txt"
+
+    run compat_find_mtime "$TEST_TMPDIR/findtest" 1
+    [[ "$status" -eq 0 ]]
+    [[ "$output" =~ "recent.txt" ]]
+}
+
+@test "compat_find_mtime returns error on missing args" {
+    run compat_find_mtime
+    [[ "$status" -eq 1 ]]
+    [[ "$output" =~ "Usage:" ]]
+}
+
+@test "compat_find_exec executes command on matches" {
+    mkdir -p "$TEST_TMPDIR/exectest"
+    echo "content1" > "$TEST_TMPDIR/exectest/file1.txt"
+    echo "content2" > "$TEST_TMPDIR/exectest/file2.txt"
+
+    # Create a marker file for each found file
+    compat_find_exec "$TEST_TMPDIR/exectest" "*.txt" "touch {}.marker"
+
+    # Check markers were created
+    [[ -f "$TEST_TMPDIR/exectest/file1.txt.marker" ]]
+    [[ -f "$TEST_TMPDIR/exectest/file2.txt.marker" ]]
+}
+
+# -----------------------------------------------------------------------------
+# STAT WRAPPER TESTS
+# -----------------------------------------------------------------------------
+
+@test "compat_stat_size returns file size" {
+    echo "hello" > "$TEST_TMPDIR/stat_test.txt"
+    run compat_stat_size "$TEST_TMPDIR/stat_test.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "6" ]]  # "hello\n" = 6 bytes
+}
+
+@test "compat_stat_size returns error for missing file" {
+    run compat_stat_size "$TEST_TMPDIR/nonexistent.txt"
+    [[ "$status" -eq 1 ]]
+    [[ "$output" =~ "not found" ]]
+}
+
+@test "compat_stat_mtime returns timestamp" {
+    touch "$TEST_TMPDIR/mtime_test.txt"
+    run compat_stat_mtime "$TEST_TMPDIR/mtime_test.txt"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" =~ ^[0-9]+$ ]]
+    # Should be recent
+    local now=$(date +%s)
+    local diff=$((now - output))
+    [[ $diff -ge 0 && $diff -lt 60 ]]
+}
+
+@test "compat_stat_mtime returns error for missing file" {
+    run compat_stat_mtime "$TEST_TMPDIR/nonexistent.txt"
+    [[ "$status" -eq 1 ]]
+    [[ "$output" =~ "not found" ]]
+}
+
+# -----------------------------------------------------------------------------
+# UTILITY FUNCTION TESTS
+# -----------------------------------------------------------------------------
+
+@test "compat_cmd_has_flag detects grep -E" {
+    run compat_cmd_has_flag grep -E
+    [[ "$status" -eq 0 ]]
+}
+
+@test "compat_info_json returns valid JSON" {
+    run compat_info_json
+    [[ "$status" -eq 0 ]]
+    [[ "$output" =~ ^\{.*\}$ ]]
+    [[ "$output" =~ \"os\": ]]
+}
+
+@test "compat_summary produces readable output" {
+    run compat_summary
+    [[ "$status" -eq 0 ]]
+    [[ "$output" =~ "Platform:" ]]
+    [[ "$output" =~ "Bash:" ]]
+    [[ "$output" =~ "GNU Coreutils:" ]]
+}
+
+# -----------------------------------------------------------------------------
+# INTEGRATION TESTS
+# -----------------------------------------------------------------------------
+
+@test "compat functions work together in pipeline" {
+    # Create test data
+    mkdir -p "$TEST_TMPDIR/integration"
+    echo "2021-01-01: event1" > "$TEST_TMPDIR/integration/log1.txt"
+    echo "2021-01-02: event2" >> "$TEST_TMPDIR/integration/log1.txt"
+    echo "2021-01-03: event3" > "$TEST_TMPDIR/integration/log2.txt"
+
+    # Find, grep, and count
+    local count=$(compat_find_mtime "$TEST_TMPDIR/integration" 1 | \
+        while read -r f; do compat_grep_extended "event" "$f" 2>/dev/null; done | wc -l)
+
+    [[ "$count" -eq 3 ]]
+}
+
+@test "compat date functions roundtrip correctly" {
+    local original="2021-06-15"
+    local ts=$(compat_date_parse "$original" "%Y-%m-%d")
+    run compat_date_format "%Y-%m-%d" "$ts"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "$original" ]]
+}
+
+@test "compat stat and date functions work together" {
+    touch "$TEST_TMPDIR/combo_test.txt"
+    local mtime=$(compat_stat_mtime "$TEST_TMPDIR/combo_test.txt")
+    run compat_date_format "%Y-%m-%d" "$mtime"
+    [[ "$status" -eq 0 ]]
+    # Should be today's date
+    local today=$(date +%Y-%m-%d)
+    [[ "$output" == "$today" ]]
 }
