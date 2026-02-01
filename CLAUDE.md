@@ -1,6 +1,6 @@
 # MAINFRAME - AI Coding Assistant Instructions
 
-> Pure bash function library for AI agents. 4,230+ functions, 120 libraries, zero dependencies.
+> Pure bash function library for AI agents. 4,310+ functions, 123 libraries, zero dependencies.
 
 ```bash
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
@@ -14,7 +14,7 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 | **Data** | datetime, http, csv, git, crypto, semver | `now_iso`, `http_get`, `csv_to_json`, `sha256` |
 | **System** | proc, path, env, docker, sysinfo, compat | `proc_find_by_port`, `path_join`, `docker_exec` |
 | **Validation** | validation, regex | `validate_email`, `sanitize_html`, `regex_match` |
-| **AI Agent** | idempotent, atomic, observe, context, diff, cache, agent, awm | `ensure_dir`, `atomic_write`, `diff_replace`, `memoize` |
+| **AI Agent** | idempotent, atomic, observe, context, diff, cache, agent, awm, orchestrate | `ensure_dir`, `atomic_write`, `diff_replace`, `orch_agent_spawn` |
 | **CLI** | anim, tui, output, stream | `spinner_start`, `progress_bar`, `output_success` |
 | **GitHub** | github, github_actions, github_security | `gh_pr_create`, `gha_workflow_run`, `ghs_score` |
 | **Cloud** | ext/aws, ext/gcp, ext/k8s | `aws_s3_list`, `k8s_pods` (optional, requires CLI) |
@@ -61,7 +61,8 @@ mainframe quickref --search "hash"  # Search all functions
 
 ## Reference Files
 
-- **CHEATSHEET.md** - All 4,230+ function signatures
+- **CHEATSHEET.md** - All 4,310+ function signatures
 - **FUNCTIONS.json** - Machine-readable function index
 - **DECISION_TREES.md** - "I need X" workflow guidance
 - **ERRORS.json** - Error codes and recovery
+- **docs/ORCHESTRATION.md** - Multi-agent team coordination guide

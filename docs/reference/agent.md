@@ -184,3 +184,107 @@ diff_replace "src/config.ts" \
     'const PORT = 3000;' \
     'const PORT = 8080;' --backup
 ```
+
+---
+
+## Multi-Agent Orchestration (orchestrate.sh)
+
+Coordinate teams of AI agents working in parallel TMUX windows.
+
+> **Full Documentation**: [docs/ORCHESTRATION.md](../ORCHESTRATION.md)
+
+### Initialization
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `orch_init` | `orch_init` | Initialize orchestration subsystem |
+| `orch_status` | `orch_status` | Get system status as JSON |
+| `orch_shutdown` | `orch_shutdown` | Graceful shutdown with cleanup |
+| `orch_tmux_init` | `orch_tmux_init ["session"]` | Create TMUX session for agents |
+| `orch_tmux_cleanup` | `orch_tmux_cleanup ["session"]` | Kill TMUX session |
+
+### Team Management
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `orch_team_register` | `orch_team_register "id" "name" "caps"` | Register team with capabilities |
+| `orch_team_info` | `orch_team_info "team_id"` | Get team metadata JSON |
+| `orch_team_list` | `orch_team_list` | List all teams as JSON array |
+| `orch_team_dissolve` | `orch_team_dissolve "team_id"` | Dissolve team, terminate agents |
+
+### Agent Lifecycle
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `orch_agent_spawn` | `orch_agent_spawn "team_id" ["caps"]` | Spawn agent with TMUX window |
+| `orch_agent_terminate` | `orch_agent_terminate "id" ["force"]` | Terminate agent |
+| `orch_agent_info` | `orch_agent_info "agent_id"` | Get agent metadata JSON |
+| `orch_agent_list` | `orch_agent_list ["team_id"]` | List agents (optional team filter) |
+
+### Sub-Agent Delegation
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `orch_subagent_spawn` | `orch_subagent_spawn "parent" "task"` | Spawn sub-agent for subtask |
+| `orch_subagent_terminate` | `orch_subagent_terminate "id"` | Terminate sub-agent |
+| `orch_subagent_list` | `orch_subagent_list "parent_id"` | List sub-agents JSON array |
+
+### Task Distribution
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `orch_task_assign` | `orch_task_assign "team" "payload" [priority]` | Assign task (priority 1-10) |
+| `orch_task_complete` | `orch_task_complete "task_id" ["result"]` | Mark task completed |
+| `orch_task_failed` | `orch_task_failed "task_id" "error"` | Mark task failed |
+| `orch_task_info` | `orch_task_info "task_id"` | Get task metadata JSON |
+
+### Health Monitoring
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `orch_agent_heartbeat` | `orch_agent_heartbeat "agent_id"` | Update agent heartbeat |
+| `orch_agent_healthy` | `orch_agent_healthy "agent_id"` | Check agent health (0=healthy) |
+| `orch_prune_stale` | `orch_prune_stale [max_age]` | Remove stale agents |
+| `orch_agent_recover` | `orch_agent_recover "agent_id"` | Recover failed agent |
+
+### Message Protocol (USOP v4)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `orch_message_create` | `orch_message_create "type" "from" "to" "payload"` | Create message envelope |
+| `orch_message_send` | `orch_message_send "target" "message"` | Send to agent/team/broadcast |
+| `orch_discovery_broadcast` | `orch_discovery_broadcast "agent" "text"` | Share discovery team-wide |
+
+### Status Constants
+
+**Agent Status**: `ORCH_STATUS_PENDING`, `ORCH_STATUS_INITIALIZING`, `ORCH_STATUS_READY`, `ORCH_STATUS_BUSY`, `ORCH_STATUS_BLOCKED`, `ORCH_STATUS_COMPLETED`, `ORCH_STATUS_FAILED`, `ORCH_STATUS_TERMINATED`
+
+**Task Status**: `ORCH_TASK_QUEUED`, `ORCH_TASK_ASSIGNED`, `ORCH_TASK_RUNNING`, `ORCH_TASK_COMPLETED`, `ORCH_TASK_FAILED`, `ORCH_TASK_CANCELLED`
+
+**Team IDs**: `ORCH_TEAM_DEFAULT`, `ORCH_TEAM_RESEARCH`, `ORCH_TEAM_IMPLEMENTATION`, `ORCH_TEAM_REVIEW`, `ORCH_TEAM_TESTING`
+
+### Orchestration Quick Start
+
+```bash
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+
+# Initialize
+orch_init
+orch_tmux_init "my-project"
+
+# Create team
+orch_team_register "research" "Research Team" "search,analyze"
+
+# Spawn agents
+agent1=$(orch_agent_spawn "research")
+agent2=$(orch_agent_spawn "research")
+
+# Assign task
+task=$(orch_task_assign "research" '{"query":"kubernetes security"}' 7)
+
+# Complete task
+orch_task_complete "$task" '{"results":["finding1","finding2"]}'
+
+# Cleanup
+orch_shutdown
+```

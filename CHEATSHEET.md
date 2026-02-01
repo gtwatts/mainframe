@@ -27,6 +27,7 @@ For detailed function signatures and examples, see the focused reference files:
 | **Crypto** | [docs/reference/crypto.md](docs/reference/crypto.md) | Cryptographic functions, hashing, encoding |
 | **TUI** | [docs/reference/tui.md](docs/reference/tui.md) | Terminal UI, animations, colors |
 | **Agent** | [docs/reference/agent.md](docs/reference/agent.md) | AI agent primitives: idempotent, atomic, diff, context |
+| **Orchestration** | [docs/ORCHESTRATION.md](docs/ORCHESTRATION.md) | Multi-agent team coordination, TMUX, Redis pub/sub |
 | **AWM** | [docs/reference/awm.md](docs/reference/awm.md) | Agent Working Memory |
 | **Advanced** | [docs/reference/advanced.md](docs/reference/advanced.md) | Streaming, testing, sandbox, events, cloud |
 
@@ -99,6 +100,6 @@ mainframe quickref --search "hash"  # Search all functions
 
 ---
 
-*4,230+ functions | 120 libraries | Zero dependencies | 20-72x faster*
+*4,310+ functions | 123 libraries | Zero dependencies | 20-72x faster*
 
 **YO JOE!**

@@ -10,6 +10,8 @@
 #   help        Show detailed help for a specific function
 #   search      Search functions by name or description
 #   quickref    Show compact function signatures (with --search for lookup)
+#   fzf         Interactive fuzzy finder for functions (requires fzf)
+#   explore     TUI browser for functions (requires dialog/whiptail)
 #   benchmark   Run performance benchmarks
 #   test        Run test suite
 #   doctor      Check MAINFRAME installation
@@ -42,6 +44,8 @@ Commands:
   search      Search functions by name pattern
   count       Count total functions available
   quickref    Show compact function signatures (with --search for lookup)
+  fzf         Interactive fuzzy finder with preview (requires fzf)
+  explore     TUI browser with drill-down menus (requires dialog/whiptail)
   benchmark   Run performance benchmarks
   test        Run test suite (requires bats)
   doctor      Check MAINFRAME installation health
@@ -57,6 +61,9 @@ Examples:
   mainframe quickref --list
   mainframe quickref --search hash
   mainframe quickref --all
+  mainframe fzf                    # Browse all functions interactively
+  mainframe fzf json               # Browse only json library
+  mainframe explore                # TUI browser with menus
   mainframe count
   mainframe doctor
 
@@ -526,6 +533,248 @@ cmd_quickref() {
 }
 
 # =============================================================================
+# FZF - Interactive fuzzy finder for functions
+# =============================================================================
+
+cmd_fzf() {
+    local filter="${1:-}"
+    local json_file="${MAINFRAME_ROOT}/FUNCTIONS.json"
+
+    # Check dependencies
+    if ! command -v fzf &>/dev/null; then
+        echo "Error: fzf is not installed."
+        echo ""
+        echo "Install with:"
+        echo "  Ubuntu/Debian: sudo apt install fzf"
+        echo "  macOS:         brew install fzf"
+        echo "  Arch:          sudo pacman -S fzf"
+        return 1
+    fi
+
+    if [[ ! -f "$json_file" ]]; then
+        echo "Error: FUNCTIONS.json not found at: $json_file"
+        echo "Run 'make docs' to generate function documentation."
+        return 1
+    fi
+
+    # Build function list with library info
+    local func_list
+    if [[ -n "$filter" ]]; then
+        # Filter by library name
+        func_list=$(jq -r --arg lib "$filter" '
+            .libraries[$lib] // empty |
+            .functions | to_entries[] |
+            "\(.key)\t\($lib)\t\(.value.signature // "()")\t\(.value.description // "No description")"
+        ' "$json_file" 2>/dev/null)
+
+        if [[ -z "$func_list" ]]; then
+            echo "Library '$filter' not found."
+            echo ""
+            echo "Available libraries:"
+            jq -r '.libraries | keys[]' "$json_file" | sort | column
+            return 1
+        fi
+    else
+        # All functions
+        func_list=$(jq -r '
+            .libraries | to_entries[] |
+            .key as $lib |
+            .value.functions | to_entries[] |
+            "\(.key)\t\($lib)\t\(.value.signature // "()")\t\(.value.description // "No description")"
+        ' "$json_file" 2>/dev/null)
+    fi
+
+    # Create preview script
+    local preview_cmd
+    preview_cmd="echo {} | cut -f1 | xargs -I{} ${MAINFRAME_ROOT}/bin/mainframe help {}"
+
+    # Run fzf with preview
+    local selected
+    selected=$(echo "$func_list" | \
+        fzf --delimiter='\t' \
+            --with-nth=1,2 \
+            --preview="$preview_cmd" \
+            --preview-window=right:60%:wrap \
+            --header="MAINFRAME Functions (${filter:-all libraries}) | Enter=show help | Esc=exit" \
+            --prompt="Function> " \
+            --height=80% \
+            --layout=reverse \
+            --info=inline \
+            --bind="enter:execute(${MAINFRAME_ROOT}/bin/mainframe help {1})+abort" \
+        2>/dev/null || true)
+
+    # If user pressed Esc without selecting, just exit cleanly
+    if [[ -z "$selected" ]]; then
+        return 0
+    fi
+
+    # Extract function name and show help
+    local func_name
+    func_name=$(echo "$selected" | cut -f1)
+    if [[ -n "$func_name" ]]; then
+        cmd_help "$func_name"
+    fi
+}
+
+# =============================================================================
+# EXPLORE - TUI browser using dialog/whiptail
+# =============================================================================
+
+cmd_explore() {
+    local json_file="${MAINFRAME_ROOT}/FUNCTIONS.json"
+    local dialog_cmd=""
+
+    # Check for dialog or whiptail
+    if command -v dialog &>/dev/null; then
+        dialog_cmd="dialog"
+    elif command -v whiptail &>/dev/null; then
+        dialog_cmd="whiptail"
+    else
+        echo "Error: Neither 'dialog' nor 'whiptail' is installed."
+        echo ""
+        echo "Install with:"
+        echo "  Ubuntu/Debian: sudo apt install dialog"
+        echo "  macOS:         brew install dialog"
+        echo "  Arch:          sudo pacman -S dialog"
+        return 1
+    fi
+
+    if [[ ! -f "$json_file" ]]; then
+        echo "Error: FUNCTIONS.json not found at: $json_file"
+        echo "Run 'make docs' to generate function documentation."
+        return 1
+    fi
+
+    # Get terminal dimensions
+    local term_height term_width
+    term_height=$(tput lines 2>/dev/null || echo 24)
+    term_width=$(tput cols 2>/dev/null || echo 80)
+    local menu_height=$((term_height - 10))
+    [[ $menu_height -lt 10 ]] && menu_height=10
+
+    # Main loop
+    while true; do
+        # Build library menu
+        local libs_json
+        libs_json=$(jq -r '
+            .libraries | to_entries[] |
+            "\(.key)\n\(.value.description // "No description" | .[0:50])"
+        ' "$json_file" 2>/dev/null)
+
+        # Convert to menu items array
+        local menu_items=()
+        while IFS= read -r lib_name && IFS= read -r lib_desc; do
+            menu_items+=("$lib_name" "$lib_desc")
+        done <<< "$libs_json"
+
+        # Show library selection menu
+        local selected_lib
+        selected_lib=$("$dialog_cmd" \
+            --title "MAINFRAME Function Explorer" \
+            --menu "Select a library to browse functions:" \
+            "$term_height" "$term_width" "$menu_height" \
+            "${menu_items[@]}" \
+            3>&1 1>&2 2>&3) || break
+
+        # If no selection (user cancelled), exit
+        [[ -z "$selected_lib" ]] && break
+
+        # Show functions in selected library
+        _explore_library "$dialog_cmd" "$json_file" "$selected_lib" "$term_height" "$term_width" "$menu_height"
+    done
+
+    # Clear screen after dialog
+    clear
+}
+
+# Helper: Browse functions within a library
+_explore_library() {
+    local dialog_cmd="$1"
+    local json_file="$2"
+    local lib_name="$3"
+    local term_height="$4"
+    local term_width="$5"
+    local menu_height="$6"
+
+    while true; do
+        # Build function menu for this library
+        local funcs_json
+        funcs_json=$(jq -r --arg lib "$lib_name" '
+            .libraries[$lib].functions | to_entries[] |
+            "\(.key)\n\(.value.description // "No description" | .[0:50])"
+        ' "$json_file" 2>/dev/null)
+
+        if [[ -z "$funcs_json" ]]; then
+            "$dialog_cmd" --title "Error" --msgbox "No functions found in library '$lib_name'" 8 50
+            return
+        fi
+
+        # Convert to menu items array
+        local func_items=()
+        while IFS= read -r func_name && IFS= read -r func_desc; do
+            func_items+=("$func_name" "$func_desc")
+        done <<< "$funcs_json"
+
+        # Show function selection menu
+        local selected_func
+        selected_func=$("$dialog_cmd" \
+            --title "Library: $lib_name" \
+            --menu "Select a function to view details:" \
+            "$term_height" "$term_width" "$menu_height" \
+            "${func_items[@]}" \
+            3>&1 1>&2 2>&3) || return
+
+        # If no selection, go back to library menu
+        [[ -z "$selected_func" ]] && return
+
+        # Show function details
+        _explore_function_details "$dialog_cmd" "$json_file" "$lib_name" "$selected_func" "$term_height" "$term_width"
+    done
+}
+
+# Helper: Show function details in a message box
+_explore_function_details() {
+    local dialog_cmd="$1"
+    local json_file="$2"
+    local lib_name="$3"
+    local func_name="$4"
+    local term_height="$5"
+    local term_width="$6"
+
+    # Extract function details
+    local details
+    details=$(jq -r --arg lib "$lib_name" --arg func "$func_name" '
+        .libraries[$lib].functions[$func] |
+        "FUNCTION: \($func)\n" +
+        "LIBRARY: \($lib)\n" +
+        "SIGNATURE: \(.signature // "()")\n" +
+        "\n" +
+        "DESCRIPTION:\n\(.description // "No description")\n" +
+        "\n" +
+        "RETURNS: \(.returns // "unspecified")\n" +
+        (if .params and (.params | length) > 0 then
+            "\nPARAMETERS:\n" + (.params | map("  \(.position). \(.name)\(if .required then " (required)" else " (optional)" end)") | join("\n"))
+        else "" end) +
+        (if .examples and (.examples | length) > 0 then
+            "\n\nEXAMPLES:\n" + (.examples | map("  \(.)") | join("\n"))
+        else "" end) +
+        (if .idempotent != null then "\n\nIdempotent: \(.idempotent)" else "" end) +
+        (if .pure != null then "\nPure: \(.pure)" else "" end)
+    ' "$json_file" 2>/dev/null)
+
+    # Calculate message box dimensions
+    local msg_height=$((term_height - 4))
+    local msg_width=$((term_width - 4))
+    [[ $msg_height -lt 15 ]] && msg_height=15
+    [[ $msg_width -lt 60 ]] && msg_width=60
+
+    "$dialog_cmd" \
+        --title "Function: $func_name" \
+        --msgbox "$details" \
+        "$msg_height" "$msg_width"
+}
+
+# =============================================================================
 # MAIN DISPATCH
 # =============================================================================
 
@@ -547,6 +796,12 @@ case "${1:-help}" in
         ;;
     quickref|qr|signatures|sigs)
         cmd_quickref "${2:-}"
+        ;;
+    fzf|fuzzy|browse)
+        cmd_fzf "${2:-}"
+        ;;
+    explore|tui)
+        cmd_explore
         ;;
     doctor|check|health)
         cmd_doctor

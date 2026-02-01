@@ -1,28 +1,22 @@
 # MAINFRAME Roadmap
 
-> The AI-Native Bash Runtime - v6.0
+> The AI-Native Bash Runtime - v7.2
 
 This roadmap outlines planned features and improvements for MAINFRAME. Items are organized by priority and status.
 
-**Current Stats**: 4,150+ functions | 122 libraries | 6,626 tests | Pure Bash
+**Current Stats**: 4,310+ functions | 123 libraries | 6,750+ tests | Pure Bash
 
 ---
 
 ## In Progress
 
-### Security Hardening (v6.2)
+### v7.3 - Advanced Orchestration (Current)
 
 - [ ] Security audit of remaining `eval` sites (design complete, implementation pending)
 - [ ] TOCTOU race condition fixes in atomic operations (design complete, implementation pending)
-- [x] **Capability-based security model** (`lib/capability.sh`)
-  - [x] Capability token format: `cap://domain/action/resource`
-  - [x] Grant, revoke, and check capabilities
-  - [x] Wildcard pattern matching
-  - [x] Capability profiles: minimal, readonly, developer, network, admin
-  - [x] Guarded operations: `cap_read_file`, `cap_write_file`, `cap_exec`, `cap_env_get`
-  - [x] Audit logging with JSON export
-  - [x] Capability delegation for agent handoffs
-  - [x] 38 unit tests
+- [ ] Distributed task scheduling across multiple hosts
+- [ ] Agent capability negotiation protocol
+- [ ] Orchestration metrics and dashboards
 
 ---
 
@@ -108,7 +102,42 @@ Privacy:
 
 ## Completed
 
-### v6.1 - Multi-Agent Coordination (Current)
+### v7.2 - Multi-Agent Team Orchestration
+
+**Major milestone: Complete orchestration system for coordinated agent teams**
+
+- [x] **Multi-Agent Orchestration** (`lib/orchestrate.sh`)
+  - [x] Team lifecycle management (`orch_team_register`, `orch_team_dissolve`)
+  - [x] Agent spawning with TMUX windows (`orch_agent_spawn`, `orch_agent_terminate`)
+  - [x] Sub-agent delegation with limits (`orch_subagent_spawn`, `orch_subagent_list`)
+  - [x] Task distribution with priority queues (`orch_task_assign`, `orch_task_complete`)
+  - [x] Redis pub/sub for real-time coordination
+  - [x] File-based fallback when Redis unavailable
+  - [x] USOP v4 message protocol (`orch_message_create`, `orch_message_send`)
+  - [x] Health monitoring with heartbeats (`orch_agent_heartbeat`, `orch_agent_healthy`)
+  - [x] Stale agent pruning (`orch_prune_stale`)
+  - [x] Failed agent recovery with task re-queuing (`orch_agent_recover`)
+  - [x] Discovery broadcasting for knowledge sharing
+  - [x] Graceful shutdown with cleanup (`orch_shutdown`)
+- [x] **Predefined Team Types**: default, research, implementation, review, testing
+- [x] **Agent Status Tracking**: pending, initializing, ready, busy, blocked, completed, failed, terminated
+- [x] **Task Status Tracking**: queued, assigned, running, completed, failed, cancelled
+- [x] 80 exported functions and constants
+- [x] Full documentation in `docs/ORCHESTRATION.md`
+
+### v7.1 - Security Hardening
+
+- [x] **Capability-based security model** (`lib/capability.sh`)
+  - [x] Capability token format: `cap://domain/action/resource`
+  - [x] Grant, revoke, and check capabilities
+  - [x] Wildcard pattern matching
+  - [x] Capability profiles: minimal, readonly, developer, network, admin
+  - [x] Guarded operations: `cap_read_file`, `cap_write_file`, `cap_exec`, `cap_env_get`
+  - [x] Audit logging with JSON export
+  - [x] Capability delegation for agent handoffs
+  - [x] 38 unit tests
+
+### v6.1 - Multi-Agent Coordination
 
 **Major milestone: Infinite agent memory with tiered storage and inter-agent protocols**
 
