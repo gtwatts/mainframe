@@ -4,7 +4,7 @@
 # Version: 2.0.0
 
 # Prevent double-loading
-[[ -n "$_AWM_STREAM_LOADED" ]] && return 0
+[[ -n "${_AWM_STREAM_LOADED:-}" ]] && return 0
 readonly _AWM_STREAM_LOADED=1
 
 # Load dependencies

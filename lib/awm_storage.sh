@@ -3,8 +3,8 @@
 # Provides unified interface across file, Redis, and ChromaDB backends
 # Version: 2.0.0
 
-# Prevent double-loading
-[[ -n "$_AWM_STORAGE_LOADED" ]] && return 0
+# Prevent double-loading (use ${var:-} for set -u compatibility)
+[[ -n "${_AWM_STORAGE_LOADED:-}" ]] && return 0
 readonly _AWM_STORAGE_LOADED=1
 
 # =============================================================================
