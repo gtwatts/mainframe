@@ -1341,8 +1341,8 @@ parallel_progress() {
 
 # Clean up state directory
 parallel_cleanup() {
-    if [[ -d "$PARALLEL_STATE_DIR" ]]; then
-        rm -rf "$PARALLEL_STATE_DIR"/*
+    if [[ -d "${PARALLEL_STATE_DIR:-}" && -n "$PARALLEL_STATE_DIR" ]]; then
+        rm -rf "${PARALLEL_STATE_DIR:?}"/*
     fi
 }
 
