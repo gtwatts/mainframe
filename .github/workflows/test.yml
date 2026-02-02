@@ -142,7 +142,7 @@ jobs:
         timeout-minutes: 30
         run: |
           # Run tests in parallel with 4 workers for speed
-          ./tests/bats/bin/bats --jobs 4 --formatter tap tests/unit/ | tee results.tap
+          ./tests/bats/bin/bats --jobs 8 --formatter tap tests/unit/ | tee results.tap
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -211,7 +211,7 @@ jobs:
           # Run tests in parallel and capture output
           # Note: Some tests use Linux-specific features (date +%s%N, /proc, etc.)
           # We allow up to 40 failures for known platform differences
-          output=$(./tests/bats/bin/bats --jobs 4 tests/unit/ 2>&1) || true
+          output=$(./tests/bats/bin/bats --jobs 8 tests/unit/ 2>&1) || true
           echo "$output"
 
           # Count actual failures
