@@ -240,7 +240,7 @@ teardown() {
 }
 
 @test "with_timeout: times out slow command" {
-    run with_timeout 1 sleep 10
+    run with_timeout 1 sleep 3
     [[ $status -eq 124 ]]
 }
 
@@ -264,7 +264,7 @@ teardown() {
 # =============================================================================
 
 @test "did_timeout: returns true after timeout" {
-    with_timeout 1 sleep 10 || true
+    with_timeout 1 sleep 3 || true
     # _MAINFRAME_LAST_EXIT should be 124
     did_timeout
 }

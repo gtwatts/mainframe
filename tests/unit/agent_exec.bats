@@ -117,7 +117,7 @@ teardown() {
 
 @test "agent_exec: timeout kills long-running command" {
     skip_if_slow
-    run agent_exec --timeout 1 sleep 30
+    run agent_exec --timeout 1 sleep 3
     assert_failure
 }
 

@@ -175,18 +175,18 @@ EOF
 
 @test "parallel_race: returns first completer" {
     # Create fast and slow commands
-    result=$(parallel_race "echo fast" "sleep 5; echo slow")
+    result=$(parallel_race "echo fast" "sleep 2; echo slow")
     [[ "$result" == *'"ok":true'* ]]
     [[ "$result" == *"fast"* ]]
 }
 
 @test "parallel_race: cancels other commands" {
-    result=$(parallel_race "echo winner" "sleep 10")
+    result=$(parallel_race "echo winner" "sleep 2")
     [[ "$result" == *'"succeeded":1'* ]]
 }
 
 @test "parallel_race: returns error if winner fails" {
-    result=$(parallel_race "false" "sleep 5")
+    result=$(parallel_race "false" "sleep 2")
     [[ "$result" == *'"ok":false'* ]]
 }
 
@@ -315,7 +315,7 @@ EOF
 }
 
 @test "parallel_timeout: kills command after timeout" {
-    result=$(parallel_timeout 1 "sleep 10; echo never")
+    result=$(parallel_timeout 1 "sleep 2; echo never")
     status=$?
     [[ "$result" == *'"status":"timeout"'* ]]
     [[ $status -eq 124 ]]
@@ -334,7 +334,7 @@ EOF
 }
 
 @test "parallel_timeout: captures output before timeout" {
-    result=$(parallel_timeout 2 "echo partial; sleep 5")
+    result=$(parallel_timeout 2 "echo partial; sleep 2")
     # Should timeout but may have captured partial output
     [[ "$result" == *'timeout'* ]] || [[ "$result" == *'partial'* ]]
 }
