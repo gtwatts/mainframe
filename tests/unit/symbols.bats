@@ -11,6 +11,8 @@ load '../test_helper'
 setup() {
     # Override MAINFRAME_ROOT for tests in subdirectories
     export MAINFRAME_ROOT="${BATS_TEST_DIRNAME}/../.."
+    # symbols.sh depends on json.sh for json_escape
+    source_lib "json"
     source_lib "symbols"
     FIXTURES_DIR="${BATS_TEST_DIRNAME}/../fixtures/symbols"
 }

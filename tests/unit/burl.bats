@@ -553,10 +553,10 @@ mock_http_response() {
         _burl_error $BURL_E_INVALID_URL "Invalid URL" "Fix URL"
     }
 
-    result=$(burl_smart_retry 3 "invalid://url")
+    run burl_smart_retry 3 "invalid://url"
 
-    [[ "$result" =~ '"ok":false' ]]
-    [[ "$result" =~ '"code":1' ]]  # BURL_E_INVALID_URL
+    [[ "$output" =~ '"ok":false' ]]
+    [[ "$output" =~ '"code":1' ]]  # BURL_E_INVALID_URL
 }
 
 @test "burl: smart retry does not retry auth failures" {
@@ -566,10 +566,10 @@ mock_http_response() {
         _burl_error $BURL_E_AUTH_FAILED "Auth failed" "Check credentials"
     }
 
-    result=$(burl_smart_retry 3 "http://api.test.local/secure")
+    run burl_smart_retry 3 "http://api.test.local/secure"
 
-    [[ "$result" =~ '"ok":false' ]]
-    [[ "$result" =~ '"code":8' ]]  # BURL_E_AUTH_FAILED
+    [[ "$output" =~ '"ok":false' ]]
+    [[ "$output" =~ '"code":8' ]]  # BURL_E_AUTH_FAILED
 }
 
 @test "burl: --smart-retry flag enables retry logic" {
@@ -745,10 +745,10 @@ mock_http_response() {
     source "$MAINFRAME_ROOT/lib/burl.sh"
     source "$MAINFRAME_ROOT/lib/burl_ai.sh"
 
-    result=$(burl_paginate "")
+    run burl_paginate ""
 
-    [[ "$result" =~ '"ok":false' ]]
-    [[ "$result" =~ "url_required" ]]
+    [[ "$output" =~ '"ok":false' ]]
+    [[ "$output" =~ "url_required" ]]
 }
 
 @test "burl_ai: burl_paginate returns page count" {
@@ -771,20 +771,20 @@ mock_http_response() {
     source "$MAINFRAME_ROOT/lib/burl.sh"
     source "$MAINFRAME_ROOT/lib/burl_ai.sh"
 
-    result=$(burl_chain "")
+    run burl_chain ""
 
-    [[ "$result" =~ '"ok":false' ]]
-    [[ "$result" =~ "chain_spec_required" ]]
+    [[ "$output" =~ '"ok":false' ]]
+    [[ "$output" =~ "chain_spec_required" ]]
 }
 
 @test "burl_ai: burl_chain requires steps array" {
     source "$MAINFRAME_ROOT/lib/burl.sh"
     source "$MAINFRAME_ROOT/lib/burl_ai.sh"
 
-    result=$(burl_chain '{"invalid":"spec"}')
+    run burl_chain '{"invalid":"spec"}'
 
-    [[ "$result" =~ '"ok":false' ]]
-    [[ "$result" =~ "invalid_chain_format" ]]
+    [[ "$output" =~ '"ok":false' ]]
+    [[ "$output" =~ "invalid_chain_format" ]]
 }
 
 @test "burl_ai: burl_chain executes single step" {
@@ -806,20 +806,20 @@ mock_http_response() {
     source "$MAINFRAME_ROOT/lib/burl.sh"
     source "$MAINFRAME_ROOT/lib/burl_ai.sh"
 
-    result=$(burl_validate_schema "" '{"type":"object"}')
+    run burl_validate_schema "" '{"type":"object"}'
 
-    [[ "$result" =~ '"ok":false' ]]
-    [[ "$result" =~ "body_required" ]]
+    [[ "$output" =~ '"ok":false' ]]
+    [[ "$output" =~ "body_required" ]]
 }
 
 @test "burl_ai: schema validation requires schema" {
     source "$MAINFRAME_ROOT/lib/burl.sh"
     source "$MAINFRAME_ROOT/lib/burl_ai.sh"
 
-    result=$(burl_validate_schema '{"id":1}' "")
+    run burl_validate_schema '{"id":1}' ""
 
-    [[ "$result" =~ '"ok":false' ]]
-    [[ "$result" =~ "schema_required" ]]
+    [[ "$output" =~ '"ok":false' ]]
+    [[ "$output" =~ "schema_required" ]]
 }
 
 @test "burl_ai: schema validation passes for valid data" {
@@ -842,10 +842,10 @@ mock_http_response() {
     body='{"age":30}'
     schema='{"required":["name"]}'
 
-    result=$(burl_validate_schema "$body" "$schema")
+    run burl_validate_schema "$body" "$schema"
 
-    [[ "$result" =~ '"ok":false' ]]
-    [[ "$result" =~ "missing_required_field:name" ]]
+    [[ "$output" =~ '"ok":false' ]]
+    [[ "$output" =~ "missing_required_field:name" ]]
 }
 
 @test "burl_ai: type check validates string" {
@@ -880,10 +880,10 @@ mock_http_response() {
     source "$MAINFRAME_ROOT/lib/burl.sh"
     source "$MAINFRAME_ROOT/lib/burl_ai.sh"
 
-    result=$(burl_rate_limit_status "")
+    run burl_rate_limit_status ""
 
-    [[ "$result" =~ '"ok":false' ]]
-    [[ "$result" =~ "url_required" ]]
+    [[ "$output" =~ '"ok":false' ]]
+    [[ "$output" =~ "url_required" ]]
 }
 
 @test "burl_ai: rate limit status returns can_request true when no state" {
@@ -925,19 +925,19 @@ mock_http_response() {
     source "$MAINFRAME_ROOT/lib/burl.sh"
     source "$MAINFRAME_ROOT/lib/burl_ai.sh"
 
-    result=$(burl_oauth2_token "" "client_id" "client_secret")
+    run burl_oauth2_token "" "client_id" "client_secret"
 
-    [[ "$result" =~ '"ok":false' ]]
-    [[ "$result" =~ "token_endpoint_client_id_secret_required" ]]
+    [[ "$output" =~ '"ok":false' ]]
+    [[ "$output" =~ "token_endpoint_client_id_secret_required" ]]
 }
 
 @test "burl_ai: oauth2 token requires client_id" {
     source "$MAINFRAME_ROOT/lib/burl.sh"
     source "$MAINFRAME_ROOT/lib/burl_ai.sh"
 
-    result=$(burl_oauth2_token "http://auth.test/token" "" "secret")
+    run burl_oauth2_token "http://auth.test/token" "" "secret"
 
-    [[ "$result" =~ '"ok":false' ]]
+    [[ "$output" =~ '"ok":false' ]]
 }
 
 @test "burl_ai: oauth2 token returns cached token when valid" {
@@ -982,10 +982,10 @@ mock_http_response() {
     source "$MAINFRAME_ROOT/lib/burl.sh"
     source "$MAINFRAME_ROOT/lib/burl_ai.sh"
 
-    result=$(burl_template_register "" "")
+    run burl_template_register "" ""
 
-    [[ "$result" =~ '"ok":false' ]]
-    [[ "$result" =~ "name_and_spec_required" ]]
+    [[ "$output" =~ '"ok":false' ]]
+    [[ "$output" =~ "name_and_spec_required" ]]
 }
 
 @test "burl_ai: template register stores template" {
@@ -1002,20 +1002,20 @@ mock_http_response() {
     source "$MAINFRAME_ROOT/lib/burl.sh"
     source "$MAINFRAME_ROOT/lib/burl_ai.sh"
 
-    result=$(burl_template "")
+    run burl_template ""
 
-    [[ "$result" =~ '"ok":false' ]]
-    [[ "$result" =~ "template_name_required" ]]
+    [[ "$output" =~ '"ok":false' ]]
+    [[ "$output" =~ "template_name_required" ]]
 }
 
 @test "burl_ai: template returns error for unknown template" {
     source "$MAINFRAME_ROOT/lib/burl.sh"
     source "$MAINFRAME_ROOT/lib/burl_ai.sh"
 
-    result=$(burl_template "nonexistent_template")
+    run burl_template "nonexistent_template"
 
-    [[ "$result" =~ '"ok":false' ]]
-    [[ "$result" =~ "template_not_found" ]]
+    [[ "$output" =~ '"ok":false' ]]
+    [[ "$output" =~ "template_not_found" ]]
 }
 
 @test "burl_ai: template executes registered template" {
@@ -1041,10 +1041,10 @@ mock_http_response() {
     source "$MAINFRAME_ROOT/lib/burl.sh"
     source "$MAINFRAME_ROOT/lib/burl_ai.sh"
 
-    result=$(burl_diff_response "" "")
+    run burl_diff_response "" ""
 
-    [[ "$result" =~ '"ok":false' ]]
-    [[ "$result" =~ "url_and_response_required" ]]
+    [[ "$output" =~ '"ok":false' ]]
+    [[ "$output" =~ "url_and_response_required" ]]
 }
 
 @test "burl_ai: diff response detects new response as changed" {

@@ -10,6 +10,9 @@ setup() {
     TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
     PROJECT_ROOT="$(cd "$TEST_DIR/../.." && pwd)"
 
+    # Source dependencies (json.sh for sanitize_json tests)
+    source "$PROJECT_ROOT/lib/json.sh"
+
     # Source the validation library
     source "$PROJECT_ROOT/lib/validation.sh"
 }

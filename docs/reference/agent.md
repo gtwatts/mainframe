@@ -95,6 +95,64 @@ Helps AI agents estimate token costs and manage context budgets.
 
 ---
 
+## LLM Token Estimation & Cost Management (llm_tokens.sh)
+
+Model-specific token counting, cost estimation, and text chunking for API usage.
+
+### Token Counting
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `llm_count_tokens` | `llm_count_tokens "text" ["model"]` | `llm_count_tokens "Hello world" "gpt-4"` | `3` |
+| `llm_count_tokens_file` | `llm_count_tokens_file "path" ["model"]` | `llm_count_tokens_file "src/app.py" "claude-3-opus"` | `285` |
+| `llm_count_tokens_usop` | `llm_count_tokens_usop "text" ["model"]` | `llm_count_tokens_usop "Hello" "gpt-4"` | JSON envelope |
+| `llm_clear_cache` | `llm_clear_cache` | `llm_clear_cache` | Clears token cache |
+
+### Cost Estimation
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `llm_estimate_cost` | `llm_estimate_cost "text" ["model"] [--type T]` | `llm_estimate_cost "$text" "gpt-4-turbo" input` | JSON with costs |
+| `llm_get_pricing` | `llm_get_pricing "model"` | `llm_get_pricing "claude-3-opus"` | JSON pricing info |
+| `llm_list_models` | `llm_list_models` | `llm_list_models` | JSON array of models |
+
+**Cost types**: `input` (default), `output`, `both`
+
+### Truncation
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `llm_truncate_to_tokens` | `llm_truncate_to_tokens "text" max ["model"] [strategy]` | `llm_truncate_to_tokens "$big" 1000 "gpt-4" head` | Truncated text |
+| `llm_truncate_usop` | `llm_truncate_usop "text" max ["model"]` | `llm_truncate_usop "$text" 500 "claude-3-sonnet"` | JSON envelope |
+
+**Strategies**: `head` (default), `tail`, `middle`
+
+### Chunk Splitting
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `llm_split_chunks` | `llm_split_chunks "text" size ["model"] [options]` | `llm_split_chunks "$doc" 1000 "gpt-4" --overlap 100` | JSON array of chunks |
+| `llm_split_chunks_file` | `llm_split_chunks_file "path" size ["model"]` | `llm_split_chunks_file "big.md" 2000` | JSON array of chunks |
+
+**Options**: `--overlap N` (token overlap), `--preserve-lines`
+
+### Model Utilities
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `llm_context_window` | `llm_context_window "model"` | `llm_context_window "gpt-4-turbo"` | `128000` |
+| `llm_fits_context` | `llm_fits_context "text" "model" [--reserve N]` | `llm_fits_context "$doc" "gpt-4" --reserve 1000` | (returns 0=fits) |
+| `llm_model_family` | `llm_model_family "model"` | `llm_model_family "gpt-4-turbo-2024"` | `gpt-4` |
+
+### Supported Models
+
+**OpenAI**: gpt-4, gpt-4-turbo, gpt-4o, gpt-4o-mini, gpt-3.5-turbo, o1, o1-mini, o1-preview
+**Anthropic**: claude-3-opus, claude-3-sonnet, claude-3-haiku, claude-3.5-sonnet, claude-3.5-haiku, claude-opus-4, claude-sonnet-4
+**Google**: gemini-pro, gemini-1.5-pro, gemini-1.5-flash, gemini-2.0-flash
+**Open/Local**: llama, llama-2, llama-3, llama-3.1, llama-3.2, mistral, mixtral, qwen, qwen-2, qwen-2.5, deepseek, deepseek-v3, phi-3, gemma, gemma-2
+
+---
+
 ## Diff & Patch Operations (diff.sh)
 
 Surgical file editing for AI agents.
@@ -287,4 +345,133 @@ orch_task_complete "$task" '{"results":["finding1","finding2"]}'
 
 # Cleanup
 orch_shutdown
+```
+
+---
+
+## LLM Function/Tool Calling (llm_functions.sh)
+
+Tool registration, execution, and format conversion for OpenAI and Anthropic APIs.
+
+### Tool Registration
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `llm_register_tool` | `llm_register_tool "name" "func" "schema"` | `llm_register_tool "weather" "get_weather" "$schema"` | (registers tool) |
+| `llm_unregister_tool` | `llm_unregister_tool "name"` | `llm_unregister_tool "weather"` | (removes tool) |
+| `llm_list_tools` | `llm_list_tools` | `llm_list_tools` | Tool names (one per line) |
+| `llm_get_tool_schema` | `llm_get_tool_schema "name"` | `llm_get_tool_schema "weather"` | Schema JSON |
+| `llm_tool_exists` | `llm_tool_exists "name"` | `llm_tool_exists "weather"` | (returns 0/1) |
+| `llm_clear_tools` | `llm_clear_tools` | `llm_clear_tools` | (clears all tools) |
+| `llm_tool_info` | `llm_tool_info "name"` | `llm_tool_info "weather"` | JSON with tool metadata |
+
+### Tool Call Parsing
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `llm_detect_format` | `llm_detect_format "response"` | `llm_detect_format "$resp"` | `openai`, `anthropic`, or `unknown` |
+| `llm_parse_tool_call` | `llm_parse_tool_call "response"` | `llm_parse_tool_call "$resp"` | Normalized JSON: `{id, name, arguments}` |
+| `llm_parse_tool_calls` | `llm_parse_tool_calls "response"` | `llm_parse_tool_calls "$resp"` | JSON array of tool calls |
+
+### Argument Validation
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `llm_validate_tool_args` | `llm_validate_tool_args "schema" "args"` | `llm_validate_tool_args "$schema" "$args"` | (returns 0=valid, 1=invalid) |
+| `llm_validate_tool_args_errors` | `llm_validate_tool_args_errors "schema" "args"` | `llm_validate_tool_args_errors "$s" "$a"` | JSON array of errors |
+
+### Tool Execution
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `llm_execute_tool` | `llm_execute_tool "name" "args"` | `llm_execute_tool "weather" '{"city":"NYC"}'` | Tool output |
+| `llm_execute_tool_safe` | `llm_execute_tool_safe "name" "args"` | `llm_execute_tool_safe "weather" "$args"` | JSON with result, success, duration |
+
+### Result Formatting
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `llm_format_tool_result` | `llm_format_tool_result "result" "id" [format]` | `llm_format_tool_result "72F" "call_123" "openai"` | OpenAI/Anthropic result envelope |
+| `llm_format_tool_error` | `llm_format_tool_error "error" "id" [format]` | `llm_format_tool_error "Not found" "call_123"` | Error envelope |
+
+### Format Export
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `llm_tools_to_openai` | `llm_tools_to_openai` | `llm_tools_to_openai` | JSON array (OpenAI function format) |
+| `llm_tools_to_anthropic` | `llm_tools_to_anthropic` | `llm_tools_to_anthropic` | JSON array (Anthropic tool format) |
+| `llm_tool_export` | `llm_tool_export "name" [format]` | `llm_tool_export "weather" "openai"` | Single tool definition |
+
+### Complete Processing
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `llm_process_tool_call` | `llm_process_tool_call "response" [format]` | `llm_process_tool_call "$resp" "openai"` | Formatted result (parse+execute+format) |
+
+### Tool Call Formats
+
+**OpenAI Format** (input):
+```json
+{"tool_calls": [{"id": "call_abc", "type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"NYC\"}"}}]}
+```
+
+**Anthropic Format** (input):
+```json
+{"content": [{"type": "tool_use", "id": "toolu_abc", "name": "get_weather", "input": {"city": "NYC"}}]}
+```
+
+**Normalized Format** (output from `llm_parse_tool_call`):
+```json
+{"id": "call_abc", "name": "get_weather", "arguments": {"city": "NYC"}}
+```
+
+### Tool Schema Format
+
+```json
+{
+  "name": "get_weather",
+  "description": "Get weather for a city",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "city": {"type": "string", "description": "City name"}
+    },
+    "required": ["city"]
+  }
+}
+```
+
+### Quick Start
+
+```bash
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+
+# Define tool function
+get_weather() {
+    local args="$1"
+    local city=$(jq -r '.city' <<< "$args")
+    echo '{"temp": 72, "condition": "sunny"}'
+}
+
+# Register tool with schema
+llm_register_tool "get_weather" "get_weather" '{
+    "name": "get_weather",
+    "description": "Get current weather for a city",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "city": {"type": "string", "description": "City name"}
+        },
+        "required": ["city"]
+    }
+}'
+
+# Process OpenAI tool call
+response='{"tool_calls":[{"id":"call_123","type":"function","function":{"name":"get_weather","arguments":"{\"city\":\"NYC\"}"}}]}'
+result=$(llm_process_tool_call "$response" "openai")
+echo "$result"
+# {"role":"tool","tool_call_id":"call_123","content":"{\"temp\":72,\"condition\":\"sunny\"}"}
+
+# Export tools for API
+tools=$(llm_tools_to_openai)
 ```

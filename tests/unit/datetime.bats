@@ -210,7 +210,7 @@ teardown() {
     current=$(now)
     future=$((current + 3600))  # 1 hour ahead
     result=$(format_relative "$future")
-    [[ "$result" =~ "^in " ]]
+    [[ "$result" =~ ^in\  ]]
 }
 
 # =============================================================================

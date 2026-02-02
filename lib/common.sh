@@ -636,17 +636,17 @@ _MAINFRAME_TIER_CORE=(
 _MAINFRAME_TIER_STANDARD=(
     validation path env datetime http csv
     git github docker crypto proc args config
-    log error tui template ci health
+    log structured_log error tui template ci health
     device sysinfo service retry download
     toml yaml collection queue regex schema
-    bun
+    bun audit
 )
 
 # Extended tier: advanced/specialized libraries
 _MAINFRAME_TIER_EXTENDED=(
     k8s semver functional compose stream streaming pipe
-    procsub async meta cli fzf
-    compat safe guard telemetry
+    procsub async futures meta cli fzf
+    compat safe guard telemetry otel
     proptest testing benchmark
     workpool
 )
@@ -655,12 +655,14 @@ _MAINFRAME_TIER_EXTENDED=(
 _MAINFRAME_TIER_AI=(
     idempotent atomic observe project
     contract perf netscan parsers trace forensics
-    risk dryrun undo
+    risk dryrun undo sandbox
     limits confirm safewrap safecontext
     agent workflow taskstate
     context diff parse_output symbols agent_exec
-    agent_comm agent_safety agent_ai
+    agent_comm agent_safety agent_ai agent_context
     awm awm_storage awm_tiers awm_stream
+    llm_tokens llm_functions llm_stream llm_providers
+    embeddings registry vectordb rag policy rbac
 )
 
 # --- Bundle Presets ---------------------------------------------------------
@@ -913,6 +915,7 @@ else
     _mainframe_load_library "args"
     _mainframe_load_library "config"
     _mainframe_load_library "log"
+    _mainframe_load_library "structured_log"
     _mainframe_load_library "error"
     _mainframe_load_library "tui"
     _mainframe_load_library "anim"
@@ -930,6 +933,7 @@ else
     _mainframe_load_library "queue"
     _mainframe_load_library "schema"
     _mainframe_load_library "bun"
+    _mainframe_load_library "audit"
 
     # Extended tier libraries
     _mainframe_load_library "k8s"
@@ -941,6 +945,7 @@ else
     _mainframe_load_library "pipe"
     _mainframe_load_library "procsub"
     _mainframe_load_library "async"
+    _mainframe_load_library "futures"
     _mainframe_load_library "meta"
     _mainframe_load_library "cli"
     _mainframe_load_library "fzf"
@@ -948,6 +953,7 @@ else
     _mainframe_load_library "safe"
     _mainframe_load_library "guard"
     _mainframe_load_library "telemetry"
+    _mainframe_load_library "otel"
     _mainframe_load_library "proptest"
     _mainframe_load_library "testing"
     _mainframe_load_library "benchmark"
@@ -969,6 +975,7 @@ else
     _mainframe_load_library "risk"
     _mainframe_load_library "dryrun"
     _mainframe_load_library "undo"
+    _mainframe_load_library "sandbox"
     _mainframe_load_library "limits"
     _mainframe_load_library "confirm"
     _mainframe_load_library "safewrap"
@@ -984,10 +991,21 @@ else
     _mainframe_load_library "agent_comm"
     _mainframe_load_library "agent_safety"
     _mainframe_load_library "agent_ai"
+    _mainframe_load_library "agent_context"
     _mainframe_load_library "awm"
     _mainframe_load_library "awm_storage"
     _mainframe_load_library "awm_tiers"
     _mainframe_load_library "awm_stream"
+    _mainframe_load_library "llm_tokens"
+    _mainframe_load_library "llm_functions"
+    _mainframe_load_library "llm_providers"
+    _mainframe_load_library "registry"
+    _mainframe_load_library "registry_schema"
+    _mainframe_load_library "embeddings"
+    _mainframe_load_library "vectordb"
+    _mainframe_load_library "rag"
+    _mainframe_load_library "policy"
+    _mainframe_load_library "rbac"
 
 fi # End of full loading (backward-compatible path)
 
@@ -1355,8 +1373,20 @@ BASHER_COMMON_EXPORTS=(
     awm_pointer_create awm_pointer_resolve awm_pointer_exists awm_pointer_meta
     awm_wrap_result awm_chunk awm_summarize_chunks
     awm_truncate awm_read_plan
+    # Structured Logging (from structured_log.sh) - JSON-structured logging for observability
+    slog_init slog_debug slog_info slog_warn slog_error slog_fatal
+    slog_set_level slog_set_output slog_with_context slog_clear_context
+    slog_flush slog_rotate
+    slog_get_level slog_get_output slog_would_log slog_stats slog_build_v
     # Telemetry (from telemetry.sh) - Opt-in anonymous usage telemetry
     telemetry_enabled telemetry_init telemetry_track telemetry_flush telemetry_report
+    # OpenTelemetry (from otel.sh) - Distributed tracing with W3C Trace Context
+    otel_init otel_trace_start otel_trace_end
+    otel_trace_add_event otel_trace_set_attribute otel_trace_set_status
+    otel_trace_id otel_span_id
+    otel_inject_headers otel_extract_headers
+    otel_export otel_flush
+    otel_instrument otel_timed
     # Property-Based Testing (from proptest.sh) - Random input generation and shrinking
     proptest_run proptest_check proptest_shrink proptest_suite proptest proptest_reset proptest_stats
     proptest_assert_eq proptest_assert_ne proptest_assert_match
@@ -1372,4 +1402,46 @@ BASHER_COMMON_EXPORTS=(
     forensics_bundle forensics_bundle_save forensics_bundle_load
     forensics_trap_install forensics_trap_uninstall
     forensics_clear forensics_status
+    # LLM Token Estimation (from llm_tokens.sh) - Model-specific token counting and cost estimation
+    llm_count_tokens llm_count_tokens_file llm_count_tokens_usop llm_clear_cache
+    llm_estimate_cost llm_get_pricing llm_list_models
+    llm_truncate_to_tokens llm_truncate_usop
+    llm_split_chunks llm_split_chunks_file
+    llm_context_window llm_fits_context llm_model_family
+    # LLM Function/Tool Calling (from llm_functions.sh) - Tool registration and execution
+    llm_register_tool llm_unregister_tool llm_list_tools llm_get_tool_schema
+    llm_tool_exists llm_clear_tools
+    llm_detect_format llm_parse_tool_call llm_parse_tool_calls
+    llm_validate_tool_args llm_validate_tool_args_errors
+    llm_execute_tool llm_execute_tool_safe
+    llm_format_tool_result llm_format_tool_error
+    llm_tools_to_openai llm_tools_to_anthropic llm_tool_export
+    llm_process_tool_call llm_tool_info
+    llm_parse_tool_call_v llm_execute_tool_v llm_validate_tool_args_v
+    # Function Registry (from registry.sh) - Function scanner and catalog system
+    registry_scan registry_scan_all
+    registry_get_function registry_list_by_category registry_list_by_library
+    registry_search registry_export registry_stats
+    registry_save_cache registry_load_cache registry_clear_cache
+    registry_list_categories registry_list_libraries registry_function_exists
+    registry_count registry_list_all
+    # Vector Database (from vectordb.sh) - Universal vector database interface
+    vectordb_init vectordb_reset vectordb_info vectordb_health
+    vectordb_create_collection vectordb_delete_collection vectordb_list_collections
+    vectordb_upsert vectordb_search vectordb_get vectordb_delete vectordb_count
+    # RAG Pipeline (from rag.sh) - Retrieval-Augmented Generation
+    rag_init rag_reset rag_is_initialized rag_collection
+    rag_ingest rag_ingest_file rag_ingest_text
+    rag_chunk_text
+    rag_query rag_search
+    rag_augment_prompt rag_rerank
+    rag_delete rag_stats
+    # Role-Based Access Control (from rbac.sh) - Enterprise RBAC for AI agents
+    rbac_init rbac_reset
+    rbac_define_role rbac_inherit_role rbac_delete_role rbac_list_roles rbac_get_role
+    rbac_assign_role rbac_revoke_role rbac_get_roles rbac_list_subjects
+    rbac_check_permission rbac_require_permission rbac_get_permissions
+    rbac_set_audit_log rbac_audit_access
+    rbac_export rbac_import
+    rbac_stats rbac_clear_cache
 )

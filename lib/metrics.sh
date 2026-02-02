@@ -1414,11 +1414,16 @@ timer_start() {
 
     [[ "$MAINFRAME_METRICS_ENABLED" != "1" ]] && { printf 'disabled'; return 0; }
 
-    local timer_id="timer_$((++_METRICS_TIMER_COUNTER))"
+    # Use file-based storage to survive subshell execution
+    local timer_dir="${MAINFRAME_METRICS_TIMER_DIR:-/tmp/mainframe_timers_$$}"
+    mkdir -p "$timer_dir" 2>/dev/null
+
+    local timer_id="timer_${RANDOM}_$(date +%s%N)"
     local start_time
     start_time=$(_metrics_now)
 
-    _METRICS_TIMERS[$timer_id]="$start_time:$metric_name:$labels"
+    # Store timer data in file (survives subshell)
+    printf '%s:%s:%s\n' "$start_time" "$metric_name" "$labels" > "$timer_dir/$timer_id"
 
     printf '%s' "$timer_id"
 }
@@ -1436,7 +1441,14 @@ timer_stop() {
 
     [[ "$MAINFRAME_METRICS_ENABLED" != "1" ]] && return 0
 
-    local timer_data="${_METRICS_TIMERS[$timer_id]:-}"
+    # Read timer data from file (survives subshell)
+    local timer_dir="${MAINFRAME_METRICS_TIMER_DIR:-/tmp/mainframe_timers_$$}"
+    local timer_file="$timer_dir/$timer_id"
+    local timer_data=""
+
+    if [[ -f "$timer_file" ]]; then
+        timer_data=$(<"$timer_file")
+    fi
 
     if [[ -z "$timer_data" ]]; then
         printf '{"error":true,"msg":"timer not found","timer_id":"%s"}\n' "$timer_id" >&2
@@ -1483,8 +1495,8 @@ timer_stop() {
             ;;
     esac
 
-    # Clean up timer
-    unset "_METRICS_TIMERS[$timer_id]"
+    # Clean up timer file
+    rm -f "$timer_file" 2>/dev/null
 
     # Return duration
     printf '%s' "$duration"
@@ -2193,3 +2205,401 @@ metrics_measure() {
     return $exit_code
 }
 
+# =============================================================================
+# API COMPATIBILITY LAYER
+# =============================================================================
+# These functions provide the simplified API specified for MAINFRAME metrics
+# collection. They wrap the more detailed internal implementation above.
+# =============================================================================
+
+# Metrics prefix for compatibility layer
+MAINFRAME_METRICS_PREFIX="${MAINFRAME_METRICS_PREFIX:-mainframe}"
+
+# Default histogram buckets (Prometheus standard)
+METRICS_DEFAULT_BUCKETS=(0.005 0.01 0.025 0.05 0.1 0.25 0.5 1.0 2.5 5.0 10.0)
+
+# @pre: none
+# @post: metrics system initialized with given prefix
+# @idempotent: yes
+# @returns: 0 on success
+#
+# Initialize the metrics system with an optional prefix.
+# All metric names will be prefixed with this value.
+#
+# Usage: metrics_init [--prefix PREFIX]
+# Example: metrics_init --prefix "myapp"
+metrics_init() {
+    local prefix="$MAINFRAME_METRICS_PREFIX"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --prefix)
+                prefix="$2"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    MAINFRAME_METRICS_PREFIX="$prefix"
+    MAINFRAME_METRICS_ENABLED=1
+
+    # Clear all metrics
+    metrics_clear
+
+    return 0
+}
+
+# @pre: value >= 0 (counters can only increase)
+# @post: counter incremented by value
+# @returns: 0 on success
+#
+# Increment a counter metric.
+# Counters can only increase; use gauges for values that can decrease.
+#
+# Usage: metrics_counter_inc NAME [VALUE] [LABELS...]
+# Example: metrics_counter_inc "http_requests_total" 1 method="GET" status="200"
+metrics_counter_inc() {
+    local name="$1"
+    local value="${2:-1}"
+    shift 2 2>/dev/null || shift
+
+    # Build labels string
+    local labels=""
+    if [[ $# -gt 0 ]]; then
+        labels=$(metric_labels_format "$@")
+    fi
+
+    # Add prefix if not already present
+    local full_name="$name"
+    if [[ "$name" != "${MAINFRAME_METRICS_PREFIX}_"* ]] && [[ -n "$MAINFRAME_METRICS_PREFIX" ]]; then
+        full_name="${MAINFRAME_METRICS_PREFIX}_${name}"
+    fi
+
+    # Auto-register if needed
+    if [[ -z "${_METRICS_REGISTRY[$full_name]:-}" ]]; then
+        metrics_register "$full_name" "counter" ""
+    fi
+
+    counter_add "$full_name" "$value" "$labels"
+}
+
+# @pre: counter exists
+# @post: none (read-only)
+# @returns: counter value on stdout
+#
+# Get the current value of a counter.
+#
+# Usage: metrics_counter_get NAME [LABELS...]
+# Example: value=$(metrics_counter_get "http_requests_total" method="GET")
+metrics_counter_get() {
+    local name="$1"
+    shift
+    local labels=""
+    if [[ $# -gt 0 ]]; then
+        labels=$(metric_labels_format "$@")
+    fi
+
+    local full_name="$name"
+    if [[ "$name" != "${MAINFRAME_METRICS_PREFIX}_"* ]] && [[ -n "$MAINFRAME_METRICS_PREFIX" ]]; then
+        full_name="${MAINFRAME_METRICS_PREFIX}_${name}"
+    fi
+
+    counter_get "$full_name" "$labels"
+}
+
+# @pre: none
+# @post: gauge set to value
+# @returns: 0 on success
+#
+# Set a gauge to a specific value.
+# Gauges can go up and down, unlike counters.
+#
+# Usage: metrics_gauge_set NAME VALUE [LABELS...]
+# Example: metrics_gauge_set "active_connections" 42 host="server1"
+metrics_gauge_set() {
+    local name="$1"
+    local value="$2"
+    shift 2 2>/dev/null || shift
+
+    local labels=""
+    if [[ $# -gt 0 ]]; then
+        labels=$(metric_labels_format "$@")
+    fi
+
+    local full_name="$name"
+    if [[ "$name" != "${MAINFRAME_METRICS_PREFIX}_"* ]] && [[ -n "$MAINFRAME_METRICS_PREFIX" ]]; then
+        full_name="${MAINFRAME_METRICS_PREFIX}_${name}"
+    fi
+
+    if [[ -z "${_METRICS_REGISTRY[$full_name]:-}" ]]; then
+        metrics_register "$full_name" "gauge" ""
+    fi
+
+    gauge_set "$full_name" "$value" "$labels"
+}
+
+# @pre: gauge exists
+# @post: gauge incremented
+# @returns: 0 on success
+#
+# Increment a gauge by a value (default: 1).
+#
+# Usage: metrics_gauge_inc NAME [VALUE] [LABELS...]
+# Example: metrics_gauge_inc "active_requests" 1
+metrics_gauge_inc() {
+    local name="$1"
+    local value="${2:-1}"
+    shift 2 2>/dev/null || shift
+
+    local labels=""
+    if [[ $# -gt 0 ]]; then
+        labels=$(metric_labels_format "$@")
+    fi
+
+    local full_name="$name"
+    if [[ "$name" != "${MAINFRAME_METRICS_PREFIX}_"* ]] && [[ -n "$MAINFRAME_METRICS_PREFIX" ]]; then
+        full_name="${MAINFRAME_METRICS_PREFIX}_${name}"
+    fi
+
+    if [[ -z "${_METRICS_REGISTRY[$full_name]:-}" ]]; then
+        metrics_register "$full_name" "gauge" ""
+    fi
+
+    gauge_add "$full_name" "$value" "$labels"
+}
+
+# @pre: gauge exists
+# @post: gauge decremented
+# @returns: 0 on success
+#
+# Decrement a gauge by a value (default: 1).
+#
+# Usage: metrics_gauge_dec NAME [VALUE] [LABELS...]
+# Example: metrics_gauge_dec "active_requests" 1
+metrics_gauge_dec() {
+    local name="$1"
+    local value="${2:-1}"
+    shift 2 2>/dev/null || shift
+
+    local labels=""
+    if [[ $# -gt 0 ]]; then
+        labels=$(metric_labels_format "$@")
+    fi
+
+    local full_name="$name"
+    if [[ "$name" != "${MAINFRAME_METRICS_PREFIX}_"* ]] && [[ -n "$MAINFRAME_METRICS_PREFIX" ]]; then
+        full_name="${MAINFRAME_METRICS_PREFIX}_${name}"
+    fi
+
+    if [[ -z "${_METRICS_REGISTRY[$full_name]:-}" ]]; then
+        metrics_register "$full_name" "gauge" ""
+    fi
+
+    gauge_sub "$full_name" "$value" "$labels"
+}
+
+# @pre: gauge exists
+# @post: none (read-only)
+# @returns: gauge value on stdout
+#
+# Get the current value of a gauge.
+#
+# Usage: metrics_gauge_get NAME [LABELS...]
+# Example: value=$(metrics_gauge_get "active_connections")
+metrics_gauge_get() {
+    local name="$1"
+    shift
+    local labels=""
+    if [[ $# -gt 0 ]]; then
+        labels=$(metric_labels_format "$@")
+    fi
+
+    local full_name="$name"
+    if [[ "$name" != "${MAINFRAME_METRICS_PREFIX}_"* ]] && [[ -n "$MAINFRAME_METRICS_PREFIX" ]]; then
+        full_name="${MAINFRAME_METRICS_PREFIX}_${name}"
+    fi
+
+    gauge_get "$full_name" "$labels"
+}
+
+# @pre: value is numeric
+# @post: histogram observation recorded
+# @returns: 0 on success
+#
+# Record an observation in a histogram.
+# Histograms track the distribution of values using configurable buckets.
+#
+# Usage: metrics_histogram_observe NAME VALUE [LABELS...]
+# Example: metrics_histogram_observe "request_duration_seconds" 0.235 method="GET"
+metrics_histogram_observe() {
+    local name="$1"
+    local value="$2"
+    shift 2 2>/dev/null || shift
+
+    local labels=""
+    if [[ $# -gt 0 ]]; then
+        labels=$(metric_labels_format "$@")
+    fi
+
+    local full_name="$name"
+    if [[ "$name" != "${MAINFRAME_METRICS_PREFIX}_"* ]] && [[ -n "$MAINFRAME_METRICS_PREFIX" ]]; then
+        full_name="${MAINFRAME_METRICS_PREFIX}_${name}"
+    fi
+
+    if [[ -z "${_METRICS_REGISTRY[$full_name]:-}" ]]; then
+        histogram_create "$full_name" "${METRICS_DEFAULT_BUCKETS[*]}" ""
+    fi
+
+    histogram_observe "$full_name" "$value" "$labels"
+}
+
+# @pre: value is numeric
+# @post: summary observation recorded
+# @returns: 0 on success
+#
+# Record an observation in a summary.
+# Summaries calculate quantiles over a sliding time window.
+#
+# Usage: metrics_summary_observe NAME VALUE [LABELS...]
+# Example: metrics_summary_observe "request_latency_seconds" 0.123 method="GET"
+metrics_summary_observe() {
+    local name="$1"
+    local value="$2"
+    shift 2 2>/dev/null || shift
+
+    local labels=""
+    if [[ $# -gt 0 ]]; then
+        labels=$(metric_labels_format "$@")
+    fi
+
+    local full_name="$name"
+    if [[ "$name" != "${MAINFRAME_METRICS_PREFIX}_"* ]] && [[ -n "$MAINFRAME_METRICS_PREFIX" ]]; then
+        full_name="${MAINFRAME_METRICS_PREFIX}_${name}"
+    fi
+
+    if [[ -z "${_METRICS_REGISTRY[$full_name]:-}" ]]; then
+        summary_create "$full_name" ""
+    fi
+
+    summary_observe "$full_name" "$value" "$labels"
+}
+
+# @pre: metrics have been collected
+# @post: Prometheus-format metrics output to stdout
+# @returns: 0
+#
+# Export all metrics in Prometheus text format.
+#
+# Usage: metrics_export
+# Example: metrics_export > /var/lib/prometheus/textfile/myapp.prom
+metrics_export() {
+    metrics_export_prometheus
+}
+
+# @pre: pushgateway_url is valid HTTP(S) URL
+# @post: metrics pushed to Prometheus Pushgateway
+# @returns: 0 on success, 1 on failure
+#
+# Push all metrics to a Prometheus Pushgateway.
+#
+# Usage: metrics_push PUSHGATEWAY_URL [--job JOB] [--instance INSTANCE]
+# Example: metrics_push "http://localhost:9091" --job myapp --instance server1
+metrics_push() {
+    local url="$1"
+    local job="${MAINFRAME_METRICS_PREFIX:-mainframe}"
+    local instance="${HOSTNAME:-localhost}"
+    shift
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --job)
+                job="$2"
+                shift 2
+                ;;
+            --instance)
+                instance="$2"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    metrics_push_gateway "$url" "$job" "$instance"
+}
+
+# =============================================================================
+# MODULE EXPORTS
+# =============================================================================
+
+MAINFRAME_METRICS_EXPORTS=(
+    # Initialization
+    metrics_init
+    metrics_register
+    metrics_unregister
+    metrics_list
+    metrics_get
+    metrics_clear
+    # Counter operations
+    metrics_counter_inc
+    metrics_counter_get
+    counter_create
+    counter_inc
+    counter_add
+    counter_get
+    counter_reset
+    counter_labels
+    # Gauge operations
+    metrics_gauge_set
+    metrics_gauge_inc
+    metrics_gauge_dec
+    metrics_gauge_get
+    gauge_create
+    gauge_set
+    gauge_inc
+    gauge_dec
+    gauge_add
+    gauge_sub
+    gauge_get
+    gauge_labels
+    # Histogram operations
+    metrics_histogram_observe
+    histogram_create
+    histogram_observe
+    histogram_get_buckets
+    histogram_get_sum
+    histogram_get_count
+    histogram_labels
+    histogram_quantile
+    # Summary operations
+    metrics_summary_observe
+    summary_create
+    summary_observe
+    summary_get_quantiles
+    summary_get_sum
+    summary_get_count
+    # Timer helpers
+    timer_start
+    timer_stop
+    timer_observe
+    # Export functions
+    metrics_export
+    metrics_export_prometheus
+    metrics_export_json
+    metrics_export_openmetrics
+    # Pushgateway
+    metrics_push
+    metrics_push_gateway
+    # HTTP Server
+    metrics_serve
+    # Utilities
+    metrics_update_process
+    metrics_measure
+    metric_name_valid
+    metric_labels_format
+    metric_timestamp
+)

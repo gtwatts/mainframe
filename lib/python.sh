@@ -1492,8 +1492,10 @@ py_config() {
         local toml="$dir/pyproject.toml"
 
         # Name and version
-        name=$(grep -m1 "^name" "$toml" 2>/dev/null | sed 's/.*=\s*"\([^"]*\)".*/\1/' || echo "unknown")
-        version=$(grep -m1 "^version" "$toml" 2>/dev/null | sed 's/.*=\s*"\([^"]*\)".*/\1/' || echo "unknown")
+        name=$(grep -m1 "^name" "$toml" 2>/dev/null | sed 's/.*=\s*"\([^"]*\)".*/\1/')
+        [[ -z "$name" ]] && name="unknown"
+        version=$(grep -m1 "^version" "$toml" 2>/dev/null | sed 's/.*=\s*"\([^"]*\)".*/\1/')
+        [[ -z "$version" ]] && version="unknown"
 
         # Dependencies
         local in_deps=0 deps_arr=""

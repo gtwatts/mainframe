@@ -12,6 +12,7 @@
 #   quickref    Show compact function signatures (with --search for lookup)
 #   fzf         Interactive fuzzy finder for functions (requires fzf)
 #   explore     TUI browser for functions (requires dialog/whiptail)
+#   build       Build static binaries, bundles, or containers
 #   benchmark   Run performance benchmarks
 #   test        Run test suite
 #   doctor      Check MAINFRAME installation
@@ -46,10 +47,18 @@ Commands:
   quickref    Show compact function signatures (with --search for lookup)
   fzf         Interactive fuzzy finder with preview (requires fzf)
   explore     TUI browser with drill-down menus (requires dialog/whiptail)
+  build       Build static binaries, minimal bundles, or container images
   benchmark   Run performance benchmarks
   test        Run test suite (requires bats)
   doctor      Check MAINFRAME installation health
   update      Update MAINFRAME (git-based installations only)
+
+Scaffolding:
+  new agent <name>     Create a new agent project
+  new tool <name>      Create a new tool/function file
+  new workflow <name>  Create a new workflow definition
+  new library <name>   Create a new MAINFRAME library
+  init                 Initialize MAINFRAME in current directory
 
 Examples:
   mainframe version
@@ -64,8 +73,14 @@ Examples:
   mainframe fzf                    # Browse all functions interactively
   mainframe fzf json               # Browse only json library
   mainframe explore                # TUI browser with menus
+  mainframe build static agent.sh  # Create standalone script
+  mainframe build minimal agent.sh # Create minimal bundle
+  mainframe build container agent.sh # Generate Dockerfile
   mainframe count
   mainframe doctor
+  mainframe new agent my-worker    # Scaffold new agent
+  mainframe new tool validate_cfg  # Scaffold new tool
+  mainframe init                   # Initialize in current dir
 
 Documentation: https://github.com/gtwatts/mainframe
 EOF
@@ -814,6 +829,15 @@ case "${1:-help}" in
         ;;
     update|upgrade)
         cmd_update
+        ;;
+    new|init)
+        # Delegate to mainframe-new CLI
+        exec "$MAINFRAME_ROOT/bin/mainframe-new" "$@"
+        ;;
+    build)
+        # Delegate to mainframe-build CLI
+        shift  # Remove 'build' from args
+        exec "$MAINFRAME_ROOT/bin/mainframe-build" "$@"
         ;;
     -h|--help)
         show_help

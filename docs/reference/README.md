@@ -25,6 +25,7 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 | [Agent](agent.md) | idempotent.sh, atomic.sh, observe.sh, diff.sh, context.sh | AI agent primitives |
 | [AWM](awm.md) | awm.sh | Agent Working Memory |
 | [Advanced](advanced.md) | Specialized libraries | Streaming, testing, sandbox, events |
+| [Build CLI](build.md) | mainframe-build | Static binary builder, container generator |
 
 ## Quick Lookup
 

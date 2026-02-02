@@ -137,6 +137,7 @@ sandbox_enable() {
     [[ -n "$_SANDBOX_ROOT" ]] && echo "  Root: $_SANDBOX_ROOT"
     echo "  Timeout: ${_SANDBOX_TIMEOUT}s"
     [[ -n "$_SANDBOX_MAX_MEMORY" ]] && echo "  Max memory: $_SANDBOX_MAX_MEMORY"
+    return 0
 }
 
 # sandbox_disable - Disable sandboxing
@@ -1689,6 +1690,645 @@ sandbox_reset() {
 }
 
 # =============================================================================
+# PERMISSION-BASED SANDBOXING API (v2.1)
+# =============================================================================
+# Extended API for fine-grained permission control using action:resource format.
+# Designed for AI coding agents that need explicit permission grants/denials.
+# =============================================================================
+
+# Permission format: action:resource
+# Examples:
+#   - read:/home/user/*
+#   - write:/tmp/*
+#   - exec:/usr/bin/curl
+#   - network:api.openai.com
+#   - network:*
+#   - env:read:API_KEY
+#   - env:write:*
+
+# Permission mode: strict|permissive|disabled
+declare -g SANDBOX_PERMISSION_MODE="${SANDBOX_PERMISSION_MODE:-strict}"
+
+# Associative arrays for permissions (key=permission, value=1)
+declare -gA _SANDBOX_PERM_ALLOWED=()
+declare -gA _SANDBOX_PERM_DENIED=()
+
+# Violations tracking
+declare -ga _SANDBOX_PERM_VIOLATIONS=()
+
+# Operation counter
+declare -g _SANDBOX_PERM_OP_COUNT=0
+
+# Dangerous commands list for permission system
+declare -ga _SANDBOX_DANGEROUS_COMMANDS=(
+    "rm" "rmdir" "mv" "dd"
+    "chmod" "chown" "chgrp"
+    "kill" "killall" "pkill"
+    "shutdown" "reboot" "halt"
+    "mkfs" "fdisk" "parted"
+    "iptables" "ufw"
+    "curl" "wget"
+    "ssh" "scp" "rsync"
+    "sudo" "su"
+    "eval" "exec"
+)
+
+# -----------------------------------------------------------------------------
+# Internal Helpers for Permission System
+# -----------------------------------------------------------------------------
+
+# JSON-escape a string for permission system
+_sandbox_perm_escape() {
+    local str="$1"
+    if declare -F json_escape &>/dev/null; then
+        json_escape "$str"
+        return
+    fi
+    str="${str//\\/\\\\}"
+    str="${str//\"/\\\"}"
+    str="${str//$'\n'/\\n}"
+    str="${str//$'\t'/\\t}"
+    str="${str//$'\r'/\\r}"
+    printf '%s' "$str"
+}
+
+# Get current timestamp
+_sandbox_perm_timestamp() {
+    date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S
+}
+
+# Check if path matches pattern (glob-style)
+_sandbox_perm_path_matches() {
+    local path="$1"
+    local pattern="$2"
+
+    [[ "$path" == "$pattern" ]] && return 0
+
+    if [[ "$pattern" == *"*"* ]]; then
+        local prefix="${pattern%%\**}"
+        [[ "$path" == "$prefix"* ]] && return 0
+    fi
+
+    return 1
+}
+
+# Extract permission type from string
+_sandbox_perm_type() {
+    printf '%s' "${1%%:*}"
+}
+
+# Extract permission resource from string
+_sandbox_perm_resource() {
+    printf '%s' "${1#*:}"
+}
+
+# Check if command is dangerous
+_sandbox_perm_is_dangerous() {
+    local cmd="$1"
+    local base_cmd="${cmd%% *}"
+    base_cmd="${base_cmd##*/}"
+
+    local dangerous
+    for dangerous in "${_SANDBOX_DANGEROUS_COMMANDS[@]}"; do
+        [[ "$base_cmd" == "$dangerous" ]] && return 0
+    done
+    return 1
+}
+
+# USOP-compliant success output
+_sandbox_perm_success() {
+    local data="$1"
+    if [[ "${MAINFRAME_OUTPUT:-raw}" == "json" ]]; then
+        printf '{"ok":true,"data":%s}' "$data"
+    else
+        printf '%s' "$data"
+    fi
+}
+
+# USOP-compliant error output
+_sandbox_perm_error() {
+    local code="$1"
+    local msg="$2"
+    local suggestion="${3:-}"
+
+    if [[ "${MAINFRAME_OUTPUT:-raw}" == "json" ]]; then
+        printf '{"ok":false,"error":{"code":"%s","msg":"%s"' \
+            "$(_sandbox_perm_escape "$code")" \
+            "$(_sandbox_perm_escape "$msg")"
+        if [[ -n "$suggestion" ]]; then
+            printf ',"suggestion":"%s"' "$(_sandbox_perm_escape "$suggestion")"
+        fi
+        printf '}}'
+    else
+        printf 'error: [%s] %s\n' "$code" "$msg" >&2
+    fi
+    return 1
+}
+
+# -----------------------------------------------------------------------------
+# Permission Mode Management
+# -----------------------------------------------------------------------------
+
+# sandbox_mode - Get or set permission mode
+# @param $1 - mode: strict|permissive|disabled (optional)
+# @returns: current mode if no arg, 0 on success, 1 on invalid
+#
+# Usage: sandbox_mode              # Get mode
+# Usage: sandbox_mode "strict"     # Set mode
+sandbox_mode() {
+    local mode="$1"
+
+    if [[ -z "$mode" ]]; then
+        printf '%s' "$SANDBOX_PERMISSION_MODE"
+        return 0
+    fi
+
+    case "$mode" in
+        strict|permissive|disabled)
+            SANDBOX_PERMISSION_MODE="$mode"
+            _sandbox_log "mode_changed" "{\"mode\":\"$mode\"}"
+            return 0
+            ;;
+        *)
+            _sandbox_perm_error "E_INVALID_MODE" \
+                "Invalid sandbox mode: $mode" \
+                "Valid modes: strict, permissive, disabled"
+            return 1
+            ;;
+    esac
+}
+
+# -----------------------------------------------------------------------------
+# Permission Management API
+# -----------------------------------------------------------------------------
+
+# sandbox_allow - Grant a permission
+# @param $1 - permission string (e.g., "write:/tmp/*")
+# @returns: 0 on success, 1 on invalid
+#
+# Usage: sandbox_allow "write:/tmp/*"
+# Usage: sandbox_allow "network:api.openai.com"
+sandbox_allow() {
+    local permission="$1"
+
+    if [[ -z "$permission" ]]; then
+        _sandbox_perm_error "E_ARG_MISSING" "Permission string required"
+        return 1
+    fi
+
+    if [[ ! "$permission" =~ ^[a-z]+:.+ ]]; then
+        _sandbox_perm_error "E_INVALID_PERM" \
+            "Invalid permission format: $permission" \
+            "Format: action:resource (e.g., write:/tmp/*)"
+        return 1
+    fi
+
+    _SANDBOX_PERM_ALLOWED["$permission"]=1
+    unset '_SANDBOX_PERM_DENIED[$permission]' 2>/dev/null || true
+
+    _sandbox_log "perm_allow" "{\"permission\":\"$permission\"}"
+    return 0
+}
+
+# sandbox_deny - Deny a permission
+# @param $1 - permission string
+# @returns: 0 on success, 1 on invalid
+#
+# Usage: sandbox_deny "network:*"
+sandbox_deny() {
+    local permission="$1"
+
+    if [[ -z "$permission" ]]; then
+        _sandbox_perm_error "E_ARG_MISSING" "Permission string required"
+        return 1
+    fi
+
+    if [[ ! "$permission" =~ ^[a-z]+:.+ ]]; then
+        _sandbox_perm_error "E_INVALID_PERM" \
+            "Invalid permission format: $permission" \
+            "Format: action:resource (e.g., network:*)"
+        return 1
+    fi
+
+    _SANDBOX_PERM_DENIED["$permission"]=1
+    unset '_SANDBOX_PERM_ALLOWED[$permission]' 2>/dev/null || true
+
+    _sandbox_log "perm_deny" "{\"permission\":\"$permission\"}"
+    return 0
+}
+
+# sandbox_check_permission - Check if permission is granted
+# @param $1 - permission string
+# @returns: 0 if allowed, 1 if denied
+#
+# Usage: sandbox_check_permission "write:/tmp/test.txt" && echo "allowed"
+sandbox_check_permission() {
+    local permission="$1"
+
+    [[ -z "$permission" ]] && return 1
+
+    # Disabled mode = everything allowed
+    [[ "$SANDBOX_PERMISSION_MODE" == "disabled" ]] && return 0
+
+    local perm_type perm_resource
+    perm_type=$(_sandbox_perm_type "$permission")
+    perm_resource=$(_sandbox_perm_resource "$permission")
+
+    # Check explicit denials first
+    for denied_perm in "${!_SANDBOX_PERM_DENIED[@]}"; do
+        local denied_type denied_resource
+        denied_type=$(_sandbox_perm_type "$denied_perm")
+        denied_resource=$(_sandbox_perm_resource "$denied_perm")
+
+        if [[ "$perm_type" == "$denied_type" ]]; then
+            if _sandbox_perm_path_matches "$perm_resource" "$denied_resource"; then
+                return 1
+            fi
+        fi
+    done
+
+    # Check explicit allows
+    for allowed_perm in "${!_SANDBOX_PERM_ALLOWED[@]}"; do
+        local allowed_type allowed_resource
+        allowed_type=$(_sandbox_perm_type "$allowed_perm")
+        allowed_resource=$(_sandbox_perm_resource "$allowed_perm")
+
+        if [[ "$perm_type" == "$allowed_type" ]]; then
+            if _sandbox_perm_path_matches "$perm_resource" "$allowed_resource"; then
+                return 0
+            fi
+        fi
+    done
+
+    # Permissive mode = allow by default
+    [[ "$SANDBOX_PERMISSION_MODE" == "permissive" ]] && return 0
+
+    # Strict mode = deny by default
+    return 1
+}
+
+# sandbox_list_permissions - List all current permissions
+# @returns: JSON object with allowed and denied arrays
+#
+# Usage: sandbox_list_permissions
+sandbox_list_permissions() {
+    local json='{"allowed":['
+    local first=true
+
+    for perm in "${!_SANDBOX_PERM_ALLOWED[@]}"; do
+        if [[ "$first" == "true" ]]; then
+            first=false
+        else
+            json+=','
+        fi
+        json+="\"$(_sandbox_perm_escape "$perm")\""
+    done
+
+    json+='],"denied":['
+    first=true
+
+    for perm in "${!_SANDBOX_PERM_DENIED[@]}"; do
+        if [[ "$first" == "true" ]]; then
+            first=false
+        else
+            json+=','
+        fi
+        json+="\"$(_sandbox_perm_escape "$perm")\""
+    done
+
+    json+=']}'
+    _sandbox_perm_success "$json"
+}
+
+# sandbox_reset_permissions - Reset permissions to empty
+# @returns: 0
+#
+# Usage: sandbox_reset_permissions
+sandbox_reset_permissions() {
+    _SANDBOX_PERM_ALLOWED=()
+    _SANDBOX_PERM_DENIED=()
+    _SANDBOX_PERM_VIOLATIONS=()
+    _SANDBOX_PERM_OP_COUNT=0
+
+    _sandbox_log "perm_reset" "{}"
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# Permission-Aware Execution
+# -----------------------------------------------------------------------------
+
+# sandbox_exec_checked - Execute command with permission checks
+# @param $@ - command and arguments
+# @returns: command exit code if allowed, 1 if denied
+#
+# Usage: sandbox_exec_checked rm -f /tmp/test.txt
+sandbox_exec_checked() {
+    local command="$1"
+    shift
+    local -a args=("$@")
+
+    if [[ -z "$command" ]]; then
+        _sandbox_perm_error "E_ARG_MISSING" "Command required"
+        return 1
+    fi
+
+    (( _SANDBOX_PERM_OP_COUNT++ )) || true
+
+    # Disabled mode = execute directly
+    if [[ "$SANDBOX_PERMISSION_MODE" == "disabled" ]]; then
+        _sandbox_log "exec_unchecked" "{\"cmd\":\"$command\"}"
+        "$command" "${args[@]}"
+        return $?
+    fi
+
+    # Build required permissions
+    local -a required_perms=()
+    local base_cmd="${command##*/}"
+
+    required_perms+=("exec:$command")
+
+    if _sandbox_perm_is_dangerous "$command"; then
+        required_perms+=("dangerous:$base_cmd")
+    fi
+
+    # Detect network commands
+    case "$base_cmd" in
+        curl|wget|ssh|scp|rsync|nc|ncat)
+            for arg in "${args[@]}"; do
+                if [[ "$arg" =~ ^https?:// ]]; then
+                    local target="${arg#*://}"
+                    target="${target%%/*}"
+                    target="${target%%:*}"
+                    required_perms+=("network:$target")
+                    break
+                fi
+            done
+            ;;
+    esac
+
+    # Detect file operations
+    case "$base_cmd" in
+        rm|rmdir|mv|dd|mkfs)
+            for arg in "${args[@]}"; do
+                [[ "$arg" == -* ]] && continue
+                required_perms+=("write:$arg")
+            done
+            ;;
+        cat|less|head|tail|grep|find)
+            for arg in "${args[@]}"; do
+                [[ "$arg" == -* ]] && continue
+                required_perms+=("read:$arg")
+            done
+            ;;
+    esac
+
+    # Check all required permissions
+    local denied_perm=""
+    for perm in "${required_perms[@]}"; do
+        if ! sandbox_check_permission "$perm"; then
+            denied_perm="$perm"
+            break
+        fi
+    done
+
+    if [[ -n "$denied_perm" ]]; then
+        # Record violation
+        local violation_json
+        violation_json=$(printf '{"timestamp":"%s","command":"%s","denied_permission":"%s","mode":"%s"}' \
+            "$(_sandbox_perm_timestamp)" \
+            "$(_sandbox_perm_escape "$command ${args[*]}")" \
+            "$(_sandbox_perm_escape "$denied_perm")" \
+            "$SANDBOX_PERMISSION_MODE")
+        _SANDBOX_PERM_VIOLATIONS+=("$violation_json")
+
+        _sandbox_log "exec_denied" "{\"cmd\":\"$command\",\"perm\":\"$denied_perm\"}"
+
+        if [[ "$SANDBOX_PERMISSION_MODE" == "permissive" ]]; then
+            "$command" "${args[@]}"
+            return $?
+        else
+            _sandbox_perm_error "E_PERMISSION_DENIED" \
+                "Command blocked: $command" \
+                "Grant permission with: sandbox_allow \"$denied_perm\""
+            return 1
+        fi
+    fi
+
+    _sandbox_log "exec_allowed" "{\"cmd\":\"$command\"}"
+    "$command" "${args[@]}"
+    return $?
+}
+
+# sandbox_dry_run_checked - Preview command without executing
+# @param $@ - command and arguments
+# @returns: JSON preview object
+#
+# Usage: sandbox_dry_run_checked rm -rf /tmp/test
+sandbox_dry_run_checked() {
+    local command="$1"
+    shift
+    local -a args=("$@")
+
+    if [[ -z "$command" ]]; then
+        _sandbox_perm_error "E_ARG_MISSING" "Command required"
+        return 1
+    fi
+
+    local base_cmd="${command##*/}"
+    local -a required_perms=()
+    required_perms+=("exec:$command")
+
+    if _sandbox_perm_is_dangerous "$command"; then
+        required_perms+=("dangerous:$base_cmd")
+    fi
+
+    # Detect additional permissions
+    case "$base_cmd" in
+        curl|wget|ssh|scp)
+            for arg in "${args[@]}"; do
+                if [[ "$arg" =~ ^https?:// ]]; then
+                    local target="${arg#*://}"
+                    target="${target%%/*}"
+                    target="${target%%:*}"
+                    required_perms+=("network:$target")
+                    break
+                fi
+            done
+            ;;
+        rm|rmdir|mv|dd)
+            for arg in "${args[@]}"; do
+                [[ "$arg" == -* ]] && continue
+                required_perms+=("write:$arg")
+            done
+            ;;
+        cat|less|head|tail|grep)
+            for arg in "${args[@]}"; do
+                [[ "$arg" == -* ]] && continue
+                required_perms+=("read:$arg")
+            done
+            ;;
+    esac
+
+    # Check permissions
+    local would_execute=true
+    local all_granted=true
+    local -a denied_perms=()
+
+    for perm in "${required_perms[@]}"; do
+        if ! sandbox_check_permission "$perm"; then
+            denied_perms+=("$perm")
+            all_granted=false
+            [[ "$SANDBOX_PERMISSION_MODE" == "strict" ]] && would_execute=false
+        fi
+    done
+
+    # Build preview description
+    local preview=""
+    case "$base_cmd" in
+        rm)
+            if [[ " ${args[*]} " == *" -rf "* ]] || [[ " ${args[*]} " == *" -r "* ]]; then
+                preview="Would recursively delete"
+            else
+                preview="Would delete"
+            fi
+            for arg in "${args[@]}"; do
+                [[ "$arg" != -* ]] && preview+=" $arg"
+            done
+            ;;
+        mv)
+            preview="Would move ${args[0]:-} to ${args[1]:-}"
+            ;;
+        cp)
+            preview="Would copy ${args[0]:-} to ${args[1]:-}"
+            ;;
+        curl|wget)
+            preview="Would fetch URL"
+            for arg in "${args[@]}"; do
+                [[ "$arg" =~ ^https?:// ]] && preview+=" $arg" && break
+            done
+            ;;
+        mkdir)
+            preview="Would create directory"
+            for arg in "${args[@]}"; do
+                [[ "$arg" != -* ]] && preview+=" $arg"
+            done
+            ;;
+        *)
+            preview="Would execute: $command ${args[*]}"
+            ;;
+    esac
+
+    # Build JSON arrays
+    local perms_req_json perms_denied_json
+    perms_req_json=$(printf '['; local f=1; for p in "${required_perms[@]}"; do [[ $f == 1 ]] && f=0 || printf ','; printf '"%s"' "$p"; done; printf ']')
+    perms_denied_json=$(printf '['; local f=1; for p in "${denied_perms[@]}"; do [[ $f == 1 ]] && f=0 || printf ','; printf '"%s"' "$p"; done; printf ']')
+
+    local result_json
+    result_json=$(printf '{"command":"%s","would_execute":%s,"permissions_required":%s,"permissions_denied":%s,"permissions_granted":%s,"dry_run":true,"preview":"%s","mode":"%s"}' \
+        "$(_sandbox_perm_escape "$command ${args[*]}")" \
+        "$would_execute" \
+        "$perms_req_json" \
+        "$perms_denied_json" \
+        "$all_granted" \
+        "$(_sandbox_perm_escape "$preview")" \
+        "$SANDBOX_PERMISSION_MODE")
+
+    _sandbox_perm_success "$result_json"
+}
+
+# -----------------------------------------------------------------------------
+# Violation Tracking
+# -----------------------------------------------------------------------------
+
+# sandbox_violations - Get list of permission violations
+# @returns: JSON array of violations
+#
+# Usage: sandbox_violations
+sandbox_violations() {
+    local json='['
+    local first=true
+
+    for violation in "${_SANDBOX_PERM_VIOLATIONS[@]}"; do
+        if [[ "$first" == "true" ]]; then
+            first=false
+        else
+            json+=','
+        fi
+        json+="$violation"
+    done
+
+    json+=']'
+    _sandbox_perm_success "$json"
+}
+
+# sandbox_clear_violations - Clear violation log
+# @returns: 0
+#
+# Usage: sandbox_clear_violations
+sandbox_clear_violations() {
+    _SANDBOX_PERM_VIOLATIONS=()
+    _sandbox_log "violations_cleared" "{}"
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# Permission Status
+# -----------------------------------------------------------------------------
+
+# sandbox_permission_status - Get permission system status
+# @returns: JSON status object
+#
+# Usage: sandbox_permission_status
+sandbox_permission_status() {
+    local allowed_count=${#_SANDBOX_PERM_ALLOWED[@]}
+    local denied_count=${#_SANDBOX_PERM_DENIED[@]}
+    local violation_count=${#_SANDBOX_PERM_VIOLATIONS[@]}
+
+    local json
+    json=$(printf '{"mode":"%s","permissions":{"allowed":%d,"denied":%d},"violations":%d,"operations":%d}' \
+        "$SANDBOX_PERMISSION_MODE" \
+        "$allowed_count" \
+        "$denied_count" \
+        "$violation_count" \
+        "$_SANDBOX_PERM_OP_COUNT")
+
+    _sandbox_perm_success "$json"
+}
+
+# -----------------------------------------------------------------------------
+# Convenience Wrappers
+# -----------------------------------------------------------------------------
+
+# sandbox_can_read - Check read permission for path
+# @param $1 - path
+# @returns: 0 if allowed, 1 if denied
+sandbox_can_read() {
+    sandbox_check_permission "read:$1"
+}
+
+# sandbox_can_write - Check write permission for path
+# @param $1 - path
+# @returns: 0 if allowed, 1 if denied
+sandbox_can_write() {
+    sandbox_check_permission "write:$1"
+}
+
+# sandbox_can_exec - Check exec permission for command
+# @param $1 - command
+# @returns: 0 if allowed, 1 if denied
+sandbox_can_exec() {
+    sandbox_check_permission "exec:$1"
+}
+
+# sandbox_can_network - Check network permission for host
+# @param $1 - hostname
+# @returns: 0 if allowed, 1 if denied
+sandbox_can_network() {
+    sandbox_check_permission "network:$1"
+}
+
+# =============================================================================
 # Module Exports
 # =============================================================================
 
@@ -1707,6 +2347,22 @@ declare -ga _SANDBOX_EXPORTS=(
     sandbox_rm
     sandbox_status
     sandbox_check
+    # Permission-based API exports (v2.1)
+    sandbox_mode
+    sandbox_allow
+    sandbox_deny
+    sandbox_check_permission
+    sandbox_list_permissions
+    sandbox_reset_permissions
+    sandbox_exec_checked
+    sandbox_dry_run_checked
+    sandbox_violations
+    sandbox_clear_violations
+    sandbox_permission_status
+    sandbox_can_read
+    sandbox_can_write
+    sandbox_can_exec
+    sandbox_can_network
     # Bubblewrap exports
     sandbox_available
     sandbox_version

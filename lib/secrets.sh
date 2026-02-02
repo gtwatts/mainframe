@@ -1922,6 +1922,175 @@ secret_status() {
 }
 
 # =============================================================================
+# COMPATIBILITY ALIASES
+# =============================================================================
+
+# @pre: master key set, secret exists
+# @post: secret value returned
+# @idempotent: yes
+# @returns: 0 on success, 1 on failure
+#
+# Alias for secret_retrieve for common naming convention.
+#
+# Usage: secret_get "name"
+# Example: api_key=$(secret_get "api_key")
+secret_get() {
+    secret_retrieve "$@"
+}
+
+# @pre: master key set, name non-empty, value non-empty
+# @post: encrypted secret stored
+# @idempotent: yes
+# @returns: 0 on success, 1 on failure
+#
+# Alias for secret_store for common naming convention.
+# Note: --backend flag is accepted but ignored (uses local encrypted storage)
+#
+# Usage: secret_set "name" "value" [--backend backend]
+# Example: secret_set "api_key" "sk-abc123"
+secret_set() {
+    local name="$1"
+    local value="$2"
+    shift 2 2>/dev/null || shift
+
+    # Parse and ignore --backend flag for compatibility
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --backend|-b)
+                shift 2 2>/dev/null || shift
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    secret_store "$name" "$value"
+}
+
+# =============================================================================
+# SECRET MASKING (Security: Never log plaintext secrets)
+# =============================================================================
+
+# @pre: value non-empty
+# @post: returns masked value showing only first/last chars
+# @idempotent: yes
+# @returns: 0 on success
+#
+# Mask a secret value for safe logging.
+#
+# Usage: secret_mask "sk-proj-abc123xyz789"
+# Output: "sk**89" (first 2, last 2 chars visible)
+# Usage: secret_mask "secret" 3 3
+# Output: "sec***ret"
+secret_mask() {
+    local value="$1"
+    local visible_start="${2:-2}"
+    local visible_end="${3:-2}"
+    local len=${#value}
+
+    # Handle empty or short values
+    if [[ -z "$value" ]]; then
+        printf '****\n'
+        return 0
+    fi
+
+    if [[ $len -le $((visible_start + visible_end)) ]]; then
+        printf '****\n'
+        return 0
+    fi
+
+    local start="${value:0:$visible_start}"
+    local end="${value:$((len - visible_end))}"
+    local mask_len=$((len - visible_start - visible_end))
+    local mask
+    mask=$(printf '%*s' "$mask_len" '' | tr ' ' '*')
+
+    printf '%s%s%s\n' "$start" "$mask" "$end"
+}
+
+# =============================================================================
+# BACKEND MANAGEMENT (Compatibility Layer)
+# =============================================================================
+# The MAINFRAME secrets library uses local encrypted storage as its primary
+# backend. These functions provide compatibility with multi-backend patterns.
+# =============================================================================
+
+# Registered backends (for compatibility)
+declare -gA _SECRETS_BACKENDS=(
+    ["local"]='{"type":"encrypted","storage":"local","status":"active"}'
+)
+
+# @pre: name valid, config valid JSON
+# @post: backend registered (note: only local backend is functional)
+# @idempotent: yes
+# @returns: 0 on success, 1 on failure
+#
+# Register a custom backend configuration.
+# Note: Only the built-in "local" encrypted backend is fully functional.
+# Other backends are registered for metadata purposes but not implemented.
+#
+# Usage: secret_backend_add "name" '{"type":"vault","endpoint":"..."}'
+# Example: secret_backend_add "vault" '{"type":"vault","addr":"http://localhost:8200"}'
+secret_backend_add() {
+    local name="$1"
+    local config="$2"
+
+    if [[ -z "$name" ]]; then
+        _secrets_log error "secret_backend_add: name required"
+        return 1
+    fi
+
+    if [[ -z "$config" ]]; then
+        _secrets_log error "secret_backend_add: config required"
+        return 1
+    fi
+
+    # Validate name format (lowercase alphanumeric with underscores)
+    if [[ ! "$name" =~ ^[a-z][a-z0-9_]*$ ]]; then
+        _secrets_log error "secret_backend_add: invalid name format (use lowercase alphanumeric)"
+        return 1
+    fi
+
+    # Store configuration
+    _SECRETS_BACKENDS["$name"]="$config"
+
+    secret_audit_log "backend_add" "$name" "backend registered"
+    _secrets_log info "Backend registered: $name (note: only 'local' backend is functional)"
+    return 0
+}
+
+# @pre: none
+# @post: list of backends printed to stdout
+# @idempotent: yes
+# @returns: 0
+#
+# List all configured backends with their status.
+#
+# Usage: secret_backend_list
+# Example: secret_backend_list | grep active
+secret_backend_list() {
+    local name status
+
+    for name in "${!_SECRETS_BACKENDS[@]}"; do
+        local config="${_SECRETS_BACKENDS[$name]}"
+
+        # Determine status based on backend type
+        if [[ "$name" == "local" ]]; then
+            if [[ -n "$_MAINFRAME_MASTER_KEY" ]]; then
+                status="active"
+            else
+                status="locked"
+            fi
+        else
+            status="registered"
+        fi
+
+        printf '%s:%s\n' "$name" "$status"
+    done
+}
+
+# =============================================================================
 # CLEANUP ON EXIT
 # =============================================================================
 

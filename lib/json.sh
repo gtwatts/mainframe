@@ -149,7 +149,8 @@ json_array_typed() {
 json_array_from_lines() {
     local first=true
     printf '['
-    while IFS= read -r line; do
+    # Use || [[ -n "$line" ]] to handle last line without trailing newline
+    while IFS= read -r line || [[ -n "$line" ]]; do
         $first || printf ','
         first=false
         json_string "$line"
@@ -168,9 +169,6 @@ json_object() {
     printf '{'
 
     for pair in "$@"; do
-        $first || printf ','
-        first=false
-
         local key type value
 
         # Parse key:type=value or key=value
@@ -183,8 +181,12 @@ json_object() {
             type="auto"
             value="${BASH_REMATCH[2]}"
         else
+            # Skip malformed pairs without printing comma
             continue
         fi
+
+        $first || printf ','
+        first=false
 
         printf '"%s":' "$(json_escape "$key")"
         json_value "$value" "$type"
@@ -323,13 +325,28 @@ json_pretty() {
 # Usage: json_valid '{"a":1}' && echo "valid"
 json_valid() {
     local json="$1"
+
+    # Check for empty input
+    [[ -z "${json//[[:space:]]/}" ]] && return 1
+
+    # If jq is available, use it for accurate validation
+    # Note: don't use -e flag as it returns 1 for false/null values
+    if command -v jq &>/dev/null; then
+        if echo "$json" | jq '.' &>/dev/null; then
+            return 0
+        else
+            return 1  # Normalize to 1 for invalid JSON
+        fi
+    fi
+
+    # Fallback: basic structural validation
     local depth=0
     local in_string=false
     local prev_char=""
     local i char
-
-    # Check for empty input
-    [[ -z "${json//[[:space:]]/}" ]] && return 1
+    local expect_value=false
+    local expect_colon=false
+    local after_colon=false
 
     for ((i=0; i<${#json}; i++)); do
         char="${json:i:1}"
@@ -342,13 +359,32 @@ json_valid() {
             case "$char" in
                 '"')
                     in_string=true
+                    after_colon=false
                     ;;
                 '{' | '[')
                     ((depth++)) || true
+                    after_colon=false
                     ;;
                 '}' | ']')
                     ((depth--)) || true
                     [[ $depth -lt 0 ]] && return 1
+                    ;;
+                ':')
+                    after_colon=true
+                    ;;
+                [[:space:]] | ',')
+                    # Skip whitespace and commas
+                    ;;
+                [a-zA-Z])
+                    # Bare word - only valid after colon for true/false/null
+                    if ! $after_colon; then
+                        # Check if we're at start of JSON for array items
+                        local remaining="${json:i}"
+                        if [[ ! "$remaining" =~ ^(true|false|null)[^a-zA-Z] ]]; then
+                            return 1
+                        fi
+                    fi
+                    after_colon=false
                     ;;
             esac
         fi

@@ -137,7 +137,8 @@ teardown() {
     local median
     median=$(_bench_median 1 2 3 4)
     # Sorted: 1, 2, 3, 4 -> median is (2+3)/2 = 2.5
-    [[ "$median" =~ ^2\.?5?$ ]]
+    # May return 2.500000 or similar decimal format
+    [[ "$median" =~ ^2\.5 ]]
 }
 
 @test "_bench_median: handles single value" {
@@ -258,8 +259,9 @@ teardown() {
 }
 
 @test "_bench_confidence_interval: bounds surround mean" {
-    local lower upper
-    read -r lower upper < <(_bench_confidence_interval 10 2 100)
+    local lower upper result
+    result=$(_bench_confidence_interval 10 2 100)
+    read -r lower upper <<< "$result"
     # Lower should be less than 10
     # Upper should be greater than 10
     [[ -n "$lower" && -n "$upper" ]]

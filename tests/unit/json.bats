@@ -489,8 +489,8 @@ teardown() {
 }
 
 @test "json_read: returns empty for missing file" {
-    result=$(json_read "$TEST_TMPDIR/nonexistent.json")
-    [[ -z "$result" ]]
+    run json_read "$TEST_TMPDIR/nonexistent.json"
+    [[ -z "$output" ]]
 }
 
 @test "json_write: writes JSON to file" {

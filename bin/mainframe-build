@@ -1,0 +1,996 @@
+#!/usr/bin/env bash
+# =============================================================================
+# MAINFRAME Build CLI - Static Binary Builder and Minimal Container Generator
+# =============================================================================
+# Provides: mainframe build <command> [options] <script>
+#
+# Commands:
+#   static    Create standalone script with inlined libraries
+#   minimal   Create minimal deps bundle (script + required libs only)
+#   container Generate Dockerfile for containerized execution
+#
+# Options:
+#   --target <arch>     Target architecture (amd64, arm64, armv7)
+#   --output <dir>      Output directory (default: ./dist)
+#   --strip-comments    Remove comments to reduce size
+#   --minify            Minify whitespace (aggressive)
+#   --name <name>       Override output name
+#   --manifest          Generate build manifest JSON
+#   --quiet             Suppress informational output
+#   --version           Show version
+#   --help              Show help
+# =============================================================================
+
+set -euo pipefail
+
+# =============================================================================
+# CONFIGURATION
+# =============================================================================
+
+readonly BUILD_VERSION="1.0.0"
+readonly BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+# Determine MAINFRAME root directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export MAINFRAME_ROOT="${MAINFRAME_ROOT:-$SCRIPT_DIR}"
+
+# Source common library with minimal profile for bootstrapping
+MAINFRAME_PROFILE=minimal source "$MAINFRAME_ROOT/lib/common.sh"
+
+# =============================================================================
+# HELP AND VERSION
+# =============================================================================
+
+show_help() {
+    cat << 'EOF'
+MAINFRAME Build - Static Binary Builder and Minimal Container Generator
+
+Usage: mainframe build <command> [options] <script>
+
+Commands:
+  static <script>      Create standalone script with all libraries inlined
+  minimal <script>     Create minimal bundle with only required libraries
+  container <script>   Generate Dockerfile for containerized execution
+
+Options:
+  --target <arch>      Target architecture (amd64, arm64, armv7)
+  --output <dir>       Output directory (default: ./dist)
+  --strip-comments     Remove comments to reduce size
+  --minify             Minify whitespace (aggressive optimization)
+  --name <name>        Override output name (default: script basename)
+  --manifest           Generate build manifest JSON alongside output
+  --quiet              Suppress informational output
+  --version            Show version
+  --help               Show this help
+
+Examples:
+  mainframe build static my-agent.sh
+  mainframe build static my-agent.sh --output dist/ --manifest
+  mainframe build minimal my-agent.sh --strip-comments
+  mainframe build container my-agent.sh --target arm64
+  mainframe build static my-agent.sh --minify --name my-tool
+
+Static Build:
+  Inlines all sourced MAINFRAME libraries into a single executable script.
+  The output is completely self-contained and portable.
+
+Minimal Bundle:
+  Creates a directory bundle with only the required libraries:
+    my-agent-bundle/
+    ├── agent.sh       # Wrapper script
+    ├── lib/           # Only used libraries
+    │   ├── common.sh
+    │   ├── json.sh
+    │   └── http.sh
+    └── run.sh         # Entry point
+
+Container Build:
+  Generates a minimal Dockerfile for running the agent in a container:
+    FROM bash:5.2-alpine
+    RUN apk add --no-cache <detected-deps>
+    COPY lib/ /opt/mainframe/lib/
+    COPY agent.sh /app/
+    ENTRYPOINT ["bash", "agent.sh"]
+
+Build Manifest:
+  When --manifest is specified, generates a JSON file with build metadata:
+    {
+      "name": "my-agent",
+      "version": "1.0.0",
+      "build_time": "2026-02-01T12:00:00Z",
+      "source": "my-agent.sh",
+      "type": "static",
+      "size_bytes": 45000,
+      "libraries_included": ["common.sh", "json.sh", "http.sh"],
+      "functions_count": 150,
+      "external_deps": ["curl", "jq"]
+    }
+EOF
+}
+
+show_version() {
+    echo "MAINFRAME Build v${BUILD_VERSION}"
+    echo "MAINFRAME Library v${MAINFRAME_VERSION:-unknown}"
+}
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+
+QUIET=false
+
+_log_info() {
+    [[ "$QUIET" == "true" ]] && return 0
+    printf '[INFO] %s\n' "$*" >&2
+}
+
+_log_warn() {
+    printf '[WARN] %s\n' "$*" >&2
+}
+
+_log_error() {
+    printf '[ERROR] %s\n' "$*" >&2
+}
+
+_log_success() {
+    [[ "$QUIET" == "true" ]] && return 0
+    printf '[OK] %s\n' "$*" >&2
+}
+
+# =============================================================================
+# DEPENDENCY DETECTION
+# =============================================================================
+
+# Detect which MAINFRAME libraries are sourced by a script
+# Returns: newline-separated list of library basenames (without .sh)
+detect_sourced_libraries() {
+    local script="$1"
+    local libs=()
+
+    # Parse source statements
+    # Patterns:
+    #   source "$MAINFRAME_ROOT/lib/foo.sh"
+    #   source "${MAINFRAME_ROOT}/lib/foo.sh"
+    #   . "$MAINFRAME_ROOT/lib/foo.sh"
+    #   source "$(dirname ...)/lib/foo.sh"
+
+    while IFS= read -r line; do
+        # Skip comments
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+
+        # Match source/. statements
+        if [[ "$line" =~ (source|\.)[[:space:]]+[\"\']?.*lib/([a-zA-Z0-9_-]+)\.sh ]]; then
+            local lib_name="${BASH_REMATCH[2]}"
+            # Avoid duplicates
+            local found=false
+            for existing in "${libs[@]:-}"; do
+                [[ "$existing" == "$lib_name" ]] && found=true && break
+            done
+            [[ "$found" == "false" ]] && libs+=("$lib_name")
+        fi
+
+        # Match mainframe_load calls
+        if [[ "$line" =~ mainframe_load[[:space:]]+[\"\']?([a-zA-Z0-9_-]+) ]]; then
+            local lib_name="${BASH_REMATCH[1]}"
+            local found=false
+            for existing in "${libs[@]:-}"; do
+                [[ "$existing" == "$lib_name" ]] && found=true && break
+            done
+            [[ "$found" == "false" ]] && libs+=("$lib_name")
+        fi
+    done < "$script"
+
+    # Always include common.sh if any lib is used
+    if [[ ${#libs[@]} -gt 0 ]] || grep -qE 'source.*common\.sh|MAINFRAME_ROOT' "$script" 2>/dev/null; then
+        printf '%s\n' "common"
+    fi
+
+    printf '%s\n' "${libs[@]:-}"
+}
+
+# Resolve library dependencies (libraries that source other libraries)
+# Returns: expanded list of all required libraries
+resolve_library_deps() {
+    local -a input_libs=("$@")
+    local -A all_libs
+    local -a queue=("${input_libs[@]}")
+
+    while [[ ${#queue[@]} -gt 0 ]]; do
+        local lib="${queue[0]}"
+        queue=("${queue[@]:1}")  # Shift
+
+        # Skip if already processed
+        [[ -n "${all_libs[$lib]:-}" ]] && continue
+        all_libs["$lib"]=1
+
+        # Check library file for dependencies
+        local lib_file="${MAINFRAME_ROOT}/lib/${lib}.sh"
+        [[ ! -f "$lib_file" ]] && continue
+
+        # Find sourced libraries within this library
+        while IFS= read -r line; do
+            [[ "$line" =~ ^[[:space:]]*# ]] && continue
+            if [[ "$line" =~ (source|\.).*lib/([a-zA-Z0-9_-]+)\.sh ]]; then
+                local dep="${BASH_REMATCH[2]}"
+                [[ -z "${all_libs[$dep]:-}" ]] && queue+=("$dep")
+            fi
+            if [[ "$line" =~ _mainframe_load_library[[:space:]]+[\"\']?([a-zA-Z0-9_-]+) ]]; then
+                local dep="${BASH_REMATCH[1]}"
+                [[ -z "${all_libs[$dep]:-}" ]] && queue+=("$dep")
+            fi
+        done < "$lib_file"
+    done
+
+    printf '%s\n' "${!all_libs[@]}" | sort
+}
+
+# Detect external command dependencies used in a script
+# Returns: newline-separated list of external commands
+detect_external_deps() {
+    local script="$1"
+    local -A common_cmds=(
+        [curl]=1 [wget]=1 [jq]=1 [yq]=1 [git]=1 [docker]=1
+        [openssl]=1 [ssh]=1 [scp]=1 [rsync]=1 [tar]=1 [gzip]=1
+        [unzip]=1 [zip]=1 [nc]=1 [nmap]=1 [dig]=1 [nslookup]=1
+        [python]=1 [python3]=1 [node]=1 [npm]=1 [bun]=1
+        [aws]=1 [gcloud]=1 [kubectl]=1 [redis-cli]=1
+        [fzf]=1 [dialog]=1 [whiptail]=1 [tmux]=1 [screen]=1
+    )
+    local -A found_deps
+
+    # Also check the libraries
+    local libs
+    libs=$(detect_sourced_libraries "$script")
+
+    local files_to_check=("$script")
+    while IFS= read -r lib; do
+        [[ -z "$lib" ]] && continue
+        local lib_file="${MAINFRAME_ROOT}/lib/${lib}.sh"
+        [[ -f "$lib_file" ]] && files_to_check+=("$lib_file")
+    done <<< "$libs"
+
+    for file in "${files_to_check[@]}"; do
+        for cmd in "${!common_cmds[@]}"; do
+            if grep -qw "$cmd" "$file" 2>/dev/null; then
+                found_deps["$cmd"]=1
+            fi
+        done
+    done
+
+    printf '%s\n' "${!found_deps[@]}" | sort
+}
+
+# Count functions defined in content
+count_functions() {
+    local content="$1"
+    local count
+    count=$(grep -cE '^[a-zA-Z_][a-zA-Z0-9_]*\(\)|^function [a-zA-Z_][a-zA-Z0-9_]*' <<< "$content" 2>/dev/null) || count=0
+    echo "$count"
+}
+
+# =============================================================================
+# STATIC BUILD
+# =============================================================================
+
+# Build a standalone script with all libraries inlined
+build_static() {
+    local script="$1"
+    local output_dir="$2"
+    local output_name="$3"
+    local strip_comments="$4"
+    local minify="$5"
+    local generate_manifest="$6"
+    local target_arch="$7"
+
+    [[ ! -f "$script" ]] && { _log_error "Script not found: $script"; return 1; }
+
+    local script_basename
+    script_basename=$(basename "$script")
+    local script_name="${output_name:-${script_basename%.*}}"
+    local output_file="${output_dir}/${script_name}"
+
+    _log_info "Building static binary: $script_name"
+
+    # Detect libraries
+    local raw_libs
+    raw_libs=$(detect_sourced_libraries "$script")
+
+    local libs=()
+    while IFS= read -r lib; do
+        [[ -n "$lib" ]] && libs+=("$lib")
+    done <<< "$raw_libs"
+
+    # Resolve dependencies
+    local all_libs
+    if [[ ${#libs[@]} -gt 0 ]]; then
+        all_libs=$(resolve_library_deps "${libs[@]}")
+    else
+        all_libs=""
+    fi
+
+    _log_info "Detected libraries: $(echo "$all_libs" | tr '\n' ' ')"
+
+    # Detect external deps
+    local external_deps
+    external_deps=$(detect_external_deps "$script")
+
+    if [[ -n "$external_deps" ]]; then
+        _log_warn "External dependencies detected:"
+        while IFS= read -r dep; do
+            [[ -n "$dep" ]] && _log_warn "  - $dep"
+        done <<< "$external_deps"
+    fi
+
+    # Create output directory
+    mkdir -p "$output_dir"
+
+    # Build the static script
+    {
+        echo "#!/usr/bin/env bash"
+        echo "# ============================================================================="
+        echo "# MAINFRAME Static Build"
+        echo "# Generated: ${BUILD_DATE}"
+        echo "# Source: ${script_basename}"
+        echo "# Target: ${target_arch:-native}"
+        echo "# ============================================================================="
+        echo "# This is a self-contained script with all MAINFRAME libraries inlined."
+        echo "# Do not edit - regenerate from source if changes needed."
+        echo "# ============================================================================="
+        echo ""
+        echo "set -euo pipefail"
+        echo ""
+
+        # Inline each library
+        while IFS= read -r lib; do
+            [[ -z "$lib" ]] && continue
+            local lib_file="${MAINFRAME_ROOT}/lib/${lib}.sh"
+
+            if [[ -f "$lib_file" ]]; then
+                echo ""
+                echo "# === Inlined: lib/${lib}.sh ==="
+
+                local lib_content
+                lib_content=$(cat "$lib_file")
+
+                # Remove shebang from libraries
+                lib_content=$(echo "$lib_content" | sed '1{/^#!/d}')
+
+                # Strip comments if requested
+                if [[ "$strip_comments" == "true" ]]; then
+                    lib_content=$(echo "$lib_content" | grep -v '^[[:space:]]*#' | grep -v '^#')
+                fi
+
+                # Minify if requested
+                if [[ "$minify" == "true" ]]; then
+                    lib_content=$(echo "$lib_content" | \
+                        sed 's/^[[:space:]]*//' | \
+                        sed '/^$/d' | \
+                        tr '\n' ';' | \
+                        sed 's/;;/;/g' | \
+                        sed 's/; *then/; then/g' | \
+                        sed 's/; *do/; do/g' | \
+                        sed 's/; *else/; else/g' | \
+                        tr ';' '\n')
+                fi
+
+                echo "$lib_content"
+                echo "# === End: lib/${lib}.sh ==="
+            else
+                _log_warn "Library not found: $lib_file"
+            fi
+        done <<< "$all_libs"
+
+        echo ""
+        echo "# === Original Script: ${script_basename} ==="
+        echo ""
+
+        # Inline the original script, removing source statements
+        local script_content
+        script_content=$(cat "$script")
+
+        # Remove shebang
+        script_content=$(echo "$script_content" | sed '1{/^#!/d}')
+
+        # Remove MAINFRAME source statements (already inlined)
+        script_content=$(echo "$script_content" | \
+            grep -v 'source.*MAINFRAME_ROOT.*lib/' | \
+            grep -v 'source.*common\.sh' | \
+            grep -v '\. .*MAINFRAME_ROOT.*lib/' | \
+            grep -v 'mainframe_load')
+
+        # Strip comments if requested
+        if [[ "$strip_comments" == "true" ]]; then
+            script_content=$(echo "$script_content" | grep -v '^[[:space:]]*#' || true)
+        fi
+
+        # Minify if requested
+        if [[ "$minify" == "true" ]]; then
+            script_content=$(echo "$script_content" | \
+                sed 's/^[[:space:]]*//' | \
+                sed '/^$/d')
+        fi
+
+        echo "$script_content"
+        echo ""
+        echo "# === End: ${script_basename} ==="
+
+    } > "$output_file"
+
+    chmod +x "$output_file"
+
+    local output_size
+    output_size=$(stat -f%z "$output_file" 2>/dev/null || stat -c%s "$output_file" 2>/dev/null || echo "0")
+
+    _log_success "Built: $output_file (${output_size} bytes)"
+
+    # Generate manifest if requested
+    if [[ "$generate_manifest" == "true" ]]; then
+        local manifest_file="${output_dir}/${script_name}.manifest.json"
+        local func_count
+        func_count=$(count_functions "$(cat "$output_file")")
+
+        local libs_json="[]"
+        if [[ -n "$all_libs" ]]; then
+            libs_json=$(echo "$all_libs" | jq -R . | jq -s .)
+        fi
+
+        local deps_json="[]"
+        if [[ -n "$external_deps" ]]; then
+            deps_json=$(echo "$external_deps" | jq -R . | jq -s .)
+        fi
+
+        cat > "$manifest_file" << EOF
+{
+  "name": "${script_name}",
+  "version": "1.0.0",
+  "build_time": "${BUILD_DATE}",
+  "source": "${script_basename}",
+  "type": "static",
+  "target": "${target_arch:-native}",
+  "size_bytes": ${output_size},
+  "libraries_included": ${libs_json},
+  "functions_count": ${func_count},
+  "external_deps": ${deps_json},
+  "mainframe_version": "${MAINFRAME_VERSION:-unknown}",
+  "build_tool_version": "${BUILD_VERSION}"
+}
+EOF
+        _log_success "Manifest: $manifest_file"
+    fi
+}
+
+# =============================================================================
+# MINIMAL BUNDLE BUILD
+# =============================================================================
+
+# Build a minimal bundle with only required libraries
+build_minimal() {
+    local script="$1"
+    local output_dir="$2"
+    local output_name="$3"
+    local strip_comments="$4"
+    local minify="$5"
+    local generate_manifest="$6"
+    local target_arch="$7"
+
+    [[ ! -f "$script" ]] && { _log_error "Script not found: $script"; return 1; }
+
+    local script_basename
+    script_basename=$(basename "$script")
+    local script_name="${output_name:-${script_basename%.*}}"
+    local bundle_dir="${output_dir}/${script_name}-bundle"
+
+    _log_info "Building minimal bundle: $script_name"
+
+    # Detect and resolve libraries
+    local raw_libs
+    raw_libs=$(detect_sourced_libraries "$script")
+
+    local libs=()
+    while IFS= read -r lib; do
+        [[ -n "$lib" ]] && libs+=("$lib")
+    done <<< "$raw_libs"
+
+    local all_libs
+    if [[ ${#libs[@]} -gt 0 ]]; then
+        all_libs=$(resolve_library_deps "${libs[@]}")
+    else
+        all_libs="common"  # At minimum, include common.sh
+    fi
+
+    _log_info "Including libraries: $(echo "$all_libs" | tr '\n' ' ')"
+
+    # Detect external deps
+    local external_deps
+    external_deps=$(detect_external_deps "$script")
+
+    # Create bundle structure
+    rm -rf "$bundle_dir"
+    mkdir -p "$bundle_dir/lib"
+
+    # Copy required libraries
+    local lib_count=0
+    while IFS= read -r lib; do
+        [[ -z "$lib" ]] && continue
+        local lib_file="${MAINFRAME_ROOT}/lib/${lib}.sh"
+
+        if [[ -f "$lib_file" ]]; then
+            local dest_file="${bundle_dir}/lib/${lib}.sh"
+
+            if [[ "$strip_comments" == "true" ]]; then
+                grep -v '^[[:space:]]*#' "$lib_file" | grep -v '^#' > "$dest_file" || cp "$lib_file" "$dest_file"
+            else
+                cp "$lib_file" "$dest_file"
+            fi
+
+            (( ++lib_count )) || true
+        fi
+    done <<< "$all_libs"
+
+    # Copy the agent script
+    local agent_file="${bundle_dir}/agent.sh"
+
+    # Rewrite source statements to use local lib directory
+    {
+        local in_source=false
+        while IFS= read -r line; do
+            # Rewrite MAINFRAME source statements
+            if [[ "$line" =~ source.*MAINFRAME_ROOT.*lib/([a-zA-Z0-9_-]+)\.sh ]] || \
+               [[ "$line" =~ source.*common\.sh ]]; then
+                local lib_name
+                if [[ "$line" =~ lib/([a-zA-Z0-9_-]+)\.sh ]]; then
+                    lib_name="${BASH_REMATCH[1]}"
+                else
+                    lib_name="common"
+                fi
+                echo "source \"\${BASH_SOURCE%/*}/lib/${lib_name}.sh\""
+            elif [[ "$line" =~ \.[[:space:]]+.*MAINFRAME_ROOT.*lib/ ]]; then
+                local lib_name
+                if [[ "$line" =~ lib/([a-zA-Z0-9_-]+)\.sh ]]; then
+                    lib_name="${BASH_REMATCH[1]}"
+                    echo ". \"\${BASH_SOURCE%/*}/lib/${lib_name}.sh\""
+                else
+                    echo "$line"
+                fi
+            else
+                echo "$line"
+            fi
+        done < "$script"
+    } > "$agent_file"
+
+    chmod +x "$agent_file"
+
+    # Create run.sh entry point
+    cat > "${bundle_dir}/run.sh" << 'EOF'
+#!/usr/bin/env bash
+# MAINFRAME Minimal Bundle Runner
+# Generated by mainframe build minimal
+
+set -euo pipefail
+
+BUNDLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export MAINFRAME_ROOT="$BUNDLE_DIR"
+
+exec bash "$BUNDLE_DIR/agent.sh" "$@"
+EOF
+    chmod +x "${bundle_dir}/run.sh"
+
+    # Calculate total size
+    local total_size
+    total_size=$(du -sb "$bundle_dir" 2>/dev/null | cut -f1 || du -sk "$bundle_dir" | awk '{print $1*1024}')
+
+    _log_success "Built: $bundle_dir"
+    _log_info "  Libraries: $lib_count"
+    _log_info "  Total size: ${total_size} bytes"
+
+    # Generate manifest if requested
+    if [[ "$generate_manifest" == "true" ]]; then
+        local manifest_file="${bundle_dir}/manifest.json"
+
+        local libs_json="[]"
+        if [[ -n "$all_libs" ]]; then
+            libs_json=$(echo "$all_libs" | jq -R . | jq -s .)
+        fi
+
+        local deps_json="[]"
+        if [[ -n "$external_deps" ]]; then
+            deps_json=$(echo "$external_deps" | jq -R . | jq -s .)
+        fi
+
+        cat > "$manifest_file" << EOF
+{
+  "name": "${script_name}",
+  "version": "1.0.0",
+  "build_time": "${BUILD_DATE}",
+  "source": "${script_basename}",
+  "type": "minimal",
+  "target": "${target_arch:-native}",
+  "size_bytes": ${total_size},
+  "libraries_included": ${libs_json},
+  "library_count": ${lib_count},
+  "external_deps": ${deps_json},
+  "entry_point": "run.sh",
+  "mainframe_version": "${MAINFRAME_VERSION:-unknown}",
+  "build_tool_version": "${BUILD_VERSION}"
+}
+EOF
+        _log_success "Manifest: $manifest_file"
+    fi
+
+    if [[ -n "$external_deps" ]]; then
+        _log_warn "External dependencies required at runtime:"
+        while IFS= read -r dep; do
+            [[ -n "$dep" ]] && _log_warn "  - $dep"
+        done <<< "$external_deps"
+    fi
+}
+
+# =============================================================================
+# CONTAINER BUILD
+# =============================================================================
+
+# Map external deps to Alpine packages
+get_alpine_package() {
+    local cmd="$1"
+    case "$cmd" in
+        curl)       echo "curl" ;;
+        wget)       echo "wget" ;;
+        jq)         echo "jq" ;;
+        yq)         echo "yq" ;;
+        git)        echo "git" ;;
+        openssl)    echo "openssl" ;;
+        ssh|scp)    echo "openssh-client" ;;
+        rsync)      echo "rsync" ;;
+        tar)        echo "tar" ;;
+        gzip)       echo "gzip" ;;
+        unzip|zip)  echo "zip unzip" ;;
+        nc)         echo "netcat-openbsd" ;;
+        dig|nslookup) echo "bind-tools" ;;
+        python3)    echo "python3" ;;
+        node)       echo "nodejs" ;;
+        npm)        echo "npm" ;;
+        redis-cli)  echo "redis" ;;
+        tmux)       echo "tmux" ;;
+        *)          echo "" ;;
+    esac
+}
+
+# Build a Dockerfile for containerized execution
+build_container() {
+    local script="$1"
+    local output_dir="$2"
+    local output_name="$3"
+    local strip_comments="$4"
+    local minify="$5"
+    local generate_manifest="$6"
+    local target_arch="$7"
+
+    [[ ! -f "$script" ]] && { _log_error "Script not found: $script"; return 1; }
+
+    local script_basename
+    script_basename=$(basename "$script")
+    local script_name="${output_name:-${script_basename%.*}}"
+    local container_dir="${output_dir}/${script_name}-container"
+
+    _log_info "Building container: $script_name"
+
+    # First build a minimal bundle
+    build_minimal "$script" "$container_dir" "app" "$strip_comments" "$minify" "false" "$target_arch"
+
+    # Detect external deps
+    local external_deps
+    external_deps=$(detect_external_deps "$script")
+
+    # Map to Alpine packages
+    local -a alpine_packages=()
+    while IFS= read -r dep; do
+        [[ -z "$dep" ]] && continue
+        local pkg
+        pkg=$(get_alpine_package "$dep")
+        [[ -n "$pkg" ]] && alpine_packages+=($pkg)
+    done <<< "$external_deps"
+
+    # Remove duplicates
+    local unique_packages
+    unique_packages=$(printf '%s\n' "${alpine_packages[@]:-}" | sort -u | tr '\n' ' ')
+
+    # Determine platform directive
+    local platform_directive=""
+    case "$target_arch" in
+        arm64|aarch64)
+            platform_directive="--platform=linux/arm64"
+            ;;
+        armv7|arm)
+            platform_directive="--platform=linux/arm/v7"
+            ;;
+        amd64|x86_64|"")
+            platform_directive="--platform=linux/amd64"
+            ;;
+    esac
+
+    # Generate Dockerfile
+    local dockerfile="${container_dir}/Dockerfile"
+    cat > "$dockerfile" << EOF
+# Generated by mainframe build container
+# Source: ${script_basename}
+# Generated: ${BUILD_DATE}
+
+FROM ${platform_directive:+$platform_directive }bash:5.2-alpine
+
+# Install runtime dependencies
+EOF
+
+    if [[ -n "$unique_packages" ]]; then
+        cat >> "$dockerfile" << EOF
+RUN apk add --no-cache ${unique_packages}
+
+EOF
+    else
+        cat >> "$dockerfile" << EOF
+# No external dependencies detected
+
+EOF
+    fi
+
+    cat >> "$dockerfile" << EOF
+# Create app directory
+WORKDIR /app
+
+# Copy MAINFRAME runtime (minimal bundle)
+COPY app-bundle/lib/ /opt/mainframe/lib/
+ENV MAINFRAME_ROOT=/opt/mainframe
+
+# Copy agent script
+COPY app-bundle/agent.sh /app/agent.sh
+RUN chmod +x /app/agent.sh
+
+# Default entrypoint
+ENTRYPOINT ["bash", "/app/agent.sh"]
+
+# Labels
+LABEL maintainer="MAINFRAME Build"
+LABEL org.opencontainers.image.source="${script_basename}"
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+EOF
+
+    _log_success "Dockerfile: $dockerfile"
+
+    # Generate docker-compose.yml for convenience
+    local compose_file="${container_dir}/docker-compose.yml"
+    cat > "$compose_file" << EOF
+# Generated by mainframe build container
+version: '3.8'
+
+services:
+  ${script_name}:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ${script_name}
+    restart: unless-stopped
+    # Uncomment and configure as needed:
+    # environment:
+    #   - VAR_NAME=value
+    # volumes:
+    #   - ./data:/app/data
+    # ports:
+    #   - "8080:8080"
+EOF
+
+    _log_success "Docker Compose: $compose_file"
+
+    # Generate build script
+    local build_script="${container_dir}/build.sh"
+    cat > "$build_script" << EOF
+#!/usr/bin/env bash
+# Build script for ${script_name} container
+# Generated: ${BUILD_DATE}
+
+set -euo pipefail
+
+SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+IMAGE_NAME="${script_name}"
+TAG="\${1:-latest}"
+
+echo "Building \${IMAGE_NAME}:\${TAG}..."
+docker build -t "\${IMAGE_NAME}:\${TAG}" "\$SCRIPT_DIR"
+
+echo ""
+echo "Build complete!"
+echo "Run with: docker run --rm ${script_name}:\${TAG}"
+EOF
+    chmod +x "$build_script"
+
+    _log_success "Build script: $build_script"
+
+    # Generate manifest if requested
+    if [[ "$generate_manifest" == "true" ]]; then
+        local manifest_file="${container_dir}/manifest.json"
+
+        local raw_libs
+        raw_libs=$(detect_sourced_libraries "$script")
+        local libs=()
+        while IFS= read -r lib; do
+            [[ -n "$lib" ]] && libs+=("$lib")
+        done <<< "$raw_libs"
+
+        local all_libs
+        if [[ ${#libs[@]} -gt 0 ]]; then
+            all_libs=$(resolve_library_deps "${libs[@]}")
+        else
+            all_libs="common"
+        fi
+
+        local libs_json="[]"
+        if [[ -n "$all_libs" ]]; then
+            libs_json=$(echo "$all_libs" | jq -R . | jq -s .)
+        fi
+
+        local deps_json="[]"
+        if [[ -n "$external_deps" ]]; then
+            deps_json=$(echo "$external_deps" | jq -R . | jq -s .)
+        fi
+
+        local pkg_json="[]"
+        if [[ -n "$unique_packages" ]]; then
+            pkg_json=$(echo "$unique_packages" | tr ' ' '\n' | grep -v '^$' | jq -R . | jq -s .)
+        fi
+
+        cat > "$manifest_file" << EOF
+{
+  "name": "${script_name}",
+  "version": "1.0.0",
+  "build_time": "${BUILD_DATE}",
+  "source": "${script_basename}",
+  "type": "container",
+  "target": "${target_arch:-amd64}",
+  "base_image": "bash:5.2-alpine",
+  "libraries_included": ${libs_json},
+  "external_deps": ${deps_json},
+  "alpine_packages": ${pkg_json},
+  "files": ["Dockerfile", "docker-compose.yml", "build.sh", "app-bundle/"],
+  "mainframe_version": "${MAINFRAME_VERSION:-unknown}",
+  "build_tool_version": "${BUILD_VERSION}"
+}
+EOF
+        _log_success "Manifest: $manifest_file"
+    fi
+
+    echo ""
+    _log_info "To build the container:"
+    _log_info "  cd $container_dir && ./build.sh"
+    _log_info ""
+    _log_info "To run:"
+    _log_info "  docker run --rm ${script_name}:latest"
+}
+
+# =============================================================================
+# ARGUMENT PARSING
+# =============================================================================
+
+main() {
+    local command=""
+    local script=""
+    local output_dir="./dist"
+    local output_name=""
+    local target_arch=""
+    local strip_comments=false
+    local minify=false
+    local generate_manifest=false
+
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            static|minimal|container)
+                command="$1"
+                shift
+                ;;
+            --target|-t)
+                target_arch="${2:-}"
+                shift 2
+                ;;
+            --output|-o)
+                output_dir="${2:-}"
+                shift 2
+                ;;
+            --name|-n)
+                output_name="${2:-}"
+                shift 2
+                ;;
+            --strip-comments)
+                strip_comments=true
+                shift
+                ;;
+            --minify)
+                minify=true
+                strip_comments=true  # Minify implies strip-comments
+                shift
+                ;;
+            --manifest|-m)
+                generate_manifest=true
+                shift
+                ;;
+            --quiet|-q)
+                QUIET=true
+                shift
+                ;;
+            --version|-V)
+                show_version
+                exit 0
+                ;;
+            --help|-h)
+                show_help
+                exit 0
+                ;;
+            -*)
+                _log_error "Unknown option: $1"
+                echo "Use --help for usage information."
+                exit 1
+                ;;
+            *)
+                if [[ -z "$script" ]]; then
+                    script="$1"
+                else
+                    _log_error "Unexpected argument: $1"
+                    exit 1
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    # Validate command
+    if [[ -z "$command" ]]; then
+        show_help
+        exit 0
+    fi
+
+    # Validate script
+    if [[ -z "$script" ]]; then
+        _log_error "Script path required"
+        echo "Usage: mainframe build $command <script>"
+        exit 1
+    fi
+
+    if [[ ! -f "$script" ]]; then
+        _log_error "Script not found: $script"
+        exit 1
+    fi
+
+    # Validate target architecture
+    if [[ -n "$target_arch" ]]; then
+        case "$target_arch" in
+            amd64|x86_64|arm64|aarch64|armv7|arm)
+                ;;
+            *)
+                _log_error "Unknown target architecture: $target_arch"
+                _log_info "Supported: amd64, arm64, armv7"
+                exit 1
+                ;;
+        esac
+    fi
+
+    # Execute command
+    case "$command" in
+        static)
+            build_static "$script" "$output_dir" "$output_name" "$strip_comments" "$minify" "$generate_manifest" "$target_arch"
+            ;;
+        minimal)
+            build_minimal "$script" "$output_dir" "$output_name" "$strip_comments" "$minify" "$generate_manifest" "$target_arch"
+            ;;
+        container)
+            build_container "$script" "$output_dir" "$output_name" "$strip_comments" "$minify" "$generate_manifest" "$target_arch"
+            ;;
+        *)
+            _log_error "Unknown command: $command"
+            show_help
+            exit 1
+            ;;
+    esac
+}
+
+# =============================================================================
+# ENTRY POINT
+# =============================================================================
+
+main "$@"

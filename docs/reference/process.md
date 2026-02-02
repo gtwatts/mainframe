@@ -233,3 +233,99 @@ for repo in "${repos[@]}"; do
     curl -sf "https://api.github.com/repos/$repo"
 done
 ```
+
+---
+
+## Parallel Execution (parallel.sh)
+
+High-level parallel execution patterns with USOP-compliant JSON output.
+
+### Map Operations
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `parallel_map` | `parallel_map "func" items...` | `parallel_map "curl -s" "${urls[@]}"` | JSON with all results |
+| `parallel_map_n` | `parallel_map_n "func" N items...` | `parallel_map_n "process" 4 "${items[@]}"` | JSON with results (max N concurrent) |
+
+### Race / All / Any
+
+| Function | Signature | Example | Purpose |
+|----------|-----------|---------|---------|
+| `parallel_race` | `parallel_race cmd1 cmd2 ...` | `parallel_race "curl mirror1" "curl mirror2"` | First to complete wins, cancels others |
+| `parallel_all` | `parallel_all cmd1 cmd2 ...` | `parallel_all "check_a" "check_b"` | Wait for all, return all results |
+| `parallel_any` | `parallel_any cmd1 cmd2 ...` | `parallel_any "ping host1" "ping host2"` | Any success = overall success |
+
+### Batch Processing
+
+| Function | Signature | Example | Purpose |
+|----------|-----------|---------|---------|
+| `parallel_batch` | `parallel_batch [opts] items...` | `parallel_batch --batch-size 5 "${cmds[@]}"` | Process in batches |
+| `parallel_sequence` | `parallel_sequence cmd1 cmd2` | `parallel_sequence "step1" "step2"` | Run sequentially (for comparison) |
+
+**Batch Options**: `--batch-size N`, `--command "template"`
+
+### Timeout & Retry
+
+| Function | Signature | Example | Purpose |
+|----------|-----------|---------|---------|
+| `parallel_timeout` | `parallel_timeout SECS cmd` | `parallel_timeout 30 "curl slow-api"` | Run with timeout (returns 124 on timeout) |
+| `parallel_retry` | `parallel_retry cmd [opts]` | `parallel_retry "curl api" --max-attempts 5` | Retry on failure with backoff |
+
+**Retry Options**: `--max-attempts N`, `--delay SECS`, `--backoff fixed|linear|exponential`
+
+### Progress Reporting
+
+| Function | Signature | Example | Purpose |
+|----------|-----------|---------|---------|
+| `parallel_progress` | `parallel_progress cmd1 cmd2 ...` | `parallel_progress "${tasks[@]}"` | Execute with progress bar |
+
+### Output Format (USOP)
+
+All parallel functions return JSON in this format:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "results": [
+      {"index": 0, "status": "done", "result": "output", "duration_ms": 150},
+      {"index": 1, "status": "error", "result": "", "duration_ms": 50, "error": "exit code 1"}
+    ],
+    "total_duration_ms": 200,
+    "succeeded": 1,
+    "failed": 1
+  }
+}
+```
+
+### Quick Patterns
+
+```bash
+# Process URLs in parallel (unlimited concurrency)
+urls=("http://a.com" "http://b.com" "http://c.com")
+results=$(parallel_map "curl -s" "${urls[@]}")
+
+# Process with concurrency limit
+results=$(parallel_map_n "expensive_operation" 4 "${items[@]}")
+
+# Race multiple mirrors
+content=$(parallel_race \
+    "curl -s mirror1.com/file" \
+    "curl -s mirror2.com/file" \
+    "curl -s mirror3.com/file")
+
+# Check all services
+health=$(parallel_all "curl -sf svc1/health" "curl -sf svc2/health")
+
+# Any reachable = success
+reachable=$(parallel_any "ping -c1 host1" "ping -c1 host2")
+
+# Batch with size limit
+parallel_batch --batch-size 10 --command "process_item" "${large_array[@]}"
+
+# Retry flaky endpoint
+result=$(parallel_retry "curl -sf http://flaky-api.com" --max-attempts 5 --backoff exponential)
+
+# Execute with progress bar
+parallel_progress "task1" "task2" "task3" "task4"
+```

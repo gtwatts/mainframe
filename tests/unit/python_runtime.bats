@@ -421,10 +421,21 @@ EOF
 }
 
 @test "py_detect: returns ok:true with installed=false when no python" {
-    # Remove python from PATH
-    PATH="/nonexistent"
+    # Create a filtered PATH without python but with basic utilities
+    local filtered_path=""
+    local orig_path="$PATH"
+    local IFS=':'
+    for dir in $PATH; do
+        if [[ ! -x "$dir/python3" && ! -x "$dir/python" ]]; then
+            filtered_path="${filtered_path:+$filtered_path:}$dir"
+        fi
+    done
+    PATH="$filtered_path"
 
     run py_detect
+
+    # Restore PATH before assertions
+    PATH="$orig_path"
 
     assert_success
     assert_usop_ok "$output"
@@ -951,10 +962,21 @@ EOF
     PATH="$(dirname "$mock_python"):$PATH"
     ln -sf "$mock_python" "$(dirname "$mock_python")/python3"
 
-    # Also ensure ruff command not available
-    PATH="$TEST_DIR:$PATH"
+    # Filter out directories with ruff, pylint, flake8 to ensure no linter available
+    local filtered_path="$(dirname "$mock_python")"
+    local orig_path="$PATH"
+    local IFS=':'
+    for dir in $PATH; do
+        if [[ ! -x "$dir/ruff" && ! -x "$dir/pylint" && ! -x "$dir/flake8" ]]; then
+            filtered_path="${filtered_path:+$filtered_path:}$dir"
+        fi
+    done
+    PATH="$filtered_path"
 
     run py_lint "."
+
+    # Restore PATH before assertions
+    PATH="$orig_path"
 
     assert_success
     assert_usop_error "$output" "No linter found"
@@ -989,11 +1011,23 @@ case "$1" in
 esac
 EOF
     chmod +x "$mock_python"
-    PATH="$(dirname "$mock_python"):$PATH"
+
+    # Filter out directories with ruff, black, autopep8 to ensure no formatter available
+    local filtered_path="$(dirname "$mock_python")"
+    local orig_path="$PATH"
+    local IFS=':'
+    for dir in $PATH; do
+        if [[ ! -x "$dir/ruff" && ! -x "$dir/black" && ! -x "$dir/autopep8" ]]; then
+            filtered_path="${filtered_path:+$filtered_path:}$dir"
+        fi
+    done
+    PATH="$filtered_path"
     ln -sf "$mock_python" "$(dirname "$mock_python")/python3"
-    PATH="$TEST_DIR:$PATH"
 
     run py_format "."
+
+    # Restore PATH before assertions
+    PATH="$orig_path"
 
     assert_success
     assert_usop_error "$output" "No formatter found"
@@ -1029,11 +1063,23 @@ case "$1" in
 esac
 EOF
     chmod +x "$mock_python"
-    PATH="$(dirname "$mock_python"):$PATH"
+
+    # Filter out directories with mypy, pyright, pytype to ensure no type checker available
+    local filtered_path="$(dirname "$mock_python")"
+    local orig_path="$PATH"
+    local IFS=':'
+    for dir in $PATH; do
+        if [[ ! -x "$dir/mypy" && ! -x "$dir/pyright" && ! -x "$dir/pytype" ]]; then
+            filtered_path="${filtered_path:+$filtered_path:}$dir"
+        fi
+    done
+    PATH="$filtered_path"
     ln -sf "$mock_python" "$(dirname "$mock_python")/python3"
-    PATH="$TEST_DIR:$PATH"
 
     run py_typecheck "."
+
+    # Restore PATH before assertions
+    PATH="$orig_path"
 
     assert_success
     assert_usop_error "$output" "No type checker found"

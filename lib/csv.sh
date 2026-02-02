@@ -143,6 +143,8 @@ csv_parse_multiline() {
 
     # Add final line if not empty
     [[ -n "$line" ]] && CSV_ROWS+=("$line")
+
+    return 0
 }
 
 # Parse entire CSV file
@@ -657,11 +659,11 @@ csv_has_header() {
     local numeric_in_second=0
 
     for field in "${first_row[@]}"; do
-        [[ "$field" =~ ^[0-9]+\.?[0-9]*$ ]] && ((numeric_in_first++))
+        [[ "$field" =~ ^[0-9]+\.?[0-9]*$ ]] && (( ++numeric_in_first )) || true
     done
 
     for field in "${second_row[@]}"; do
-        [[ "$field" =~ ^[0-9]+\.?[0-9]*$ ]] && ((numeric_in_second++))
+        [[ "$field" =~ ^[0-9]+\.?[0-9]*$ ]] && (( ++numeric_in_second )) || true
     done
 
     # If first row has fewer numbers than second, likely a header
@@ -671,7 +673,7 @@ csv_has_header() {
     local identifier_count=0
     for field in "${first_row[@]}"; do
         if [[ "$field" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
-            ((identifier_count++))
+            (( ++identifier_count )) || true
         fi
     done
 
@@ -705,9 +707,9 @@ csv_validate() {
         if ((${#CSV_FIELDS[@]} != expected_fields)); then
             printf 'Error: Row %d has %d fields, expected %d\n' \
                 "$row_num" "${#CSV_FIELDS[@]}" "$expected_fields" >&2
-            ((errors++))
+            (( ++errors )) || true
         fi
-        ((row_num++))
+        (( ++row_num )) || true
     done
 
     ((errors > 0)) && return 1
@@ -748,7 +750,7 @@ csv_each() {
     for row in "${CSV_ROWS[@]}"; do
         csv_row_assoc "$row_num"
         "$callback" "$row_num"
-        ((row_num++))
+        (( ++row_num )) || true
     done
 }
 
@@ -768,7 +770,7 @@ csv_map() {
     for row in "${CSV_ROWS[@]}"; do
         csv_row_assoc "$row_num"
         "$transform" "$row_num"
-        ((row_num++))
+        (( ++row_num )) || true
     done
 }
 

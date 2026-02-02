@@ -1,0 +1,1444 @@
+#!/usr/bin/env bash
+# =============================================================================
+# MAINFRAME CLI - Scaffolding Tool
+# =============================================================================
+# Provides: mainframe new <type> <name> [options]
+#           mainframe doctor
+#           mainframe init
+#
+# Commands:
+#   new agent <name>      Scaffold new agent project
+#   new tool <name>       Scaffold new tool/function
+#   new workflow <name>   Scaffold new workflow
+#   new library <name>    Scaffold new library
+#   doctor                Health check and diagnostics
+#   init                  Initialize MAINFRAME in current directory
+# =============================================================================
+# "Mainframe can make a computer do anything short of tap dance."
+#                                        - GI Joe Filecard, 1986
+# =============================================================================
+
+set -euo pipefail
+
+# Determine MAINFRAME root directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export MAINFRAME_ROOT="${MAINFRAME_ROOT:-$SCRIPT_DIR}"
+
+# Source common library
+source "$MAINFRAME_ROOT/lib/common.sh"
+
+# =============================================================================
+# CONSTANTS
+# =============================================================================
+
+readonly NEW_VERSION="1.0.0"
+readonly NAME_PATTERN='^[a-zA-Z][a-zA-Z0-9_-]*$'
+
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
+
+# Validate name (alphanumeric, dash, underscore, starts with letter)
+# Usage: validate_name "name" "type"
+# Returns: 0 if valid, 1 if invalid
+validate_name() {
+    local name="$1"
+    local type="${2:-name}"
+
+    if [[ -z "$name" ]]; then
+        log_error "${type} cannot be empty"
+        return 1
+    fi
+
+    if [[ ${#name} -lt 2 ]]; then
+        log_error "${type} must be at least 2 characters"
+        return 1
+    fi
+
+    if [[ ${#name} -gt 64 ]]; then
+        log_error "${type} cannot exceed 64 characters"
+        return 1
+    fi
+
+    if ! [[ "$name" =~ $NAME_PATTERN ]]; then
+        log_error "${type} must start with a letter and contain only letters, numbers, dashes, and underscores"
+        return 1
+    fi
+
+    return 0
+}
+
+# Convert name to various formats
+to_snake_case() {
+    local name="$1"
+    printf '%s' "$name" | tr '-' '_' | tr '[:upper:]' '[:lower:]'
+}
+
+to_pascal_case() {
+    local name="$1"
+    local result=""
+    local IFS='-_'
+    local word
+    for word in $name; do
+        result+="${word^}"
+    done
+    printf '%s' "$result"
+}
+
+to_title() {
+    local name="$1"
+    local result=""
+    local IFS='-_'
+    local word first=1
+    for word in $name; do
+        [[ $first -eq 1 ]] && first=0 || result+=" "
+        result+="${word^}"
+    done
+    printf '%s' "$result"
+}
+
+# Create directory with logging
+create_dir() {
+    local dir="$1"
+    if [[ ! -d "$dir" ]]; then
+        mkdir -p "$dir"
+        log_info "Created directory: $dir"
+    fi
+}
+
+# Create file with content and logging
+create_file() {
+    local file="$1"
+    local content="$2"
+    local mode="${3:-0644}"
+
+    if [[ -f "$file" ]]; then
+        log_warn "File already exists, skipping: $file"
+        return 0
+    fi
+
+    printf '%s\n' "$content" > "$file"
+    chmod "$mode" "$file"
+    log_info "Created file: $file"
+}
+
+# Prompt for input with default value
+prompt() {
+    local message="$1"
+    local default="${2:-}"
+    local response
+
+    if [[ -n "$default" ]]; then
+        printf "%b%s [%s]:%b " "$CLR_CYAN" "$message" "$default" "$CLR_RESET"
+    else
+        printf "%b%s:%b " "$CLR_CYAN" "$message" "$CLR_RESET"
+    fi
+
+    read -r response
+    printf '%s' "${response:-$default}"
+}
+
+# Yes/no prompt
+confirm_prompt() {
+    local message="$1"
+    local default="${2:-n}"
+    local response
+
+    if [[ "$default" =~ ^[Yy] ]]; then
+        printf "%b%s [Y/n]:%b " "$CLR_CYAN" "$message" "$CLR_RESET"
+    else
+        printf "%b%s [y/N]:%b " "$CLR_CYAN" "$message" "$CLR_RESET"
+    fi
+
+    read -r response
+    response="${response:-$default}"
+    [[ "$response" =~ ^[Yy] ]]
+}
+
+# =============================================================================
+# SHOW HELP
+# =============================================================================
+
+show_help() {
+    cat << 'EOF'
+MAINFRAME Scaffolding Tool
+
+Usage: mainframe-new <command> [options]
+
+Commands:
+  new agent <name>      Create a new agent project
+  new tool <name>       Create a new tool/function file
+  new workflow <name>   Create a new workflow definition
+  new library <name>    Create a new MAINFRAME library
+  doctor                Run health checks and diagnostics
+  init                  Initialize MAINFRAME in current directory
+
+Options:
+  -h, --help           Show this help message
+  -v, --version        Show version information
+  -y, --yes            Skip interactive prompts (use defaults)
+  -o, --output DIR     Output directory (default: current directory)
+
+Examples:
+  mainframe-new new agent my-worker
+  mainframe-new new tool validate_config
+  mainframe-new new workflow deploy-pipeline
+  mainframe-new new library myutils
+  mainframe-new doctor
+  mainframe-new init
+
+Names must:
+  - Start with a letter
+  - Contain only letters, numbers, dashes, and underscores
+  - Be 2-64 characters long
+
+Documentation: https://github.com/gtwatts/mainframe
+EOF
+}
+
+show_version() {
+    echo "mainframe-new v${NEW_VERSION}"
+    echo "MAINFRAME v${MAINFRAME_VERSION:-6.0.0}"
+}
+
+# =============================================================================
+# AGENT SCAFFOLDING
+# =============================================================================
+
+scaffold_agent() {
+    local name="$1"
+    local output_dir="${2:-.}"
+    local interactive="${3:-1}"
+
+    # Validate name
+    validate_name "$name" "Agent name" || return 1
+
+    local snake_name
+    snake_name=$(to_snake_case "$name")
+    local pascal_name
+    pascal_name=$(to_pascal_case "$name")
+    local title_name
+    title_name=$(to_title "$name")
+
+    # Interactive options
+    local description="$title_name agent"
+    local author=""
+    local version="1.0.0"
+    local include_tests="y"
+
+    if [[ "$interactive" -eq 1 ]]; then
+        header "New Agent: $name"
+
+        description=$(prompt "Description" "$description")
+        author=$(prompt "Author" "${USER:-}")
+        version=$(prompt "Version" "$version")
+        include_tests=$(prompt "Include tests? (y/n)" "y")
+
+        echo ""
+        if ! confirm_prompt "Create agent '$name' in $output_dir/$name?"; then
+            log_info "Cancelled"
+            return 0
+        fi
+    fi
+
+    local agent_dir="$output_dir/$name"
+
+    # Create directory structure
+    create_dir "$agent_dir"
+    create_dir "$agent_dir/tools"
+    create_dir "$agent_dir/prompts"
+
+    if [[ "$include_tests" =~ ^[Yy] ]]; then
+        create_dir "$agent_dir/tests"
+    fi
+
+    # Create agent.sh
+    local agent_script
+    agent_script=$(cat << AGENT_EOF
+#!/usr/bin/env bash
+# =============================================================================
+# ${title_name} Agent
+# =============================================================================
+# Description: ${description}
+# Author: ${author}
+# Version: ${version}
+# Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+# =============================================================================
+
+set -euo pipefail
+
+# Source MAINFRAME
+source "\${MAINFRAME_ROOT:-\$HOME/.mainframe}/lib/common.sh"
+
+# =============================================================================
+# CONFIGURATION
+# =============================================================================
+
+readonly AGENT_NAME="${name}"
+readonly AGENT_VERSION="${version}"
+readonly AGENT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+
+# =============================================================================
+# AGENT STATE
+# =============================================================================
+
+# Initialize agent context
+_init_context() {
+    # Load AWM if available for persistent memory
+    if declare -F awm_init &>/dev/null; then
+        awm_init "\${AGENT_NAME}-\$(date +%s)"
+    fi
+
+    log_info "Agent initialized: \${AGENT_NAME} v\${AGENT_VERSION}"
+}
+
+# =============================================================================
+# TOOLS
+# =============================================================================
+
+# Source custom tools
+for tool in "\$AGENT_DIR"/tools/*.sh; do
+    [[ -f "\$tool" ]] && source "\$tool"
+done
+
+# =============================================================================
+# MAIN AGENT LOGIC
+# =============================================================================
+
+# Process a task
+# Usage: agent_process_task "task_description"
+# Returns: 0 on success, 1 on failure
+agent_process_task() {
+    local task="\${1:?Task description required}"
+
+    log_info "Processing task: \$task"
+
+    # Checkpoint start (if AWM available)
+    if declare -F awm_checkpoint &>/dev/null; then
+        awm_checkpoint "task_start" "task=\$task"
+    fi
+
+    # TODO: Implement your agent logic here
+    echo "Processing: \$task"
+
+    # Checkpoint completion
+    if declare -F awm_checkpoint &>/dev/null; then
+        awm_checkpoint "task_complete" "task=\$task"
+    fi
+
+    log_info "Task completed"
+    return 0
+}
+
+# Agent main loop
+# Usage: agent_main [task1] [task2] ...
+agent_main() {
+    _init_context
+
+    if [[ \$# -eq 0 ]]; then
+        log_warn "No tasks provided"
+        echo "Usage: \$0 <task> [task2] ..."
+        return 1
+    fi
+
+    local task
+    local failed=0
+
+    for task in "\$@"; do
+        if ! agent_process_task "\$task"; then
+            log_error "Task failed: \$task"
+            ((failed++))
+        fi
+    done
+
+    if [[ \$failed -gt 0 ]]; then
+        log_error "\$failed task(s) failed"
+        return 1
+    fi
+
+    log_info "All tasks completed successfully"
+    return 0
+}
+
+# =============================================================================
+# CLI INTERFACE
+# =============================================================================
+
+show_help() {
+    cat << EOF
+${title_name} Agent v${version}
+
+Usage: \$(basename "\$0") [options] <task> [task2] ...
+
+Options:
+  -h, --help      Show this help message
+  -v, --version   Show version information
+  -d, --debug     Enable debug output
+
+Examples:
+  \$(basename "\$0") "analyze data.csv"
+  \$(basename "\$0") "process file1.txt" "process file2.txt"
+
+EOF
+}
+
+# Parse arguments and run
+if [[ "\${BASH_SOURCE[0]}" == "\${0}" ]]; then
+    # Parse options
+    while [[ \$# -gt 0 ]]; do
+        case "\$1" in
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            -v|--version)
+                echo "${title_name} Agent v${version}"
+                exit 0
+                ;;
+            -d|--debug)
+                export BASHER_LOG_LEVEL=0
+                shift
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -*)
+                log_error "Unknown option: \$1"
+                show_help
+                exit 1
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
+    agent_main "\$@"
+fi
+AGENT_EOF
+)
+    create_file "$agent_dir/agent.sh" "$agent_script" "0755"
+
+    # Create config.yaml
+    local config_yaml
+    config_yaml=$(cat << CONFIG_EOF
+# ${title_name} Agent Configuration
+# Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+name: ${name}
+version: ${version}
+description: ${description}
+
+# Agent capabilities
+capabilities:
+  - task_processing
+  # Add more capabilities here
+
+# Resource limits
+limits:
+  max_concurrent_tasks: 5
+  task_timeout_seconds: 300
+
+# Tool configuration
+tools:
+  example:
+    enabled: true
+
+# Logging
+logging:
+  level: info
+  file: /tmp/${name}.log
+CONFIG_EOF
+)
+    create_file "$agent_dir/config.yaml" "$config_yaml"
+
+    # Create example tool
+    local example_tool
+    example_tool=$(cat << TOOL_EOF
+#!/usr/bin/env bash
+# =============================================================================
+# @name: example_tool
+# @description: Example tool demonstrating the tool template format
+# @param input: string - Input to process
+# @returns: string - Processed output
+# @category: ${name}
+# =============================================================================
+
+# Example tool function
+# Usage: example_tool "input"
+# Returns: Processed input string
+example_tool() {
+    local input="\${1:?Input required}"
+
+    # Process the input
+    local result="Processed: \$input"
+
+    printf '%s\n' "\$result"
+}
+
+# Validate tool function
+# Usage: validate_tool_input "input"
+# Returns: 0 if valid, 1 if invalid
+validate_tool_input() {
+    local input="\$1"
+
+    if [[ -z "\$input" ]]; then
+        log_error "Input cannot be empty"
+        return 1
+    fi
+
+    return 0
+}
+TOOL_EOF
+)
+    create_file "$agent_dir/tools/example.sh" "$example_tool" "0644"
+
+    # Create system prompt
+    local system_prompt
+    system_prompt=$(cat << PROMPT_EOF
+You are ${title_name}, an AI agent built with MAINFRAME.
+
+## Capabilities
+- Task processing and analysis
+- Integration with MAINFRAME libraries
+
+## Guidelines
+1. Process tasks sequentially unless parallel processing is explicitly requested
+2. Log important decisions and milestones
+3. Use AWM checkpoints for long-running tasks
+4. Handle errors gracefully and report issues
+
+## Available Tools
+- example_tool: Process and transform input data
+
+## Response Format
+Always respond with structured output when possible.
+PROMPT_EOF
+)
+    create_file "$agent_dir/prompts/system.txt" "$system_prompt"
+
+    # Create tests if requested
+    if [[ "$include_tests" =~ ^[Yy] ]]; then
+        local test_file
+        test_file=$(cat << TEST_EOF
+#!/usr/bin/env bats
+# =============================================================================
+# ${title_name} Agent Tests
+# =============================================================================
+
+setup() {
+    BATS_TEST_DIR="\$( cd "\$( dirname "\$BATS_TEST_FILENAME" )" && pwd )"
+    AGENT_DIR="\${BATS_TEST_DIR}/.."
+
+    # Create temp directory for test artifacts
+    TEST_TMPDIR="\$(mktemp -d)"
+
+    # Source the agent
+    source "\$AGENT_DIR/agent.sh"
+}
+
+teardown() {
+    rm -rf "\$TEST_TMPDIR"
+}
+
+# =============================================================================
+# BASIC TESTS
+# =============================================================================
+
+@test "agent: AGENT_NAME is set" {
+    [[ -n "\$AGENT_NAME" ]]
+    [[ "\$AGENT_NAME" == "${name}" ]]
+}
+
+@test "agent: AGENT_VERSION is set" {
+    [[ -n "\$AGENT_VERSION" ]]
+    [[ "\$AGENT_VERSION" == "${version}" ]]
+}
+
+@test "agent: agent_process_task function exists" {
+    declare -F agent_process_task
+}
+
+@test "agent: agent_main function exists" {
+    declare -F agent_main
+}
+
+# =============================================================================
+# TOOL TESTS
+# =============================================================================
+
+@test "tool: example_tool function exists" {
+    declare -F example_tool
+}
+
+@test "tool: example_tool processes input" {
+    result=\$(example_tool "test input")
+    [[ "\$result" == "Processed: test input" ]]
+}
+
+@test "tool: example_tool fails on empty input" {
+    run example_tool ""
+    [[ "\$status" -ne 0 ]]
+}
+TEST_EOF
+)
+        create_file "$agent_dir/tests/agent.bats" "$test_file"
+    fi
+
+    # Create README.md
+    local readme
+    readme=$(cat << README_EOF
+# ${title_name}
+
+${description}
+
+## Installation
+
+1. Ensure MAINFRAME is installed and \`MAINFRAME_ROOT\` is set
+2. Clone this repository
+3. Run the agent:
+
+\`\`\`bash
+./agent.sh "your task here"
+\`\`\`
+
+## Configuration
+
+Edit \`config.yaml\` to customize agent behavior.
+
+## Custom Tools
+
+Add custom tools in the \`tools/\` directory. Each tool should follow the format:
+
+\`\`\`bash
+# @name: tool_name
+# @description: What the tool does
+# @param arg1: type - Description
+# @returns: type - Return value description
+
+tool_name() {
+    local arg1="\${1:?Required}"
+    # Implementation
+}
+\`\`\`
+
+## Testing
+
+Run tests with BATS:
+
+\`\`\`bash
+bats tests/
+\`\`\`
+
+## License
+
+MIT
+README_EOF
+)
+    create_file "$agent_dir/README.md" "$readme"
+
+    success "Agent scaffolded successfully: $agent_dir"
+    echo ""
+    echo "Next steps:"
+    echo "  1. cd $agent_dir"
+    echo "  2. Edit agent.sh to implement your logic"
+    echo "  3. Add custom tools in tools/"
+    echo "  4. Run: ./agent.sh \"your task\""
+}
+
+# =============================================================================
+# TOOL SCAFFOLDING
+# =============================================================================
+
+scaffold_tool() {
+    local name="$1"
+    local output_dir="${2:-.}"
+    local interactive="${3:-1}"
+
+    # Validate name
+    validate_name "$name" "Tool name" || return 1
+
+    local snake_name
+    snake_name=$(to_snake_case "$name")
+    local title_name
+    title_name=$(to_title "$name")
+
+    # Interactive options
+    local description="$title_name tool"
+    local category="custom"
+    local param_name="input"
+    local param_type="string"
+    local return_type="string"
+
+    if [[ "$interactive" -eq 1 ]]; then
+        header "New Tool: $name"
+
+        description=$(prompt "Description" "$description")
+        category=$(prompt "Category" "$category")
+        param_name=$(prompt "Primary parameter name" "$param_name")
+        param_type=$(prompt "Parameter type (string/number/array/bool)" "$param_type")
+        return_type=$(prompt "Return type" "$return_type")
+
+        echo ""
+        if ! confirm_prompt "Create tool '$snake_name' in $output_dir?"; then
+            log_info "Cancelled"
+            return 0
+        fi
+    fi
+
+    local tool_file="$output_dir/${snake_name}.sh"
+
+    local tool_content
+    tool_content=$(cat << TOOL_EOF
+#!/usr/bin/env bash
+# =============================================================================
+# @name: ${snake_name}
+# @description: ${description}
+# @param ${param_name}: ${param_type} - Primary input to process
+# @returns: ${return_type} - Processed result
+# @category: ${category}
+# @idempotent: true
+# @pure: true
+# =============================================================================
+
+# ${title_name}
+# ${description}
+#
+# Usage: ${snake_name} "${param_name}"
+# Returns: ${return_type}
+#
+# Example:
+#   result=\$(${snake_name} "example input")
+#   echo "\$result"
+${snake_name}() {
+    local ${param_name}="\${1:?${param_name^} required}"
+
+    # Validate input
+    if [[ -z "\$${param_name}" ]]; then
+        echo "Error: ${param_name} cannot be empty" >&2
+        return 1
+    fi
+
+    # TODO: Implement your tool logic here
+    local result="\$${param_name}"
+
+    # Output result
+    printf '%s\n' "\$result"
+}
+
+# Nameref variant for performance (avoids subshell)
+# Usage: ${snake_name}_v result_var "${param_name}"
+${snake_name}_v() {
+    local -n _result_ref="\$1"
+    local ${param_name}="\${2:?${param_name^} required}"
+
+    # TODO: Implement (same logic as above)
+    _result_ref="\$${param_name}"
+}
+TOOL_EOF
+)
+
+    create_file "$tool_file" "$tool_content" "0644"
+
+    success "Tool scaffolded successfully: $tool_file"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Edit $tool_file to implement your logic"
+    echo "  2. Source it: source \"$tool_file\""
+    echo "  3. Use it: ${snake_name} \"your input\""
+}
+
+# =============================================================================
+# WORKFLOW SCAFFOLDING
+# =============================================================================
+
+scaffold_workflow() {
+    local name="$1"
+    local output_dir="${2:-.}"
+    local interactive="${3:-1}"
+
+    # Validate name
+    validate_name "$name" "Workflow name" || return 1
+
+    local snake_name
+    snake_name=$(to_snake_case "$name")
+    local title_name
+    title_name=$(to_title "$name")
+
+    # Interactive options
+    local description="$title_name workflow"
+    local trigger="manual"
+
+    if [[ "$interactive" -eq 1 ]]; then
+        header "New Workflow: $name"
+
+        description=$(prompt "Description" "$description")
+        trigger=$(prompt "Trigger type (manual/schedule/event)" "$trigger")
+
+        echo ""
+        if ! confirm_prompt "Create workflow '$name' in $output_dir?"; then
+            log_info "Cancelled"
+            return 0
+        fi
+    fi
+
+    local workflow_dir="$output_dir/$name"
+
+    create_dir "$workflow_dir"
+
+    # Create workflow.yaml
+    local workflow_yaml
+    workflow_yaml=$(cat << YAML_EOF
+# ${title_name} Workflow
+# Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+name: ${name}
+description: ${description}
+version: 1.0.0
+
+# Trigger configuration
+trigger:
+  type: ${trigger}
+$(if [[ "$trigger" == "schedule" ]]; then
+    echo "  cron: '0 0 * * *'  # Daily at midnight"
+elif [[ "$trigger" == "event" ]]; then
+    echo "  event: file_created"
+    echo "  filter: '*.csv'"
+fi)
+
+# Environment variables
+env:
+  LOG_LEVEL: info
+
+# Workflow steps
+steps:
+  - name: validate
+    description: Validate input parameters
+    script: steps/validate.sh
+
+  - name: process
+    description: Main processing step
+    script: steps/process.sh
+    depends_on: [validate]
+
+  - name: notify
+    description: Send completion notification
+    script: steps/notify.sh
+    depends_on: [process]
+    on_failure: continue
+
+# Error handling
+on_failure:
+  - notify_error
+  - cleanup
+
+# Cleanup steps (always run)
+finally:
+  - cleanup_temp
+YAML_EOF
+)
+    create_file "$workflow_dir/workflow.yaml" "$workflow_yaml"
+
+    # Create steps directory and scripts
+    create_dir "$workflow_dir/steps"
+
+    local validate_script
+    validate_script=$(cat << STEP_EOF
+#!/usr/bin/env bash
+# Step: validate
+# Validates input parameters before processing
+
+set -euo pipefail
+source "\${MAINFRAME_ROOT:-\$HOME/.mainframe}/lib/common.sh"
+
+log_info "Validating input parameters..."
+
+# TODO: Add your validation logic
+# Example:
+# require_file "\$INPUT_FILE" "Input file"
+# validate_email "\$NOTIFY_EMAIL" || die 1 "Invalid email"
+
+log_info "Validation passed"
+exit 0
+STEP_EOF
+)
+    create_file "$workflow_dir/steps/validate.sh" "$validate_script" "0755"
+
+    local process_script
+    process_script=$(cat << STEP_EOF
+#!/usr/bin/env bash
+# Step: process
+# Main processing logic
+
+set -euo pipefail
+source "\${MAINFRAME_ROOT:-\$HOME/.mainframe}/lib/common.sh"
+
+log_info "Starting main processing..."
+
+# TODO: Add your processing logic
+
+log_info "Processing complete"
+exit 0
+STEP_EOF
+)
+    create_file "$workflow_dir/steps/process.sh" "$process_script" "0755"
+
+    local notify_script
+    notify_script=$(cat << STEP_EOF
+#!/usr/bin/env bash
+# Step: notify
+# Send completion notification
+
+set -euo pipefail
+source "\${MAINFRAME_ROOT:-\$HOME/.mainframe}/lib/common.sh"
+
+log_info "Sending notification..."
+
+# TODO: Add notification logic (email, webhook, etc.)
+
+log_info "Notification sent"
+exit 0
+STEP_EOF
+)
+    create_file "$workflow_dir/steps/notify.sh" "$notify_script" "0755"
+
+    # Create runner script
+    local runner_script
+    runner_script=$(cat << RUNNER_EOF
+#!/usr/bin/env bash
+# ${title_name} Workflow Runner
+# Usage: ./run.sh [step_name]
+
+set -euo pipefail
+source "\${MAINFRAME_ROOT:-\$HOME/.mainframe}/lib/common.sh"
+
+WORKFLOW_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+
+log_info "Running workflow: ${name}"
+
+# Run specific step or all steps
+if [[ \$# -gt 0 ]]; then
+    step="\$1"
+    log_info "Running step: \$step"
+    bash "\$WORKFLOW_DIR/steps/\${step}.sh"
+else
+    # Run all steps in order
+    for step in validate process notify; do
+        log_info "Running step: \$step"
+        if ! bash "\$WORKFLOW_DIR/steps/\${step}.sh"; then
+            log_error "Step failed: \$step"
+            exit 1
+        fi
+    done
+fi
+
+log_info "Workflow completed successfully"
+RUNNER_EOF
+)
+    create_file "$workflow_dir/run.sh" "$runner_script" "0755"
+
+    success "Workflow scaffolded successfully: $workflow_dir"
+    echo ""
+    echo "Next steps:"
+    echo "  1. cd $workflow_dir"
+    echo "  2. Edit steps/*.sh to implement your logic"
+    echo "  3. Run: ./run.sh"
+}
+
+# =============================================================================
+# LIBRARY SCAFFOLDING
+# =============================================================================
+
+scaffold_library() {
+    local name="$1"
+    local output_dir="${2:-$MAINFRAME_ROOT/lib}"
+    local interactive="${3:-1}"
+
+    # Validate name
+    validate_name "$name" "Library name" || return 1
+
+    local snake_name
+    snake_name=$(to_snake_case "$name")
+    local title_name
+    title_name=$(to_title "$name")
+
+    # Interactive options
+    local description="$title_name functions"
+    local author=""
+
+    if [[ "$interactive" -eq 1 ]]; then
+        header "New Library: $name"
+
+        description=$(prompt "Description" "$description")
+        author=$(prompt "Author" "${USER:-}")
+
+        echo ""
+        log_info "Library will be created at: $output_dir/${snake_name}.sh"
+        if ! confirm_prompt "Create library?"; then
+            log_info "Cancelled"
+            return 0
+        fi
+    fi
+
+    local lib_file="$output_dir/${snake_name}.sh"
+    local test_file="$MAINFRAME_ROOT/tests/unit/${snake_name}.bats"
+
+    # Create library file
+    local lib_content
+    lib_content=$(cat << LIB_EOF
+#!/usr/bin/env bash
+# =============================================================================
+# MAINFRAME/lib/${snake_name}.sh - ${title_name}
+# =============================================================================
+# Description: ${description}
+# Author: ${author}
+# Version: 1.0.0
+# Requires: Bash 4.0+
+# =============================================================================
+# "Mainframe can make a computer do anything short of tap dance."
+# =============================================================================
+
+# Prevent double-sourcing
+[[ -n "\${_MAINFRAME_${snake_name^^}_LOADED:-}" ]] && return 0
+readonly _MAINFRAME_${snake_name^^}_LOADED=1
+
+# =============================================================================
+# INTERNAL HELPERS
+# =============================================================================
+
+# Internal logging helper
+_${snake_name}_log() {
+    if declare -F _mainframe_log &>/dev/null; then
+        _mainframe_log "${snake_name}" "\$@"
+    else
+        local level="\$1"; shift
+        [[ "\${MAINFRAME_QUIET:-}" != "1" ]] && printf '[${snake_name}] %s: %s\n' "\$level" "\$*" >&2
+        :  # Ensure return 0
+    fi
+}
+
+# =============================================================================
+# PUBLIC FUNCTIONS
+# =============================================================================
+
+# Example function
+# Demonstrates the function documentation format
+#
+# Usage: ${snake_name}_example "input"
+# @param input string - The input to process
+# @returns string - The processed result
+# @pure true
+# @idempotent true
+#
+# Example:
+#   result=\$(${snake_name}_example "hello")
+#   echo "\$result"  # Output: HELLO
+${snake_name}_example() {
+    local input="\${1:?Input required}"
+
+    # Convert to uppercase as an example
+    printf '%s\n' "\${input^^}"
+}
+
+# Nameref variant for performance (avoids subshell)
+# Usage: ${snake_name}_example_v result_var "input"
+${snake_name}_example_v() {
+    local -n _result="\$1"
+    local input="\${2:?Input required}"
+
+    _result="\${input^^}"
+}
+
+# =============================================================================
+# MODULE EXPORTS
+# =============================================================================
+
+# List of all public functions (for documentation)
+${snake_name^^}_EXPORTS=(
+    ${snake_name}_example
+    ${snake_name}_example_v
+)
+LIB_EOF
+)
+    create_file "$lib_file" "$lib_content" "0644"
+
+    # Create test file
+    if [[ -d "$MAINFRAME_ROOT/tests/unit" ]]; then
+        local test_content
+        test_content=$(cat << TEST_EOF
+#!/usr/bin/env bats
+# =============================================================================
+# MAINFRAME/tests/unit/${snake_name}.bats - ${title_name} Tests
+# =============================================================================
+# Description: Unit tests for lib/${snake_name}.sh
+# =============================================================================
+
+setup() {
+    BATS_TEST_DIR="\$( cd "\$( dirname "\$BATS_TEST_FILENAME" )" && pwd )"
+    MAINFRAME_ROOT="\${BATS_TEST_DIR}/../.."
+
+    # Create temp directory for test artifacts
+    TEST_TMPDIR="\$(mktemp -d)"
+
+    # Source the library
+    source "\$MAINFRAME_ROOT/lib/${snake_name}.sh"
+}
+
+teardown() {
+    rm -rf "\$TEST_TMPDIR"
+}
+
+# =============================================================================
+# BASIC TESTS
+# =============================================================================
+
+@test "${snake_name}: library loaded guard is set" {
+    [[ -n "\${_MAINFRAME_${snake_name^^}_LOADED:-}" ]]
+}
+
+@test "${snake_name}: ${snake_name}_example function exists" {
+    declare -F ${snake_name}_example
+}
+
+@test "${snake_name}: ${snake_name}_example processes input" {
+    result=\$(${snake_name}_example "hello")
+    [[ "\$result" == "HELLO" ]]
+}
+
+@test "${snake_name}: ${snake_name}_example_v nameref variant works" {
+    local result=""
+    ${snake_name}_example_v result "hello"
+    [[ "\$result" == "HELLO" ]]
+}
+
+@test "${snake_name}: ${snake_name}_example fails on missing input" {
+    run ${snake_name}_example
+    [[ "\$status" -ne 0 ]]
+}
+TEST_EOF
+)
+        create_file "$test_file" "$test_content"
+    fi
+
+    success "Library scaffolded successfully: $lib_file"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Edit $lib_file to add your functions"
+    echo "  2. Add exports to ${snake_name^^}_EXPORTS array"
+    echo "  3. Run tests: bats $test_file"
+    echo "  4. Update FUNCTIONS.json: make docs"
+}
+
+# =============================================================================
+# DOCTOR COMMAND
+# =============================================================================
+
+cmd_doctor() {
+    local errors=0
+    local warnings=0
+
+    header "MAINFRAME Doctor"
+
+    echo "Environment Checks"
+    echo "------------------"
+
+    # Check MAINFRAME_ROOT
+    printf "  MAINFRAME_ROOT:     "
+    if [[ -n "${MAINFRAME_ROOT:-}" ]]; then
+        if [[ -d "$MAINFRAME_ROOT" ]]; then
+            success "$MAINFRAME_ROOT"
+        else
+            failure "Set but directory not found: $MAINFRAME_ROOT"
+            ((errors++))
+        fi
+    else
+        log_warn "Not set (using script directory)"
+        ((warnings++))
+    fi
+
+    # Check Bash version
+    printf "  Bash version:       "
+    if ((BASH_VERSINFO[0] >= 4)); then
+        success "${BASH_VERSION} (OK, >= 4.0 required)"
+    else
+        failure "${BASH_VERSION} (ERROR: Bash 4.0+ required)"
+        ((errors++))
+    fi
+
+    # Check OS
+    printf "  Operating System:   "
+    echo "$(uname -s) $(uname -m)"
+
+    echo ""
+    echo "Dependency Checks"
+    echo "-----------------"
+
+    # Check jq
+    printf "  jq:                 "
+    if command -v jq &>/dev/null; then
+        success "$(jq --version 2>&1 || echo 'installed')"
+    else
+        failure "Not found (required for JSON operations)"
+        ((errors++))
+    fi
+
+    # Check curl
+    printf "  curl:               "
+    if command -v curl &>/dev/null; then
+        local curl_ver
+        curl_ver=$(curl --version 2>&1 | head -1 | cut -d' ' -f2)
+        success "$curl_ver"
+    else
+        log_warn "Not found (optional, fallback to wget)"
+        ((warnings++))
+    fi
+
+    # Check flock
+    printf "  flock:              "
+    if command -v flock &>/dev/null; then
+        success "Found"
+    else
+        log_warn "Not found (required for lock operations)"
+        ((warnings++))
+    fi
+
+    echo ""
+    echo "MAINFRAME Checks"
+    echo "----------------"
+
+    # Check common.sh exists
+    printf "  lib/common.sh:      "
+    if [[ -f "${MAINFRAME_ROOT}/lib/common.sh" ]]; then
+        success "Found"
+    else
+        failure "Not found"
+        ((errors++))
+    fi
+
+    # Check common.sh is sourceable
+    printf "  Library loading:    "
+    if declare -F json_object &>/dev/null; then
+        success "OK (json_object available)"
+    else
+        failure "Libraries not loaded properly"
+        ((errors++))
+    fi
+
+    # Count functions
+    local func_count
+    func_count=$(declare -F | awk '{print $3}' | grep -v '^_' | wc -l)
+    printf "  Public functions:   "
+    if [[ $func_count -gt 100 ]]; then
+        success "$func_count"
+    else
+        log_warn "$func_count (expected > 100)"
+        ((warnings++))
+    fi
+
+    # Check write permissions to context dir
+    printf "  Context directory:  "
+    local ctx_dir="${MAINFRAME_CONTEXT_STATE:-/tmp/mainframe_context_$$}"
+    ctx_dir=$(dirname "$ctx_dir")
+    if [[ -w "$ctx_dir" ]]; then
+        success "Writable ($ctx_dir)"
+    else
+        failure "Not writable: $ctx_dir"
+        ((errors++))
+    fi
+
+    # Check FUNCTIONS.json
+    printf "  FUNCTIONS.json:     "
+    if [[ -f "${MAINFRAME_ROOT}/FUNCTIONS.json" ]]; then
+        local func_json_count
+        func_json_count=$(jq '.libraries | to_entries | map(.value.functions | length) | add' "$MAINFRAME_ROOT/FUNCTIONS.json" 2>/dev/null || echo 0)
+        success "Found ($func_json_count functions documented)"
+    else
+        log_warn "Not found (run 'make docs' to generate)"
+        ((warnings++))
+    fi
+
+    echo ""
+    echo "Summary"
+    echo "-------"
+
+    if [[ $errors -eq 0 && $warnings -eq 0 ]]; then
+        success "All checks passed!"
+        return 0
+    elif [[ $errors -eq 0 ]]; then
+        log_warn "$warnings warning(s), 0 errors"
+        return 0
+    else
+        failure "$errors error(s), $warnings warning(s)"
+        return 1
+    fi
+}
+
+# =============================================================================
+# INIT COMMAND
+# =============================================================================
+
+cmd_init() {
+    local target_dir="${1:-.}"
+
+    header "Initialize MAINFRAME"
+
+    # Check if already initialized
+    if [[ -f "$target_dir/.mainframe" ]]; then
+        log_warn "Directory already initialized"
+        if ! confirm_prompt "Re-initialize?"; then
+            return 0
+        fi
+    fi
+
+    # Create .mainframe marker
+    local marker_content
+    marker_content=$(cat << MARKER_EOF
+# MAINFRAME Project Configuration
+# Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+# MAINFRAME root directory (auto-detected if not set)
+# MAINFRAME_ROOT=\${HOME}/.mainframe
+
+# Log level: 0=debug, 1=info, 2=warn, 3=error
+BASHER_LOG_LEVEL=1
+
+# Optional: project-specific settings
+# PROJECT_NAME=my-project
+MARKER_EOF
+)
+    create_file "$target_dir/.mainframe" "$marker_content"
+
+    # Create scripts directory
+    create_dir "$target_dir/scripts"
+
+    # Create example script
+    local example_script
+    example_script=$(cat << EXAMPLE_EOF
+#!/usr/bin/env bash
+# Example MAINFRAME script
+# Source the marker file first to load any project-specific settings
+[[ -f "\${BASH_SOURCE[0]%/*}/../.mainframe" ]] && source "\${BASH_SOURCE[0]%/*}/../.mainframe"
+
+# Source MAINFRAME
+source "\${MAINFRAME_ROOT:-\$HOME/.mainframe}/lib/common.sh"
+
+# Your script logic here
+log_info "Hello from MAINFRAME!"
+
+# Example: Create a JSON object
+json_object name="MAINFRAME" version="\$MAINFRAME_VERSION" ready:bool=true
+EXAMPLE_EOF
+)
+    create_file "$target_dir/scripts/example.sh" "$example_script" "0755"
+
+    success "MAINFRAME initialized in $target_dir"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Edit .mainframe for project-specific settings"
+    echo "  2. Add scripts in scripts/"
+    echo "  3. Run: ./scripts/example.sh"
+}
+
+# =============================================================================
+# MAIN DISPATCH
+# =============================================================================
+
+# Parse global options
+OUTPUT_DIR="."
+INTERACTIVE=1
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -v|--version)
+            show_version
+            exit 0
+            ;;
+        -y|--yes)
+            INTERACTIVE=0
+            shift
+            ;;
+        -o|--output)
+            OUTPUT_DIR="${2:?Output directory required}"
+            shift 2
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            log_error "Unknown option: $1"
+            show_help
+            exit 1
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+# Get command
+COMMAND="${1:-help}"
+shift || true
+
+case "$COMMAND" in
+    new)
+        TYPE="${1:-}"
+        NAME="${2:-}"
+
+        if [[ -z "$TYPE" ]]; then
+            log_error "Type required: agent, tool, workflow, library"
+            echo ""
+            show_help
+            exit 1
+        fi
+
+        if [[ -z "$NAME" ]]; then
+            log_error "Name required"
+            echo ""
+            show_help
+            exit 1
+        fi
+
+        case "$TYPE" in
+            agent)
+                scaffold_agent "$NAME" "$OUTPUT_DIR" "$INTERACTIVE"
+                ;;
+            tool)
+                scaffold_tool "$NAME" "$OUTPUT_DIR" "$INTERACTIVE"
+                ;;
+            workflow)
+                scaffold_workflow "$NAME" "$OUTPUT_DIR" "$INTERACTIVE"
+                ;;
+            library|lib)
+                scaffold_library "$NAME" "$OUTPUT_DIR" "$INTERACTIVE"
+                ;;
+            *)
+                log_error "Unknown type: $TYPE"
+                echo "Valid types: agent, tool, workflow, library"
+                exit 1
+                ;;
+        esac
+        ;;
+    doctor|check|health)
+        cmd_doctor
+        ;;
+    init|initialize)
+        cmd_init "${1:-$OUTPUT_DIR}"
+        ;;
+    help|-h|--help)
+        show_help
+        ;;
+    version|-v|--version)
+        show_version
+        ;;
+    *)
+        log_error "Unknown command: $COMMAND"
+        show_help
+        exit 1
+        ;;
+esac

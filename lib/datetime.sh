@@ -418,15 +418,17 @@ date_diff_human() {
 # Usage: year "epoch"
 year() {
     local epoch="${1:--1}"
-    printf '%(%Y)T\n' "$epoch"
+    [[ "$epoch" == "-1" ]] && epoch=$(now)
+    TZ=UTC date -d "@$epoch" +%Y 2>/dev/null || printf '%(%Y)T\n' "$epoch"
 }
 
 # Extract month from epoch (1-12)
 # Usage: month "epoch"
 month() {
     local epoch="${1:--1}"
+    [[ "$epoch" == "-1" ]] && epoch=$(now)
     local m
-    printf -v m '%(%m)T' "$epoch"
+    m=$(TZ=UTC date -d "@$epoch" +%m 2>/dev/null) || printf -v m '%(%m)T' "$epoch"
     printf '%d\n' "${m#0}"
 }
 
@@ -434,8 +436,9 @@ month() {
 # Usage: day "epoch"
 day() {
     local epoch="${1:--1}"
+    [[ "$epoch" == "-1" ]] && epoch=$(now)
     local d
-    printf -v d '%(%d)T' "$epoch"
+    d=$(TZ=UTC date -d "@$epoch" +%d 2>/dev/null) || printf -v d '%(%d)T' "$epoch"
     printf '%d\n' "${d#0}"
 }
 
@@ -443,8 +446,9 @@ day() {
 # Usage: hour "epoch"
 hour() {
     local epoch="${1:--1}"
+    [[ "$epoch" == "-1" ]] && epoch=$(now)
     local h
-    printf -v h '%(%H)T' "$epoch"
+    h=$(TZ=UTC date -d "@$epoch" +%H 2>/dev/null) || printf -v h '%(%H)T' "$epoch"
     printf '%d\n' "${h#0}"
 }
 
@@ -452,8 +456,9 @@ hour() {
 # Usage: minute "epoch"
 minute() {
     local epoch="${1:--1}"
+    [[ "$epoch" == "-1" ]] && epoch=$(now)
     local m
-    printf -v m '%(%M)T' "$epoch"
+    m=$(TZ=UTC date -d "@$epoch" +%M 2>/dev/null) || printf -v m '%(%M)T' "$epoch"
     printf '%d\n' "${m#0}"
 }
 
@@ -461,8 +466,9 @@ minute() {
 # Usage: second "epoch"
 second() {
     local epoch="${1:--1}"
+    [[ "$epoch" == "-1" ]] && epoch=$(now)
     local s
-    printf -v s '%(%S)T' "$epoch"
+    s=$(TZ=UTC date -d "@$epoch" +%S 2>/dev/null) || printf -v s '%(%S)T' "$epoch"
     printf '%d\n' "${s#0}"
 }
 
@@ -536,7 +542,8 @@ is_same_day() {
 is_weekend() {
     local epoch="${1:--1}"
     local dow
-    printf -v dow '%(%u)T' "$epoch"  # 1=Monday, 7=Sunday
+    # Use UTC to match how dates are parsed
+    dow=$(TZ=UTC date -d "@$epoch" +%u 2>/dev/null || printf '%(%u)T' "$epoch")  # 1=Monday, 7=Sunday
     ((dow == 6 || dow == 7))
 }
 
@@ -545,7 +552,8 @@ is_weekend() {
 is_weekday() {
     local epoch="${1:--1}"
     local dow
-    printf -v dow '%(%u)T' "$epoch"  # 1=Monday, 7=Sunday
+    # Use UTC to match how dates are parsed
+    dow=$(TZ=UTC date -d "@$epoch" +%u 2>/dev/null || printf '%(%u)T' "$epoch")  # 1=Monday, 7=Sunday
     ((dow >= 1 && dow <= 5))
 }
 
@@ -560,14 +568,9 @@ start_of_day() {
     [[ "$epoch" == "-1" ]] && epoch=$(now)
 
     local h m s
-    printf -v h '%(%H)T' "$epoch"
-    printf -v m '%(%M)T' "$epoch"
-    printf -v s '%(%S)T' "$epoch"
-
-    h="${h#0}"; m="${m#0}"; s="${s#0}"
-    [[ -z "$h" ]] && h=0
-    [[ -z "$m" ]] && m=0
-    [[ -z "$s" ]] && s=0
+    h=$(hour "$epoch")
+    m=$(minute "$epoch")
+    s=$(second "$epoch")
 
     printf '%d\n' $(( epoch - h * _DT_SECONDS_PER_HOUR - m * _DT_SECONDS_PER_MINUTE - s ))
 }
@@ -587,14 +590,8 @@ start_of_month() {
     local epoch="${1:--1}"
     [[ "$epoch" == "-1" ]] && epoch=$(now)
 
-    local y m d
-    printf -v y '%(%Y)T' "$epoch"
-    printf -v m '%(%m)T' "$epoch"
-    printf -v d '%(%d)T' "$epoch"
-
-    m="${m#0}"; d="${d#0}"
-    [[ -z "$m" ]] && m=1
-    [[ -z "$d" ]] && d=1
+    local d
+    d=$(day "$epoch")
 
     # Get start of current day, then subtract days
     local start
@@ -609,24 +606,18 @@ end_of_month() {
     [[ "$epoch" == "-1" ]] && epoch=$(now)
 
     local y m d
-    printf -v y '%(%Y)T' "$epoch"
-    printf -v m '%(%m)T' "$epoch"
-    printf -v d '%(%d)T' "$epoch"
-
-    m="${m#0}"; d="${d#0}"
-    [[ -z "$m" ]] && m=1
-    [[ -z "$d" ]] && d=1
+    y=$(year "$epoch")
+    m=$(month "$epoch")
+    d=$(day "$epoch")
 
     # Get days in this month
-    local days_in_month=${_DT_DAYS_IN_MONTH[m]}
-    if ((m == 2)) && _dt_is_leap_year "$y"; then
-        ((days_in_month++))
-    fi
+    local dim
+    dim=$(days_in_month "$y" "$m")
 
     # Start of day + remaining days in month
     local start
     start=$(start_of_day "$epoch")
-    printf '%d\n' $(( start + (days_in_month - d) * _DT_SECONDS_PER_DAY + _DT_SECONDS_PER_DAY - 1 ))
+    printf '%d\n' $(( start + (dim - d) * _DT_SECONDS_PER_DAY + _DT_SECONDS_PER_DAY - 1 ))
 }
 
 # Get start of year for given epoch
@@ -636,7 +627,7 @@ start_of_year() {
     [[ "$epoch" == "-1" ]] && epoch=$(now)
 
     local y
-    printf -v y '%(%Y)T' "$epoch"
+    y=$(year "$epoch")
 
     _dt_to_epoch "$y" 1 1 0 0 0
 }
@@ -648,7 +639,7 @@ end_of_year() {
     [[ "$epoch" == "-1" ]] && epoch=$(now)
 
     local y
-    printf -v y '%(%Y)T' "$epoch"
+    y=$(year "$epoch")
 
     local end
     end=$(_dt_to_epoch "$y" 12 31 23 59 59)

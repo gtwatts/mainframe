@@ -573,9 +573,9 @@ teardown() {
 
 @test "atomic_replace: verify command with complex shell" {
     echo "config" > "$TEST_TMPDIR/complex.txt"
-    # Verify command that checks file content
+    # Verify command that checks file content (use double quotes so $TEST_TMPDIR expands)
     run atomic_replace "$TEST_TMPDIR/complex.txt" "valid config" \
-        'grep -q "valid" "$TEST_TMPDIR/complex.txt"'
+        "grep -q 'valid' '$TEST_TMPDIR/complex.txt'"
     [[ "$status" -eq 0 ]]
     [[ "$(cat "$TEST_TMPDIR/complex.txt")" == "valid config" ]]
 }

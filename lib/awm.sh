@@ -24,6 +24,10 @@
 [[ -n "${_MAINFRAME_AWM_LOADED:-}" ]] && return 0
 readonly _MAINFRAME_AWM_LOADED=1
 
+# Source dependencies
+SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
+source "${SCRIPT_DIR}/json.sh"
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================

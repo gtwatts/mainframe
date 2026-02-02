@@ -264,3 +264,89 @@ Cross-platform compatibility wrappers.
 | `pdate` | Portable date (uses gdate on Mac) |
 | `pstat_size` | Get file size (portable) |
 | `preadlink_f` | Canonical path (portable) |
+
+---
+
+## OpenTelemetry Tracing (otel.sh)
+
+W3C Trace Context compliant distributed tracing for bash scripts.
+
+### Initialization
+
+| Function | Signature | Example |
+|----------|-----------|---------|
+| `otel_init` | `otel_init --service NAME --endpoint URL` | `otel_init --service "my-agent" --endpoint "http://localhost:4318"` |
+
+### Trace Operations
+
+| Function | Signature | Example | Output |
+|----------|-----------|---------|--------|
+| `otel_trace_start` | `otel_trace_start "name"` | `span_id=$(otel_trace_start "process_request")` | `"abc123def456"` |
+| `otel_trace_end` | `otel_trace_end` | `otel_trace_end` | Ends current span |
+| `otel_trace_add_event` | `otel_trace_add_event "name" key=val...` | `otel_trace_add_event "cache.hit" key="user"` | Adds event |
+| `otel_trace_set_attribute` | `otel_trace_set_attribute "key" "value"` | `otel_trace_set_attribute "http.status" "200"` | Sets attribute |
+| `otel_trace_set_status` | `otel_trace_set_status "OK\|ERROR" "msg"` | `otel_trace_set_status "ERROR" "timeout"` | Sets status |
+
+### Context Access
+
+| Function | Example | Output |
+|----------|---------|--------|
+| `otel_trace_id` | `trace_id=$(otel_trace_id)` | 32-char hex trace ID |
+| `otel_span_id` | `span_id=$(otel_span_id)` | 16-char hex span ID |
+
+### W3C Context Propagation
+
+| Function | Signature | Example |
+|----------|-----------|---------|
+| `otel_inject_headers` | `otel_inject_headers` | Returns: `traceparent: 00-{trace_id}-{span_id}-01` |
+| `otel_extract_headers` | `otel_extract_headers "traceparent" "tracestate"` | Parses incoming W3C headers |
+
+### Export
+
+| Function | Signature | Example |
+|----------|-----------|---------|
+| `otel_export` | `otel_export "jaeger\|zipkin\|otlp\|file"` | `otel_export "otlp"` |
+| `otel_flush` | `otel_flush` | Flushes all pending spans |
+
+### Convenience
+
+| Function | Signature | Example |
+|----------|-----------|---------|
+| `otel_instrument` | `otel_instrument "func" args...` | `otel_instrument my_function arg1 arg2` |
+| `otel_timed` | `otel_timed "name" cmd args...` | `otel_timed "db-query" psql -c "SELECT *"` |
+
+### Example Usage
+
+```bash
+# Initialize tracer
+otel_init --service "my-agent" --endpoint "http://jaeger:4318"
+
+# Start a trace
+otel_trace_start "process_request"
+otel_trace_set_attribute "user.id" "12345"
+
+# Nested span
+otel_trace_start "database_query"
+otel_trace_add_event "query.start" sql="SELECT *"
+# ... do work ...
+otel_trace_set_status "OK"
+otel_trace_end
+
+# End parent span
+otel_trace_end
+
+# Export spans
+otel_export "otlp"
+```
+
+### Context Propagation
+
+```bash
+# Service A: Inject context into outgoing request
+headers=$(otel_inject_headers)
+curl -H "$headers" http://service-b/api
+
+# Service B: Extract context from incoming request
+otel_extract_headers "$TRACEPARENT" "$TRACESTATE"
+otel_trace_start "handle_request"  # Continues the trace
+```

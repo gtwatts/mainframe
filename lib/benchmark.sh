@@ -176,13 +176,17 @@ _bench_mean() {
 # Calculate median of values
 # Usage: _bench_median value1 value2 ...
 _bench_median() {
+    # Handle empty input
+    [[ $# -eq 0 ]] && { printf '0'; return 1; }
+
     local -a sorted=()
     local count=0
 
     # Sort values
     while IFS= read -r val; do
+        [[ -z "$val" ]] && continue  # Skip empty lines
         sorted+=("$val")
-        ((count++))
+        (( ++count )) || true
     done < <(printf '%s\n' "$@" | sort -n)
 
     if [[ $count -eq 0 ]]; then
@@ -744,7 +748,9 @@ benchmark_stats_v() {
     p95=$(_bench_percentile 95 "${values[@]}")
     p99=$(_bench_percentile 99 "${values[@]}")
     outliers=$(_bench_detect_outliers "${values[@]}")
-    read -r ci_lower ci_upper < <(_bench_confidence_interval "$mean" "$stddev" "${#values[@]}")
+    local ci_result
+    ci_result=$(_bench_confidence_interval "$mean" "$stddev" "${#values[@]}")
+    read -r ci_lower ci_upper <<< "$ci_result"
 
     __bsv_out=$(printf '{"mean":%s,"median":%s,"stddev":%s,"min":%s,"max":%s,"p95":%s,"p99":%s,"outliers":%d,"ci_lower":%s,"ci_upper":%s,"count":%d}' \
         "$mean" "$median" "$stddev" "$min" "$max" "$p95" "$p99" "$outliers" "$ci_lower" "$ci_upper" "${#values[@]}")

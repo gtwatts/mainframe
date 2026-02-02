@@ -284,7 +284,8 @@ safe_remove() {
     local basename
     basename="${path##*/}"
     local trash_name
-    trash_name="${basename}.$(date +%s).$$"
+    # Use nanoseconds + PID for uniqueness even when called multiple times per second
+    trash_name="${basename}.$(date +%s%N).$$"
     local trash_path="${MAINFRAME_TRASH_DIR}/${trash_name}"
 
     # Move to trash (atomic: attempt mv directly, no TOCTOU check-then-act)
@@ -333,9 +334,11 @@ safe_restore() {
     for entry in "${MAINFRAME_TRASH_DIR}/${name}."*; do
         [[ -f "$entry" ]] || continue
         [[ "$entry" == *.origin ]] && continue
-        local etime
-        etime="${entry##*.}"
-        etime="${etime%%.*}"
+        # Extract timestamp from name.TIMESTAMP.PID format
+        # Remove path and name prefix, leaving TIMESTAMP.PID
+        local suffix="${entry#${MAINFRAME_TRASH_DIR}/${name}.}"
+        # Get timestamp (part before the last dot)
+        local etime="${suffix%.*}"
         if [[ "$etime" =~ ^[0-9]+$ ]] && (( etime > latest_time )); then
             latest_time=$etime
             latest="$entry"

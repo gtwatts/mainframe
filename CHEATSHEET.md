@@ -29,6 +29,8 @@ For detailed function signatures and examples, see the focused reference files:
 | **Agent** | [docs/reference/agent.md](docs/reference/agent.md) | AI agent primitives: idempotent, atomic, diff, context |
 | **Orchestration** | [docs/ORCHESTRATION.md](docs/ORCHESTRATION.md) | Multi-agent team coordination, TMUX, Redis pub/sub |
 | **AWM** | [docs/reference/awm.md](docs/reference/awm.md) | Agent Working Memory |
+| **Embeddings** | [docs/reference/embeddings.md](docs/reference/embeddings.md) | Embedding generation, semantic search |
+| **RAG** | [docs/reference/rag.md](docs/reference/rag.md) | Retrieval-Augmented Generation pipeline |
 | **Advanced** | [docs/reference/advanced.md](docs/reference/advanced.md) | Streaming, testing, sandbox, events, cloud |
 
 ---
@@ -65,9 +67,52 @@ context_budget_init --max-tokens 128000 --reserve 8000
 context_budget_fits $(context_file_tokens "$file") && cat "$file"
 ```
 
+### LLM Token Estimation & Cost
+```bash
+tokens=$(llm_count_tokens "$text" "gpt-4-turbo")
+cost=$(llm_estimate_cost "$text" "claude-3-opus" input)
+chunks=$(llm_split_chunks "$long_doc" 2000 "gpt-4" --overlap 100)
+```
+
 ### Caching
 ```bash
 result=$(memoize --ttl 300 http_get "https://api.example.com/data")
+```
+
+### Embeddings & Semantic Search
+```bash
+# Generate embedding (uses Ollama by default)
+vec=$(embed_text "search query" "ollama")
+
+# Calculate similarity between vectors
+similarity=$(embed_similarity "$vec1" "$vec2")
+
+# Get dimensions for provider
+dims=$(embed_dimensions "openai")  # 1536
+```
+
+### RAG Pipeline
+```bash
+# Initialize RAG collection
+rag_init "documents" --backend sqlite-vec --provider local
+
+# Ingest documents (file, directory, or text)
+rag_ingest "docs/" --collection "docs" --recursive
+rag_ingest_file "readme.md" --collection "docs"
+rag_ingest_text "Content to index" --id "doc1"
+
+# Search and query
+result=$(rag_search "search query" --top-k 5)
+result=$(rag_query "How do I X?" --collection "docs")
+
+# Chunk text for ingestion
+chunks=$(rag_chunk_text "$text" --size 500 --overlap 50 --strategy sentence)
+
+# Context augmentation
+prompt=$(rag_augment_prompt "Question?" context_array)
+
+# Collection stats
+rag_stats "docs" --json
 ```
 
 ---

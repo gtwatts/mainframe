@@ -93,27 +93,29 @@ teardown() {
 }
 
 @test "MAINFRAME_LIBS: tier expressions work (core+standard)" {
-    (
+    # Use bash -c to get a clean process without inherited readonly variables
+    run bash -c "
+        export MAINFRAME_ROOT='$MAINFRAME_ROOT'
         export MAINFRAME_LIBS='core+standard'
-        unset _MAINFRAME_COMMON_LOADED
-        source "$MAINFRAME_ROOT/lib/common.sh"
-
+        source \"\$MAINFRAME_ROOT/lib/common.sh\"
         # Core libs should be loaded
-        [[ -n "${_MAINFRAME_LOADED_LIBS[pure-string]:-}" ]] || \
-        [[ -n "${_MAINFRAME_LOADED_LIBS[json]:-}" ]]
-    )
+        [[ -n \"\${_MAINFRAME_LOADED_LIBS[pure-string]:-}\" ]] || \
+        [[ -n \"\${_MAINFRAME_LOADED_LIBS[json]:-}\" ]]
+    "
+    [ "$status" -eq 0 ]
 }
 
 @test "MAINFRAME_LIBS: 'all' loads everything" {
-    (
+    # Use bash -c to get a clean process without inherited readonly variables
+    run bash -c "
+        export MAINFRAME_ROOT='$MAINFRAME_ROOT'
         export MAINFRAME_LIBS='all'
-        unset _MAINFRAME_COMMON_LOADED
-        source "$MAINFRAME_ROOT/lib/common.sh"
-
+        source \"\$MAINFRAME_ROOT/lib/common.sh\"
         # Should have many libraries loaded
-        local count=$(mainframe_loaded | wc -l)
-        [[ $count -gt 10 ]]
-    )
+        count=\$(mainframe_loaded | wc -l)
+        [[ \$count -gt 10 ]]
+    "
+    [ "$status" -eq 0 ]
 }
 
 @test "MAINFRAME_LIBS: 'core' loads only core tier" {
@@ -147,25 +149,25 @@ teardown() {
 }
 
 @test "MAINFRAME_PROFILE: standard profile loads core+standard" {
-    (
+    run bash -c "
+        export MAINFRAME_ROOT='$MAINFRAME_ROOT'
         export MAINFRAME_PROFILE='standard'
-        unset _MAINFRAME_COMMON_LOADED
-        source "$MAINFRAME_ROOT/lib/common.sh"
-
-        local count=$(mainframe_loaded | wc -l)
-        [[ $count -gt 10 ]]
-    )
+        source \"\$MAINFRAME_ROOT/lib/common.sh\"
+        count=\$(mainframe_loaded | wc -l)
+        [[ \$count -gt 10 ]]
+    "
+    [ "$status" -eq 0 ]
 }
 
 @test "MAINFRAME_PROFILE: full profile loads everything" {
-    (
+    run bash -c "
+        export MAINFRAME_ROOT='$MAINFRAME_ROOT'
         export MAINFRAME_PROFILE='full'
-        unset _MAINFRAME_COMMON_LOADED
-        source "$MAINFRAME_ROOT/lib/common.sh"
-
-        local count=$(mainframe_loaded | wc -l)
-        [[ $count -gt 20 ]]
-    )
+        source \"\$MAINFRAME_ROOT/lib/common.sh\"
+        count=\$(mainframe_loaded | wc -l)
+        [[ \$count -gt 20 ]]
+    "
+    [ "$status" -eq 0 ]
 }
 
 @test "MAINFRAME_PROFILE: ai profile loads core+ai" {
@@ -234,17 +236,16 @@ teardown() {
 }
 
 @test "mainframe_load_all: loads all available libraries" {
-    (
+    run bash -c "
+        export MAINFRAME_ROOT='$MAINFRAME_ROOT'
         export MAINFRAME_LIBS='core'
-        unset _MAINFRAME_COMMON_LOADED
-        source "$MAINFRAME_ROOT/lib/common.sh"
-
-        local before=$(mainframe_loaded | wc -l)
+        source \"\$MAINFRAME_ROOT/lib/common.sh\"
+        before=\$(mainframe_loaded | wc -l)
         mainframe_load_all
-        local after=$(mainframe_loaded | wc -l)
-
-        [[ $after -gt $before ]]
-    )
+        after=\$(mainframe_loaded | wc -l)
+        [[ \$after -gt \$before ]]
+    "
+    [ "$status" -eq 0 ]
 }
 
 @test "mainframe_loaded: returns list of loaded libraries" {
@@ -426,12 +427,11 @@ teardown() {
     local start_ns end_ns elapsed_ms
     start_ns=$(date +%s%N)
 
-    (
-        unset MAINFRAME_LIBS
-        unset MAINFRAME_PROFILE
-        unset _MAINFRAME_COMMON_LOADED
-        source "$MAINFRAME_ROOT/lib/common.sh"
-    )
+    # Use bash -c to get a clean process without inherited readonly variables
+    bash -c "
+        export MAINFRAME_ROOT='$MAINFRAME_ROOT'
+        source \"\$MAINFRAME_ROOT/lib/common.sh\"
+    "
 
     end_ns=$(date +%s%N)
     elapsed_ms=$(( (end_ns - start_ns) / 1000000 ))
@@ -537,17 +537,14 @@ teardown() {
 }
 
 @test "error handling: unknown profile falls back to all" {
-    (
+    run bash -c "
+        export MAINFRAME_ROOT='$MAINFRAME_ROOT'
         export MAINFRAME_PROFILE='unknown_profile_xyz'
-        unset _MAINFRAME_COMMON_LOADED
-        # Suppress warning
-        source "$MAINFRAME_ROOT/lib/common.sh" 2>/dev/null
-
-        # Should have loaded everything
-        local count
-        count=$(mainframe_loaded | wc -l)
-        [[ $count -gt 20 ]]
-    )
+        source \"\$MAINFRAME_ROOT/lib/common.sh\" 2>/dev/null
+        count=\$(mainframe_loaded | wc -l)
+        [[ \$count -gt 20 ]]
+    "
+    [ "$status" -eq 0 ]
 }
 
 # =============================================================================
