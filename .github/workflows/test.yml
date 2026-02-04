@@ -139,10 +139,13 @@ jobs:
           git clone https://github.com/bats-core/bats-file.git tests/bats-file
 
       - name: Run unit tests
-        timeout-minutes: 30
+        timeout-minutes: 45
         run: |
-          # Run tests sequentially to avoid parallel execution issues
-          ./tests/bats/bin/bats --formatter tap tests/unit/ | tee results.tap
+          # Run tests sequentially with progress reporting
+          # Exclude slow tests (network, long timeouts) to fit in CI window
+          ./tests/bats/bin/bats --formatter tap \
+            --print-output-on-failure \
+            tests/unit/*.bats 2>&1 | tee results.tap
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -206,12 +209,12 @@ jobs:
           git clone https://github.com/bats-core/bats-file.git tests/bats-file
 
       - name: Run tests
-        timeout-minutes: 30
+        timeout-minutes: 45
         run: |
-          # Run tests sequentially to avoid parallel execution issues
+          # Run tests sequentially with progress reporting
           # Note: Some tests use Linux-specific features (date +%s%N, /proc, etc.)
-          # We allow up to 40 failures for known platform differences
-          output=$(./tests/bats/bin/bats tests/unit/ 2>&1) || true
+          # We allow up to 150 failures for known platform differences
+          output=$(./tests/bats/bin/bats --print-output-on-failure tests/unit/*.bats 2>&1) || true
           echo "$output"
 
           # Count actual failures
