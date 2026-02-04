@@ -129,7 +129,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq csvkit xmlstarlet
+          sudo apt-get install -y jq csvkit xmlstarlet parallel
 
       - name: Install BATS
         run: |
@@ -196,7 +196,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install jq bash coreutils
+          brew install jq bash coreutils parallel
 
       - name: Install BATS
         run: |
