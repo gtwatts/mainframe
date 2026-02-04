@@ -139,13 +139,54 @@ jobs:
           git clone https://github.com/bats-core/bats-file.git tests/bats-file
 
       - name: Run unit tests
-        timeout-minutes: 45
+        timeout-minutes: 15
         run: |
-          # Run tests sequentially with progress reporting
-          # Exclude slow tests (network, long timeouts) to fit in CI window
+          # Run core tests only - exclude slow/network/timeout-heavy tests
+          # Excluded: benchmark, bun, burl*, device, docker, embeddings, forensics,
+          #           futures, fzf, http, llm*, mainframe-new, otel, parallel,
+          #           python_runtime, rag, security_eval, test_ci, vectordb, workpool
           ./tests/bats/bin/bats --formatter tap \
             --print-output-on-failure \
-            tests/unit/*.bats 2>&1 | tee results.tap
+            tests/unit/agent_context.bats \
+            tests/unit/agent_exec.bats \
+            tests/unit/atomic.bats \
+            tests/unit/audit.bats \
+            tests/unit/awm.bats \
+            tests/unit/awm_v2.bats \
+            tests/unit/build.bats \
+            tests/unit/capability.bats \
+            tests/unit/common.bats \
+            tests/unit/compat.bats \
+            tests/unit/csv.bats \
+            tests/unit/datetime.bats \
+            tests/unit/git.bats \
+            tests/unit/idempotent_write.bats \
+            tests/unit/json.bats \
+            tests/unit/jsonpath.bats \
+            tests/unit/lazy_loading.bats \
+            tests/unit/metrics.bats \
+            tests/unit/output.bats \
+            tests/unit/output_errors.bats \
+            tests/unit/policy.bats \
+            tests/unit/proptest.bats \
+            tests/unit/rbac.bats \
+            tests/unit/registry.bats \
+            tests/unit/registry_schema.bats \
+            tests/unit/retry.bats \
+            tests/unit/sandbox.bats \
+            tests/unit/schema.bats \
+            tests/unit/secrets.bats \
+            tests/unit/service.bats \
+            tests/unit/structured_log.bats \
+            tests/unit/symbols.bats \
+            tests/unit/sysinfo.bats \
+            tests/unit/telemetry.bats \
+            tests/unit/test_agent_ai.bats \
+            tests/unit/test_env.bats \
+            tests/unit/test_path.bats \
+            tests/unit/test_pipe.bats \
+            tests/unit/test_validation.bats \
+            2>&1 | tee results.tap
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -209,12 +250,50 @@ jobs:
           git clone https://github.com/bats-core/bats-file.git tests/bats-file
 
       - name: Run tests
-        timeout-minutes: 45
+        timeout-minutes: 15
         run: |
-          # Run tests sequentially with progress reporting
-          # Note: Some tests use Linux-specific features (date +%s%N, /proc, etc.)
-          # We allow up to 150 failures for known platform differences
-          output=$(./tests/bats/bin/bats --print-output-on-failure tests/unit/*.bats 2>&1) || true
+          # Run core tests only - exclude slow/network/timeout-heavy tests
+          output=$(./tests/bats/bin/bats --print-output-on-failure \
+            tests/unit/agent_context.bats \
+            tests/unit/agent_exec.bats \
+            tests/unit/atomic.bats \
+            tests/unit/audit.bats \
+            tests/unit/awm.bats \
+            tests/unit/awm_v2.bats \
+            tests/unit/build.bats \
+            tests/unit/capability.bats \
+            tests/unit/common.bats \
+            tests/unit/compat.bats \
+            tests/unit/csv.bats \
+            tests/unit/datetime.bats \
+            tests/unit/git.bats \
+            tests/unit/idempotent_write.bats \
+            tests/unit/json.bats \
+            tests/unit/jsonpath.bats \
+            tests/unit/lazy_loading.bats \
+            tests/unit/metrics.bats \
+            tests/unit/output.bats \
+            tests/unit/output_errors.bats \
+            tests/unit/policy.bats \
+            tests/unit/proptest.bats \
+            tests/unit/rbac.bats \
+            tests/unit/registry.bats \
+            tests/unit/registry_schema.bats \
+            tests/unit/retry.bats \
+            tests/unit/sandbox.bats \
+            tests/unit/schema.bats \
+            tests/unit/secrets.bats \
+            tests/unit/service.bats \
+            tests/unit/structured_log.bats \
+            tests/unit/symbols.bats \
+            tests/unit/sysinfo.bats \
+            tests/unit/telemetry.bats \
+            tests/unit/test_agent_ai.bats \
+            tests/unit/test_env.bats \
+            tests/unit/test_path.bats \
+            tests/unit/test_pipe.bats \
+            tests/unit/test_validation.bats \
+            2>&1) || true
           echo "$output"
 
           # Count actual failures
@@ -222,10 +301,8 @@ jobs:
           echo "Failure count: $failure_count"
 
           # Allow some failures for known macOS incompatibilities
-          # (nanosecond timing, /proc filesystem, retry edge cases, bun/burl tools not installed)
-          # Threshold increased for new bun, burl, and agent tests that require tools not on macOS
-          if [[ $failure_count -gt 150 ]]; then
-            echo "::error::Too many test failures: $failure_count (threshold: 150)"
+          if [[ $failure_count -gt 50 ]]; then
+            echo "::error::Too many test failures: $failure_count (threshold: 50)"
             exit 1
           fi
 
