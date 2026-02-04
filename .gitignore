@@ -45,3 +45,6 @@ result.txt
 test_export.txt
 test_introspect.sh
 test_state.sh
+
+# Build artifacts
+dist/

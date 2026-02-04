@@ -60,10 +60,12 @@ _mainframe_load_config
 
 readonly MAINFRAME_VERSION="6.0.0"
 readonly MAINFRAME_NAME="mainframe"
+export MAINFRAME_VERSION MAINFRAME_NAME
 
 # Aliases for backward compatibility
 readonly BASHER_VERSION="$MAINFRAME_VERSION"
 readonly BASHER_NAME="$MAINFRAME_NAME"
+export BASHER_VERSION BASHER_NAME
 
 # Exit codes (following BSD conventions)
 readonly EXIT_SUCCESS=0
@@ -988,7 +990,8 @@ else
     _mainframe_load_library "parse_output"
     _mainframe_load_library "symbols"
     _mainframe_load_library "agent_exec"
-    _mainframe_load_library "agent_comm"
+    # Note: agent_comm.sh disabled - conflicts with agent.sh functions
+    # _mainframe_load_library "agent_comm"
     _mainframe_load_library "agent_safety"
     _mainframe_load_library "agent_ai"
     _mainframe_load_library "agent_context"

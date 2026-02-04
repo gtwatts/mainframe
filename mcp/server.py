@@ -3,6 +3,7 @@
 import asyncio
 import sys
 import os
+import warnings
 from typing import Any, TYPE_CHECKING
 
 # Type checking imports (for IDE support)
@@ -72,7 +73,9 @@ def main():
         success, stdout, stderr = executor.execute(func_name, arguments)
 
         if success:
-            return [TextContent(type="text", text=stdout)]
+            # Ensure we never return empty text content (LLM APIs reject it)
+            text = stdout if stdout.strip() else f"Function {func_name} completed successfully"
+            return [TextContent(type="text", text=text)]
         else:
             error_msg = stderr if stderr else f"Function {func_name} failed"
             return [TextContent(type="text", text=f"Error: {error_msg}")]
@@ -82,7 +85,14 @@ def main():
         async with stdio_server() as (read_stream, write_stream):
             await server.run(read_stream, write_stream, server.create_initialization_options())
 
-    asyncio.run(run())
+    # Suppress asyncio "Task was destroyed but it is pending" warnings on shutdown
+    # These occur when the MCP client disconnects while internal tasks are still waiting
+    warnings.filterwarnings("ignore", message="Task was destroyed but it is pending", category=RuntimeWarning)
+    
+    try:
+        asyncio.run(run())
+    except KeyboardInterrupt:
+        pass  # Clean exit on Ctrl+C
 
 if __name__ == "__main__":
     main()

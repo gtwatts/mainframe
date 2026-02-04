@@ -14,6 +14,9 @@
 [[ -n "${_MAINFRAME_CAPABILITY_LOADED:-}" ]] && return 0
 readonly _MAINFRAME_CAPABILITY_LOADED=1
 
+# Source validation library for command safety checks
+source "${MAINFRAME_ROOT:-${HOME}/.mainframe}/lib/validation.sh" 2>/dev/null || true
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -443,6 +446,12 @@ cap_exec() {
     local cmd="$2"
 
     [[ -z "$agent_id" || -z "$cmd" ]] && return 1
+
+    # Security: Validate command before using bash -c
+    if ! validate_command_safe "$cmd"; then
+        printf 'cap_exec: Command contains unsafe characters\n' >&2
+        return 1
+    fi
 
     # Extract base command
     local base_cmd="${cmd%% *}"

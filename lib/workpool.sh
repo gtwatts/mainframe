@@ -354,17 +354,25 @@ pool_submit() {
         _pool_cleanup_finished "$name"
     done
 
-    # Check semaphore
-    local semaphore semaphore_count
+    # Check semaphore using flock for atomic counter operations
+    # This prevents race conditions when multiple jobs acquire/release concurrently
+    local semaphore
     semaphore=$(cat "$pool_dir/semaphore" 2>/dev/null || echo 0)
     if [[ "$semaphore" -gt 0 ]]; then
+        # Use flock-protected semaphore acquisition
+        # File descriptor 200 is used for the lock file
+        local lock_file="$pool_dir/semaphore.lock"
         while true; do
-            semaphore_count=$(cat "$pool_dir/semaphore_count" 2>/dev/null || echo 0)
-            if [[ "$semaphore_count" -lt "$semaphore" ]]; then
-                ((semaphore_count++))
-                printf '%d\n' "$semaphore_count" > "$pool_dir/semaphore_count"
-                break
-            fi
+            (
+                flock -x 200 || exit 1
+                local current_count
+                current_count=$(cat "$pool_dir/semaphore_count" 2>/dev/null || echo 0)
+                if [[ "$current_count" -lt "$semaphore" ]]; then
+                    printf '%d\n' $((current_count + 1)) > "$pool_dir/semaphore_count"
+                    exit 0  # Acquired
+                fi
+                exit 1  # Not available
+            ) 200>"$lock_file" && break
             sleep 0.1
         done
     fi
@@ -391,12 +399,16 @@ pool_submit() {
             _pool_update_status "$job_dir" "$POOL_STATUS_FAILED"
         fi
 
-        # Release semaphore if used
+        # Release semaphore if used (atomic with flock)
         if [[ "$semaphore" -gt 0 ]]; then
-            local current
-            current=$(cat "$pool_dir/semaphore_count" 2>/dev/null || echo 1)
-            ((current--)) || current=0
-            printf '%d\n' "$current" > "$pool_dir/semaphore_count"
+            local lock_file="$pool_dir/semaphore.lock"
+            (
+                flock -x 200 || exit 1
+                local current
+                current=$(cat "$pool_dir/semaphore_count" 2>/dev/null || echo 1)
+                ((current--)) || current=0
+                printf '%d\n' "$current" > "$pool_dir/semaphore_count"
+            ) 200>"$lock_file"
         fi
     ) &
 

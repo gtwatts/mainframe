@@ -97,14 +97,18 @@ class ToolRegistry:
                 'description': 'Arguments to pass to the function'
             }
 
+        input_schema = {
+            'type': 'object',
+            'properties': properties,
+        }
+        # Only include 'required' if there are required params
+        if required:
+            input_schema['required'] = required
+
         return {
             'name': f'mainframe_{func_name}',
             'description': func.get('description', f'MAINFRAME function: {func_name}'),
-            'inputSchema': {
-                'type': 'object',
-                'properties': properties,
-                'required': required if required else None
-            }
+            'inputSchema': input_schema
         }
 
     def generate_all_tools(self, tier: str = 'core') -> List[Dict[str, Any]]:

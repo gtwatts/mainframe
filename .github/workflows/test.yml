@@ -144,7 +144,7 @@ jobs:
           # Run core tests only - exclude slow/network/timeout-heavy tests
           # Excluded: benchmark, bun, burl*, device, docker, embeddings, forensics,
           #           futures, fzf, http, llm*, mainframe-new, otel, parallel,
-          #           python_runtime, rag, security_eval, test_ci, vectordb, workpool
+          #           python_runtime, rag, security_eval, test_ci, vectordb
           ./tests/bats/bin/bats --formatter tap \
             --print-output-on-failure \
             tests/unit/agent_context.bats \
@@ -186,6 +186,10 @@ jobs:
             tests/unit/test_path.bats \
             tests/unit/test_pipe.bats \
             tests/unit/test_validation.bats \
+            tests/lib/agent_ai.bats \
+            tests/lib/agent_context.bats \
+            tests/lib/taskstate.bats \
+            tests/lib/workpool.bats \
             2>&1 | tee results.tap
 
       - name: Upload test results
@@ -294,6 +298,10 @@ jobs:
             tests/unit/test_path.bats \
             tests/unit/test_pipe.bats \
             tests/unit/test_validation.bats \
+            tests/lib/agent_ai.bats \
+            tests/lib/agent_context.bats \
+            tests/lib/taskstate.bats \
+            tests/lib/workpool.bats \
             2>&1) || true
           echo "$output"
 

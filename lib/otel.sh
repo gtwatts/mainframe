@@ -15,6 +15,12 @@
 [[ -n "${_MAINFRAME_OTEL_LOADED:-}" ]] && return 0
 readonly _MAINFRAME_OTEL_LOADED=1
 
+# Source json.sh for canonical JSON escaping
+_otel_lib_dir="${BASH_SOURCE[0]%/*}"
+if [[ -f "${_otel_lib_dir}/json.sh" ]]; then
+    source "${_otel_lib_dir}/json.sh"
+fi
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -100,14 +106,9 @@ _otel_now_nanos() {
 }
 
 # JSON-escape a string
+# Delegates to canonical json_escape from lib/json.sh (core tier, always loaded)
 _otel_json_escape() {
-    local str="$1"
-    str="${str//\\/\\\\}"
-    str="${str//\"/\\\"}"
-    str="${str//$'\n'/\\n}"
-    str="${str//$'\t'/\\t}"
-    str="${str//$'\r'/\\r}"
-    printf '%s' "$str"
+    json_escape "$@"
 }
 
 # Check if tracing is enabled and should sample

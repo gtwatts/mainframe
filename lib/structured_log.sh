@@ -25,6 +25,10 @@
 [[ -n "${_MAINFRAME_STRUCTURED_LOG_LOADED:-}" ]] && return 0
 readonly _MAINFRAME_STRUCTURED_LOG_LOADED=1
 
+# Source canonical JSON library
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/json.sh"
+
 # =============================================================================
 # CONSTANTS - Log Levels (numeric for comparison)
 # =============================================================================
@@ -40,7 +44,15 @@ readonly SLOG_LEVEL_FATAL=50
 # =============================================================================
 
 # Output destination: file path, "stderr", "stdout", or "both:<filepath>"
-declare -g _SLOG_OUTPUT="${SLOG_OUTPUT:-stderr}"
+# Respects MAINFRAME_OUTPUT: json -> stderr, raw -> stderr, minimal -> disabled
+declare -g _SLOG_OUTPUT="${SLOG_OUTPUT:-}"
+if [[ -z "$_SLOG_OUTPUT" ]]; then
+    case "${MAINFRAME_OUTPUT:-raw}" in
+        json|debug) _SLOG_OUTPUT="stderr" ;;
+        minimal)    _SLOG_OUTPUT="disabled" ;;
+        *)          _SLOG_OUTPUT="stderr" ;;
+    esac
+fi
 
 # Current log level (minimum level to emit)
 declare -g _SLOG_LEVEL="${SLOG_LEVEL:-$SLOG_LEVEL_INFO}"
@@ -107,34 +119,10 @@ _slog_timestamp() {
     printf '%(%Y-%m-%dT%H:%M:%S)T.%sZ\n' "$epoch_sec" "$epoch_ms"
 }
 
-# Escape string for JSON (delegate to json.sh if available, else inline)
-# Usage: _slog_escape "hello \"world\"" -> hello \"world\"
+# Escape string for JSON
+# Delegates to canonical json_escape from lib/json.sh (core tier, always loaded)
 _slog_escape() {
-    local str="$1"
-    local result=""
-    local i char
-
-    for ((i=0; i<${#str}; i++)); do
-        char="${str:i:1}"
-        case "$char" in
-            '"')  result+='\"' ;;
-            '\')  result+='\\' ;;
-            $'\b') result+='\b' ;;
-            $'\f') result+='\f' ;;
-            $'\n') result+='\n' ;;
-            $'\r') result+='\r' ;;
-            $'\t') result+='\t' ;;
-            *)
-                # Check for control characters (< 0x20)
-                if [[ "$char" < $'\x20' ]]; then
-                    printf -v char '\\u%04x' "'$char"
-                fi
-                result+="$char"
-                ;;
-        esac
-    done
-
-    printf '%s' "$result"
+    json_escape "$@"
 }
 
 # Get caller information (function:line)
@@ -168,7 +156,12 @@ _slog_write() {
     local entry="$1"
     local output="$_SLOG_OUTPUT"
 
+    # Respect MAINFRAME_OUTPUT=minimal - disable structured logging
     case "$output" in
+        disabled)
+            # Logging disabled (MAINFRAME_OUTPUT=minimal)
+            return 0
+            ;;
         stderr)
             printf '%s\n' "$entry" >&2
             ;;

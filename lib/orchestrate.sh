@@ -57,6 +57,12 @@ readonly ORCH_STATUS_COMPLETED="completed"
 readonly ORCH_STATUS_FAILED="failed"
 readonly ORCH_STATUS_TERMINATED="terminated"
 
+# Leader election status values
+readonly ORCH_LEADER_STATUS_LEADING="leading"
+readonly ORCH_LEADER_STATUS_FOLLOWER="follower"
+readonly ORCH_LEADER_STATUS_CANDIDATE="candidate"
+readonly ORCH_LEADER_STATUS_UNKNOWN="unknown"
+
 # Task status values
 readonly ORCH_TASK_QUEUED="queued"
 readonly ORCH_TASK_ASSIGNED="assigned"
@@ -120,6 +126,11 @@ declare -gA _ORCH_WINDOWS
 
 # Redis availability flag (set during init)
 _ORCH_REDIS_AVAILABLE=0
+
+# Leader election state per team
+declare -gA _ORCH_LEADERS=()  # team_id -> leader_id
+declare -gA _ORCH_LEADER_STATUS=()  # team_id -> leader status
+declare -gA _ORCH_LEADER_RENEWAL_PIDS=()  # team_id -> renewal PID
 
 # =============================================================================
 # INTERNAL HELPERS - LOGGING
@@ -299,6 +310,110 @@ _orch_key_task_queue() {
     printf 'mainframe:orch:queue:%s' "$team_id"
 }
 
+##
+# @brief Acquire a slot for agent spawning using atomic mkdir
+# @param $1 Slot type (e.g., "team" or "subagent")
+# @param $2 ID (team_id or parent_agent_id)
+# @param $3 Maximum slots allowed
+# @return 0 if slot acquired, 1 if at limit
+#
+# Uses mkdir-based atomic slot allocation to prevent TOCTOU race conditions
+# when multiple processes attempt to spawn agents simultaneously.
+#
+# Example:
+#   if _orch_acquire_slot "team" "research" 8; then
+#       # Spawn agent
+#   fi
+##
+_orch_acquire_slot() {
+    local slot_type="$1"
+    local id="$2"
+    local max_slots="$3"
+
+    local slots_dir="${ORCH_STATE_DIR}/slots/${slot_type}/${id}"
+    mkdir -p "$slots_dir" 2>/dev/null || true
+
+    # Try to acquire an available slot using atomic mkdir
+    local slot_num
+    for ((slot_num = 1; slot_num <= max_slots; slot_num++)); do
+        local slot_path="${slots_dir}/slot_${slot_num}"
+        # mkdir is atomic - only one process will succeed
+        if mkdir "$slot_path" 2>/dev/null; then
+            # Store PID and timestamp for cleanup/debugging
+            printf '%d %d\n' "$$" "$(date +%s)" > "$slot_path/info"
+            return 0
+        fi
+    done
+
+    # No slots available
+    return 1
+}
+
+##
+# @brief Release a slot acquired for agent spawning
+# @param $1 Slot type (e.g., "team" or "subagent")
+# @param $2 ID (team_id or parent_agent_id)
+# @param $3 Slot number to release (optional, will find and release any owned slot if not specified)
+# @return 0 on success
+##
+_orch_release_slot() {
+    local slot_type="$1"
+    local id="$2"
+    local specific_slot="${3:-}"
+
+    local slots_dir="${ORCH_STATE_DIR}/slots/${slot_type}/${id}"
+
+    if [[ -n "$specific_slot" ]]; then
+        local slot_path="${slots_dir}/slot_${specific_slot}"
+        if [[ -d "$slot_path" ]]; then
+            rm -rf "$slot_path"
+        fi
+    else
+        # Find and release any slot owned by this PID
+        local slot_path
+        for slot_path in "$slots_dir"/slot_*; do
+            [[ -d "$slot_path" ]] || continue
+            if [[ -f "$slot_path/info" ]]; then
+                local owner_pid
+                owner_pid=$(cut -d' ' -f1 "$slot_path/info" 2>/dev/null)
+                if [[ "$owner_pid" == "$$" ]]; then
+                    rm -rf "$slot_path"
+                    return 0
+                fi
+            fi
+        done
+    fi
+
+    return 0
+}
+
+##
+# @brief Count currently occupied slots
+# @param $1 Slot type
+# @param $2 ID
+# @return Count to stdout
+##
+_orch_slot_count() {
+    local slot_type="$1"
+    local id="$2"
+
+    local slots_dir="${ORCH_STATE_DIR}/slots/${slot_type}/${id}"
+
+    if [[ ! -d "$slots_dir" ]]; then
+        printf '0'
+        return 0
+    fi
+
+    # Count slot directories
+    local count=0
+    local slot_path
+    for slot_path in "$slots_dir"/slot_*; do
+        [[ -d "$slot_path" ]] && ((count++))
+    done
+
+    printf '%d' "$count"
+}
+
 # =============================================================================
 # REDIS HELPER FUNCTIONS
 # =============================================================================
@@ -452,19 +567,28 @@ _orch_brpop() {
         return 1
     else
         # File-based fallback: pop last line with timeout loop
+        # Uses flock for atomic read-modify-write to prevent race conditions
         local list_file="${ORCH_STATE_DIR}/lists/${key//:/\/}"
+        local lock_file="${list_file}.lock"
         local deadline=$(( $(_orch_epoch) + timeout ))
 
         while [[ $(_orch_epoch) -le $deadline ]]; do
             if [[ -f "$list_file" && -s "$list_file" ]]; then
-                local value
-                value=$(tail -n1 "$list_file")
-                # Remove last line atomically
-                local tmp="${list_file}.tmp.$$"
-                head -n -1 "$list_file" > "$tmp" 2>/dev/null || true
-                mv -f "$tmp" "$list_file"
-                printf '%s' "$value"
-                return 0
+                local value=""
+                # Atomic pop using flock - prevents race conditions between
+                # multiple processes reading and modifying the list concurrently
+                (
+                    flock -x 200 || exit 1
+                    if [[ -s "$list_file" ]]; then
+                        value=$(tail -n1 "$list_file")
+                        local tmp="${list_file}.tmp.$$"
+                        head -n -1 "$list_file" > "$tmp" 2>/dev/null || true
+                        mv -f "$tmp" "$list_file"
+                        printf '%s' "$value"
+                        exit 0
+                    fi
+                    exit 1
+                ) 200>"$lock_file" && return 0
             fi
             sleep 0.1 2>/dev/null || sleep 1
         done
@@ -994,15 +1118,30 @@ orch_agent_spawn() {
         return 1
     fi
 
-    # Check agent limit for team
-    local current_count
-    current_count=$(_orch_team_agent_count "$team_id")
-    if [[ $current_count -ge $ORCH_MAX_AGENTS_PER_TEAM ]]; then
-        _orch_log error "Maximum agents per team ($ORCH_MAX_AGENTS_PER_TEAM) reached for team '$team_id'"
-        return 1
+    # Check agent limit for team using atomic slot allocation when Redis unavailable
+    # This prevents TOCTOU race conditions when multiple processes spawn agents concurrently
+    local agent_slot_num=""
+    if [[ $_ORCH_REDIS_AVAILABLE -eq 0 ]]; then
+        # Use mkdir-based atomic slot allocation for file-based mode
+        if ! _orch_acquire_slot "team" "$team_id" "$ORCH_MAX_AGENTS_PER_TEAM"; then
+            _orch_log error "Maximum agents per team ($ORCH_MAX_AGENTS_PER_TEAM) reached for team '$team_id'"
+            return 1
+        fi
+        # Get the slot number we acquired
+        agent_slot_num=$(_orch_slot_count "team" "$team_id")
+    else
+        # Redis mode: check limit via in-memory count (Redis handles atomicity)
+        local current_count
+        current_count=$(_orch_team_agent_count "$team_id")
+        if [[ $current_count -ge $ORCH_MAX_AGENTS_PER_TEAM ]]; then
+            _orch_log error "Maximum agents per team ($ORCH_MAX_AGENTS_PER_TEAM) reached for team '$team_id'"
+            return 1
+        fi
     fi
 
     # Generate agent ID
+    local current_count
+    current_count=$(_orch_team_agent_count "$team_id")
     local agent_num=$((current_count + 1))
     local agent_id="${team_id}-agent-${agent_num}"
 
@@ -1259,15 +1398,27 @@ orch_subagent_spawn() {
         return 1
     fi
 
-    # Check sub-agent limit
-    local current_count
-    current_count=$(_orch_agent_subcount "$parent_id")
-    if [[ $current_count -ge $ORCH_MAX_SUBAGENTS_PER_AGENT ]]; then
-        _orch_log error "Maximum sub-agents ($ORCH_MAX_SUBAGENTS_PER_AGENT) reached for agent '$parent_id'"
-        return 1
+    # Check sub-agent limit using atomic slot allocation when Redis unavailable
+    # This prevents TOCTOU race conditions when multiple processes spawn subagents concurrently
+    if [[ $_ORCH_REDIS_AVAILABLE -eq 0 ]]; then
+        # Use mkdir-based atomic slot allocation for file-based mode
+        if ! _orch_acquire_slot "subagent" "$parent_id" "$ORCH_MAX_SUBAGENTS_PER_AGENT"; then
+            _orch_log error "Maximum sub-agents ($ORCH_MAX_SUBAGENTS_PER_AGENT) reached for agent '$parent_id'"
+            return 1
+        fi
+    else
+        # Redis mode: check limit via in-memory count (Redis handles atomicity)
+        local current_count
+        current_count=$(_orch_agent_subcount "$parent_id")
+        if [[ $current_count -ge $ORCH_MAX_SUBAGENTS_PER_AGENT ]]; then
+            _orch_log error "Maximum sub-agents ($ORCH_MAX_SUBAGENTS_PER_AGENT) reached for agent '$parent_id'"
+            return 1
+        fi
     fi
 
     # Generate sub-agent ID
+    local current_count
+    current_count=$(_orch_agent_subcount "$parent_id")
     local subagent_num=$((current_count + 1))
     local subagent_id="${parent_id}-sub-${subagent_num}"
 
@@ -2133,6 +2284,237 @@ orch_discovery_broadcast() {
 }
 
 # =============================================================================
+# LEADER ELECTION
+# =============================================================================
+
+##
+# @brief Elect a leader for a team
+# @param $1 Team ID (default: "default")
+# @param $2 Candidate ID (default: current hostname)
+# @param $3 TTL in seconds (default: 30)
+# @return 0 if elected, 1 if not elected, 2 on error
+#
+# Attempts to become the leader for the specified team using the leader
+# election module. If successful, starts automatic renewal.
+##
+orch_team_elect_leader() {
+    local team_id="${1:-$ORCH_TEAM_DEFAULT}"
+    local candidate="${2:-$(hostname)}"
+    local ttl="${3:-30}"
+
+    # Check if leader module is available
+    if ! type -t leader_elect &>/dev/null; then
+        _orch_log warn "Leader election module not available, using fallback"
+        # Fallback: simple file-based election
+        local leader_file="${ORCH_STATE_DIR}/leaders/${team_id}/leader"
+        mkdir -p "${leader_file%/*}"
+        if [[ ! -f "$leader_file" ]] || [[ $(($(date +%s) - $(stat -c %Y "$leader_file" 2>/dev/null || echo 0))) -gt $ttl ]]; then
+            printf '%s:%d' "$candidate" "$(date +%s)" > "$leader_file"
+            _ORCH_LEADERS["$team_id"]="$candidate"
+            _ORCH_LEADER_STATUS["$team_id"]="$ORCH_LEADER_STATUS_LEADING"
+            _orch_log info "Elected leader for team '$team_id': $candidate (fallback mode)"
+            return 0
+        fi
+        return 1
+    fi
+
+    # Use leader module for election
+    if leader_elect "$team_id" "$candidate" "$ttl"; then
+        _ORCH_LEADERS["$team_id"]="$candidate"
+        _ORCH_LEADER_STATUS["$team_id"]="$ORCH_LEADER_STATUS_LEADING"
+        # Start automatic renewal
+        leader_start_renewal "$team_id" "$candidate" "$ttl"
+        _orch_log info "Elected leader for team '$team_id': $candidate"
+        return 0
+    else
+        _ORCH_LEADER_STATUS["$team_id"]="$ORCH_LEADER_STATUS_FOLLOWER"
+        return 1
+    fi
+}
+
+##
+# @brief Get the current leader for a team
+# @param $1 Team ID (default: "default")
+# @return Prints leader ID to stdout, empty if no leader
+##
+orch_team_get_leader() {
+    local team_id="${1:-$ORCH_TEAM_DEFAULT}"
+
+    # Check if leader module is available
+    if type -t leader_get &>/dev/null; then
+        leader_get "$team_id"
+        return 0
+    fi
+
+    # Fallback: read from file
+    local leader_file="${ORCH_STATE_DIR}/leaders/${team_id}/leader"
+    if [[ -f "$leader_file" ]]; then
+        cut -d: -f1 "$leader_file" 2>/dev/null
+    fi
+}
+
+##
+# @brief Check if this process is the leader for a team
+# @param $1 Team ID (default: "default")
+# @param $2 Candidate ID (default: hostname)
+# @return 0 if is leader, 1 otherwise
+##
+orch_team_am_i_leader() {
+    local team_id="${1:-$ORCH_TEAM_DEFAULT}"
+    local candidate="${2:-$(hostname)}"
+
+    # Check cached status first
+    if [[ "${_ORCH_LEADER_STATUS[$team_id]:-}" == "$ORCH_LEADER_STATUS_LEADING" ]]; then
+        # Verify leadership is still valid
+        local current_leader
+        current_leader=$(orch_team_get_leader "$team_id")
+        if [[ "$current_leader" == "$candidate" ]]; then
+            return 0
+        fi
+        # Leadership was lost
+        _ORCH_LEADER_STATUS["$team_id"]="$ORCH_LEADER_STATUS_FOLLOWER"
+        return 1
+    fi
+
+    # Check via leader module
+    if type -t leader_am_i_leader &>/dev/null; then
+        if leader_am_i_leader "$team_id" "$candidate"; then
+            _ORCH_LEADERS["$team_id"]="$candidate"
+            _ORCH_LEADER_STATUS["$team_id"]="$ORCH_LEADER_STATUS_LEADING"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+##
+# @brief Step down as leader for a team
+# @param $1 Team ID (default: "default")
+# @param $2 Candidate ID (default: hostname)
+# @return 0 on success, 1 if not leader, 2 on error
+##
+orch_team_step_down() {
+    local team_id="${1:-$ORCH_TEAM_DEFAULT}"
+    local candidate="${2:-$(hostname)}"
+
+    # Stop renewal if running
+    if type -t leader_stop_renewal &>/dev/null; then
+        leader_stop_renewal "$team_id" 2>/dev/null || true
+    fi
+
+    # Update internal state
+    unset "_ORCH_LEADERS[$team_id]"
+    _ORCH_LEADER_STATUS["$team_id"]="$ORCH_LEADER_STATUS_FOLLOWER"
+
+    # Use leader module
+    if type -t leader_step_down &>/dev/null; then
+        leader_step_down "$team_id" "$candidate"
+        return $?
+    fi
+
+    # Fallback: remove leader file
+    local leader_file="${ORCH_STATE_DIR}/leaders/${team_id}/leader"
+    if [[ -f "$leader_file" ]]; then
+        local current_leader
+        current_leader=$(cut -d: -f1 "$leader_file" 2>/dev/null)
+        if [[ "$current_leader" == "$candidate" ]]; then
+            rm -f "$leader_file"
+            _orch_log info "Stepped down as leader for team '$team_id'"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+##
+# @brief Wait for a leader to be elected for a team
+# @param $1 Team ID (default: "default")
+# @param $2 Timeout in seconds (default: 60)
+# @return 0 if leader found, 1 on timeout
+##
+orch_team_wait_for_leader() {
+    local team_id="${1:-$ORCH_TEAM_DEFAULT}"
+    local timeout="${2:-60}"
+
+    if type -t leader_wait_for &>/dev/null; then
+        leader_wait_for "$team_id" "$timeout"
+        return $?
+    fi
+
+    # Fallback: poll for leader file
+    local deadline=$(( $(date +%s) + timeout ))
+    while [[ $(date +%s) -lt $deadline ]]; do
+        local leader
+        leader=$(orch_team_get_leader "$team_id")
+        if [[ -n "$leader" ]]; then
+            printf '%s' "$leader"
+            return 0
+        fi
+        sleep 1
+    done
+
+    return 1
+}
+
+##
+# @brief Distribute a task to an agent (leader-only operation)
+# @param $1 Team ID
+# @param $2 Task payload (JSON)
+# @param $3 Priority (1-10, default: 5)
+# @param $4 Force distribution even if not leader (yes/no, default: no)
+# @return 0 on success, 1 on failure
+#
+# This function should only be called by the team leader. If called by a
+# non-leader, it will fail unless force=yes is specified.
+##
+orch_task_distribute() {
+    local team_id="${1:-$ORCH_TEAM_DEFAULT}"
+    local payload_json="${2:-{}}"
+    local priority="${3:-5}"
+    local force="${4:-no}"
+
+    # Check if we're the leader (unless forced)
+    if [[ "$force" != "yes" ]] && ! orch_team_am_i_leader "$team_id"; then
+        _orch_log error "Task distribution is a leader-only operation for team '$team_id'"
+        return 1
+    fi
+
+    # Delegate to existing task assignment logic
+    orch_task_assign "$team_id" "$payload_json" "$priority"
+}
+
+##
+# @brief Get leader election status for all teams
+# @return Prints JSON array with leader status per team
+##
+orch_leader_status_all() {
+    local first=1
+    printf '['
+
+    for team_id in "${!_ORCH_TEAMS[@]}"; do
+        [[ $first -eq 1 ]] || printf ','
+        first=0
+
+        local leader="${_ORCH_LEADERS[$team_id]:-null}"
+        local status="${_ORCH_LEADER_STATUS[$team_id]:-$ORCH_LEADER_STATUS_UNKNOWN}"
+
+        if [[ "$leader" == "null" ]]; then
+            # Try to get leader from storage
+            leader=$(orch_team_get_leader "$team_id" 2>/dev/null || echo "null")
+        fi
+
+        printf '{"team_id":"%s","leader":%s,"status":"%s"}' \
+            "$team_id" \
+            "$([[ "$leader" == "null" || -z "$leader" ]] && echo "null" || echo "\"$leader\"")" \
+            "$status"
+    done
+
+    printf ']\n'
+}
+
+# =============================================================================
 # SHUTDOWN & CLEANUP
 # =============================================================================
 
@@ -2145,6 +2527,17 @@ orch_discovery_broadcast() {
 ##
 orch_shutdown() {
     _orch_log info "Initiating orchestration shutdown..."
+
+    # Step down from all leadership roles
+    local team_id
+    for team_id in "${!_ORCH_LEADERS[@]}"; do
+        orch_team_step_down "$team_id" 2>/dev/null || true
+    done
+
+    # Stop all leader renewals
+    if type -t leader_stop_all_renewals &>/dev/null; then
+        leader_stop_all_renewals 2>/dev/null || true
+    fi
 
     # Broadcast shutdown message to all agents
     local shutdown_msg
@@ -2227,6 +2620,18 @@ orch_init() {
     _ORCH_TASKS=()
     # Initialize _ORCH_WINDOWS if not already set (preserve existing TMUX session)
     [[ ${#_ORCH_WINDOWS[@]} -eq 0 ]] 2>/dev/null || _ORCH_WINDOWS=()
+    # Initialize leader state
+    _ORCH_LEADERS=()
+    _ORCH_LEADER_STATUS=()
+    _ORCH_LEADER_RENEWAL_PIDS=()
+
+    # Source leader election module if available
+    local mainframe_root="${MAINFRAME_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    if [[ -f "${mainframe_root}/lib/leader.sh" ]]; then
+        # shellcheck source=leader.sh
+        source "${mainframe_root}/lib/leader.sh"
+        _orch_log debug "Leader election module loaded"
+    fi
 
     _orch_log info "Orchestration subsystem initialized (v${ORCH_VERSION})"
     return 0
@@ -2289,6 +2694,11 @@ MAINFRAME_ORCHESTRATE_EXPORTS=(
     ORCH_STATUS_COMPLETED
     ORCH_STATUS_FAILED
     ORCH_STATUS_TERMINATED
+    # Leader election status
+    ORCH_LEADER_STATUS_LEADING
+    ORCH_LEADER_STATUS_FOLLOWER
+    ORCH_LEADER_STATUS_CANDIDATE
+    ORCH_LEADER_STATUS_UNKNOWN
     # Task status
     ORCH_TASK_QUEUED
     ORCH_TASK_ASSIGNED
@@ -2314,6 +2724,14 @@ MAINFRAME_ORCHESTRATE_EXPORTS=(
     orch_team_info
     orch_team_list
     orch_team_dissolve
+    # Leader Election
+    orch_team_elect_leader
+    orch_team_get_leader
+    orch_team_am_i_leader
+    orch_team_step_down
+    orch_team_wait_for_leader
+    orch_leader_status_all
+    orch_task_distribute
     # Agent Lifecycle
     orch_agent_spawn
     orch_agent_terminate

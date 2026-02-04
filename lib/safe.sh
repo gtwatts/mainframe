@@ -13,6 +13,9 @@
 [[ -n "${_MAINFRAME_SAFE_LOADED:-}" ]] && return 0
 readonly _MAINFRAME_SAFE_LOADED=1
 
+# Source validation library for command safety checks
+source "${MAINFRAME_ROOT:-${HOME}/.mainframe}/lib/validation.sh" 2>/dev/null || true
+
 # =============================================================================
 # INTERNAL STATE
 # =============================================================================
@@ -162,6 +165,11 @@ unsafe_run() {
     # Execute the command
     if [[ $# -eq 1 ]]; then
         # Single argument: treat as shell command string, use bash -c for isolation
+        # Security: Validate command before using bash -c
+        if ! validate_command_safe "$1"; then
+            _safe_error "unsafe_run: Command contains unsafe characters"
+            return 1
+        fi
         bash -c "$1"
     else
         # Multiple arguments: execute directly as command array (safer)
@@ -200,6 +208,12 @@ safe_exit_code() {
     # The || true pattern prevents errexit from triggering
     if [[ $# -eq 1 ]]; then
         # Single argument: treat as shell command string
+        # Security: Validate command before using bash -c
+        if ! validate_command_safe "$1"; then
+            _safe_error "safe_exit_code: Command contains unsafe characters"
+            SAFE_EXIT_CODE=1
+            return 0
+        fi
         bash -c "$1" && SAFE_EXIT_CODE=0 || SAFE_EXIT_CODE=$?
     else
         # Multiple arguments: execute directly as command array (safer)
@@ -327,6 +341,12 @@ capture_both() {
     # Execute command, capturing streams separately
     if [[ $# -eq 1 ]]; then
         # Single argument: treat as shell command string
+        # Security: Validate command before using bash -c
+        if ! validate_command_safe "$1"; then
+            _safe_error "capture_both: Command contains unsafe characters"
+            rm -f "$stdout_file" "$stderr_file"
+            return 1
+        fi
         bash -c "$1" > "$stdout_file" 2> "$stderr_file"
     else
         # Multiple arguments: execute directly as command array (safer)
@@ -353,6 +373,11 @@ capture_both() {
 #   version=$(capture_stdout python --version)
 capture_stdout() {
     if [[ $# -eq 1 ]]; then
+        # Security: Validate command before using bash -c
+        if ! validate_command_safe "$1"; then
+            _safe_error "capture_stdout: Command contains unsafe characters"
+            return 1
+        fi
         bash -c "$1" 2>/dev/null
     else
         "$@" 2>/dev/null
@@ -368,6 +393,11 @@ capture_stdout() {
 #   errors=$(capture_stderr make build)
 capture_stderr() {
     if [[ $# -eq 1 ]]; then
+        # Security: Validate command before using bash -c
+        if ! validate_command_safe "$1"; then
+            _safe_error "capture_stderr: Command contains unsafe characters"
+            return 1
+        fi
         bash -c "$1" 2>&1 1>/dev/null
     else
         "$@" 2>&1 1>/dev/null
@@ -383,6 +413,11 @@ capture_stderr() {
 #   log=$(capture_all npm install)
 capture_all() {
     if [[ $# -eq 1 ]]; then
+        # Security: Validate command before using bash -c
+        if ! validate_command_safe "$1"; then
+            _safe_error "capture_all: Command contains unsafe characters"
+            return 1
+        fi
         bash -c "$1" 2>&1
     else
         "$@" 2>&1
@@ -445,6 +480,12 @@ retry_backoff() {
             "${cmd_array[@]}"
         else
             # String command: use bash -c for isolation
+            # Security: Validate command before using bash -c
+            if ! validate_command_safe "$command"; then
+                _safe_error "retry_backoff: Command contains unsafe characters"
+                set -e 2>/dev/null || true
+                return 1
+            fi
             bash -c "$command"
         fi
         exit_code=$?
@@ -511,6 +552,12 @@ retry_backoff_jitter() {
         if [[ ${#cmd_array[@]} -gt 0 ]]; then
             "${cmd_array[@]}"
         else
+            # Security: Validate command before using bash -c
+            if ! validate_command_safe "$command"; then
+                _safe_error "retry_backoff_jitter: Command contains unsafe characters"
+                set -e 2>/dev/null || true
+                return 1
+            fi
             bash -c "$command"
         fi
         exit_code=$?
@@ -583,6 +630,12 @@ retry_with_callback() {
         if [[ ${#cmd_array[@]} -gt 0 ]]; then
             "${cmd_array[@]}"
         else
+            # Security: Validate command before using bash -c
+            if ! validate_command_safe "$command"; then
+                _safe_error "retry_with_callback: Command contains unsafe characters"
+                set -e 2>/dev/null || true
+                return 1
+            fi
             bash -c "$command"
         fi
         exit_code=$?
@@ -662,6 +715,11 @@ run_with_timeout() {
     if [[ ${#cmd_array[@]} -gt 0 ]]; then
         "${cmd_array[@]}" &
     else
+        # Security: Validate command before using bash -c
+        if ! validate_command_safe "$command"; then
+            _safe_error "run_with_timeout: Command contains unsafe characters"
+            return 1
+        fi
         bash -c "$command" &
     fi
     cmd_pid=$!
@@ -704,6 +762,12 @@ run_with_timeout() {
 timeout_cmd() {
     local seconds="$1"
     local command="$2"
+
+    # Security: Validate command before using bash -c
+    if ! validate_command_safe "$command"; then
+        _safe_error "timeout_cmd: Command contains unsafe characters"
+        return 1
+    fi
 
     if command -v timeout &>/dev/null; then
         # Use GNU timeout (more reliable for complex commands)

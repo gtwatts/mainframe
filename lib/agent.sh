@@ -15,6 +15,11 @@
 [[ -n "${_MAINFRAME_AGENT_LOADED:-}" ]] && return 0
 _MAINFRAME_AGENT_LOADED=1
 
+# Ensure json library is loaded (dependency for JSON encoding)
+if [[ -z "${_MAINFRAME_JSON_LOADED:-}" ]]; then
+    source "${BASH_SOURCE%/*}/json.sh"
+fi
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================

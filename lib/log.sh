@@ -36,6 +36,18 @@ declare -g _LOG_FORMAT="text"           # text, json, pretty
 declare -g _LOG_OUTPUT=""               # Empty = stdout
 declare -gA _LOG_CONTEXT=()             # Persistent context fields
 
+# Sync log format with MAINFRAME_OUTPUT environment variable
+# Maps: json->json, raw->text, minimal->text, debug->pretty
+_log_sync_mainframe_output() {
+    local mode="${MAINFRAME_OUTPUT:-raw}"
+    case "$mode" in
+        json)   _LOG_FORMAT="json" ;;
+        raw)    _LOG_FORMAT="text" ;;
+        minimal) _LOG_FORMAT="text" ;;
+        debug)  _LOG_FORMAT="pretty" ;;
+    esac
+}
+
 # Timing state
 declare -gA _LOG_TIMERS=()
 
@@ -73,6 +85,7 @@ log::get_level() {
 
 # Set output format
 # Usage: log::set_format "json"  # json, text, pretty
+# Note: This overrides MAINFRAME_OUTPUT. To use MAINFRAME_OUTPUT, call log::sync_with_mainframe_output
 log::set_format() {
     local format="${1,,}"
     case "$format" in
@@ -84,6 +97,12 @@ log::set_format() {
             _LOG_FORMAT="text"
             ;;
     esac
+}
+
+# Sync format with MAINFRAME_OUTPUT environment variable
+# Usage: log::sync_with_mainframe_output
+log::sync_with_mainframe_output() {
+    _log_sync_mainframe_output
 }
 
 # Get current format
@@ -187,6 +206,11 @@ _log_emit() {
     
     # Check level threshold
     _log_should_log "$level" || return 0
+    
+    # Sync with MAINFRAME_OUTPUT if set
+    if [[ -n "${MAINFRAME_OUTPUT:-}" ]]; then
+        _log_sync_mainframe_output
+    fi
     
     local timestamp
     timestamp=$(_log_timestamp)
@@ -639,3 +663,8 @@ log::env() {
         "pwd=${PWD:-unknown}" \
         "hostname=${HOSTNAME:-$(hostname 2>/dev/null || echo unknown)}"
 }
+
+# =============================================================================
+# INITIALIZATION - Sync with MAINFRAME_OUTPUT on load
+# =============================================================================
+_log_sync_mainframe_output

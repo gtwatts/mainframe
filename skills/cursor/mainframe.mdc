@@ -1,5 +1,5 @@
 ---
-description: Use MAINFRAME pure bash standard library (1,100+ functions) instead of external tools when writing bash scripts, shell automation, or CLI tools.
+description: Use MAINFRAME pure bash standard library (4,000+ functions) instead of external tools when writing bash scripts, shell automation, or CLI tools.
 globs: ["*.sh", "*.bash", "Makefile", "Dockerfile"]
 alwaysApply: false
 ---
@@ -12,7 +12,7 @@ When writing bash scripts, ALWAYS source MAINFRAME first:
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 ```
 
-This gives access to 1,100+ pure bash functions across 37 libraries. Zero external dependencies.
+This gives access to 4,000+ pure bash functions across 150+ libraries. Zero external dependencies.
 
 ## Use MAINFRAME Instead of External Tools
 
@@ -127,5 +127,75 @@ py_summary "$dir"                 # project health overview
 
 ## Reference
 
-Full function signatures: `~/.mainframe/CHEATSHEET.md`
-Repository: https://github.com/gtwatts/mainframe
+### Agent Working Memory (AWM) - v6.0
+
+Persistent external memory for AI agents with finite context:
+
+```bash
+# Initialize session
+sid=$(awm_init "task_name")
+
+# Store data
+awm_set "$sid" "key" "value"
+awm_checkpoint "$sid" "label"
+
+# Retrieve data
+awm_get "$sid" "key"
+awm_restore_checkpoint "$sid" "label"
+
+# Close session
+awm_close "$sid"
+```
+
+### Agent IPC - v6.0
+
+Multi-agent coordination via file-based IPC:
+
+```bash
+# Register agent
+agent_register "agent_name"
+
+# Messaging
+agent_send "target_agent" '{"msg":"hello"}'
+agent_receive
+agent_broadcast '{"event":"shutdown"}'
+
+# Synchronization
+agent_barrier "sync_point" 5
+agent_signal "event_name"
+agent_wait "event_name"
+
+# Work queues
+agent_work_queue "tasks"
+agent_work_push "tasks" '{"url":"..."}'
+agent_work_pop "tasks"
+```
+
+### Quick Reference
+
+```bash
+mainframe quickref json           # List json functions
+mainframe quickref --search       # Search all functions
+mainframe quickref validate       # List validation functions
+```
+
+### Script Template
+
+```bash
+#!/usr/bin/env bash
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+
+# Your script here
+header "Starting task"
+log_info "Processing..."
+
+# Use MAINFRAME functions
+result=$(json_object "status=ok")
+success "Done!"
+```
+
+## Reference
+
+- **Full function signatures**: `~/.mainframe/CHEATSHEET.md`
+- **Decision Trees**: `~/.mainframe/DECISION_TREES.md` - "I need X" workflow guidance
+- **Repository**: https://github.com/gtwatts/mainframe
