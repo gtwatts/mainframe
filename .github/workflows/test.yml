@@ -250,9 +250,10 @@ jobs:
           git clone https://github.com/bats-core/bats-file.git tests/bats-file
 
       - name: Run tests
-        timeout-minutes: 15
+        timeout-minutes: 25
         run: |
           # Run core tests only - exclude slow/network/timeout-heavy tests
+          # Note: macOS runners are slower, so we need more time
           output=$(./tests/bats/bin/bats --print-output-on-failure \
             tests/unit/agent_context.bats \
             tests/unit/agent_exec.bats \
