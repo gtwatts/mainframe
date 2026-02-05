@@ -659,3 +659,4 @@ MAINFRAME is that runtime.
 **4,000+ functions** | **Zero dependencies** | **Agent Working Memory** | **Pure Bash**
 
 </div>
+# Mainframe v7.0 - AI-Native Bash Runtime
