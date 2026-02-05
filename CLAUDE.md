@@ -12,9 +12,12 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 |----------|-------------|--------|
 | **Claude Code** | `skills/claude-code/SKILL.md` | ✅ Full support |
 | **Kimi Code CLI** | `skills/kimi-cli/SKILL.md` | ✅ Full support |
+| **Google CLI** | `skills/google-cli/SKILL.md` | ✅ Full support |
+| **OpenCode** | `skills/opencode/SKILL.md` | ✅ Full support |
 | **Cursor** | `.cursorrules` / `skills/cursor/` | ✅ Full support |
 | **Aider** | `skills/aider/SKILL.md` | ✅ Full support |
 | **Vercel AI SDK** | `skills/vercel-ai-sdk/` | ✅ Full support |
+| **Custom Agents** | `lib/uap.sh` + `lib/mcp_server.sh` | ✅ Protocol support |
 
 ## Library Overview
 

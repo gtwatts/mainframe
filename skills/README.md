@@ -7,6 +7,9 @@ Pre-built instruction files that teach AI coding assistants about MAINFRAME's 4,
 | Platform | Directory | Format | Install |
 |----------|-----------|--------|---------|
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `claude-code/` | SKILL.md | Symlink to `~/.claude/skills/` |
+| [Kimi CLI](https://docs.moonshot.cn/kimi-cli) | `kimi-cli/` | SKILL.md | Symlink to `~/.claude/skills/` |
+| [Google CLI](https://ai.google.dev/) | `google-cli/` | SKILL.md | Load in agent config |
+| [OpenCode](https://opencode.ai) | `opencode/` | SKILL.md | Load in agent config |
 | [Clawdbot](https://github.com/clawdbot/clawdbot) | `clawdbot/` | Preamble | Add to `clawdbot.json` |
 | [Cursor](https://cursor.com) | `cursor/` | .mdc | Copy to `.cursor/rules/` |
 | [Aider](https://aider.chat) | `aider/` | CONVENTIONS.md | Reference in `.aider.conf.yml` |
