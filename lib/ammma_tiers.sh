@@ -190,6 +190,7 @@ _ammma_promote_l3_to_l2() {
         local memory
         memory=$(cat "$mem_file")
         # Update tier field
+    # shellcheck disable=SC2001
         memory=$(echo "$memory" | sed 's/"tier":"l3"/"tier":"l2"/')
         printf '%s' "$memory" > "$mem_file"
     fi
@@ -318,6 +319,7 @@ _ammma_demote_l1_to_l2() {
     l2_path=$(_amma_l2_path)
     
     # Update tier in memory
+    # shellcheck disable=SC2001
     memory=$(echo "$memory" | sed 's/"tier":"[^"]*"/"tier":"l2"/')
     printf '%s' "$memory" > "$l2_path/episodes/$mem_id.json"
     
@@ -359,6 +361,7 @@ _ammma_demote_l2_to_l3() {
     memory=$(cat "$mem_file")
     
     # Update tier
+    # shellcheck disable=SC2001
     memory=$(echo "$memory" | sed 's/"tier":"[^"]*"/"tier":"l3"/')
     printf '%s' "$memory" > "$l3_path/summaries/$mem_id.json"
     
@@ -404,6 +407,7 @@ _ammma_demote_l3_to_l4() {
     mkdir -p "$l4_path/$target_dir/$year_month"
     
     # Update tier and move
+    # shellcheck disable=SC2001
     memory=$(echo "$memory" | sed 's/"tier":"[^"]*"/"tier":"l4"/')
     printf '%s' "$memory" > "$l4_path/$target_dir/$year_month/$mem_id.json"
     
