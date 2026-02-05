@@ -108,8 +108,26 @@ _temporal_uuid() {
 # Escape string for SQL
 _temporal_sql_escape() {
     local value="$1"
+    # Remove null bytes
+    value="${value//$'\x00'/}"
+    # Escape backslashes first (before other escapes add more)
+    value="${value//\\/\\\\}"
     # Escape single quotes by doubling them
-    printf '%s' "$value" | sed "s/'/''/g"
+    value="${value//\'/\'\'}"
+    # Escape newlines and carriage returns
+    value="${value//$'\n'/\\n}"
+    value="${value//$'\r'/\\r}"
+    printf '%s' "$value"
+}
+
+# Validate that a value is numeric (integer or decimal), default to 0 if not
+_temporal_validate_numeric() {
+    local value="$1"
+    if [[ "$value" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
+        printf '%s' "$value"
+    else
+        printf '0'
+    fi
 }
 
 # Sanitize command to remove secrets
@@ -348,18 +366,35 @@ _temporal_record_sqlite() {
     local env_hash="$9" system_load_cpu="${10}" system_load_mem="${11}"
     local session_id="${12}" git_branch="${13}" success="${14}"
 
-    local escaped_cwd escaped_cmd escaped_branch
+    # Escape ALL string fields
+    local escaped_id escaped_timestamp escaped_cwd escaped_cmd
+    local escaped_env_hash escaped_session_id escaped_branch
+    escaped_id=$(_temporal_sql_escape "$id")
+    escaped_timestamp=$(_temporal_sql_escape "$timestamp")
     escaped_cwd=$(_temporal_sql_escape "$cwd")
     escaped_cmd=$(_temporal_sql_escape "$command")
+    escaped_env_hash=$(_temporal_sql_escape "$env_hash")
+    escaped_session_id=$(_temporal_sql_escape "$session_id")
     escaped_branch=$(_temporal_sql_escape "$git_branch")
+
+    # Validate ALL numeric fields
+    local safe_exit_code safe_duration_ms safe_output_lines safe_output_size
+    local safe_load_cpu safe_load_mem safe_success
+    safe_exit_code=$(_temporal_validate_numeric "$exit_code")
+    safe_duration_ms=$(_temporal_validate_numeric "$duration_ms")
+    safe_output_lines=$(_temporal_validate_numeric "$output_lines")
+    safe_output_size=$(_temporal_validate_numeric "$output_size_bytes")
+    safe_load_cpu=$(_temporal_validate_numeric "$system_load_cpu")
+    safe_load_mem=$(_temporal_validate_numeric "$system_load_mem")
+    safe_success=$(_temporal_validate_numeric "$success")
 
     sqlite3 "$_TEMPORAL_SQLITE_PATH" <<EOF
 INSERT INTO history (id, timestamp, cwd, command, exit_code, duration_ms,
     output_lines, output_size_bytes, env_hash, system_load_cpu, system_load_mem,
     session_id, git_branch, success)
-VALUES ('$id', '$timestamp', '${escaped_cwd}', '${escaped_cmd}', $exit_code,
-    $duration_ms, $output_lines, $output_size_bytes, '${env_hash}',
-    $system_load_cpu, $system_load_mem, '${session_id}', '${escaped_branch}', $success);
+VALUES ('${escaped_id}', '${escaped_timestamp}', '${escaped_cwd}', '${escaped_cmd}', ${safe_exit_code},
+    ${safe_duration_ms}, ${safe_output_lines}, ${safe_output_size}, '${escaped_env_hash}',
+    ${safe_load_cpu}, ${safe_load_mem}, '${escaped_session_id}', '${escaped_branch}', ${safe_success});
 EOF
 
     # Trim old entries if needed
@@ -504,12 +539,12 @@ _temporal_execute_bash_query() {
         # Build result row
         local row=""
         if [[ "$select_cols" == "*" ]]; then
-            row=$(json_object "id" "$id" "timestamp" "$timestamp" "cwd" "$cwd" \
-                "command" "$command" "exit_code" "$exit_code" "duration_ms" "$duration_ms" \
-                "output_lines" "$output_lines" "output_size_bytes" "$output_size_bytes" \
-                "env_hash" "$env_hash" "system_load_cpu" "$system_load_cpu" \
-                "system_load_mem" "$system_load_mem" "session_id" "$session_id" \
-                "git_branch" "$git_branch" "success" "$success")
+            row=$(json_object "id=$id" "timestamp=$timestamp" "cwd=$cwd" \
+                "command=$command" "exit_code:number=$exit_code" "duration_ms:number=$duration_ms" \
+                "output_lines:number=$output_lines" "output_size_bytes:number=$output_size_bytes" \
+                "env_hash=$env_hash" "system_load_cpu:number=$system_load_cpu" \
+                "system_load_mem:number=$system_load_mem" "session_id=$session_id" \
+                "git_branch=$git_branch" "success:number=$success")
         else
             # Handle specific columns
             row="{"
@@ -595,37 +630,7 @@ _temporal_eval_where() {
     return 0
 }
 
-# Helper to create JSON object
-json_object() {
-    local result="{"
-    local key value first=true
-
-    while [[ $# -ge 2 ]]; do
-        key="$1"
-        value="$2"
-        shift 2
-
-        $first || result+=","
-        first=false
-
-        # Determine if value should be quoted
-        if [[ "$value" =~ ^[0-9]+$ ]]; then
-            result+="\"$key\":$value"
-        elif [[ "$value" == "true" || "$value" == "false" ]]; then
-            result+="\"$key\":$value"
-        else
-            # Escape the value
-            value="${value//\\/\\\\}"
-            value="${value//\"/\\\"}"
-            value="${value//$'\n'/\\n}"
-            value="${value//$'\t'/\\t}"
-            result+="\"$key\":\"$value\""
-        fi
-    done
-
-    result+="}"
-    printf '%s' "$result"
-}
+## json_object is provided by json.sh (key=value format) - do not redefine here
 
 # =============================================================================
 # SELECT & AGGREGATE

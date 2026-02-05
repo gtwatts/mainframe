@@ -309,7 +309,14 @@ heal_execute() {
     if [[ -n "$capture_output" ]]; then
         output=$(eval "$command" 2>&1) || exit_code=$?
     else
-        eval "$command" || exit_code=$?
+        # Capture stderr for diagnostics while letting stdout flow through.
+        # This avoids needing to re-execute the command on failure (which would
+        # cause side-effect commands to run twice).
+        local _heal_stderr_tmp
+        _heal_stderr_tmp=$(mktemp "${TMPDIR:-/tmp}/heal_stderr.XXXXXX")
+        eval "$command" 2>"$_heal_stderr_tmp" || exit_code=$?
+        output=$(<"$_heal_stderr_tmp")
+        rm -f "$_heal_stderr_tmp"
     fi
     
     if [[ $exit_code -eq 0 ]]; then
@@ -322,10 +329,18 @@ heal_execute() {
         return 0
     fi
     
-    [[ -z "$output" ]] && output=$(eval "$command" 2>&1) || true
+    # NOTE: Previously this re-executed the failed command to capture output when
+    # --capture-output was not used. This caused side-effect commands to run twice.
+    # Now we capture stderr from the first execution instead. If output is still
+    # empty (no --capture-output and no stderr), we log a warning rather than
+    # re-executing a potentially destructive command.
+    if [[ -z "$output" ]]; then
+        _heal_log warn "heal_execute: command failed but no output captured (use --capture-output to enable diagnostics)"
+        output="Command failed with exit code $exit_code (no output captured)"
+    fi
     _HEAL_ORIGINAL_ERROR="$output"
     _HEAL_ORIGINAL_EXITCODE=$exit_code
-    
+
     _heal_log warn "heal_execute: command failed (exit=$exit_code), executing recovery: $on_error"
     
     local recovery_result=0
@@ -759,6 +774,206 @@ _heal_suggest_logic() {
 
 
 # =============================================================================
+# SAFE EXECUTION ENGINE
+# =============================================================================
+# Whitelist-based command execution for auto-generated fix suggestions.
+# Only commands in the whitelist are executed directly. All others are logged
+# for manual review. This prevents command injection through crafted error
+# messages or manipulated suggestion data.
+# =============================================================================
+
+# Whitelist of commands that are safe for auto-fix to execute.
+# Each entry is a simple command name (no paths). The function validates
+# that the actual command resolves to an executable before running.
+readonly _HEAL_SAFE_COMMANDS=(
+    # Filesystem operations (non-destructive)
+    mkdir
+    touch
+    chmod
+    chown
+    ln
+    cp
+    mv
+    # Package management (install only, not remove)
+    pip
+    pip3
+    npm
+    bun
+    apt
+    apt-get
+    brew
+    dnf
+    yum
+    pacman
+    # System configuration
+    export
+    ulimit
+    usermod
+    # Network diagnostics
+    ping
+    curl
+    wget
+    # Version control
+    git
+    # Service management
+    systemctl
+    service
+    # Container management
+    docker
+)
+
+# Subcommand blocklist for commands that have destructive subcommands.
+# Format: "command:blocked_subcommand"
+readonly _HEAL_BLOCKED_SUBCOMMANDS=(
+    "pip:uninstall"
+    "pip3:uninstall"
+    "npm:uninstall"
+    "bun:remove"
+    "apt:remove"
+    "apt:purge"
+    "apt-get:remove"
+    "apt-get:purge"
+    "dnf:remove"
+    "yum:remove"
+    "pacman:-R"
+    "pacman:-Rs"
+    "docker:rm"
+    "docker:rmi"
+    "git:push"
+    "git:reset"
+    "systemctl:stop"
+    "systemctl:disable"
+)
+
+_heal_safe_execute() {
+    local suggestion="$1"
+    local confirmed="${2:-}"  # --confirmed flag from heal_confirm_and_fix
+
+    if [[ -z "$suggestion" ]]; then
+        _heal_log error "_heal_safe_execute: empty suggestion"
+        return 1
+    fi
+
+    # Strip leading/trailing whitespace
+    suggestion="${suggestion#"${suggestion%%[![:space:]]*}"}"
+    suggestion="${suggestion%"${suggestion##*[![:space:]]}"}"
+
+    # Check for shell metacharacters that indicate injection attempts.
+    # These should never appear in legitimate fix suggestions which are
+    # simple single commands like "mkdir -p /path" or "chmod 755 /file".
+    # NOTE: The regex must be stored in a variable (not quoted on the RHS of =~)
+    # for bash to treat it as a regex rather than a literal string.
+    local _dangerous_re='[;|&`$(){}]|>>|<<'
+    if [[ "$suggestion" =~ $_dangerous_re ]]; then
+        _heal_log warn "_heal_safe_execute: BLOCKED - suggestion contains shell metacharacters: $suggestion"
+        _heal_usop_error "INJECTION_BLOCKED" \
+            "Fix suggestion contains potentially dangerous shell metacharacters" \
+            "Manual review required: $suggestion"
+        return 1
+    fi
+
+    # Parse the command: handle "sudo <command> ..." pattern
+    local -a tokens
+    read -ra tokens <<< "$suggestion"
+
+    if [[ ${#tokens[@]} -eq 0 ]]; then
+        _heal_log error "_heal_safe_execute: no tokens in suggestion"
+        return 1
+    fi
+
+    local base_cmd="${tokens[0]}"
+    local check_cmd="$base_cmd"
+    local subcmd_index=1
+
+    # Handle sudo prefix: the actual command to whitelist-check is the one after sudo
+    if [[ "$base_cmd" == "sudo" ]]; then
+        if [[ ${#tokens[@]} -lt 2 ]]; then
+            _heal_log error "_heal_safe_execute: sudo with no command"
+            return 1
+        fi
+        # Skip sudo flags like -n, -u, etc.
+        subcmd_index=1
+        while [[ $subcmd_index -lt ${#tokens[@]} ]] && [[ "${tokens[$subcmd_index]}" == -* ]]; do
+            subcmd_index=$((subcmd_index + 1))
+        done
+        if [[ $subcmd_index -ge ${#tokens[@]} ]]; then
+            _heal_log error "_heal_safe_execute: sudo with only flags, no command"
+            return 1
+        fi
+        check_cmd="${tokens[$subcmd_index]}"
+        subcmd_index=$((subcmd_index + 1))
+    fi
+
+    # Verify command is in the whitelist
+    local allowed=false
+    local cmd_name
+    for cmd_name in "${_HEAL_SAFE_COMMANDS[@]}"; do
+        if [[ "$check_cmd" == "$cmd_name" ]]; then
+            allowed=true
+            break
+        fi
+    done
+
+    if [[ "$allowed" != "true" ]]; then
+        _heal_log warn "_heal_safe_execute: BLOCKED - command '$check_cmd' not in whitelist"
+        _heal_log info "_heal_safe_execute: suggestion logged for manual review: $suggestion"
+        _heal_usop_error "NOT_WHITELISTED" \
+            "Command '$check_cmd' is not in the auto-fix whitelist" \
+            "Manual execution required: $suggestion"
+        return 1
+    fi
+
+    # Check subcommand blocklist (e.g., "pip uninstall" is blocked)
+    if [[ $subcmd_index -lt ${#tokens[@]} ]]; then
+        local subcmd="${tokens[$subcmd_index]}"
+        local blocked_entry
+        for blocked_entry in "${_HEAL_BLOCKED_SUBCOMMANDS[@]}"; do
+            local blocked_cmd="${blocked_entry%%:*}"
+            local blocked_sub="${blocked_entry#*:}"
+            if [[ "$check_cmd" == "$blocked_cmd" && "$subcmd" == "$blocked_sub" ]]; then
+                _heal_log warn "_heal_safe_execute: BLOCKED - destructive subcommand '$check_cmd $subcmd'"
+                _heal_usop_error "DESTRUCTIVE_BLOCKED" \
+                    "Destructive subcommand '$check_cmd $subcmd' is blocked" \
+                    "Manual execution required: $suggestion"
+                return 1
+            fi
+        done
+    fi
+
+    # Additional safety: block any argument that looks like a path traversal attack
+    local token
+    for token in "${tokens[@]}"; do
+        if [[ "$token" == *".."* && "$token" == *"/"* ]]; then
+            # Allow legitimate relative paths but block obvious traversal
+            local resolved
+            resolved=$(realpath -m "$token" 2>/dev/null || true)
+            if [[ -n "$resolved" ]] && [[ "$resolved" == /proc/* || "$resolved" == /sys/* || "$resolved" == /dev/* ]]; then
+                _heal_log warn "_heal_safe_execute: BLOCKED - suspicious path traversal to system path: $token"
+                _heal_usop_error "PATH_BLOCKED" \
+                    "Path traversal to system directory blocked" \
+                    "Manual review required: $suggestion"
+                return 1
+            fi
+        fi
+    done
+
+    # Verify the command resolves to a real executable
+    if [[ "$check_cmd" != "export" && "$check_cmd" != "ulimit" ]]; then
+        if ! command -v "$check_cmd" &>/dev/null; then
+            _heal_log warn "_heal_safe_execute: command '$check_cmd' not found on system"
+            _heal_usop_error "CMD_NOT_FOUND" \
+                "Command '$check_cmd' not found" \
+                "Install '$check_cmd' first, then retry"
+            return 1
+        fi
+    fi
+
+    # Execute the validated command using the parsed token array (no eval)
+    _heal_log info "_heal_safe_execute: executing whitelisted command: ${tokens[*]}"
+    "${tokens[@]}"
+}
+
+# =============================================================================
 # AUTO-FIX FUNCTIONS
 # =============================================================================
 
@@ -844,15 +1059,9 @@ heal_auto_fix() {
     fi
     
     _heal_log info "heal_auto_fix: applying fix (confidence: $best_confidence): $best_suggestion"
-    
-    if [[ "$best_suggestion" =~ (^rm[[:space:]]|-rf[[:space:]]|>[/[:space:]]) ]]; then
-        _heal_log warn "heal_auto_fix: refusing to auto-execute potentially destructive command"
-        _heal_usop_error "DESTRUCTIVE_BLOCKED" "Fix requires confirmation - command may be destructive" "Use heal_confirm_and_fix instead"
-        return 1
-    fi
-    
+
     local fix_result=0
-    eval "$best_suggestion" || fix_result=$?
+    _heal_safe_execute "$best_suggestion" || fix_result=$?
     
     if [[ $fix_result -eq 0 ]]; then
         _HEAL_SUCCESSFUL_FIXES=$((_HEAL_SUCCESSFUL_FIXES + 1))
@@ -952,14 +1161,9 @@ heal_confirm_and_fix() {
     
     local selected_sugg="${sugg_list[$((response-1))]}"
     
-    if [[ "$selected_sugg" =~ (^rm[[:space:]]|-rf[[:space:]]|>[/[:space:]]) ]]; then
-        read -r -p "WARNING: This command may be destructive. Confirm [y/N]: " confirm
-        [[ "$confirm" != "y" && "$confirm" != "Y" ]] && return 1
-    fi
-    
     printf 'Executing: %s\n' "$selected_sugg" >&2
     local fix_result=0
-    eval "$selected_sugg" || fix_result=$?
+    _heal_safe_execute "$selected_sugg" --confirmed || fix_result=$?
     
     local elapsed=$(( $(_heal_epoch) - start_time ))
     
@@ -1230,9 +1434,11 @@ heal_stats() {
 _heal_init() {
     mkdir -p "$HEAL_STATE_DIR" 2>/dev/null || true
     
-    heal_register_strategy "npm.*EACCES" "sudo chown -R \$(whoami) ~/.npm" &>/dev/null || true
+    # NOTE: Strategy fix commands are resolved at registration time (no shell
+    # expansion at execution time) to avoid command injection via _heal_safe_execute.
+    heal_register_strategy "npm.*EACCES" "sudo chown -R $USER $HOME/.npm" &>/dev/null || true
     heal_register_strategy "pip.*Permission" "pip install --user" &>/dev/null || true
-    heal_register_strategy "docker.*permission" "sudo usermod -aG docker \$USER" &>/dev/null || true
+    heal_register_strategy "docker.*permission" "sudo usermod -aG docker $USER" &>/dev/null || true
     
     _heal_log debug "heal: initialized v$HEAL_VERSION"
 }

@@ -22,10 +22,16 @@ fi
 # CONSTANTS
 # =============================================================================
 
-readonly AGENT_BASE_DIR="/tmp/mainframe_agents"
+# Use user-specific directory to prevent world-writable /tmp security issues
+readonly AGENT_BASE_DIR="${TMPDIR:-/tmp}/mainframe_agents_${UID:-$(id -u)}"
 readonly AGENT_REGISTRY_DIR="$AGENT_BASE_DIR/registry"
 readonly AGENT_TASKS_DIR="$AGENT_BASE_DIR/tasks"
 readonly AGENT_STATE_DIR="$AGENT_BASE_DIR/shared_state"
+
+# Ensure base directory exists with restrictive permissions
+if [[ ! -d "$AGENT_BASE_DIR" ]]; then
+    mkdir -p "$AGENT_BASE_DIR" && chmod 700 "$AGENT_BASE_DIR"
+fi
 
 # =============================================================================
 # GLOBAL STATE

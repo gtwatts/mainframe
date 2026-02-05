@@ -46,5 +46,11 @@ test_export.txt
 test_introspect.sh
 test_state.sh
 
+# State machine runtime artifacts
+state_machines/
+
+# Node modules
+node_modules/
+
 # Build artifacts
 dist/

@@ -20,7 +20,7 @@
 
 **AI agents control computers through bash. MAINFRAME makes that safe, accurate, and efficient.**
 
-**6,200+ Pure Bash Functions** | **177 Libraries** | **Zero Dependencies** | **AI-Native Runtime**
+**3,821+ Pure Bash Functions** | **152 Libraries** | **Zero Dependencies** | **AI-Native Runtime**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Tests](https://img.shields.io/github/actions/workflow/status/gtwatts/mainframe/test.yml?label=tests)](https://github.com/gtwatts/mainframe/actions)
@@ -88,7 +88,7 @@ The problem: **AI agents have finite context windows and bash is hostile territo
 | **Zero Dependencies** | Pure bash. Works on any system with bash 4.0+. No jq, no sed, no awk required. |
 
 ```bash
-# One line gives AI access to 6,200+ battle-tested functions
+# One line gives AI access to 3,821+ battle-tested functions
 source "${MAINFRAME_ROOT}/lib/common.sh"
 ```
 
@@ -365,7 +365,7 @@ MAINFRAME reduces token usage by **71% per bash task**:
 
 ## Library Reference
 
-MAINFRAME provides **177 libraries** with **6,200+ functions** organized by category.
+MAINFRAME provides **152 libraries** with **3,821+ functions** organized by category.
 
 <details>
 <summary><strong>AI Agent Infrastructure</strong> - Memory, agents, context</summary>
@@ -614,7 +614,7 @@ predict_resources "npm install"  # {"time_s":30,"memory_mb":512,"risk":"low"}
 ## Documentation
 
 - **[Installation Guide](INSTALL.md)** - Detailed setup instructions
-- **[Full Function Reference](CHEATSHEET.md)** - All 6,200+ function signatures
+- **[Full Function Reference](CHEATSHEET.md)** - All 3,821+ function signatures
 - **[AI Agent Integration](CLAUDE.md)** - Instructions for AI coding assistants
 - **[Contributing](CONTRIBUTING.md)** - How to contribute
 - **[Roadmap](ROADMAP.md)** - Planned features and improvements
@@ -694,7 +694,7 @@ MAINFRAME is that runtime.
 
 ---
 
-**6,200+ functions** | **177 libraries** | **Zero dependencies** | **AI-Native Runtime**
+**3,821+ functions** | **152 libraries** | **Zero dependencies** | **AI-Native Runtime**
 
 </div>
 # Mainframe V10 - AI-Native Bash Runtime

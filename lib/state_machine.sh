@@ -308,7 +308,7 @@ state_machine_set_initial() {
     if [[ -n "$def" ]]; then
         def=$(echo "$def" | sed "s/\"initial\":\"[^\"]*\"/\"initial\":\"$state_name\"/")
         def=$(echo "$def" | sed "s/\"initial\":\s*null/\"initial\":\"$state_name\"/")
-        _STATE_MACHINE_DEFINITIONS[$name]="$def"
+        _STATE_MACHINE_DEFINITIONS[$machine]="$def"
     fi
     
     json_object \

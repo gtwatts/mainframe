@@ -294,6 +294,102 @@ _http_validate_hostname() {
 }
 
 # =============================================================================
+# SSRF PROTECTION
+# =============================================================================
+
+# Check if an IP address is in a private/internal range (SSRF protection)
+# Usage: _http_is_private_ip "192.168.1.1"
+# Returns: 0 if private/internal, 1 if public
+# Bypass: Set MAINFRAME_HTTP_ALLOW_PRIVATE=1 for legitimate local development
+_http_is_private_ip() {
+    local ip="$1"
+
+    # Allow bypass for local development
+    [[ "${MAINFRAME_HTTP_ALLOW_PRIVATE:-0}" == "1" ]] && return 1
+
+    # IPv6 loopback and unique local addresses
+    if [[ "$ip" == "::1" ]] || [[ "$ip" =~ ^fc[0-9a-fA-F]{2}: ]] || [[ "$ip" =~ ^fd[0-9a-fA-F]{2}: ]]; then
+        return 0
+    fi
+
+    # IPv4 validation - must be dotted quad for range checks
+    if [[ ! "$ip" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+        return 1
+    fi
+
+    local o1="${BASH_REMATCH[1]}"
+    local o2="${BASH_REMATCH[2]}"
+
+    # 127.0.0.0/8 - Loopback
+    [[ "$o1" -eq 127 ]] && return 0
+
+    # 10.0.0.0/8 - Private (RFC 1918)
+    [[ "$o1" -eq 10 ]] && return 0
+
+    # 172.16.0.0/12 - Private (RFC 1918)
+    [[ "$o1" -eq 172 ]] && [[ "$o2" -ge 16 ]] && [[ "$o2" -le 31 ]] && return 0
+
+    # 192.168.0.0/16 - Private (RFC 1918)
+    [[ "$o1" -eq 192 ]] && [[ "$o2" -eq 168 ]] && return 0
+
+    # 169.254.0.0/16 - Link-local
+    [[ "$o1" -eq 169 ]] && [[ "$o2" -eq 254 ]] && return 0
+
+    # 0.0.0.0/8 - Current network
+    [[ "$o1" -eq 0 ]] && return 0
+
+    # Not a private IP
+    return 1
+}
+
+# Resolve hostname and check for SSRF (private IP access)
+# Usage: _http_check_ssrf "hostname"
+# Returns: 0 if safe, 1 if blocked (private IP)
+_http_check_ssrf() {
+    local host="$1"
+
+    # Allow bypass for local development
+    [[ "${MAINFRAME_HTTP_ALLOW_PRIVATE:-0}" == "1" ]] && return 0
+
+    # Direct IP address check
+    if [[ "$host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        if _http_is_private_ip "$host"; then
+            return 1
+        fi
+        return 0
+    fi
+
+    # IPv6 literal check
+    if [[ "$host" == "::1" ]] || [[ "$host" =~ ^fc[0-9a-fA-F]{2}: ]] || [[ "$host" =~ ^fd[0-9a-fA-F]{2}: ]]; then
+        return 1
+    fi
+
+    # Hostname "localhost" is always private
+    if [[ "$host" == "localhost" ]] || [[ "$host" == "localhost."* ]]; then
+        return 1
+    fi
+
+    # Resolve hostname via getent or host command if available
+    local resolved_ip=""
+    if command -v getent &>/dev/null; then
+        resolved_ip=$(getent ahosts "$host" 2>/dev/null | awk 'NR==1{print $1}')
+    elif command -v host &>/dev/null; then
+        resolved_ip=$(host -t A "$host" 2>/dev/null | awk '/has address/{print $NF; exit}')
+    elif command -v dig &>/dev/null; then
+        resolved_ip=$(dig +short "$host" 2>/dev/null | head -1)
+    fi
+
+    # If we resolved an IP, check it
+    if [[ -n "$resolved_ip" ]]; then
+        if _http_is_private_ip "$resolved_ip"; then
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
+# =============================================================================
 # CORE HTTP REQUEST (Pure Bash /dev/tcp)
 # =============================================================================
 
@@ -321,6 +417,12 @@ http_request() {
     # Validate hostname before connection (Security: prevent injection)
     if ! _http_validate_hostname "$host"; then
         printf 'HTTP/1.1 000 Invalid Hostname\r\n\r\nInvalid hostname format: %s' "$host"
+        return 1
+    fi
+
+    # SSRF protection: block connections to private/internal IPs
+    if ! _http_check_ssrf "$host"; then
+        printf 'HTTP/1.1 000 SSRF Blocked\r\n\r\nConnection to private/internal address blocked: %s (set MAINFRAME_HTTP_ALLOW_PRIVATE=1 to bypass)' "$host"
         return 1
     fi
 
@@ -397,6 +499,12 @@ _http_request_openssl() {
     # Validate hostname before connection (Security: prevent injection)
     if ! _http_validate_hostname "$host"; then
         printf 'HTTP/1.1 000 Invalid Hostname\r\n\r\nInvalid hostname format: %s' "$host"
+        return 1
+    fi
+
+    # SSRF protection: block connections to private/internal IPs
+    if ! _http_check_ssrf "$host"; then
+        printf 'HTTP/1.1 000 SSRF Blocked\r\n\r\nConnection to private/internal address blocked: %s (set MAINFRAME_HTTP_ALLOW_PRIVATE=1 to bypass)' "$host"
         return 1
     fi
 

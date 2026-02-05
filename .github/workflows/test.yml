@@ -147,10 +147,10 @@ jobs:
       - name: Run unit tests
         timeout-minutes: 15
         run: |
-          # Run core tests only - exclude slow/network/timeout-heavy tests
-          # Excluded: benchmark, bun, burl*, device, docker, embeddings, forensics,
-          #           futures, fzf, http, llm*, mainframe-new, otel, parallel,
-          #           python_runtime, rag, security_eval, test_ci, vectordb
+          # Run core + extended tests - exclude slow/network/timeout-heavy tests
+          # Excluded: bun, burl, device, docker, embeddings,
+          #           futures, fzf, http, llm_stream, parallel,
+          #           python_runtime, rag, vectordb
           ./tests/bats/bin/bats --formatter tap \
             --print-output-on-failure \
             tests/unit/agent_context.bats \
@@ -159,18 +159,24 @@ jobs:
             tests/unit/audit.bats \
             tests/unit/awm.bats \
             tests/unit/awm_v2.bats \
+            tests/unit/benchmark.bats \
             tests/unit/build.bats \
             tests/unit/capability.bats \
             tests/unit/common.bats \
             tests/unit/compat.bats \
             tests/unit/csv.bats \
             tests/unit/datetime.bats \
+            tests/unit/forensics.bats \
             tests/unit/git.bats \
             tests/unit/idempotent_write.bats \
             tests/unit/json.bats \
             tests/unit/jsonpath.bats \
             tests/unit/lazy_loading.bats \
+            tests/unit/llm_functions.bats \
+            tests/unit/llm_tokens.bats \
+            tests/unit/mainframe-new.bats \
             tests/unit/metrics.bats \
+            tests/unit/otel.bats \
             tests/unit/output.bats \
             tests/unit/output_errors.bats \
             tests/unit/policy.bats \
@@ -182,16 +188,19 @@ jobs:
             tests/unit/sandbox.bats \
             tests/unit/schema.bats \
             tests/unit/secrets.bats \
+            tests/unit/security_eval.bats \
             tests/unit/service.bats \
             tests/unit/structured_log.bats \
             tests/unit/symbols.bats \
             tests/unit/sysinfo.bats \
             tests/unit/telemetry.bats \
             tests/unit/test_agent_ai.bats \
+            tests/unit/test_ci.bats \
             tests/unit/test_env.bats \
             tests/unit/test_path.bats \
             tests/unit/test_pipe.bats \
             tests/unit/test_validation.bats \
+            tests/unit/workpool.bats \
             tests/lib/agent_ai.bats \
             tests/lib/agent_context.bats \
             tests/lib/taskstate.bats \
@@ -228,6 +237,7 @@ jobs:
           git clone https://github.com/bats-core/bats-file.git tests/bats-file
 
       - name: Run integration tests
+        timeout-minutes: 10
         run: |
           ./tests/bats/bin/bats --formatter tap tests/integration/ | tee integration-results.tap
 
@@ -262,7 +272,7 @@ jobs:
       - name: Run tests
         timeout-minutes: 25
         run: |
-          # Run core tests only - exclude slow/network/timeout-heavy tests
+          # Run core + extended tests - exclude slow/network/timeout-heavy tests
           # Note: macOS runners are slower, so we need more time
           output=$(./tests/bats/bin/bats --print-output-on-failure \
             tests/unit/agent_context.bats \
@@ -271,18 +281,24 @@ jobs:
             tests/unit/audit.bats \
             tests/unit/awm.bats \
             tests/unit/awm_v2.bats \
+            tests/unit/benchmark.bats \
             tests/unit/build.bats \
             tests/unit/capability.bats \
             tests/unit/common.bats \
             tests/unit/compat.bats \
             tests/unit/csv.bats \
             tests/unit/datetime.bats \
+            tests/unit/forensics.bats \
             tests/unit/git.bats \
             tests/unit/idempotent_write.bats \
             tests/unit/json.bats \
             tests/unit/jsonpath.bats \
             tests/unit/lazy_loading.bats \
+            tests/unit/llm_functions.bats \
+            tests/unit/llm_tokens.bats \
+            tests/unit/mainframe-new.bats \
             tests/unit/metrics.bats \
+            tests/unit/otel.bats \
             tests/unit/output.bats \
             tests/unit/output_errors.bats \
             tests/unit/policy.bats \
@@ -294,16 +310,19 @@ jobs:
             tests/unit/sandbox.bats \
             tests/unit/schema.bats \
             tests/unit/secrets.bats \
+            tests/unit/security_eval.bats \
             tests/unit/service.bats \
             tests/unit/structured_log.bats \
             tests/unit/symbols.bats \
             tests/unit/sysinfo.bats \
             tests/unit/telemetry.bats \
             tests/unit/test_agent_ai.bats \
+            tests/unit/test_ci.bats \
             tests/unit/test_env.bats \
             tests/unit/test_path.bats \
             tests/unit/test_pipe.bats \
             tests/unit/test_validation.bats \
+            tests/unit/workpool.bats \
             tests/lib/agent_ai.bats \
             tests/lib/agent_context.bats \
             tests/lib/taskstate.bats \
@@ -315,9 +334,9 @@ jobs:
           failure_count=$(echo "$output" | grep -c "^not ok" || true)
           echo "Failure count: $failure_count"
 
-          # Allow some failures for known macOS incompatibilities
-          if [[ $failure_count -gt 50 ]]; then
-            echo "::error::Too many test failures: $failure_count (threshold: 50)"
+          # Allow minimal failures for known macOS incompatibilities
+          if [[ $failure_count -gt 10 ]]; then
+            echo "::error::Too many test failures: $failure_count (threshold: 10)"
             exit 1
           fi
 

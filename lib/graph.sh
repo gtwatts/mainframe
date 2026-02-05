@@ -759,13 +759,23 @@ graph_execute() {
     fi
     
     _graph_log info "Executing workflow: $wf ($total_tasks tasks, parallelism=$parallel_limit)"
-    
+
     # Create state directory
     mkdir -p "$GRAPH_STATE_DIR"
-    
+
+    # Track temp files for cleanup on signals
+    declare -a _graph_exec_tmpfiles=()
+    _graph_cleanup_tmpfiles() {
+        local f
+        for f in "${_graph_exec_tmpfiles[@]}"; do
+            rm -f "$f" 2>/dev/null || true
+        done
+    }
+    trap '_graph_cleanup_tmpfiles' EXIT INT TERM
+
     local start_ms
     start_ms=$(_graph_now_ms)
-    
+
     # Track running jobs
     declare -A running_pids
     declare -A pid_to_task
@@ -802,7 +812,21 @@ graph_execute() {
             # Create temp file for output
             local tmpfile
             tmpfile=$(mktemp "$GRAPH_STATE_DIR/${wf}_${ready_task}_XXXXXX")
-            
+            _graph_exec_tmpfiles+=("$tmpfile")
+
+            # Validate command is non-empty before execution
+            # Note: Commands are registered via graph_add_task() by the caller.
+            # This eval is within a trust boundary -- only library users can
+            # register tasks. External/untrusted input must be sanitized before
+            # passing to graph_add_task().
+            if [[ -z "${cmd:-}" ]]; then
+                _graph_log error "Empty command for task: $ready_task"
+                _GRAPH_STATUS[$key]="failed"
+                _GRAPH_ERROR[$key]="Empty command"
+                ((failed++))
+                continue
+            fi
+
             # Execute in background
             (
                 local output
@@ -923,6 +947,10 @@ graph_execute() {
         fi
     fi
     
+    # Clean up any remaining temp files and restore default trap
+    _graph_cleanup_tmpfiles
+    trap - EXIT INT TERM
+
     [[ "$ok" == "true" ]]
 }
 

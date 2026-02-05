@@ -413,38 +413,70 @@ secret_exec() {
         return 1
     fi
 
-    # Replace placeholders with secret values
+    # SECURITY: Instead of interpolating secret values into the command
+    # string (which allows shell injection via crafted secret values),
+    # we export secrets as environment variables and replace template
+    # placeholders with env var references.
+
     local cmd="$template"
-    local name value
+    local name
+    local -a _secret_env_names=()
 
     for name in "${!_SECRETS_STORE[@]}"; do
-        value="${_SECRETS_STORE[$name]}"
-        # Replace {NAME} with value
-        cmd="${cmd//\{$name\}/$value}"
-        # Also replace {name} (lowercase)
-        cmd="${cmd//\{${name,,}\}/$value}"
+        # Replace {NAME} with env var reference (not the raw value)
+        local _env_var_name="_SRTX_${name}"
+        if [[ "$cmd" == *"{$name}"* ]] || [[ "$cmd" == *"{${name,,}}"* ]]; then
+            # Export secret as env var (value never enters the command string)
+            export "$_env_var_name=${_SECRETS_STORE[$name]}"
+            _secret_env_names+=("$_env_var_name")
+            # Replace {NAME} with shell variable expansion that eval will resolve
+            cmd="${cmd//\{$name\}/\"\$${_env_var_name}\"}"
+            # Also replace {name} (lowercase)
+            cmd="${cmd//\{${name,,}\}/\"\$${_env_var_name}\"}"
+        fi
     done
 
     # Check for unreplaced placeholders
     if [[ "$cmd" =~ \{[A-Za-z_][A-Za-z0-9_]*\} ]]; then
         local placeholder="${BASH_REMATCH[0]}"
+        # Cleanup env vars before returning
+        local _ev
+        for _ev in "${_secret_env_names[@]}"; do
+            unset "$_ev"
+        done
         _secrets_error "secret_exec: unreplaced placeholder $placeholder"
         return 1
     fi
 
     if [[ "$dry_run" == true ]]; then
-        # Show redacted version
-        local redacted
-        redacted=$(secret_redact --text "$cmd")
+        # Show redacted version (show placeholder names, not values)
+        local redacted="$cmd"
+        local _ev
+        for _ev in "${_secret_env_names[@]}"; do
+            redacted="${redacted//\"\$${_ev}\"/***REDACTED***}"
+        done
+        # Cleanup env vars
+        for _ev in "${_secret_env_names[@]}"; do
+            unset "$_ev"
+        done
         printf '[DRY-RUN] Would execute: %s\n' "$redacted"
         return 0
     fi
 
     _secrets_debug "Executing templated command"
-    
-    # Execute the command
+
+    # Execute the command - secrets are passed via env vars, not
+    # interpolated into the command string, preventing injection
     eval "$cmd"
-    return $?
+    local _exit_code=$?
+
+    # Cleanup: unset all temporary secret env vars
+    local _ev
+    for _ev in "${_secret_env_names[@]}"; do
+        unset "$_ev"
+    done
+
+    return $_exit_code
 }
 
 # Execute a command with environment variables set from secrets
@@ -522,6 +554,12 @@ secret_wrap() {
         return 1
     fi
 
+    # Validate function name format (defense in depth against eval injection)
+    if [[ ! "$func_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        _secrets_error "secret_wrap: invalid function name format: $func_name"
+        return 1
+    fi
+
     # Check if function exists
     if ! declare -F "$func_name" &>/dev/null; then
         _secrets_error "secret_wrap: function not found: $func_name"
@@ -565,12 +603,24 @@ secret_unwrap() {
         return 1
     fi
 
+    # Validate function name format (defense in depth against eval injection)
+    if [[ ! "$func_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        _secrets_error "secret_unwrap: invalid function name format: $func_name"
+        return 1
+    fi
+
     if [[ -z "${_SECRETS_WRAPPED[$func_name]:-}" ]]; then
         _secrets_warn "secret_unwrap: function not wrapped: $func_name"
         return 0
     fi
 
     local original_name="${_SECRETS_WRAPPED[$func_name]}"
+
+    # Validate original name format (defense in depth)
+    if [[ ! "$original_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        _secrets_error "secret_unwrap: invalid original function name: $original_name"
+        return 1
+    fi
 
     # Restore original
     unset -f "$func_name"

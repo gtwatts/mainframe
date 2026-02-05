@@ -517,20 +517,29 @@ crc32() {
 
 # Hash password for storage
 # Usage: password_hash "mypassword"
-# Uses: openssl for PBKDF2 (recommended) or SHA-256 with salt
+# Usage: password_hash "mypassword" 5000   # custom iterations
+# Uses: openssl for iterative HMAC-SHA256 key stretching, or SHA-256 with salt
+# Note: Iteration count kept reasonable for pure bash performance.
+#       Default 2000 iterations takes ~2-5s in bash which is acceptable for
+#       password hashing but would be instant in C. Adjust based on use case.
 password_hash() {
     local password="$1"
+    local iterations="${2:-2000}"
     local salt
 
     # Generate random salt
     salt=$(random_hex 32)
 
     if type -p openssl &>/dev/null; then
-        # Use PBKDF2 with SHA-256, 100000 iterations
-        local hash
-        hash=$(printf '%s' "$password" | openssl dgst -sha256 -hmac "$salt" | awk '{print $NF}')
+        # Iterative HMAC-SHA256 key stretching (PBKDF2-like)
+        # Each iteration feeds the previous result back through HMAC-SHA256
+        local result="$salt"
+        local i
+        for ((i=0; i<iterations; i++)); do
+            result=$(printf '%s' "$result" | openssl dgst -sha256 -hmac "$password" -binary | xxd -p -c 256)
+        done
         # Format: algorithm$iterations$salt$hash
-        printf 'pbkdf2$100000$%s$%s\n' "$salt" "$hash"
+        printf 'hmac_stretch$%d$%s$%s\n' "$iterations" "$salt" "$result"
     else
         # Fallback: simple salted SHA-256 (less secure)
         local hash
@@ -540,7 +549,8 @@ password_hash() {
 }
 
 # Verify password against hash
-# Usage: password_verify "mypassword" "pbkdf2$100000$salt$hash"
+# Usage: password_verify "mypassword" "hmac_stretch$2000$salt$hash"
+# Also supports legacy: password_verify "mypassword" "sha256$1$salt$hash"
 password_verify() {
     local password="$1"
     local stored_hash="$2"
@@ -557,11 +567,17 @@ password_verify() {
     local computed_hash
 
     case "$algo" in
-        pbkdf2)
+        hmac_stretch)
             if type -p openssl &>/dev/null; then
-                computed_hash=$(printf '%s' "$password" | openssl dgst -sha256 -hmac "$salt" | awk '{print $NF}')
+                # Reproduce the iterative HMAC-SHA256 key stretching
+                local result="$salt"
+                local i
+                for ((i=0; i<iterations; i++)); do
+                    result=$(printf '%s' "$result" | openssl dgst -sha256 -hmac "$password" -binary | xxd -p -c 256)
+                done
+                computed_hash="$result"
             else
-                printf 'Error: openssl required for PBKDF2 verification\n' >&2
+                printf 'Error: openssl required for hmac_stretch verification\n' >&2
                 return 1
             fi
             ;;
@@ -574,12 +590,9 @@ password_verify() {
             ;;
     esac
 
-    # Constant-time comparison (sort of - bash limitations)
-    if [[ "$computed_hash" == "$expected_hash" ]]; then
-        return 0
-    else
-        return 1
-    fi
+    # Constant-time comparison to mitigate timing attacks
+    # Uses the constant_time_compare function defined in this library
+    constant_time_compare "$computed_hash" "$expected_hash"
 }
 
 # Generate random password
@@ -599,17 +612,27 @@ generate_password() {
     local chars_len=${#chars}
 
     if [[ -r /dev/urandom ]]; then
-        # Use urandom for better randomness
+        # Use urandom with rejection sampling to eliminate modular bias.
+        # When 256 doesn't divide evenly by chars_len, naive (byte % chars_len)
+        # makes some characters more likely. Reject bytes >= the largest
+        # multiple of chars_len that fits in a byte (0-255).
+        local max_valid=$(( 256 - (256 % chars_len) ))
         while [[ ${#password} -lt $length ]]; do
             local byte
-            byte=$(head -c 1 /dev/urandom | od -An -tu1 | tr -d ' ')
-            local index=$((byte % chars_len))
+            byte=$(od -An -tu1 -N1 /dev/urandom | tr -d ' ')
+            # Reject biased values
+            [[ $byte -ge $max_valid ]] && continue
+            local index=$(( byte % chars_len ))
             password+="${chars:index:1}"
         done
     else
-        # Fallback to $RANDOM (less secure)
-        for ((i=0; i<length; i++)); do
-            password+="${chars:RANDOM%chars_len:1}"
+        # Fallback to $RANDOM (less secure, still uses rejection sampling)
+        local max_valid=$(( 32768 - (32768 % chars_len) ))
+        for ((i=0; i<length; )); do
+            local val=$RANDOM
+            [[ $val -ge $max_valid ]] && continue
+            password+="${chars:val%chars_len:1}"
+            ((i++))
         done
     fi
 

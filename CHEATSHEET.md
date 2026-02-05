@@ -259,6 +259,6 @@ mainframe quickref --search "hash"  # Search all functions
 
 ---
 
-*6,200+ functions | 177 libraries | Zero dependencies | 20-72x faster*
+*3,821+ functions | 152 libraries | Zero dependencies | 20-72x faster*
 
 **YO JOE!**

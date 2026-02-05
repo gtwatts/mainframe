@@ -1,6 +1,6 @@
 # MAINFRAME - AI Coding Assistant Instructions
 
-> Pure bash function library for AI agents. 4,310+ functions, 123 libraries, zero dependencies.
+> Pure bash function library for AI agents. 3,821+ functions, 152 libraries, zero dependencies.
 
 ```bash
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
@@ -74,7 +74,7 @@ mainframe quickref --search "hash"  # Search all functions
 
 ## Reference Files
 
-- **CHEATSHEET.md** - All 4,310+ function signatures
+- **CHEATSHEET.md** - All 3,821+ function signatures
 - **FUNCTIONS.json** - Machine-readable function index
 - **DECISION_TREES.md** - "I need X" workflow guidance
 - **ERRORS.json** - Error codes and recovery

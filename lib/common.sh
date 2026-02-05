@@ -651,6 +651,8 @@ _MAINFRAME_TIER_EXTENDED=(
     compat safe guard telemetry otel
     proptest testing benchmark
     workpool
+    temporal state_machine graph
+    cache diff
 )
 
 # Phase 3 AI tier: agent-optimized modules
@@ -660,11 +662,13 @@ _MAINFRAME_TIER_AI=(
     risk dryrun undo sandbox
     limits confirm safewrap safecontext
     agent workflow taskstate
-    context diff parse_output symbols agent_exec
+    context parse_output symbols agent_exec
     agent_comm agent_safety agent_ai agent_context
     awm awm_storage awm_tiers awm_stream
     llm_tokens llm_functions llm_stream llm_providers
     embeddings registry vectordb rag policy rbac
+    agent_loop ammma uap
+    heal predict generate verify intent orchestrate
 )
 
 # --- Bundle Presets ---------------------------------------------------------
@@ -960,6 +964,9 @@ else
     _mainframe_load_library "testing"
     _mainframe_load_library "benchmark"
     _mainframe_load_library "workpool"
+    _mainframe_load_library "temporal"
+    _mainframe_load_library "state_machine"
+    _mainframe_load_library "graph"
 
     # AI tier libraries
     _mainframe_load_library "idempotent"
@@ -1009,6 +1016,15 @@ else
     _mainframe_load_library "rag"
     _mainframe_load_library "policy"
     _mainframe_load_library "rbac"
+    _mainframe_load_library "agent_loop"
+    _mainframe_load_library "ammma"
+    _mainframe_load_library "uap"
+    _mainframe_load_library "heal"
+    _mainframe_load_library "predict"
+    _mainframe_load_library "generate"
+    _mainframe_load_library "verify"
+    _mainframe_load_library "intent"
+    _mainframe_load_library "orchestrate"
 
 fi # End of full loading (backward-compatible path)
 
