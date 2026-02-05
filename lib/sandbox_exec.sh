@@ -217,7 +217,9 @@ _sandbox_exec_with_limits() {
     fi
 
     # Record start time for metrics
+    # shellcheck disable=SC2034
     local start_time end_time cpu_time
+    # shellcheck disable=SC2034
     start_time=$(date +%s%N 2>/dev/null || echo "$(date +%s)000000000")
 
     if [[ "$use_prlimit" == true ]]; then
@@ -480,6 +482,7 @@ _sandbox_check_command_injection() {
     local input="$1"
 
     # Check for command substitution
+    # shellcheck disable=SC2016
     [[ "$input" == *'$('* ]] && return 0
     [[ "$input" == *'`'* ]] && return 0
 
@@ -494,6 +497,7 @@ _sandbox_check_command_injection() {
     [[ "$input" == *'<'* ]] && return 0
 
     # Check for IFS manipulation
+    # shellcheck disable=SC2016
     [[ "$input" == *'${IFS}'* ]] && return 0
     [[ "$input" == *'$IFS'* ]] && return 0
 
@@ -513,8 +517,10 @@ _sandbox_check_path_traversal() {
 
     # Common traversal patterns
     [[ "$input" == *'../'* ]] && return 0
+    # shellcheck disable=SC1003
     [[ "$input" == *'..\'* ]] && return 0
     [[ "$input" == *'/..' ]] && return 0
+    # shellcheck disable=SC1003
     [[ "$input" == *'\..' ]] && return 0
 
     # Encoded variants

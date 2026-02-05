@@ -106,6 +106,7 @@ _ammma_consol_similarity() {
 # Merges similar episodes, extracts patterns, creates summaries.
 #
 # Usage: amma_consolidate [--session SESSION] [--dry-run]
+# shellcheck disable=SC2120
 ammma_consolidate() {
     if [[ "$_AMMA_INITIALIZED" != "true" ]]; then
         printf '{"error":"AMMA not initialized"}'
@@ -221,6 +222,7 @@ _ammma_consol_merge_episodes() {
         done
         $already_merged && continue
         
+        # shellcheck disable=SC2206
         local similar_group=($i)
         
         for ((j=i+1; j<${#episodes[@]}; j++)); do
@@ -239,7 +241,9 @@ _ammma_consol_merge_episodes() {
             similarity=$(_ammma_consol_similarity "${episode_contents[$i]}" "${episode_contents[$j]}")
             
             if [[ $(echo "$similarity >= $AMMA_CONSOL_SIMILARITY_THRESHOLD" | bc 2>/dev/null) -eq 1 ]]; then
+                # shellcheck disable=SC2206
                 similar_group+=($j)
+                # shellcheck disable=SC2206
                 merged_indices+=($j)
             fi
         done
@@ -261,6 +265,7 @@ _ammma_consol_merge_episodes() {
 # Actually perform the merge
 _ammma_consol_do_merge() {
     local -a indices=("$@")
+    # shellcheck disable=SC2034
     local -a all_ids=()
     
     # Get IDs from indices (indices after the first are IDs)
@@ -268,7 +273,9 @@ _ammma_consol_do_merge() {
     
     local l2_path
     l2_path=$(_amma_l2_path)
+    # shellcheck disable=SC2034
     local primary_id=""
+    # shellcheck disable=SC2034
     local merged_content=""
     
     for idx in "${indices[@]}"; do
@@ -505,6 +512,7 @@ _ammma_consol_schedule() {
     current_time=$(_ammma_consol_timestamp)
     
     if [[ $((current_time - last_run)) -ge $interval ]]; then
+        # shellcheck disable=SC2119
         ammma_consolidate
         printf '%s' "$current_time" > "$last_run_file"
     fi

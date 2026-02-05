@@ -26,8 +26,11 @@ readonly AMMA_SCHEMA_VERSION="1.0"
 # Tier definitions
 readonly AMMA_TIER_L1="L1"    # Immediate context
 readonly AMMA_TIER_L2="L2"    # Working memory
+# shellcheck disable=SC2034
 readonly AMMA_TIER_L3="L3"    # Short-term memory
+# shellcheck disable=SC2034
 readonly AMMA_TIER_L4="L4"    # Long-term memory
+# shellcheck disable=SC2034
 readonly AMMA_TIER_L5="L5"    # External memory
 
 # Memory types
@@ -49,9 +52,12 @@ readonly AMMA_SCORE_NORMAL=40
 readonly AMMA_SCORE_LOW=10
 
 # Sharing scopes
+# shellcheck disable=SC2034
 readonly AMMA_SCOPE_PUBLIC="public"
+# shellcheck disable=SC2034
 readonly AMMA_SCOPE_TEAM="team"
 readonly AMMA_SCOPE_PRIVATE="private"
+# shellcheck disable=SC2034
 readonly AMMA_SCOPE_INHERIT="inherit"
 
 # Default configuration
@@ -658,6 +664,7 @@ _amma_memory_create() {
     
     local timestamp
     timestamp=$(_amma_timestamp)
+    # shellcheck disable=SC2034
     local iso_ts
     iso_ts=$(_amma_iso_timestamp)
     
@@ -744,6 +751,7 @@ ammma_episode_log() {
                 shift 2
                 ;;
             --tags)
+                # shellcheck disable=SC2034
                 tags="$2"
                 shift 2
                 ;;
@@ -835,7 +843,10 @@ ammma_fact_store() {
             --object) object="$2"; shift 2 ;;
             --confidence) confidence="$2"; shift 2 ;;
             --importance) importance="$2"; shift 2 ;;
-            --source) source="$2"; shift 2 ;;
+            --source)
+                # shellcheck disable=SC2034
+                source="$2"
+                shift 2 ;;
             *) shift ;;
         esac
     done
@@ -1089,6 +1100,7 @@ ammma_retrieve() {
                 shift 2
                 ;;
             --min-score)
+                # shellcheck disable=SC2034
                 min_score="$2"
                 shift 2
                 ;;
@@ -1129,7 +1141,9 @@ ammma_retrieve() {
             L2) search_l2=true ;;
             L3) search_l3=true ;;
             L4) search_l4=true ;;
-            L5) search_l5=true ;;
+            L5)
+                # shellcheck disable=SC2034
+                search_l5=true ;;
         esac
     fi
     

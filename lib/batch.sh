@@ -146,6 +146,7 @@ batch_json_extract() {
             fi
         elif declare -F json_get &>/dev/null; then
             value=$(json_get "$json" "$key" 2>/dev/null)
+            # shellcheck disable=SC2181
             if [[ $? -eq 0 ]]; then
                 found=true
             fi
@@ -192,6 +193,7 @@ batch_mainframe_call() {
         
         # Parse function and arguments
         local IFS='|'
+        # shellcheck disable=SC2206
         local -a parts=($call)
         unset IFS
         
@@ -222,6 +224,7 @@ batch_mainframe_call() {
             
             # Execute function
             result=$("$func" "${args[@]}" 2>/dev/null)
+            # shellcheck disable=SC2181
             if [[ $? -eq 0 ]]; then
                 success=true
             else
@@ -253,6 +256,7 @@ batch_mainframe_exec() {
     
     for call in "$@"; do
         local IFS='|'
+        # shellcheck disable=SC2206
         local -a parts=($call)
         unset IFS
         
@@ -462,6 +466,7 @@ batch_benchmark() {
     printf '===========================\n\n'
     
     # Create test files
+    # shellcheck disable=SC2155
     local tmpdir=$(mktemp -d)
     for i in {1..10}; do
         touch "$tmpdir/file$i.txt"
@@ -491,6 +496,7 @@ batch_benchmark() {
     printf '  Individual:        %d ms\n' "$individual_ms"
     
     if [[ $individual_ms -gt 0 ]]; then
+        # shellcheck disable=SC2155
         local speedup=$(echo "scale=1; $individual_ms / $batch_ms" | bc 2>/dev/null || echo "?")
         printf '  Speedup:           %sx\n' "$speedup"
     fi

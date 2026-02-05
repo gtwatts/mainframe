@@ -821,6 +821,7 @@ uap_heartbeat() {
     
     # Initialize if not already done
     if [[ -z "$UAP_AGENT_ID" ]]; then
+        # shellcheck disable=SC2119
         uap_init >/dev/null 2>&1 || {
             _uap_log "error" "Cannot initialize agent for heartbeat"
             return 1
@@ -923,6 +924,7 @@ uap_list_agents() {
 # @desc Initialize this agent for UAP communication
 # @usage uap_init [--id ID] [--platform PLATFORM] [--capabilities "cap1,cap2"]
 # @returns JSON with agent info
+# shellcheck disable=SC2120
 uap_init() {
     local agent_id=""
     local platform=""

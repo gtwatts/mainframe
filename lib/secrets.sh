@@ -323,6 +323,7 @@ secret_redact() {
         # Skip empty values to avoid errors
         [[ -z "$value" ]] && continue
         
+        # shellcheck disable=SC2059
         placeholder=$(printf "$format" "$name")
         
         # Simple string replacement (safe for most cases)

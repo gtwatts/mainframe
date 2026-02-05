@@ -348,9 +348,12 @@ context_select_by_relevance() {
     local selected_count=0
     
     for item in "${sorted_items[@]}"; do
+        # shellcheck disable=SC2155
         local tokens=$(echo "$item" | cut -d'|' -f2 | sed 's/^0*//')
         [[ -z "$tokens" ]] && tokens=0
+        # shellcheck disable=SC2155
         local content=$(echo "$item" | cut -d'|' -f4-)
+        # shellcheck disable=SC2155
         local score=$(echo "$item" | cut -d'|' -f1 | sed 's/^0*//')
         [[ -z "$score" ]] && score=0
         
@@ -385,6 +388,7 @@ context_select_by_relevance() {
 # Enhanced content type detection with confidence score
 # Usage: context_detect_type_v2 "content"
 # Returns: JSON with type and confidence
+# shellcheck disable=SC2034
 type_confidence=0
 context_detect_type_v2() {
     local text="$1"
@@ -433,10 +437,15 @@ context_detect_type_v2() {
     local total_lines=0
     local code_lines=0
     local shebang=false
+    # shellcheck disable=SC2034
     local has_def=false
+    # shellcheck disable=SC2034
     local has_class=false
+    # shellcheck disable=SC2034
     local has_import=false
+    # shellcheck disable=SC2034
     local has_function=false
+    # shellcheck disable=SC2034
     local has_const=false
     local first_line=true
     
@@ -453,6 +462,7 @@ context_detect_type_v2() {
         if $first_line; then
             first_line=false
             if [[ "$line" == "#!"* ]]; then
+                # shellcheck disable=SC2034
                 shebang=true
                 [[ "$line" == *"python"* ]] && ((py_patterns+=5))
                 [[ "$line" == *"bash"* ]] && ((bash_patterns+=5))
@@ -654,6 +664,7 @@ context_optimize_batch() {
         equal)
             local per_item=$(( max_tokens / item_count ))
             for ((i=0; i<item_count; i++)); do
+                # shellcheck disable=SC2206
                 budgets+=($per_item)
             done
             ;;
@@ -665,6 +676,7 @@ context_optimize_batch() {
             for item in "${items[@]}"; do
                 local tokens
                 tokens=$(_ctx_smart_estimate_tokens "$item")
+                # shellcheck disable=SC2206
                 item_tokens+=($tokens)
                 total_tokens=$(( total_tokens + tokens ))
             done
@@ -672,6 +684,7 @@ context_optimize_batch() {
             if [[ $total_tokens -le $max_tokens ]]; then
                 # Everything fits
                 for ((i=0; i<item_count; i++)); do
+                    # shellcheck disable=SC2206
                     budgets+=(${item_tokens[$i]})
                 done
             else

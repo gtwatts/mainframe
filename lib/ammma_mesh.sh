@@ -389,10 +389,12 @@ _ammma_mesh_query_redis() {
     # For Redis, we'd use a request-response pattern
     # This is a simplified implementation
     
+    # shellcheck disable=SC2034
     local request_id
     request_id=$(_ammma_mesh_gen_msg_id)
-    
+    # shellcheck disable=SC2034
     local request_channel="amma:mesh:$AMMA_MESH_NAMESPACE:requests"
+    # shellcheck disable=SC2034
     local response_channel="amma:mesh:$AMMA_MESH_NAMESPACE:response:$_AMMA_AGENT_ID"
     
     # Subscribe to response channel

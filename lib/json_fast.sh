@@ -85,7 +85,8 @@ json_valid_fast() {
         char="${json:i:1}"
         
         if $in_string; then
-            if [[ "$char" == '"' && "$prev_char" != '\\' ]]; then
+            # shellcheck disable=SC1003
+        if [[ "$char" == '"' && "$prev_char" != '\\' ]]; then
                 in_string=false
             fi
         else
@@ -99,6 +100,7 @@ json_valid_fast() {
             esac
         fi
         
+        # shellcheck disable=SC1003
         [[ "$prev_char" == '\\' ]] && prev_char='' || prev_char="$char"
     done
     

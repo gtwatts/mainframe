@@ -93,6 +93,7 @@ guard_path_traversal() {
         return 1
     fi
 
+    # shellcheck disable=SC1003
     if [[ "$path" == *'..\'* ]] || [[ "$path" == *'\..'* ]]; then
         _guard_e_error "Path traversal detected (Windows): $path"
         return 1
@@ -184,6 +185,7 @@ guard_command_injection() {
     fi
 
     # Command substitution
+    # shellcheck disable=SC2016
     if [[ "$cmd" == *'$('* ]] && [[ "$cmd" == *')'* ]]; then
         _guard_e_error "Command substitution detected: \$()"
         return 1
@@ -491,6 +493,7 @@ guard_env_safe() {
         fi
 
         # Command substitution in value
+        # shellcheck disable=SC2016
         if [[ "$value" == *'$('* ]] || [[ "$value" == *'`'* ]]; then
             _guard_e_error "Command substitution in environment variable $name"
             return 1

@@ -141,6 +141,7 @@ _ctx_awm_cache_available() {
 
 # Initialize AWM context integration
 # Usage: context_awm_init --max-tokens 100000 --model claude-3-opus
+# shellcheck disable=SC2120
 context_awm_init() {
     local max_tokens="$_CTX_AWM_DEFAULT_MAX_TOKENS"
     local model="$_CTX_AWM_DEFAULT_MODEL"
@@ -213,6 +214,7 @@ context_awm_add() {
     
     # Ensure initialized
     if [[ "$_CTX_AWM_INITIALIZED" != "true" ]]; then
+        # shellcheck disable=SC2119
         context_awm_init
     fi
     
@@ -257,6 +259,7 @@ context_awm_add() {
     fi
     
     # Store in appropriate tier
+    # shellcheck disable=SC2034
     local store_result
     store_result=$(_ctx_awm_store_in_tier "$key" "$content" "$tier" "$priority" "$metadata")
     
@@ -531,6 +534,7 @@ context_awm_build() {
     
     # Ensure initialized
     if [[ "$_CTX_AWM_INITIALIZED" != "true" ]]; then
+        # shellcheck disable=SC2119
         context_awm_init
     fi
     

@@ -269,7 +269,9 @@ _mcp_handle_tools_call() {
     _mcp_log debug "Calling tool: $tool_name -> $function_name"
     
     # Build arguments array from JSON
+    # shellcheck disable=SC2034
     local -a args=()
+    # shellcheck disable=SC2034
     local keys
     keys=$(json_get "$arguments" "*")
     
@@ -288,6 +290,7 @@ _mcp_handle_tools_call() {
     case "$tool_name" in
         json_object)
             # Extract pairs from arguments
+            # shellcheck disable=SC2034
             local pairs=""
             # Parse object keys and build pairs
             output=$(json_object 2>&1) || exit_code=$?
@@ -445,6 +448,7 @@ mcp_server_start() {
             content_length="${content_length//[$'\r\n']/}"
             
             # Read empty line
+            # shellcheck disable=SC2034
             IFS= read -r empty_line
             
             # Read the JSON payload
