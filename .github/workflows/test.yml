@@ -27,6 +27,8 @@ jobs:
 
       - name: Run ShellCheck on libraries
         run: |
+          # Debug: Show shellcheck version
+          shellcheck --version
           # Exclude expected warnings for library code:
           # SC1090: Non-constant source (lazy loading engine uses dynamic paths)
           # SC1091: Can't follow source (CI doesn't have files in expected paths)

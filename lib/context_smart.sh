@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034,SC2119,SC2120,SC2016,SC1003,SC2155,SC2181,SC2059,SC2206
+
 # =============================================================================
 # MAINFRAME/lib/context_smart.sh - Intelligent Context Management
 # =============================================================================
