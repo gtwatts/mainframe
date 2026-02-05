@@ -28,6 +28,12 @@ For detailed function signatures and examples, see the focused reference files:
 | **TUI** | [docs/reference/tui.md](docs/reference/tui.md) | Terminal UI, animations, colors |
 | **Agent** | [docs/reference/agent.md](docs/reference/agent.md) | AI agent primitives: idempotent, atomic, diff, context |
 | **Orchestration** | [docs/ORCHESTRATION.md](docs/ORCHESTRATION.md) | Multi-agent team coordination, TMUX, Redis pub/sub |
+| **V10 Verification** | [docs/reference/verify.md](docs/reference/verify.md) | Pre-execution command verification |
+| **V10 Intent** | [docs/reference/intent.md](docs/reference/intent.md) | Natural language to bash translation |
+| **V10 Healing** | [docs/reference/heal.md](docs/reference/heal.md) | Self-healing error recovery |
+| **V10 Prediction** | [docs/reference/predict.md](docs/reference/predict.md) | Resource prediction before execution |
+| **V10 Graph** | [docs/reference/graph.md](docs/reference/graph.md) | DAG workflow execution |
+| **V10 Temporal** | [docs/reference/temporal.md](docs/reference/temporal.md) | SQL-like history queries |
 | **AWM** | [docs/reference/awm.md](docs/reference/awm.md) | Agent Working Memory |
 | **Embeddings** | [docs/reference/embeddings.md](docs/reference/embeddings.md) | Embedding generation, semantic search |
 | **RAG** | [docs/reference/rag.md](docs/reference/rag.md) | Retrieval-Augmented Generation pipeline |
@@ -117,6 +123,114 @@ rag_stats "docs" --json
 
 ---
 
+## V10 AI-Native Runtime
+
+### Verification - Catch Errors Before Execution
+```bash
+# Check command for issues
+result=$(verify_command "sl -la")
+# Returns: {"valid":false,"issues":[{"type":"typo","suggestion":"ls -la"}]}
+
+# Validate pipeline
+verify_pipeline "cat file.txt | grep foo | wc -l"
+# Returns: {"valid":true,"issues":[{"type":"style","message":"Useless use of cat"}]}
+
+# Estimate resources
+verify_estimate "find / -name '*.log'"
+# Returns: {"estimates":{"time_s":45,"memory_mb":128,"confidence":"medium"}}
+```
+
+### Intent - Natural Language to Bash
+```bash
+# Parse natural language to structured intent
+intent=$(intent_parse "find Python files modified today")
+# Returns: {"action":"find","target":"files","type":"python","time":"today"}
+
+# Convert intent to bash
+bash_cmd=$(intent_to_bash "$intent")
+# Returns: "find . -name '*.py' -mtime -1 -type f"
+
+# Explain what code does
+intent_explain "find . -name '*.py' -mtime -1"
+# Returns: "Finds Python files modified in the last 24 hours"
+```
+
+### Healing - Self-Healing Execution
+```bash
+# Wrap commands with auto-healing
+heal_wrap "deploy_to_prod.sh"
+# Auto-retries, diagnoses errors, suggests fixes
+
+# Diagnose errors
+heal_diagnose "Permission denied"
+# Returns: {"category":"permission","suggestions":[{"action":"sudo ...","confidence":0.95}]}
+
+# Auto-fix common issues
+heal_auto_fix "$error_output" --dry-run
+```
+
+### Prediction - Know Before You Run
+```bash
+# Predict resource usage
+predict_resources "npm install"
+# Returns: {"time_s":30,"memory_mb":512,"cpu_percent":60,"risk":"low"}
+
+# Predict success probability
+predict_success "docker build -t myapp ."
+# Returns: 0.85 (85% chance of success)
+
+# Get all predictions
+predict_all "find /var -name '*.log'"
+# Returns: {"time_s":45,"memory_mb":128,"risk":"medium","success_prob":0.92}
+```
+
+### Graph - Workflow Execution
+```bash
+# Define a workflow
+graph_define "deploy"
+graph_add_task "test" "npm test"
+graph_add_task "build" "npm build"
+graph_add_task "deploy" "rsync dist/ server:"
+graph_add_dep "deploy" "build"
+graph_add_dep "build" "test"
+
+# Execute with auto-parallelization
+graph_execute "deploy" --parallel 4
+
+# Visualize
+graph_visualize "deploy"
+# Shows ASCII flowchart
+```
+
+### Temporal - Query Your History
+```bash
+# SQL-like queries
+temporal_query "SELECT command, AVG(duration) FROM history WHERE exit_code = 0 GROUP BY command"
+
+# Pattern detection
+temporal_detect_pattern "commands that fail on Monday mornings"
+
+# Anomaly detection
+temporal_anomaly_detect
+# Returns: "You usually use pytest, but today using python -m pytest"
+```
+
+### Agent Loop - Persistent Agents
+```bash
+# Start a background agent
+agent_loop_start "refactor-auth" --goal "Refactor auth module" --priority 5
+
+# Check status
+agent_loop_status "refactor-auth"
+# Returns: {"status":"running","elapsed":"2h15m","progress":"67%"}
+
+# Pause/resume
+agent_loop_pause "refactor-auth"
+agent_loop_resume "refactor-auth" --context "focus on JWT"
+```
+
+---
+
 ## Function Lookup
 
 ```bash
@@ -145,6 +259,6 @@ mainframe quickref --search "hash"  # Search all functions
 
 ---
 
-*4,310+ functions | 123 libraries | Zero dependencies | 20-72x faster*
+*6,200+ functions | 177 libraries | Zero dependencies | 20-72x faster*
 
 **YO JOE!**
