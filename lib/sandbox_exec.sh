@@ -275,7 +275,7 @@ _sandbox_exec_with_limits() {
             ;;
     esac
 
-    return $_SANDBOX_LAST_EXIT_CODE
+    return "$_SANDBOX_LAST_EXIT_CODE"
 }
 
 # Internal: Execute with resource limits and detailed reporting
@@ -305,7 +305,7 @@ _sandbox_exec_with_limits_and_report() {
         _SANDBOX_LAST_CPU_TIME=0
         _SANDBOX_LAST_MEMORY_PEAK=0
         rm -f "$report_file"
-        return $_SANDBOX_LAST_EXIT_CODE
+        return "$_SANDBOX_LAST_EXIT_CODE"
     fi
 
     _SANDBOX_LAST_EXIT_CODE=$?
@@ -321,7 +321,7 @@ _sandbox_exec_with_limits_and_report() {
     fi
 
     rm -f "$report_file"
-    return $_SANDBOX_LAST_EXIT_CODE
+    return "$_SANDBOX_LAST_EXIT_CODE"
 }
 
 # Execute with resource report
@@ -673,6 +673,7 @@ sandbox_pipeline() {
     printf '  "success": %s\n' "$([[ $failed_stage -eq 0 ]] && echo 'true' || echo 'false')"
     printf '}\n'
 
+        # shellcheck disable=SC2046
     return $([[ $failed_stage -eq 0 ]] && echo 0 || echo 1)
 }
 

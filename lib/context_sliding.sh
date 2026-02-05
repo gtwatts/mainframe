@@ -446,8 +446,7 @@ context_sliding_compact() {
 {
     "summary": "$(_ctx_slide_json_escape "$new_summary")",
     "facts": $facts_json,
-    # shellcheck disable=SC2000
-    "token_count": $(echo "$new_summary" | wc -c),
+    "token_count": ${#new_summary},
     "compacted_at": $(_ctx_slide_epoch),
     "messages_summarized": $summarize_count
 }
