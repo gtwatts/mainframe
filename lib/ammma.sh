@@ -855,6 +855,7 @@ ammma_fact_store() {
     
     # Enhance with triple structure
     local enhanced_memory
+    # shellcheck disable=SC2001
     enhanced_memory=$(echo "$memory" | sed 's/"sharing":{/"triple":{"subject":"'"$(_amma_json_escape "$subject")"'","predicate":"'"$(_amma_json_escape "$predicate")"'","object":"'"$(_amma_json_escape "$object")"'","confidence":'"$confidence"'},"sharing":/')
     
     # Store in L2
@@ -934,6 +935,7 @@ ammma_pattern_learn() {
     
     # Enhance with pattern structure
     local enhanced_memory
+    # shellcheck disable=SC2001
     enhanced_memory=$(echo "$memory" | sed 's/"sharing":{/"pattern":{"name":"'"$(_amma_json_escape "$name")"'","trigger":"'"$(_amma_json_escape "$trigger")"'","action":"'"$(_amma_json_escape "$action")"'"'"$([[ -n "$condition" ]] && echo ",\"condition\":\"$(_amma_json_escape "$condition")\"")"'},"sharing":/')
     
     # Store in L2
@@ -1012,6 +1014,7 @@ ammma_checkpoint_set() {
     escaped_value=$(_amma_json_escape "$value")
     
     local enhanced_memory
+    # shellcheck disable=SC2001
     enhanced_memory=$(echo "$memory" | sed 's/"sharing":{/"checkpoint":{"key":"'"$escaped_key"'","value":"'"$escaped_value"'"},"sharing":/')
     
     # Store in L2 checkpoints

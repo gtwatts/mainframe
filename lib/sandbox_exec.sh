@@ -235,8 +235,10 @@ _sandbox_exec_with_limits() {
 
         if [[ -n "$timeout_cmd" ]]; then
             # Use both timeout and prlimit
+            # shellcheck disable=SC2086
             $timeout_cmd prlimit $prlimit_opts "$cmd" "${args[@]}"
         else
+            # shellcheck disable=SC2086
             prlimit $prlimit_opts "$cmd" "${args[@]}"
         fi
     else

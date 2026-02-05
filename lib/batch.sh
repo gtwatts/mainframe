@@ -296,6 +296,7 @@ batch_token_count() {
     # Check if last arg is a model name
     if [[ "$last_arg" =~ ^(gpt-|claude-|llama-|gemini-|default)$ ]] || [[ "$#" -eq 0 ]]; then
         model="$last_arg"
+        # shellcheck disable=SC2184
         unset texts[-1]
     fi
     
@@ -330,6 +331,7 @@ batch_token_count_detailed() {
     
     if [[ "$last_arg" =~ ^(gpt-|claude-|llama-|gemini-|default)$ ]]; then
         model="$last_arg"
+        # shellcheck disable=SC2184
         unset texts[-1]
     fi
     

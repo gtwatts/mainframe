@@ -339,6 +339,7 @@ context_select_by_relevance() {
     done
     
     # Sort by score descending (highest first)
+    # shellcheck disable=SC2207
     IFS=$'\n' sorted_items=($(sort -t'|' -k1,1nr <<< "${scored_items[*]}")); unset IFS
     
     # Select items within budget
