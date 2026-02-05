@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # =============================================================================
-# MAINFRAME/lib/intent.sh - Intent Verification Layer
+# MAINFRAME/lib/intent.sh - Intent Parser and Natural Language to Bash
 # =============================================================================
-# Description: Classify commands by risk level and verify intent before execution.
-#              Provides safety layer for AI agents with static analysis only.
-# Version: 1.0.0
-# Security: NO execution of commands being analyzed - static analysis only
+# Description: Parse natural language to structured intent, generate bash code,
+#              and provide auto-complete suggestions. Rule-based (no LLM required).
+# Version: 2.0.0 (V10 Intent Parser Extension)
 # =============================================================================
 # "Mainframe can make a computer do anything short of tap dance."
 # =============================================================================
@@ -44,8 +43,59 @@ MAINFRAME_INTENT_RULES="${MAINFRAME_INTENT_RULES:-${HOME}/.mainframe/intent_rule
 MAINFRAME_INTENT_BLOCKED="${MAINFRAME_INTENT_BLOCKED:-}"
 
 # =============================================================================
-# PATTERN DATABASES
+# PATTERN DATABASES - V10 Intent Parsing
 # =============================================================================
+
+# Action patterns - map natural language to command types
+declare -gA _INTENT_ACTION_PATTERNS=(
+    ["find"]="find search locate look for"
+    ["count"]="count number of how many"
+    ["remove"]="remove delete eliminate get rid of"
+    ["copy"]="copy duplicate backup"
+    ["move"]="move rename relocate"
+    ["sort"]="sort order organize"
+    ["show"]="show display list view print"
+    ["get"]="get fetch download retrieve from url"
+    ["compress"]="compress archive zip gzip tar"
+    ["extract"]="extract unzip decompress unpack"
+    ["replace"]="replace substitute change"
+    ["create"]="create make generate new"
+    ["backup"]="backup save snapshot"
+)
+
+# Target patterns - what is being operated on
+declare -gA _INTENT_TARGET_PATTERNS=(
+    ["files"]="files file documents"
+    ["directories"]="directories directories folders dirs"
+    ["lines"]="lines line rows"
+    ["words"]="words word"
+    ["size"]="size bytes space"
+    ["content"]="content text inside"
+    ["database"]="database db"
+    ["logs"]="logs log"
+)
+
+# Time patterns - temporal constraints
+declare -gA _INTENT_TIME_PATTERNS=(
+    ["today"]="today"
+    ["yesterday"]="yesterday"
+    ["week"]="this week past week last week"
+    ["month"]="this month past month last month"
+    ["hour"]="last hour past hour"
+    ["minute"]="last minute past minute"
+)
+
+# File type patterns
+declare -gA _INTENT_TYPE_PATTERNS=(
+    ["python"]="python py"
+    ["javascript"]="javascript js node"
+    ["bash"]="bash shell sh script"
+    ["json"]="json"
+    ["yaml"]="yaml yml"
+    ["text"]="text txt"
+    ["image"]="image img png jpg jpeg gif"
+    ["log"]="log"
+)
 
 # Critical patterns (risk level 4) - Destructive, irreversible operations
 declare -ga _INTENT_CRITICAL_PATTERNS=(
@@ -72,8 +122,8 @@ declare -ga _INTENT_CRITICAL_PATTERNS=(
     'rm[[:space:]].*-rf[[:space:]]+/boot'
     'rm[[:space:]].*-rf[[:space:]]+/etc'
     # Fork bombs
-    ':\(\)[[:space:]]*{[[:space:]]*:|:&[[:space:]]*}'
-    '\(\)[[:space:]]*{[[:space:]]*\|[[:space:]]*&'
+    ':\(\)[[:space:]]*{[[:space:]]*:|:\&[[:space:]]*}'
+    '\(\)[[:space:]]*{[[:space:]]*\|[[:space:]]*\&'
     # Remote code execution patterns
     'curl[[:space:]].*\|[[:space:]]*bash'
     'curl[[:space:]].*\|[[:space:]]*sh'
@@ -189,8 +239,24 @@ declare -ga _INTENT_OBFUSCATION_PATTERNS=(
     # Eval/exec wrappers
     'eval[[:space:]]+'
     'exec[[:space:]]+'
-    '\$\('
-    '\`'
+    '\$(' '\`'
+)
+
+# Common command completions for intent_complete
+declare -ga _INTENT_COMMON_COMMANDS=(
+    "find . -name '*.txt'"
+    "find . -name '*.py' -type f"
+    "find . -mtime -1"
+    "grep -r 'pattern' ."
+    "wc -l filename"
+    "ls -la"
+    "cp -r source dest"
+    "mv source dest"
+    "rm -i filename"
+    "sort -u filename"
+    "curl -O URL"
+    "tar -czf archive.tar.gz files"
+    "tar -xzf archive.tar.gz"
 )
 
 # =============================================================================
@@ -206,13 +272,13 @@ _intent_escape_json() {
     for ((i=0; i<${#str}; i++)); do
         char="${str:i:1}"
         case "$char" in
-            '"')   result+='\"' ;;
-            '\')   result+='\\' ;;
-            $'\b') result+='\b' ;;
-            $'\f') result+='\f' ;;
-            $'\n') result+='\n' ;;
-            $'\r') result+='\r' ;;
-            $'\t') result+='\t' ;;
+            '"')   result+='\\"' ;;
+            '\\')   result+='\\\\' ;;
+            $'\b') result+='\\b' ;;
+            $'\f') result+='\\f' ;;
+            $'\n') result+='\\n' ;;
+            $'\r') result+='\\r' ;;
+            $'\t') result+='\\t' ;;
             *)
                 if [[ "$char" < $'\x20' ]]; then
                     printf -v char '\\u%04x' "'$char"
@@ -272,7 +338,803 @@ _intent_load_custom_rules() {
 }
 
 # =============================================================================
-# PUBLIC API
+# V10 INTENT PARSING FUNCTIONS
+# =============================================================================
+
+# _intent_match_category - Match input against pattern category
+# @internal
+# @param $1 input - Natural language input
+# @param $2 category_name - Name of associative array to match against
+# @stdout Matched key or empty
+_intent_match_category() {
+    local input="${1,,}"  # lowercase
+    local -n patterns="$2"
+    local key keywords
+
+    for key in "${!patterns[@]}"; do
+        keywords="${patterns[$key]}"
+        for kw in $keywords; do
+            if [[ "$input" == *"$kw"* ]]; then
+                printf '%s' "$key"
+                return 0
+            fi
+        done
+    done
+    return 1
+}
+
+# _intent_extract_pattern - Extract file pattern from input
+# @internal
+# @param $1 input - Natural language input
+# @stdout Extracted pattern (e.g., "*.py", "*.txt")
+_intent_extract_pattern() {
+    local input="$1"
+    local pattern=""
+
+    # Look for explicit patterns like "*.py"
+    if [[ "$input" =~ \*\.[a-zA-Z]+ ]]; then
+        pattern="${BASH_REMATCH[0]}"
+    # Look for "all X files" pattern
+    elif [[ "$input" =~ all[[:space:]]+([a-zA-Z]+)[[:space:]]+files ]]; then
+        local ext="${BASH_REMATCH[1],,}"  # lowercase
+        case "$ext" in
+            python|py) pattern="*.py" ;;
+            javascript|js) pattern="*.js" ;;
+            bash|shell|sh) pattern="*.sh" ;;
+            json) pattern="*.json" ;;
+            yaml|yml) pattern="*.yml" ;;
+            text|txt) pattern="*.txt" ;;
+            log) pattern="*.log" ;;
+            image|png|jpg|jpeg|gif) pattern="*.png" ;;
+            *) pattern="*.${ext}" ;;
+        esac
+    # Look for "X files" pattern
+    elif [[ "$input" =~ ([a-zA-Z\.]+)[[:space:]]+files ]]; then
+        local ext="${BASH_REMATCH[1]}"
+        [[ "$ext" == *.* ]] && pattern="*${ext}" || pattern="*.${ext}"
+    fi
+
+    printf '%s' "$pattern"
+}
+
+# _intent_extract_path - Extract path from input
+# @internal
+# @param $1 input - Natural language input
+# @stdout Extracted path or "."
+_intent_extract_path() {
+    local input="$1"
+    local path="."
+
+    # Look for "in /path" or "from /path"
+    if [[ "$input" =~ (in|from|under)[[:space:]]+(/[[:alnum:]/_.-]+) ]]; then
+        path="${BASH_REMATCH[2]}"
+    # Look for "directory /path"
+    elif [[ "$input" =~ director(y|ies)[[:space:]]+(/[[:alnum:]/_.-]+) ]]; then
+        path="${BASH_REMATCH[2]}"
+    fi
+
+    printf '%s' "$path"
+}
+
+# intent_parse - Parse natural language to structured intent
+# @description Analyze natural language and extract structured intent
+# @pre        None
+# @post       Returns JSON structure describing intent
+# @idempotent Yes
+# @param      $1 input - Natural language input to parse
+# @param      --json - Force JSON output
+# @stdout     Structured intent JSON or error message
+# @return     0 on success, 1 on parse failure
+#
+# Usage: intent_parse "find all Python files modified today"
+# Output: {"action":"find","target":"files","pattern":"*.py","time":"today","path":"."}
+intent_parse() {
+    local input="$1"
+    local json_output=0
+    [[ "$2" == "--json" ]] && json_output=1
+
+    # Initialize intent structure
+    local action="" target="" time="" type="" pattern="" path="." operation=""
+    local -a criteria=()
+
+    # Empty input check
+    if [[ -z "$input" ]]; then
+        if [[ $json_output -eq 1 ]]; then
+            printf '{"error":"empty input","parsed":false}\n'
+        else
+            printf 'Error: Empty input\n'
+        fi
+        return 1
+    fi
+
+    # Match action
+    action=$(_intent_match_category "$input" _INTENT_ACTION_PATTERNS)
+    [[ -z "$action" ]] && action="unknown"
+
+    # Match target
+    target=$(_intent_match_category "$input" _INTENT_TARGET_PATTERNS)
+    [[ -z "$target" ]] && target="files"
+
+    # Match time constraint
+    time=$(_intent_match_category "$input" _INTENT_TIME_PATTERNS)
+
+    # Match file type
+    type=$(_intent_match_category "$input" _INTENT_TYPE_PATTERNS)
+
+    # Extract pattern
+    pattern=$(_intent_extract_pattern "$input")
+
+    # Extract path
+    path=$(_intent_extract_path "$input")
+
+    # Determine operation based on action
+    case "$action" in
+        find) operation="list" ;;
+        count) operation="count" ;;
+        remove) operation="delete" ;;
+        copy) operation="duplicate" ;;
+        move) operation="relocate" ;;
+        sort) operation="order" ;;
+        show) operation="display" ;;
+        get) operation="fetch" ;;
+        compress) operation="archive" ;;
+        extract) operation="decompress" ;;
+        replace) operation="substitute" ;;
+        create) operation="generate" ;;
+        backup) operation="snapshot" ;;
+        *) operation="execute" ;;
+    esac
+
+    # Build criteria object
+    local criteria_json="{}"
+    if [[ -n "$type" ]]; then
+        criteria_json="{\"type\":\"$type\"}"
+    fi
+    if [[ -n "$time" ]]; then
+        [[ "$criteria_json" != "{}" ]] && criteria_json="${criteria_json%\}},\"modified\":\"$time\"}"
+    fi
+
+    # Calculate confidence score
+    local confidence="0.8"
+    [[ "$action" == "unknown" ]] && confidence="0.3"
+
+    # Build output
+    if [[ $json_output -eq 1 ]]; then
+        local escaped_input escaped_pattern escaped_path
+        escaped_input=$(_intent_escape_json "$input")
+        escaped_pattern=$(_intent_escape_json "$pattern")
+        escaped_path=$(_intent_escape_json "$path")
+        
+        printf '{"action":"%s","target":"%s","operation":"%s","confidence":%s,"path":"%s","pattern":"%s"' \
+            "$action" "$target" "$operation" "$confidence" "$escaped_path" "$escaped_pattern"
+        
+        if [[ -n "$time" ]]; then
+            printf ',"time":"%s"' "$time"
+        fi
+        if [[ -n "$type" ]]; then
+            printf ',"file_type":"%s"' "$type"
+        fi
+        printf '}\n'
+    else
+        printf 'Parsed Intent:\n'
+        printf '  Action: %s\n' "$action"
+        printf '  Target: %s\n' "$target"
+        printf '  Operation: %s\n' "$operation"
+        printf '  Path: %s\n' "$path"
+        [[ -n "$pattern" ]] && printf '  Pattern: %s\n' "$pattern"
+        [[ -n "$time" ]] && printf '  Time: %s\n' "$time"
+        [[ -n "$type" ]] && printf '  File Type: %s\n' "$type"
+        printf '  Confidence: %s\n' "$confidence"
+    fi
+
+    [[ "$action" != "unknown" ]]
+}
+
+# intent_to_bash - Convert intent JSON to bash command
+# @description Generate bash code from structured intent
+# @pre        Valid intent JSON from intent_parse
+# @post       Returns bash command string
+# @idempotent Yes
+# @param      $1 intent_json - JSON structure from intent_parse
+# @param      --safe - Add safety checks to generated code
+# @param      --json - Output as JSON
+# @stdout     Bash command or JSON with command and metadata
+# @return     0 on success, 1 on conversion failure
+#
+# Usage: intent_to_bash '{"action":"find","pattern":"*.py"}'
+# Output: "find . -name '*.py' -type f"
+intent_to_bash() {
+    local intent_json="$1"
+    local safe_mode=0 json_output=0
+    shift
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --safe) safe_mode=1; shift ;;
+            --json) json_output=1; shift ;;
+            *) shift ;;
+        esac
+    done
+
+    # Validate input
+    if [[ -z "$intent_json" ]]; then
+        if [[ $json_output -eq 1 ]]; then
+            printf '{"error":"empty intent","command":"","success":false}\n'
+        else
+            printf '# Error: Empty intent\n'
+        fi
+        return 1
+    fi
+
+    # Parse JSON fields (simple regex extraction)
+    local action="" pattern="" path="" time="" target=""
+    
+    if [[ "$intent_json" =~ \"action\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
+        action="${BASH_REMATCH[1]}"
+    fi
+    if [[ "$intent_json" =~ \"pattern\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]; then
+        pattern="${BASH_REMATCH[1]}"
+    fi
+    if [[ "$intent_json" =~ \"path\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
+        path="${BASH_REMATCH[1]}"
+    fi
+    if [[ "$intent_json" =~ \"time\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
+        time="${BASH_REMATCH[1]}"
+    fi
+    if [[ "$intent_json" =~ \"target\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
+        target="${BASH_REMATCH[1]}"
+    fi
+
+    # Default values
+    [[ -z "$path" ]] && path="."
+    [[ -z "$target" ]] && target="files"
+
+    # Generate bash command based on action
+    local bash_cmd=""
+    local safety_checks=""
+
+    case "$action" in
+        find)
+            if [[ -n "$pattern" ]]; then
+                bash_cmd="find $path -name '$pattern'"
+                [[ "$target" == "files" ]] && bash_cmd+=" -type f"
+                [[ "$target" == "directories" ]] && bash_cmd+=" -type d"
+            else
+                bash_cmd="find $path"
+                [[ "$target" == "files" ]] && bash_cmd+=" -type f"
+                [[ "$target" == "directories" ]] && bash_cmd+=" -type d"
+            fi
+            
+            # Add time constraint
+            case "$time" in
+                today) bash_cmd+=" -mtime -1" ;;
+                yesterday) bash_cmd+=" -mtime 1" ;;
+                week) bash_cmd+=" -mtime -7" ;;
+                month) bash_cmd+=" -mtime -30" ;;
+            esac
+            ;;
+        
+        count)
+            if [[ "$target" == "lines" ]]; then
+                if [[ -n "$pattern" ]]; then
+                    bash_cmd="find $path -name '$pattern' -exec wc -l {} + 2>/dev/null | tail -1"
+                else
+                    bash_cmd="wc -l"
+                fi
+            elif [[ "$target" == "files" ]]; then
+                if [[ -n "$pattern" ]]; then
+                    bash_cmd="find $path -name '$pattern' -type f | wc -l"
+                else
+                    bash_cmd="find $path -type f | wc -l"
+                fi
+            else
+                bash_cmd="wc -l"
+            fi
+            ;;
+        
+        remove)
+            if [[ $safe_mode -eq 1 ]]; then
+                bash_cmd="# SAFETY: Review before executing\n"
+                bash_cmd+="# Preview what would be deleted:\n"
+                bash_cmd+="find $path"
+                [[ -n "$pattern" ]] && bash_cmd+=" -name '$pattern'"
+                bash_cmd+=" -type f -print\n"
+                bash_cmd+="# Then uncomment to delete:\n"
+                bash_cmd+="# find $path"
+                [[ -n "$pattern" ]] && bash_cmd+=" -name '$pattern'"
+                bash_cmd+=" -type f -delete"
+            else
+                bash_cmd="# WARNING: Destructive operation\n"
+                bash_cmd+="find $path"
+                [[ -n "$pattern" ]] && bash_cmd+=" -name '$pattern'"
+                bash_cmd+=" -type f -delete"
+            fi
+            ;;
+        
+        sort)
+            bash_cmd="sort"
+            ;;
+        
+        show)
+            if [[ "$target" == "files" ]]; then
+                bash_cmd="ls -la $path"
+            else
+                bash_cmd="cat"
+            fi
+            ;;
+        
+        get)
+            bash_cmd="curl -O"
+            ;;
+        
+        copy)
+            bash_cmd="cp -r"
+            ;;
+        
+        move)
+            bash_cmd="mv"
+            ;;
+        
+        compress)
+            bash_cmd="tar -czf archive_\$(date +%Y%m%d_%H%M%S).tar.gz"
+            ;;
+        
+        extract)
+            bash_cmd="tar -xzf"
+            ;;
+        
+        backup)
+            bash_cmd="# Backup with timestamp\n"
+            bash_cmd+="cp -r \${source:-.} \${source:-backup}_\$(date +%Y%m%d_%H%M%S)"
+            ;;
+        
+        *)
+            if [[ $json_output -eq 1 ]]; then
+                printf '{"error":"unknown action: %s","command":"","success":false}\n' "$action"
+            else
+                printf '# Unknown action: %s\n' "$action"
+                printf '# Try: find, count, remove, sort, show, get, copy, move, compress, extract, backup\n'
+            fi
+            return 1
+            ;;
+    esac
+
+    # Output result
+    if [[ $json_output -eq 1 ]]; then
+        local escaped_cmd escaped_intent
+        escaped_cmd=$(_intent_escape_json "$bash_cmd")
+        escaped_intent=$(_intent_escape_json "$intent_json")
+        printf '{"intent":%s,"command":"%s","action":"%s","safe_mode":%s,"success":true}\n' \
+            "$escaped_intent" "$escaped_cmd" "$action" "$([[ $safe_mode -eq 1 ]] && echo "true" || echo "false")"
+    else
+        printf '%s\n' "$bash_cmd"
+    fi
+
+    return 0
+}
+
+# intent_explain - Explain what bash code does in plain English
+# @description Parse bash code and explain its effects
+# @pre        None
+# @post       Returns human-readable explanation
+# @idempotent Yes
+# @param      $1 bash_code - Bash code to explain
+# @param      --json - Output as JSON
+# @param      --verbose - Include detailed breakdown
+# @stdout     Explanation of code effects
+# @return     0 always
+#
+# Usage: intent_explain "find . -name '*.py' -mtime -1"
+intent_explain() {
+    local bash_code="$1"
+    shift
+
+    local json_output=0 verbose=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --json) json_output=1; shift ;;
+            --verbose) verbose=1; shift ;;
+            *) shift ;;
+        esac
+    done
+
+    # Handle multiline input
+    bash_code="${bash_code//$'\n'/ }"
+    
+    local base_cmd="${bash_code%% *}"
+    local summary=""
+    local -a details=()
+    local -a safety=()
+
+    # Build explanation based on command
+    case "$base_cmd" in
+        find)
+            summary="Search for files matching criteria"
+            
+            if [[ "$bash_code" == *"-name"* ]]; then
+                if [[ "$bash_code" =~ -name[[:space:]]+[\"\']?([^\"\'[:space:]]+)[\"\']? ]]; then
+                    details+=("Looking for files named: ${BASH_REMATCH[1]}")
+                fi
+            fi
+            
+            if [[ "$bash_code" == *"-type f"* ]]; then
+                details+=("Only matching regular files (not directories)")
+            elif [[ "$bash_code" == *"-type d"* ]]; then
+                details+=("Only matching directories")
+            fi
+            
+            if [[ "$bash_code" == *"-mtime"* ]]; then
+                if [[ "$bash_code" =~ -mtime[[:space:]]+(-?[0-9]+) ]]; then
+                    local days="${BASH_REMATCH[1]}"
+                    if [[ "$days" == "-1" ]]; then
+                        details+=("Only files modified in the last 24 hours")
+                    elif [[ "$days" == "1" ]]; then
+                        details+=("Only files modified exactly 1 day ago")
+                    elif [[ "$days" == "-7" ]]; then
+                        details+=("Only files modified in the last week")
+                    elif [[ "$days" == "-30" ]]; then
+                        details+=("Only files modified in the last month")
+                    else
+                        details+=("Modified within $days days")
+                    fi
+                fi
+            fi
+            
+            if [[ "$bash_code" == *"-delete"* ]]; then
+                safety+=("WARNING: This will DELETE matching files permanently")
+            fi
+            
+            if [[ "$bash_code" == *"-exec"* ]]; then
+                details+=("Will execute a command on each matching file")
+            fi
+            ;;
+        
+        grep)
+            summary="Search for text patterns in files"
+            
+            if [[ "$bash_code" == *"-r"* ]] || [[ "$bash_code" == *"--recursive"* ]]; then
+                details+=("Recursively searches directories")
+            fi
+            
+            if [[ "$bash_code" == *"-i"* ]]; then
+                details+=("Case-insensitive matching")
+            fi
+            
+            # Extract pattern
+            if [[ "$bash_code" =~ [\"\']([^\"\']+)[\"\'] ]]; then
+                details+=("Searching for: ${BASH_REMATCH[1]}")
+            fi
+            ;;
+        
+        wc)
+            summary="Count lines, words, or bytes"
+            
+            if [[ "$bash_code" == *"-l"* ]]; then
+                details+=("Counting lines")
+            elif [[ "$bash_code" == *"-w"* ]]; then
+                details+=("Counting words")
+            elif [[ "$bash_code" == *"-c"* ]]; then
+                details+=("Counting bytes")
+            else
+                details+=("Counting lines, words, and bytes")
+            fi
+            ;;
+        
+        rm)
+            summary="Delete files or directories"
+            safety+=("DESTRUCTIVE: Files will be permanently removed")
+            
+            if [[ "$bash_code" == *"-r"* ]] || [[ "$bash_code" == *"-R"* ]]; then
+                details+=("Recursive deletion (includes subdirectories)")
+            fi
+            
+            if [[ "$bash_code" == *"-f"* ]]; then
+                details+=("Force mode: no confirmation prompts")
+                safety+=("DANGER: No confirmation before deletion")
+            fi
+            
+            if [[ "$bash_code" == *"-i"* ]]; then
+                details+=("Interactive mode: asks before each removal")
+                safety+=("SAFER: Will prompt for confirmation")
+            fi
+            ;;
+        
+        cp)
+            summary="Copy files or directories"
+            
+            if [[ "$bash_code" == *"-r"* ]] || [[ "$bash_code" == *"-R"* ]]; then
+                details+=("Recursive copy (includes subdirectories)")
+            fi
+            
+            if [[ "$bash_code" == *"-p"* ]]; then
+                details+=("Preserves file permissions and timestamps")
+            fi
+            
+            if [[ "$bash_code" == *"-v"* ]]; then
+                details+=("Verbose mode: shows each file copied")
+            fi
+            ;;
+        
+        mv)
+            summary="Move or rename files/directories"
+            
+            if [[ "$bash_code" == *"-i"* ]]; then
+                details+=("Interactive: asks before overwriting")
+            fi
+            
+            if [[ "$bash_code" == *"-f"* ]]; then
+                details+=("Force: overwrites without prompting")
+                safety+=("WARNING: May overwrite existing files")
+            fi
+            ;;
+        
+        sort)
+            summary="Sort lines of text"
+            
+            if [[ "$bash_code" == *"-r"* ]]; then
+                details+=("Reverse order (descending)")
+            fi
+            
+            if [[ "$bash_code" == *"-u"* ]]; then
+                details+=("Unique: removes duplicate lines")
+            fi
+            
+            if [[ "$bash_code" == *"-n"* ]]; then
+                details+=("Numeric sort (not alphabetic)")
+            fi
+            ;;
+        
+        curl)
+            summary="Download content from URL"
+            
+            if [[ "$bash_code" == *"-O"* ]]; then
+                details+=("Save to file with original name")
+            fi
+            
+            if [[ "$bash_code" == *"-o"* ]]; then
+                details+=("Save to specified filename")
+            fi
+            
+            if [[ "$bash_code" == *"-L"* ]]; then
+                details+=("Follow redirects")
+            fi
+            
+            if [[ "$bash_code" == *"|"* ]]; then
+                safety+=("WARNING: Output piped to another command")
+            fi
+            ;;
+        
+        tar)
+            summary="Archive or extract files"
+            
+            if [[ "$bash_code" == *"-c"* ]] || [[ "$bash_code" == *"--create"* ]]; then
+                details+=("Create new archive")
+            fi
+            
+            if [[ "$bash_code" == *"-x"* ]] || [[ "$bash_code" == *"--extract"* ]]; then
+                details+=("Extract from archive")
+            fi
+            
+            if [[ "$bash_code" == *"-z"* ]] || [[ "$bash_code" == *"--gzip"* ]]; then
+                details+=("Use gzip compression")
+            fi
+            
+            if [[ "$bash_code" == *"-v"* ]]; then
+                details+=("Verbose: list files processed")
+            fi
+            ;;
+        
+        ls)
+            summary="List directory contents"
+            
+            if [[ "$bash_code" == *"-l"* ]]; then
+                details+=("Long format: permissions, owner, size, date")
+            fi
+            
+            if [[ "$bash_code" == *"-a"* ]]; then
+                details+=("All files: includes hidden files (starting with .)")
+            fi
+            
+            if [[ "$bash_code" == *"-h"* ]]; then
+                details+=("Human-readable sizes (KB, MB, GB)")
+            fi
+            ;;
+        
+        cat)
+            summary="Display file contents"
+            details+=("Outputs entire file content to terminal")
+            ;;
+        
+        chmod)
+            summary="Change file permissions"
+            safety+=("MODIFIES PERMISSIONS: affects file access")
+            
+            if [[ "$bash_code" == *"-R"* ]]; then
+                details+=("Recursive: affects all files in directory")
+                safety+=("WARNING: Mass permission change")
+            fi
+            
+            if [[ "$bash_code" =~ 777 ]]; then
+                safety+=("CRITICAL: 777 gives full access to EVERYONE")
+            fi
+            ;;
+        
+        *)
+            summary="Execute $base_cmd command"
+            details+=("Runs the $base_cmd program with provided arguments")
+            ;;
+    esac
+
+    # Risk assessment
+    local risk=0
+    if _intent_matches_patterns "$bash_code" _INTENT_CRITICAL_PATTERNS &>/dev/null; then
+        risk=$INTENT_RISK_CRITICAL
+        safety+=("CRITICAL RISK: This command could cause serious damage")
+    elif _intent_matches_patterns "$bash_code" _INTENT_HIGH_PATTERNS &>/dev/null; then
+        risk=$INTENT_RISK_HIGH
+        safety+=("HIGH RISK: Use with caution")
+    elif _intent_matches_patterns "$bash_code" _INTENT_MEDIUM_PATTERNS &>/dev/null; then
+        risk=$INTENT_RISK_MEDIUM
+        safety+=("MEDIUM RISK: Has side effects")
+    fi
+
+    # Output
+    if [[ $json_output -eq 1 ]]; then
+        local escaped_cmd escaped_summary
+        escaped_cmd=$(_intent_escape_json "$bash_code")
+        escaped_summary=$(_intent_escape_json "$summary")
+        local details_json safety_json
+        details_json=$(_intent_array_to_json "${details[@]}")
+        safety_json=$(_intent_array_to_json "${safety[@]}")
+        printf '{"command":"%s","summary":"%s","details":%s,"safety":%s,"risk":%d}\n' \
+            "$escaped_cmd" "$escaped_summary" "$details_json" "$safety_json" "$risk"
+    else
+        printf 'Command: %s\n' "$bash_code"
+        printf 'Summary: %s\n' "$summary"
+        
+        if [[ ${#details[@]} -gt 0 ]]; then
+            printf '\nDetails:\n'
+            for detail in "${details[@]}"; do
+                printf '  • %s\n' "$detail"
+            done
+        fi
+        
+        if [[ ${#safety[@]} -gt 0 ]]; then
+            printf '\nSafety Considerations:\n'
+            for note in "${safety[@]}"; do
+                printf '  ⚠ %s\n' "$note"
+            done
+        fi
+        
+        printf '\nRisk Level: %s\n' "${_INTENT_RISK_LABELS[$risk]}"
+    fi
+
+    return 0
+}
+
+# intent_complete - Provide auto-complete suggestions for partial commands
+# @description Suggest completions based on partial input and common patterns
+# @pre        None
+# @post       Returns list of suggestions
+# @idempotent Yes
+# @param      $1 partial - Partial command to complete
+# @param      --json - Output as JSON
+# @param      --max N - Maximum suggestions (default: 10)
+# @stdout     List of completion suggestions
+# @return     0 always
+#
+# Usage: intent_complete "find all py"
+# Output: find all python files
+#         find all .py files modified today
+intent_complete() {
+    local partial="$1"
+    shift
+
+    local json_output=0 max_suggestions=10
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --json) json_output=1; shift ;;
+            --max) max_suggestions="$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+
+    local -a suggestions=()
+    local partial_lower="${partial,,}"
+
+    # Pattern-based suggestions
+    case "$partial_lower" in
+        *find*)
+            suggestions+=("find all files")
+            suggestions+=("find all directories")
+            suggestions+=("find all *.py files")
+            suggestions+=("find all *.txt files")
+            suggestions+=("find all files modified today")
+            suggestions+=("find all files larger than 1MB")
+            ;;&
+        *count*)
+            suggestions+=("count lines in file")
+            suggestions+=("count files in directory")
+            suggestions+=("count words in file")
+            suggestions+=("count all *.log files")
+            ;;&
+        *remove*|*delete*)
+            suggestions+=("remove all *.tmp files")
+            suggestions+=("remove empty directories")
+            suggestions+=("remove files older than 30 days")
+            ;;&
+        *sort*)
+            suggestions+=("sort file alphabetically")
+            suggestions+=("sort file numerically")
+            suggestions+=("sort and remove duplicates")
+            ;;&
+        *show*|*list*)
+            suggestions+=("show all files")
+            suggestions+=("show hidden files")
+            suggestions+=("list directory contents")
+            ;;&
+        *get*|*download*)
+            suggestions+=("get from URL")
+            suggestions+=("download file from URL")
+            ;;&
+        *backup*)
+            suggestions+=("backup directory with timestamp")
+            suggestions+=("backup all important files")
+            ;;&
+        *compress*)
+            suggestions+=("compress directory to tar.gz")
+            suggestions+=("compress files to zip")
+            ;;&
+        *extract*)
+            suggestions+=("extract tar.gz archive")
+            suggestions+=("extract zip file")
+            ;;&
+    esac
+
+    # Add matching common commands
+    for cmd in "${_INTENT_COMMON_COMMANDS[@]}"; do
+        local cmd_lower="${cmd,,}"
+        if [[ "$cmd_lower" == *"$partial_lower"* ]]; then
+            suggestions+=("$cmd")
+        fi
+    done
+
+    # Remove duplicates while preserving order
+    local -a unique_suggestions=()
+    local seen
+    for sug in "${suggestions[@]}"; do
+        seen=0
+        for existing in "${unique_suggestions[@]}"; do
+            if [[ "$sug" == "$existing" ]]; then
+                seen=1
+                break
+            fi
+        done
+        [[ $seen -eq 0 ]] && unique_suggestions+=("$sug")
+    done
+
+    # Limit results
+    local count=${#unique_suggestions[@]}
+    [[ $count -gt $max_suggestions ]] && count=$max_suggestions
+
+    # Output
+    if [[ $json_output -eq 1 ]]; then
+        local sug_json
+        sug_json=$(_intent_array_to_json "${unique_suggestions[@]:0:$count}")
+        printf '{"partial":"%s","suggestions":%s,"count":%d}\n' \
+            "$(_intent_escape_json "$partial")" "$sug_json" "$count"
+    else
+        printf 'Suggestions for "%s":\n' "$partial"
+        for ((i=0; i<count; i++)); do
+            printf '  %d. %s\n' $((i+1)) "${unique_suggestions[$i]}"
+        done
+    fi
+
+    return 0
+}
+
+# =============================================================================
+# ORIGINAL INTENT VERIFICATION FUNCTIONS (PRESERVED)
 # =============================================================================
 
 # intent_classify - Classify a command by risk level
@@ -784,123 +1646,6 @@ intent_estimate_cost() {
     return 0
 }
 
-# intent_explain - Generate human-readable explanation of command effects
-# @description Parse command and explain what it does in plain language
-# @pre        None
-# @post       None (analysis only)
-# @idempotent Yes
-# @param      $1 command - Command to explain
-# @param      --json - Output as JSON
-# @param      --verbose - Include detailed breakdown
-# @stdout     Explanation of command effects
-# @return     0 always
-#
-# Usage: intent_explain "find /var -name '*.log' -mtime +30 -delete"
-# Usage: intent_explain "chmod -R 755 /app" --json
-intent_explain() {
-    local command="$1"
-    shift
-
-    local json_output=0 verbose=0
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --json) json_output=1; shift ;;
-            --verbose) verbose=1; shift ;;
-            *) shift ;;
-        esac
-    done
-
-    local base_cmd="${command%% *}"
-    local summary=""
-    local -a details=()
-    local -a flags=()
-
-    # Build explanation based on command
-    case "$base_cmd" in
-        rm)
-            summary="Delete files or directories"
-            [[ "$command" == *"-r"* ]] && flags+=("-r: recursive deletion")
-            [[ "$command" == *"-f"* ]] && flags+=("-f: force, no confirmation")
-            [[ "$command" == *"-i"* ]] && flags+=("-i: interactive, ask before each removal")
-            ;;
-        mv)
-            summary="Move or rename files/directories"
-            [[ "$command" == *"-f"* ]] && flags+=("-f: force overwrite")
-            [[ "$command" == *"-i"* ]] && flags+=("-i: interactive, ask before overwrite")
-            ;;
-        cp)
-            summary="Copy files or directories"
-            [[ "$command" == *"-r"* ]] && flags+=("-r: recursive copy")
-            [[ "$command" == *"-p"* ]] && flags+=("-p: preserve permissions")
-            ;;
-        chmod)
-            summary="Change file permissions"
-            [[ "$command" == *"-R"* ]] && flags+=("-R: recursive, affects all files in directory")
-            if [[ "$command" =~ 777 ]]; then
-                details+=("WARNING: 777 gives read/write/execute to everyone")
-            fi
-            ;;
-        chown)
-            summary="Change file ownership"
-            [[ "$command" == *"-R"* ]] && flags+=("-R: recursive, affects all files in directory")
-            ;;
-        find)
-            summary="Search for files matching criteria"
-            [[ "$command" == *"-delete"* ]] && details+=("WARNING: -delete will remove matching files")
-            [[ "$command" == *"-exec"* ]] && details+=("NOTE: -exec will run a command on each match")
-            ;;
-        grep)
-            summary="Search for patterns in files"
-            [[ "$command" == *"-r"* ]] && flags+=("-r: recursive search")
-            ;;
-        curl|wget)
-            summary="Download content from URL"
-            [[ "$command" == *"|"* ]] && details+=("WARNING: output is piped to another command")
-            ;;
-        sudo)
-            summary="Execute command with elevated privileges"
-            details+=("WARNING: runs with root/superuser permissions")
-            ;;
-        *)
-            summary="Execute $base_cmd command"
-            ;;
-    esac
-
-    # Risk assessment
-    local risk
-    intent_classify "$command" >/dev/null
-    risk=$?
-    details+=("Risk Level: ${_INTENT_RISK_LABELS[$risk]}")
-
-    if [[ $json_output -eq 1 ]]; then
-        local escaped_cmd escaped_summary
-        escaped_cmd=$(_intent_escape_json "$command")
-        escaped_summary=$(_intent_escape_json "$summary")
-        local flags_json details_json
-        flags_json=$(_intent_array_to_json "${flags[@]}")
-        details_json=$(_intent_array_to_json "${details[@]}")
-        printf '{"command":"%s","summary":"%s","flags":%s,"details":%s,"risk":%d}\n' \
-            "$escaped_cmd" "$escaped_summary" "$flags_json" "$details_json" "$risk"
-    else
-        printf 'Command: %s\n' "$command"
-        printf 'Summary: %s\n' "$summary"
-        if [[ ${#flags[@]} -gt 0 ]]; then
-            printf 'Flags:\n'
-            for flag in "${flags[@]}"; do
-                printf '  %s\n' "$flag"
-            done
-        fi
-        if [[ ${#details[@]} -gt 0 ]]; then
-            printf 'Details:\n'
-            for detail in "${details[@]}"; do
-                printf '  %s\n' "$detail"
-            done
-        fi
-    fi
-
-    return 0
-}
-
 # intent_suggest_safer - Suggest safer alternatives to a risky command
 # @description Analyze command and suggest safer ways to achieve same goal
 # @pre        None
@@ -1106,12 +1851,15 @@ intent_batch_verify() {
 # =============================================================================
 
 declare -ga _INTENT_EXPORTS=(
+    intent_parse
+    intent_to_bash
+    intent_explain
+    intent_complete
     intent_classify
     intent_verify
     intent_sandbox_recommend
     intent_dry_run
     intent_estimate_cost
-    intent_explain
     intent_suggest_safer
     intent_batch_verify
 )
