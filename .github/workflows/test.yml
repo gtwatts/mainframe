@@ -78,7 +78,11 @@ jobs:
             -e SC2179 -e SC1079 -e SC2027 -e SC2254 -e SC1083 -e SC2093 \
             -e SC1072 -e SC1073 -e SC2183 -e SC2221 -e SC2222 -e SC2076 \
             -e SC2001 \
-            lib/*.sh
+            lib/*.sh 2>&1 | tee /tmp/shellcheck_output.txt || {
+              echo "=== ShellCheck Errors ==="
+              cat /tmp/shellcheck_output.txt
+              exit 1
+            }
 
       - name: Run ShellCheck on scripts
         run: |
