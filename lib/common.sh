@@ -669,6 +669,7 @@ _MAINFRAME_TIER_AI=(
     embeddings registry vectordb rag policy rbac
     agent_loop ammma uap
     heal predict generate verify intent orchestrate
+    agent_teams
 )
 
 # --- Bundle Presets ---------------------------------------------------------
@@ -688,6 +689,7 @@ declare -gA MAINFRAME_BUNDLES=(
     [devops]="core,git,docker,github_actions"
     [tui]="core,ansi,tui,anim,output"
     [testing]="core,testing,proptest,validation"
+    [agent_teams]="core,agent,awm,agent_ai,agent_teams,taskstate"
     [full]="all"
 )
 

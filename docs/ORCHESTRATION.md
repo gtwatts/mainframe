@@ -503,6 +503,60 @@ agent=$(orch_agent_spawn "team") || {
 
 ---
 
+## Agent Teams Integration
+
+Claude Code Agent Teams provides native team lifecycle, task assignment, and mailbox messaging. Mainframe supplements this with capabilities Agent Teams lacks: **persistent cross-agent memory** (AWM), **synchronization primitives** (barriers, locks), and **bash-level orchestration utilities** exposed via MCP.
+
+### Coexistence Guide
+
+| Feature | Agent Teams (Native) | Mainframe (Supplement) |
+|---------|---------------------|----------------------|
+| Task creation/assignment | TaskCreate/TaskUpdate | Do NOT wrap these |
+| Agent-to-agent messages | Mailbox (SendMessage) | Do NOT replace |
+| Persistent shared state | Not provided | AWM (`awm_checkpoint`, `awm_get`) |
+| Barrier synchronization | Not provided | `agent_barrier` |
+| Mutual exclusion locks | Not provided | `agent_lock`/`agent_unlock` |
+| Key findings log | Not provided | `awm_discovery` |
+| Session summaries | Not provided | `awm_summary` |
+
+### Setup: Lead Agent
+
+```bash
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+mainframe_bundle "agent_teams"
+
+# Lead creates the shared AWM session
+session_id=$(agent_teams_awm_init "project-task")
+# Session ID written to ~/.claude/teams/{name}/.awm_session
+```
+
+### Setup: Teammate Agent
+
+```bash
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+mainframe_bundle "agent_teams"
+
+# Teammate joins the shared session
+agent_teams_awm_join
+# All AWM reads/writes now target the shared session
+```
+
+### Migration from TMUX Orchestration
+
+If migrating from Mainframe's TMUX-based orchestration (`orch_agent_spawn`) to Agent Teams:
+
+1. **Remove** TMUX agent lifecycle calls (`orch_agent_spawn`, `orch_agent_terminate`)
+2. **Remove** Redis pub/sub messaging (`orch_msg_*`) - use Agent Teams mailbox instead
+3. **Keep** AWM for shared state - works with both systems
+4. **Keep** `agent_barrier`, `agent_lock`/`agent_unlock` - Agent Teams has no equivalent
+5. **Add** `agent_teams_awm_init` (lead) and `agent_teams_awm_join` (teammates) for session rendezvous
+
+### MCP Tools
+
+Teammates can also call orchestration functions as MCP tools (registered via `mcp_register_orchestration_tools`): `awm_init`, `awm_resume`, `awm_checkpoint`, `awm_discovery`, `awm_get`, `awm_summary`, `agent_teams_active`, `agent_teams_awm_join`, `agent_barrier`, `agent_lock`, `agent_unlock`.
+
+---
+
 ## See Also
 
 - **[docs/reference/agent.md](reference/agent.md)** - Agent primitives (idempotent, atomic, diff)

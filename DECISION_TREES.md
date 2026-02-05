@@ -628,3 +628,28 @@ Audit log as JSON?           -> cap_audit_log_json
 Count denied?                -> denied=$(cap_denied_count "agent")
 Get stats?                   -> cap_stats
 ```
+
+## Multi-Agent Coordination
+
+### I need to coordinate multiple agents
+```
+Agent Teams active?          -> agent_teams_active
+                              ├── YES: Use Agent Teams native for tasks/messages
+                              │   Need shared state?  -> agent_teams_awm_init (lead)
+                              │                       -> agent_teams_awm_join (teammate)
+                              │   Need barrier sync?  -> agent_barrier "name" count
+                              │   Need mutual excl?   -> agent_lock / agent_unlock
+                              └── NO: Use TMUX orchestration
+                                  Spawn agent?        -> orch_agent_spawn "team"
+                                  Send message?       -> orch_msg_send "agent" "msg"
+                                  Distribute task?    -> orch_task_submit "team" "$task"
+```
+
+### I need shared state across agents
+```
+In Agent Teams?              -> agent_teams_awm_init / agent_teams_awm_join
+Save key-value?              -> awm_checkpoint "key" "value"
+Read key-value?              -> awm_get "key" ["default"]
+Record finding?              -> awm_discovery "message" ["importance"]
+Get session summary?         -> awm_summary
+```

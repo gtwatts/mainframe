@@ -241,6 +241,25 @@ mainframe quickref --search "hash"  # Search all functions
 
 ---
 
+## Agent Teams Bridge (`agent_teams.sh`)
+
+```bash
+# Detection
+agent_teams_active                    # returns 0 if Agent Teams mode is on
+team=$(agent_teams_team_name)         # get current team name
+config=$(agent_teams_config)          # get team config JSON
+
+# Shared AWM session rendezvous
+sid=$(agent_teams_awm_init "name")    # lead creates shared session
+agent_teams_awm_join                  # teammate joins shared session
+sid=$(agent_teams_awm_session_id)     # get shared session ID
+
+# AWM team namespace (in awm.sh)
+awm_team_namespace                    # auto-set namespace to team-{name}
+```
+
+---
+
 ## Important Rules
 
 1. **Do not read MAINFRAME source** - use functions directly

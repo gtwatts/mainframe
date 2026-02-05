@@ -744,6 +744,28 @@ awm_discovery "Processing completes in ~2min per batch"
 awm_close
 ```
 
+### Agent Teams: Shared AWM Across Teammates
+
+When running as a Claude Code Agent Teams teammate, use the `agent_teams` bundle for shared persistent state. Agent Teams handles tasks and messaging; Mainframe provides shared memory and sync.
+
+```bash
+#!/usr/bin/env bash
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+mainframe_bundle "agent_teams"
+
+if agent_teams_active; then
+    # Lead creates shared session (teammates call agent_teams_awm_join instead)
+    session_id=$(agent_teams_awm_init "build-task")
+
+    # All teammates can now read/write shared state
+    awm_checkpoint "api_schema_ready" "true"
+    awm_discovery "Rate limit is 100 req/s" "high"
+
+    # Wait for all 3 agents to finish phase 1
+    agent_barrier "phase1_done" 3 60
+fi
+```
+
 ## Repository
 
 - **Source**: https://github.com/gtwatts/mainframe

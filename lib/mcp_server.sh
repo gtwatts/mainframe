@@ -201,6 +201,64 @@ mcp_register_default_tools() {
     _mcp_log info "Registered ${#_MCP_TOOLS[@]} default tools"
 }
 
+# @desc Register orchestration and AWM tools for Agent Teams integration
+# @usage mcp_register_orchestration_tools
+mcp_register_orchestration_tools() {
+    # AWM session lifecycle
+    mcp_register_tool "awm_init" "awm_init" \
+        "Initialize a new Agent Working Memory session. Returns session_id." \
+        '{"type":"object","properties":{"name":{"type":"string","description":"Session name"},"parent_session":{"type":"string","description":"Parent session ID for inheritance"}}}'
+
+    mcp_register_tool "awm_resume" "awm_resume" \
+        "Resume an existing AWM session by ID." \
+        '{"type":"object","properties":{"session_id":{"type":"string","description":"Session ID to resume"}},"required":["session_id"]}'
+
+    mcp_register_tool "awm_close" "awm_close" \
+        "Close the current AWM session (marks as completed)." \
+        '{}'
+
+    # AWM data operations
+    mcp_register_tool "awm_checkpoint" "awm_checkpoint" \
+        "Save a key-value pair to persistent working memory." \
+        '{"type":"object","properties":{"key":{"type":"string","description":"Key name"},"value":{"type":"string","description":"Value to store"}},"required":["key","value"]}'
+
+    mcp_register_tool "awm_discovery" "awm_discovery" \
+        "Record a key finding or insight to working memory." \
+        '{"type":"object","properties":{"message":{"type":"string","description":"Discovery text"},"importance":{"type":"string","enum":["low","normal","high","critical"],"description":"Importance level"}},"required":["message"]}'
+
+    mcp_register_tool "awm_get" "awm_get" \
+        "Retrieve a value from working memory by key." \
+        '{"type":"object","properties":{"key":{"type":"string","description":"Key to retrieve"},"default":{"type":"string","description":"Default if key not found"}},"required":["key"]}'
+
+    mcp_register_tool "awm_summary" "awm_summary" \
+        "Get a compressed summary of the current AWM session." \
+        '{}'
+
+    # Agent Teams bridge
+    mcp_register_tool "agent_teams_active" "agent_teams_active" \
+        "Check if Claude Code Agent Teams mode is active. Returns exit 0 if active." \
+        '{}'
+
+    mcp_register_tool "agent_teams_awm_join" "agent_teams_awm_join" \
+        "Join the team shared AWM session (for teammate agents)." \
+        '{}'
+
+    # Synchronization primitives
+    mcp_register_tool "agent_barrier" "agent_barrier" \
+        "Barrier synchronization: wait until COUNT agents reach the same point." \
+        '{"type":"object","properties":{"name":{"type":"string","description":"Barrier name"},"count":{"type":"number","description":"Number of agents to wait for"},"timeout":{"type":"number","description":"Timeout in seconds (default 60)"}},"required":["name","count"]}'
+
+    mcp_register_tool "agent_lock" "agent_lock" \
+        "Acquire an exclusive file-based lock on a named resource." \
+        '{"type":"object","properties":{"resource":{"type":"string","description":"Resource name to lock"}},"required":["resource"]}'
+
+    mcp_register_tool "agent_unlock" "agent_unlock" \
+        "Release a previously acquired lock." \
+        '{"type":"object","properties":{"resource":{"type":"string","description":"Resource name to unlock"}},"required":["resource"]}'
+
+    _mcp_log info "Registered orchestration tools (AWM + Agent Teams + sync)"
+}
+
 # =============================================================================
 # MCP METHOD HANDLERS
 # =============================================================================

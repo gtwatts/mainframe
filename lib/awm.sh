@@ -374,6 +374,38 @@ awm_namespace() {
     fi
 }
 
+# @pre: none (auto-detects from Agent Teams config)
+# @post: _AWM_NAMESPACE set to "team-{name}" if in a team, unchanged otherwise
+# @returns: 0 if namespace set, 1 if not in a team
+#
+# Auto-detect Agent Teams team name and set AWM namespace for team isolation.
+# Reads team name from CLAUDE_AGENT_TEAM_NAME env var or ~/.claude/teams/.
+#
+# Usage: awm_team_namespace
+# Example: awm_team_namespace && awm_init "shared-task"
+awm_team_namespace() {
+    local team_name="${CLAUDE_AGENT_TEAM_NAME:-}"
+
+    # Fallback: find team from config directory
+    if [[ -z "$team_name" && -d "${HOME}/.claude/teams" ]]; then
+        local team_dir
+        for team_dir in "${HOME}/.claude/teams"/*/; do
+            [[ -d "$team_dir" ]] || continue
+            team_name="${team_dir%/}"
+            team_name="${team_name##*/}"
+            break
+        done
+    fi
+
+    if [[ -z "$team_name" ]]; then
+        _awm_log debug "awm_team_namespace: no team detected"
+        return 1
+    fi
+
+    awm_namespace "team-${team_name}"
+    return 0
+}
+
 # =============================================================================
 # CORE WRITE FUNCTIONS
 # =============================================================================
