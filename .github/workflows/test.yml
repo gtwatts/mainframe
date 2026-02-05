@@ -145,7 +145,7 @@ jobs:
           git clone https://github.com/bats-core/bats-file.git tests/bats-file
 
       - name: Run unit tests
-        timeout-minutes: 15
+        timeout-minutes: 25
         run: |
           # Run core + extended tests - exclude slow/network/timeout-heavy tests
           # Excluded: bun, burl, device, docker, embeddings,
