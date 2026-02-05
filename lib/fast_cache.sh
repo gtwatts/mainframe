@@ -114,9 +114,11 @@ fast_cache_get() {
     
     # Use eval to access arrays
     local data_val ttl_val
+    # shellcheck disable=SC1087
     eval "data_val=\"\${$data_var[\$key]:-}\""
     
     if [[ -n "$data_val" ]]; then
+        # shellcheck disable=SC1087
         eval "ttl_val=\"\${$ttl_var[\$key]:-0}\""
         
         if [[ "$ttl_val" -gt 0 ]]; then
@@ -124,11 +126,14 @@ fast_cache_get() {
             now=$(_fast_cache_epoch)
             if [[ "$now" -gt "$ttl_val" ]]; then
                 # Expired - remove entry
+                # shellcheck disable=SC1087
                 eval "unset $data_var[\"\$key\"]"
+                # shellcheck disable=SC1087
                 eval "unset $ttl_var[\"\$key\"]"
+                # shellcheck disable=SC1087
                 eval "unset $lru_var[\"\$key\"]"
-                eval "((--$size_var))"
-                eval "((++$misses_var))"
+                eval "(('$size_var'--))"
+                eval "$misses_var=$(($misses_var+1))"
                 return 1
             fi
         fi
@@ -136,14 +141,15 @@ fast_cache_get() {
         # Update LRU timestamp
         local now
         now=$(_fast_cache_epoch)
+        # shellcheck disable=SC1087
         eval "$lru_var[\"\$key\"]=\"\$now\""
-        eval "((++$hits_var))"
+        eval "$hits_var=$(($hits_var+1))"
         
         printf '%s' "$data_val"
         return 0
     fi
     
-    eval "((++$misses_var))"
+    eval "$misses_var=$(($misses_var+1))"
     return 1
 }
 
@@ -175,6 +181,7 @@ fast_cache_set() {
     
     # Check if key exists
     local existing=""
+    # shellcheck disable=SC1087
     eval "existing=\"\${$data_var[\$key]:-}\""
     
     # Check capacity
@@ -185,8 +192,10 @@ fast_cache_set() {
     if [[ -z "$existing" && "$current_size" -ge "$max_size" ]]; then
         # Need to evict - find oldest entry
         local lru_key oldest_key="" oldest_time=9999999999
-        eval "for lru_key in \"\${!$lru_var[@]}\"; do
-            local ts=\"\${$lru_var[\$lru_key]}\"
+        # shellcheck disable=SC1087
+    eval "for lru_key in \"\${!$lru_var[@]}\"; do
+            # shellcheck disable=SC1087
+            local ts=\"\${$lru_var[\$lru_key]}\""
             if [[ \"\$ts\" -lt \"\$oldest_time\" ]]; then
                 oldest_time=\$ts
                 oldest_key=\$lru_key
@@ -194,21 +203,27 @@ fast_cache_set() {
         done"
         
         if [[ -n "$oldest_key" ]]; then
+            # shellcheck disable=SC1087
             eval "unset $data_var[\"\$oldest_key\"]"
+            # shellcheck disable=SC1087
             eval "unset $ttl_var[\"\$oldest_key\"]"
+            # shellcheck disable=SC1087
             eval "unset $lru_var[\"\$oldest_key\"]"
-            eval "((--$size_var))"
+            ((size_var--))
         fi
     fi
     
     # Set value
+    # shellcheck disable=SC1087
     eval "$data_var[\"\$key\"]=\"\$value\""
     
     if [[ "$ttl" -gt 0 ]]; then
         local expiry
         expiry=$(( $(_fast_cache_epoch) + ttl ))
+        # shellcheck disable=SC1087
         eval "$ttl_var[\"\$key\"]=\"\$expiry\""
     else
+        # shellcheck disable=SC1087
         eval "$ttl_var[\"\$key\"]=\"0\""
     fi
     
@@ -217,7 +232,7 @@ fast_cache_set() {
     eval "$lru_var[\"\$key\"]=\"\$now\""
     
     if [[ -z "$existing" ]]; then
-        eval "((++$size_var))"
+        eval "$size_var=$(($size_var+1))"
     fi
 }
 
@@ -256,9 +271,12 @@ fast_cache_clear() {
     local misses_var=$(_fast_cache_var "$name" "misses")
     local size_var=$(_fast_cache_var "$name" "size")
     
-    eval "$data_var=()"
-    eval "$ttl_var=()"
-    eval "$lru_var=()"
+    eval "unset $data_var"
+    eval "unset $ttl_var"
+    eval "unset $lru_var"
+    eval "declare -gA $data_var"
+    eval "declare -gA $ttl_var"
+    eval "declare -gA $lru_var"
     eval "$hits_var=0"
     eval "$misses_var=0"
     eval "$size_var=0"

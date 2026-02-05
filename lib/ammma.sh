@@ -1557,7 +1557,8 @@ ammma_context_build() {
         local mem_chars=${#memory}
         local mem_tokens
         mem_tokens=$(echo "$memory" | grep -o '"tokens":[0-9]*' | head -1 | cut -d: -f2)
-        mem_tokens="${mem_tokens:-$((_amma_estimate_tokens "$memory"))}"
+        mem_tokens="${mem_tokens:-0}"
+        [[ "$mem_tokens" -eq 0 ]] && mem_tokens=$(_amma_estimate_tokens "$memory")
         
         if [[ $((total_chars + mem_chars)) -gt $max_chars ]]; then
             break

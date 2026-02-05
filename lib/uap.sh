@@ -704,6 +704,7 @@ uap_receive() {
     while true; do
         # Get oldest message
         local msg_file
+        # shellcheck disable=SC2010
         msg_file=$(ls -1tr "$mailbox"/*.json 2>/dev/null | grep -v '/\.tmp\.' | head -1)
         
         if [[ -n "$msg_file" && -f "$msg_file" ]]; then
