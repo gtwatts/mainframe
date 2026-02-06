@@ -225,14 +225,21 @@ _verify_check_dangerous() {
         issues="${issues:+$issues,}$(_verify_build_issue dangerous critical "Fork bomb detected - do not execute")"
     fi
     
-    # curl | bash
-    if [[ "$cmd" =~ curl.*\|[[:space:]]*bash ]] || [[ "$cmd" =~ curl.*\|.*sh[[:space:]]*$ ]]; then
-        issues="${issues:+$issues,}$(_verify_build_issue dangerous warning "Piping curl to shell - download and inspect first")"
-    fi
-    
-    # wget | bash
-    if [[ "$cmd" =~ wget.*-O-.*\|[[:space:]]*bash ]] || [[ "$cmd" =~ wget.*\|.*sh[[:space:]]*$ ]]; then
-        issues="${issues:+$issues,}$(_verify_build_issue dangerous warning "Piping wget to shell - download and inspect first")"
+    # Pipe-to-shell: delegate to tirith if available, otherwise use basic regex
+    if declare -F tirith_scan_pipe &>/dev/null; then
+        # Use comprehensive tirith pipe scanning
+        local _verify_prev_count="${#_TIRITH_FINDINGS[@]}"
+        tirith_scan_pipe "$cmd" "verify" 2>/dev/null && \
+            issues="${issues:+$issues,}$(_verify_build_issue dangerous warning "Pipe-to-shell pattern detected (tirith)")"
+    else
+        # Fallback: basic curl/wget pipe detection
+        if [[ "$cmd" =~ curl.*\|[[:space:]]*bash ]] || [[ "$cmd" =~ curl.*\|.*sh[[:space:]]*$ ]]; then
+            issues="${issues:+$issues,}$(_verify_build_issue dangerous warning "Piping curl to shell - download and inspect first")"
+        fi
+
+        if [[ "$cmd" =~ wget.*-O-.*\|[[:space:]]*bash ]] || [[ "$cmd" =~ wget.*\|.*sh[[:space:]]*$ ]]; then
+            issues="${issues:+$issues,}$(_verify_build_issue dangerous warning "Piping wget to shell - download and inspect first")"
+        fi
     fi
     
     # eval with network

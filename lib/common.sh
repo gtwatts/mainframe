@@ -670,6 +670,7 @@ _MAINFRAME_TIER_AI=(
     agent_loop ammma uap
     heal predict generate verify intent orchestrate
     agent_teams
+    tirith tirith_url tirith_inject tirith_pipe tirith_ecosystem tirith_path tirith_hook
 )
 
 # --- Bundle Presets ---------------------------------------------------------
@@ -690,6 +691,7 @@ declare -gA MAINFRAME_BUNDLES=(
     [tui]="core,ansi,tui,anim,output"
     [testing]="core,testing,proptest,validation"
     [agent_teams]="core,agent,awm,agent_ai,agent_teams,taskstate"
+    [terminal_security]="core,validation,parsers,fuzzy,security,risk,tirith_inject,tirith_path,tirith_pipe,tirith_url,tirith_ecosystem,tirith,tirith_hook"
     [full]="all"
 )
 

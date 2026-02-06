@@ -629,6 +629,90 @@ Count denied?                -> denied=$(cap_denied_count "agent")
 Get stats?                   -> cap_stats
 ```
 
+## Terminal Security (Tirith)
+
+### I need to scan commands for security issues
+```
+What kind of scan?
+├── Full command scan: tirith_scan_command "$cmd"
+├── URL-only scan: tirith_scan_url "$url"
+├── Text/input scan: tirith_scan_input "$text"
+└── Trust score (0-100): score=$(tirith_url_trust_score "$url")
+```
+
+### I need to detect specific threats
+```
+Terminal injection?
+├── ANSI escapes: tirith_check_ansi_escapes "$input"
+├── BiDi controls (Trojan Source): tirith_check_bidi_controls "$input"
+├── Zero-width chars: tirith_check_zero_width "$input"
+├── Control chars: tirith_check_control_chars "$input"
+└── Hidden multiline: tirith_check_hidden_multiline "$input"
+
+Pipe-to-shell attacks?
+├── curl | bash: tirith_check_curl_pipe_shell "$cmd"
+├── wget -O- | sh: tirith_check_wget_pipe_shell "$cmd"
+├── Generic pipe: tirith_check_pipe_to_interpreter "$cmd"
+├── Dotfile overwrite: tirith_check_dotfile_overwrite "$cmd"
+└── Unsafe archive: tirith_check_archive_extract "$cmd"
+
+URL/hostname tricks?
+├── Confusable domain: tirith_check_confusable_domain "$url"
+├── Non-ASCII hostname: tirith_check_non_ascii_hostname "$url"
+├── Punycode (xn--): tirith_check_punycode_domain "$url"
+├── Mixed scripts: tirith_check_mixed_script "$url"
+├── Userinfo trick: tirith_check_userinfo_trick "$url"
+├── Raw IP URL: tirith_check_raw_ip_url "$url"
+├── Non-standard port: tirith_check_non_standard_port "$url"
+├── Lookalike TLD (.zip): tirith_check_lookalike_tld "$url"
+├── HTTP to login/auth: tirith_check_plain_http "$url"
+├── Schemeless to sink: tirith_check_schemeless "$url"
+├── URL shortener: tirith_check_shortened_url "$url"
+└── Insecure TLS (-k): tirith_check_insecure_tls "$cmd"
+
+Supply chain?
+├── Untrusted Docker registry: tirith_check_docker_registry "$cmd"
+├── pip from URL: tirith_check_pip_url_install "$cmd"
+├── npm from URL: tirith_check_npm_url_install "$cmd"
+├── Web3 RPC endpoint: tirith_check_web3_rpc "$cmd"
+├── Ethereum address: tirith_check_web3_address "$cmd"
+└── Git typosquat: tirith_check_git_typosquat "$cmd"
+
+Path security?
+├── Non-ASCII path: tirith_check_non_ascii_path "$path"
+├── Homoglyph in path: tirith_check_homoglyph_path "$path"
+└── Double encoding: tirith_check_double_encoding "$path"
+```
+
+### I need to manage findings
+```
+Check for findings?
+├── Any findings: tirith_has_findings
+├── By severity: tirith_has_findings "critical"
+├── Should block: tirith_should_block
+└── Clear state: tirith_clear
+
+Report findings?
+├── Pretty to stderr: tirith_report
+├── JSON to stdout: tirith_report_json
+└── JSONL audit: tirith_audit_log "$cmd" "blocked"
+```
+
+### I need the preexec hook
+```
+Install hook?
+├── Install: tirith_hook_install
+├── Uninstall: tirith_hook_uninstall
+├── Toggle pause: tirith_hook_toggle
+├── Check status: tirith_hook_status
+└── Bypass once: TIRITH=0 command
+```
+
+### I need to sanitize input
+```
+Strip dangerous chars?   -> clean=$(tirith_strip_dangerous_chars "$input")
+```
+
 ## Multi-Agent Coordination
 
 ### I need to coordinate multiple agents

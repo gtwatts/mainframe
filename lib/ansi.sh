@@ -423,3 +423,82 @@ ansi_color_table() {
     printf '\n'
 }
 
+# =============================================================================
+# ANSI DETECTION AND STRIPPING
+# =============================================================================
+
+# ansi_has_escapes STRING
+# Detect if a string contains ANSI escape sequences.
+# Checks for CSI (\x1b[), 8-bit CSI (\x9b), OSC (\x1b]), and SS2/SS3 (\x1bN/O).
+# Returns: 0 if escapes found, 1 otherwise
+ansi_has_escapes() {
+    local str="$1"
+    [[ -z "$str" ]] && return 1
+
+    # ESC[ (CSI), \x9b (8-bit CSI), ESC] (OSC), ESC-N (SS2), ESC-O (SS3)
+    if [[ "$str" == *$'\033['* ]] || \
+       [[ "$str" == *$'\x9b'* ]] || \
+       [[ "$str" == *$'\033]'* ]] || \
+       [[ "$str" == *$'\033N'* ]] || \
+       [[ "$str" == *$'\033O'* ]]; then
+        return 0
+    fi
+    return 1
+}
+
+# ansi_strip STRING
+# Remove all ANSI escape sequences from a string.
+# Handles CSI sequences (ESC[...m etc), OSC sequences (ESC]...ST),
+# 8-bit CSI (\x9b), and SS2/SS3 sequences.
+# Output: Cleaned string on stdout
+ansi_strip() {
+    local str="$1"
+    [[ -z "$str" ]] && return 0
+
+    # Remove CSI sequences: ESC[ followed by params and final byte
+    str=$(printf '%s' "$str" | sed 's/\x1b\[[0-9;]*[A-Za-z]//g')
+    # Remove 8-bit CSI: \x9b followed by params and final byte
+    str=$(printf '%s' "$str" | sed 's/\x9b[0-9;]*[A-Za-z]//g')
+    # Remove OSC sequences: ESC] ... (ST or BEL)
+    str=$(printf '%s' "$str" | sed 's/\x1b\][^\x07\x1b]*\(\x07\|\x1b\\\)//g')
+    # Remove SS2/SS3: ESC-N or ESC-O followed by one char
+    str=$(printf '%s' "$str" | sed 's/\x1b[NO].//g')
+    # Remove bare ESC
+    str=$(printf '%s' "$str" | sed 's/\x1b//g')
+
+    printf '%s' "$str"
+}
+
+# ansi_escape_count STRING
+# Count the number of ANSI escape sequences in a string.
+# Output: Integer count on stdout
+ansi_escape_count() {
+    local str="$1"
+    [[ -z "$str" ]] && { printf '0'; return 0; }
+
+    local count=0
+    local tmp="$str"
+
+    # Count CSI sequences
+    while [[ "$tmp" == *$'\033['* ]]; do
+        tmp="${tmp#*$'\033['}"
+        ((count++))
+    done
+
+    # Count 8-bit CSI
+    tmp="$str"
+    while [[ "$tmp" == *$'\x9b'* ]]; do
+        tmp="${tmp#*$'\x9b'}"
+        ((count++))
+    done
+
+    # Count OSC sequences
+    tmp="$str"
+    while [[ "$tmp" == *$'\033]'* ]]; do
+        tmp="${tmp#*$'\033]'}"
+        ((count++))
+    done
+
+    printf '%d' "$count"
+}
+

