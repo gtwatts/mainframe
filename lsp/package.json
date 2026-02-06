@@ -96,9 +96,9 @@
     "test:watch": "vitest watch",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
-    "lint": "eslint src --ext ts",
-    "package": "vsce package",
-    "publish": "vsce publish",
+    "lint": "eslint src/",
+    "package": "npx @vscode/vsce package",
+    "publish": "npx @vscode/vsce publish",
     "generate-metadata": "./scripts/generate-lsp-metadata.sh"
   },
   "dependencies": {
@@ -109,12 +109,10 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.108.1",
-    "@typescript-eslint/eslint-plugin": "^6.0.0",
-    "@typescript-eslint/parser": "^6.0.0",
+    "typescript-eslint": "^8.0.0",
     "@vitest/coverage-v8": "^4.0.18",
     "@vitest/ui": "^4.0.18",
-    "@vscode/vsce": "^2.22.0",
-    "eslint": "^8.0.0",
+    "eslint": "^9.0.0",
     "typescript": "^5.0.0",
     "vitest": "^4.0.18"
   }
