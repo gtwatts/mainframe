@@ -394,12 +394,10 @@ teardown() {
 # Security tests - Path validation
 # =============================================================================
 
-@test "progress_init rejects ID with null bytes" {
-    # Note: Bash may strip null bytes, but test the concept
-    run progress_init "Test" 100 --id $'test\x00bad'
+@test "progress_init rejects ID with control characters" {
+    run progress_init "Test" 100 --id $'test\nbad'
 
-    # Should fail validation or strip the bad chars
-    [[ "$status" -eq 1 ]] || [[ ! "$output" =~ $'\x00' ]]
+    [[ "$status" -eq 1 ]]
 }
 
 @test "progress rejects IDs longer than 64 chars" {
