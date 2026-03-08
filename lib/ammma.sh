@@ -252,6 +252,83 @@ _amma_importance_to_score() {
     esac
 }
 
+_amma_manifest_stat() {
+    local manifest="$1"
+    local field="$2"
+    local default_value="${3:-0}"
+    local value
+
+    value=$(printf '%s\n' "$manifest" | grep -o "\"$field\":[0-9]*" | head -1 | cut -d: -f2)
+    printf '%s' "${value:-$default_value}"
+}
+
+_amma_memory_subdir() {
+    case "$1" in
+        "$AMMA_TYPE_EPISODIC") printf 'episodes' ;;
+        "$AMMA_TYPE_DECLARATIVE") printf 'facts' ;;
+        "$AMMA_TYPE_PROCEDURAL") printf 'patterns' ;;
+        "$AMMA_TYPE_CHECKPOINT") printf 'checkpoints' ;;
+        *) printf 'episodes' ;;
+    esac
+}
+
+_amma_memory_insert_fragment() {
+    local memory="$1"
+    local fragment="$2"
+    local marker='"sharing":{'
+
+    if [[ "$memory" != *"$marker"* ]]; then
+        printf '%s' "$memory"
+        return 1
+    fi
+
+    printf '%s' "${memory/$marker/$fragment,$marker}"
+}
+
+_amma_count_json_files() {
+    local count=0
+    local dir
+    local dir_count
+
+    for dir in "$@"; do
+        [[ -d "$dir" ]] || continue
+        dir_count=$(find "$dir" -name "*.json" 2>/dev/null | wc -l | tr -d '[:space:]')
+        [[ -z "$dir_count" ]] && dir_count=0
+        count=$((count + dir_count))
+    done
+
+    printf '%d' "$count"
+}
+
+_amma_refresh_session_counters() {
+    local manifest
+    manifest=$(_amma_manifest_read)
+
+    local episode_count=0
+    local fact_count=0
+    local pattern_count=0
+    local checkpoint_count=0
+
+    if [[ -n "$manifest" ]]; then
+        episode_count=$(_amma_manifest_stat "$manifest" "episodes" 0)
+        fact_count=$(_amma_manifest_stat "$manifest" "facts" 0)
+        pattern_count=$(_amma_manifest_stat "$manifest" "patterns" 0)
+        checkpoint_count=$(_amma_manifest_stat "$manifest" "checkpoints" 0)
+    fi
+
+    local l2_path
+    l2_path=$(_amma_l2_path)
+    if [[ -d "$l2_path/checkpoints" ]]; then
+        checkpoint_count=$(_amma_count_json_files "$l2_path/checkpoints")
+    fi
+
+    _AMMA_EPISODE_COUNT=$episode_count
+    _AMMA_FACT_COUNT=$fact_count
+    _AMMA_PATTERN_COUNT=$pattern_count
+    _AMMA_CHECKPOINT_COUNT=$checkpoint_count
+    _AMMA_MEMORY_COUNT=$((episode_count + fact_count + pattern_count + checkpoint_count))
+}
+
 # =============================================================================
 # PATH HELPERS
 # =============================================================================
@@ -446,6 +523,16 @@ ammma_init() {
     _AMMA_L1_META=()
     _AMMA_L1_TOKENS=()
     _AMMA_ATTENTION_WINDOW=()
+    _AMMA_L2_ACCESS_COUNT=()
+    _AMMA_L2_LAST_ACCESS=()
+    _AMMA_L2_SCORES=()
+    _AMMA_LRU_TIMES=()
+    _AMMA_MEMORY_COUNT=0
+    _AMMA_RETRIEVAL_COUNT=0
+    _AMMA_EPISODE_COUNT=0
+    _AMMA_FACT_COUNT=0
+    _AMMA_PATTERN_COUNT=0
+    _AMMA_CHECKPOINT_COUNT=0
     
     # Try to recover L2 state if session exists
     _amma_recover_session
@@ -454,6 +541,8 @@ ammma_init() {
     if [[ -n "$parent_session" ]]; then
         _amma_inherit_from_parent "$parent_session"
     fi
+
+    _amma_refresh_session_counters
     
     _AMMA_INITIALIZED=true
     
@@ -473,7 +562,7 @@ ammma_init() {
     local data
     data=$(printf '{"session_id":"%s","agent_id":"%s","namespace":"%s","initialized":true}' \
         "$_AMMA_SESSION_ID" "$_AMMA_AGENT_ID" "$_AMMA_NAMESPACE")
-    _amma_usop_success "$data" "ammma_episode_log" "$elapsed"
+    _amma_usop_success "$data" "ammma_status" "$elapsed"
 }
 
 # @pre: AMMA initialized
@@ -530,16 +619,6 @@ _amma_recover_session() {
     if [[ -n "$manifest" ]]; then
         _amma_log debug "Recovering existing session: $_AMMA_SESSION_ID"
         
-        # Extract stats from manifest (pure bash extraction)
-        local episode_count fact_count pattern_count
-        episode_count=$(echo "$manifest" | grep -o '"episodes":[0-9]*' | head -1 | cut -d: -f2)
-        fact_count=$(echo "$manifest" | grep -o '"facts":[0-9]*' | head -1 | cut -d: -f2)
-        pattern_count=$(echo "$manifest" | grep -o '"patterns":[0-9]*' | head -1 | cut -d: -f2)
-        
-        _AMMA_EPISODE_COUNT="${episode_count:-0}"
-        _AMMA_FACT_COUNT="${fact_count:-0}"
-        _AMMA_PATTERN_COUNT="${pattern_count:-0}"
-        
         # Load high-importance memories into L1
         local l2_path
         l2_path=$(_amma_l2_path)
@@ -583,7 +662,8 @@ _amma_inherit_from_parent() {
     
     _amma_log debug "Inheriting from parent session: $parent_id"
     
-    # Inherit critical checkpoints
+    # Inherit parent checkpoints into child working memory, but only load
+    # important ones into the immediate attention window.
     local parent_l2="$parent_path/l2_working/checkpoints"
     if [[ -d "$parent_l2" ]]; then
         local l2_path
@@ -599,16 +679,15 @@ _amma_inherit_from_parent() {
                 local memory
                 memory=$(_amma_atomic_read "$chk_file")
                 [[ -z "$memory" ]] && continue
+
+                local mem_id
+                mem_id=$(basename "$chk_file" .json)
+                cp "$chk_file" "$l2_path/checkpoints/$mem_id.json" 2>/dev/null || continue
                 
                 local importance
-                importance=$(echo "$memory" | grep -o '"importance":"[^"]*"' | head -1 | cut -d'"' -f4)
+                importance=$(printf '%s\n' "$memory" | grep -o '"importance":"[^"]*"' | head -1 | cut -d'"' -f4)
                 
                 if [[ "$importance" == "$AMMA_IMPORTANCE_CRITICAL" ]] || [[ "$importance" == "$AMMA_IMPORTANCE_HIGH" ]]; then
-                    local mem_id
-                    mem_id=$(basename "$chk_file" .json)
-                    cp "$chk_file" "$l2_path/checkpoints/"
-                    
-                    # Also load into L1
                     _AMMA_L1_MEMORY["$mem_id"]="$memory"
                     _AMMA_L1_META["$mem_id"]="{\"tier\":\"$AMMA_TIER_L1\",\"inherited_from\":\"$parent_id\",\"stored_at\":$(_amma_timestamp)}"
                     _amma_attention_add "$mem_id"
@@ -867,9 +946,15 @@ ammma_fact_store() {
     mem_id=$(echo "$memory" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     
     # Enhance with triple structure
+    local triple_json
+    triple_json=$(printf '"triple":{"subject":"%s","predicate":"%s","object":"%s","confidence":%s}' \
+        "$(_amma_json_escape "$subject")" \
+        "$(_amma_json_escape "$predicate")" \
+        "$(_amma_json_escape "$object")" \
+        "$confidence")
+
     local enhanced_memory
-    # shellcheck disable=SC2001
-    enhanced_memory=$(echo "$memory" | sed 's/"sharing":{/"triple":{"subject":"'"$(_amma_json_escape "$subject")"'","predicate":"'"$(_amma_json_escape "$predicate")"'","object":"'"$(_amma_json_escape "$object")"'","confidence":'"$confidence"'},"sharing":/')
+    enhanced_memory=$(_amma_memory_insert_fragment "$memory" "$triple_json")
     
     # Store in L2
     _amma_l2_store "$mem_id" "$enhanced_memory"
@@ -947,9 +1032,22 @@ ammma_pattern_learn() {
     mem_id=$(echo "$memory" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     
     # Enhance with pattern structure
+    local pattern_json
+    if [[ -n "$condition" ]]; then
+        pattern_json=$(printf '"pattern":{"name":"%s","trigger":"%s","action":"%s","condition":"%s"}' \
+            "$(_amma_json_escape "$name")" \
+            "$(_amma_json_escape "$trigger")" \
+            "$(_amma_json_escape "$action")" \
+            "$(_amma_json_escape "$condition")")
+    else
+        pattern_json=$(printf '"pattern":{"name":"%s","trigger":"%s","action":"%s"}' \
+            "$(_amma_json_escape "$name")" \
+            "$(_amma_json_escape "$trigger")" \
+            "$(_amma_json_escape "$action")")
+    fi
+
     local enhanced_memory
-    # shellcheck disable=SC2001
-    enhanced_memory=$(echo "$memory" | sed 's/"sharing":{/"pattern":{"name":"'"$(_amma_json_escape "$name")"'","trigger":"'"$(_amma_json_escape "$trigger")"'","action":"'"$(_amma_json_escape "$action")"'"'"$([[ -n "$condition" ]] && echo ",\"condition\":\"$(_amma_json_escape "$condition")\"")"'},"sharing":/')
+    enhanced_memory=$(_amma_memory_insert_fragment "$memory" "$pattern_json")
     
     # Store in L2
     _amma_l2_store "$mem_id" "$enhanced_memory"
@@ -1026,9 +1124,11 @@ ammma_checkpoint_set() {
     local escaped_value
     escaped_value=$(_amma_json_escape "$value")
     
+    local checkpoint_json
+    checkpoint_json=$(printf '"checkpoint":{"key":"%s","value":"%s"}' "$escaped_key" "$escaped_value")
+
     local enhanced_memory
-    # shellcheck disable=SC2001
-    enhanced_memory=$(echo "$memory" | sed 's/"sharing":{/"checkpoint":{"key":"'"$escaped_key"'","value":"'"$escaped_value"'"},"sharing":/')
+    enhanced_memory=$(_amma_memory_insert_fragment "$memory" "$checkpoint_json")
     
     # Store in L2 checkpoints
     local l2_path
@@ -1171,35 +1271,41 @@ ammma_retrieve() {
         local l2_path
         l2_path=$(_amma_l2_path)
         
-        local l2_files
-        l2_files=$(find "$l2_path/episodes" -name "*.json" 2>/dev/null)
-        
-        if [[ -n "$l2_files" ]]; then
-            while IFS= read -r mem_file; do
-                [[ $count -ge $limit ]] && break
-                [[ -f "$mem_file" ]] || continue
-                
-                local mem_id
-                mem_id=$(basename "$mem_file" .json)
-                
-                # Skip if already in results
-                local already_found=false
-                for result in "${results[@]}"; do
-                    if [[ "$result" == *"\"id\":\"$mem_id\""* ]]; then
-                        already_found=true
-                        break
+        local subdir
+        for subdir in episodes checkpoints facts patterns; do
+            [[ $count -ge $limit ]] && break
+            [[ -d "$l2_path/$subdir" ]] || continue
+
+            local l2_files
+            l2_files=$(find "$l2_path/$subdir" -name "*.json" 2>/dev/null)
+            
+            if [[ -n "$l2_files" ]]; then
+                while IFS= read -r mem_file; do
+                    [[ $count -ge $limit ]] && break
+                    [[ -f "$mem_file" ]] || continue
+                    
+                    local mem_id
+                    mem_id=$(basename "$mem_file" .json)
+                    
+                    # Skip if already in results
+                    local already_found=false
+                    for result in "${results[@]}"; do
+                        if [[ "$result" == *"\"id\":\"$mem_id\""* ]]; then
+                            already_found=true
+                            break
+                        fi
+                    done
+                    [[ "$already_found" == "true" ]] && continue
+                    
+                    if grep -Fqi -- "$query" "$mem_file" 2>/dev/null; then
+                        local memory
+                        memory=$(_amma_atomic_read "$mem_file")
+                        [[ -n "$memory" ]] && results+=("$memory")
+                        : $((count++))
                     fi
-                done
-                [[ "$already_found" == "true" ]] && continue
-                
-                if grep -qi "$query" "$mem_file" 2>/dev/null; then
-                    local memory
-                    memory=$(_amma_atomic_read "$mem_file")
-                    [[ -n "$memory" ]] && results+=("$memory")
-                    : $((count++))
-                fi
-            done <<< "$l2_files"
-        fi
+                done <<< "$l2_files"
+            fi
+        done
     fi
     
     # Search L3 (short-term)
@@ -1215,7 +1321,7 @@ ammma_retrieve() {
                 [[ $count -ge $limit ]] && break
                 [[ -f "$mem_file" ]] || continue
                 
-                if grep -qi "$query" "$mem_file" 2>/dev/null; then
+                if grep -Fqi -- "$query" "$mem_file" 2>/dev/null; then
                     local memory
                     memory=$(_amma_atomic_read "$mem_file")
                     [[ -n "$memory" ]] && results+=("$memory")
@@ -1242,7 +1348,7 @@ ammma_retrieve() {
                     [[ $count -ge $limit ]] && break
                     [[ -f "$mem_file" ]] || continue
                     
-                    if grep -qi "$query" "$mem_file" 2>/dev/null; then
+                    if grep -Fqi -- "$query" "$mem_file" 2>/dev/null; then
                         local memory
                         memory=$(_amma_atomic_read "$mem_file")
                         [[ -n "$memory" ]] && results+=("$memory")
@@ -1567,26 +1673,105 @@ ammma_context_build() {
     local total_chars=0
     local total_tokens=0
     local memories=()
+    declare -A seen_memory_ids=()
     
-    # Add memories from attention window (L1) first
+    # Add memories from attention window (L1) first.
     for mem_id in "${_AMMA_ATTENTION_WINDOW[@]}"; do
         local memory="${_AMMA_L1_MEMORY[$mem_id]:-}"
         [[ -z "$memory" ]] && continue
+        [[ -n "${seen_memory_ids[$mem_id]:-}" ]] && continue
         
         local mem_chars=${#memory}
         local mem_tokens
-        mem_tokens=$(echo "$memory" | grep -o '"tokens":[0-9]*' | head -1 | cut -d: -f2)
+        mem_tokens=$(printf '%s\n' "$memory" | grep -o '"tokens":[0-9]*' | head -1 | cut -d: -f2)
         mem_tokens="${mem_tokens:-0}"
         [[ "$mem_tokens" -eq 0 ]] && mem_tokens=$(_amma_estimate_tokens "$memory")
         
         if [[ $((total_chars + mem_chars)) -gt $max_chars ]]; then
-            break
+            continue
         fi
         
         memories+=("$memory")
+        seen_memory_ids["$mem_id"]=1
         total_chars=$((total_chars + mem_chars))
         total_tokens=$((total_tokens + mem_tokens))
     done
+
+    # Fill remaining budget from session-backed working memory so callers can
+    # rebuild context after a new shell/process loads the same session.
+    local l2_path
+    l2_path=$(_amma_l2_path)
+    local subdir
+    for subdir in episodes checkpoints facts patterns; do
+        [[ $total_chars -lt $max_chars ]] || break
+        [[ -d "$l2_path/$subdir" ]] || continue
+
+        local l2_files
+        l2_files=$(find "$l2_path/$subdir" -name "*.json" 2>/dev/null | sort -r)
+        [[ -n "$l2_files" ]] || continue
+
+        while IFS= read -r mem_file; do
+            [[ -n "$mem_file" ]] || continue
+
+            mem_id=$(basename "$mem_file" .json)
+            [[ -n "${seen_memory_ids[$mem_id]:-}" ]] && continue
+
+            local memory
+            memory=$(_amma_atomic_read "$mem_file")
+            [[ -z "$memory" ]] && continue
+
+            local mem_chars=${#memory}
+            local mem_tokens
+            mem_tokens=$(printf '%s\n' "$memory" | grep -o '"tokens":[0-9]*' | head -1 | cut -d: -f2)
+            mem_tokens="${mem_tokens:-0}"
+            [[ "$mem_tokens" -eq 0 ]] && mem_tokens=$(_amma_estimate_tokens "$memory")
+
+            if [[ $((total_chars + mem_chars)) -gt $max_chars ]]; then
+                continue
+            fi
+
+            memories+=("$memory")
+            seen_memory_ids["$mem_id"]=1
+            total_chars=$((total_chars + mem_chars))
+            total_tokens=$((total_tokens + mem_tokens))
+        done <<< "$l2_files"
+    done
+
+    # Fall back to short-term summaries if L1/L2 still leave headroom.
+    local l3_path
+    l3_path=$(_amma_l3_path)
+    if [[ $total_chars -lt $max_chars && -d "$l3_path/summaries" ]]; then
+        local l3_files
+        l3_files=$(find "$l3_path/summaries" -name "*.json" 2>/dev/null | sort -r)
+
+        if [[ -n "$l3_files" ]]; then
+            while IFS= read -r mem_file; do
+                [[ -n "$mem_file" ]] || continue
+
+                mem_id=$(basename "$mem_file" .json)
+                [[ -n "${seen_memory_ids[$mem_id]:-}" ]] && continue
+
+                local memory
+                memory=$(_amma_atomic_read "$mem_file")
+                [[ -z "$memory" ]] && continue
+
+                local mem_chars=${#memory}
+                local mem_tokens
+                mem_tokens=$(printf '%s\n' "$memory" | grep -o '"tokens":[0-9]*' | head -1 | cut -d: -f2)
+                mem_tokens="${mem_tokens:-0}"
+                [[ "$mem_tokens" -eq 0 ]] && mem_tokens=$(_amma_estimate_tokens "$memory")
+
+                if [[ $((total_chars + mem_chars)) -gt $max_chars ]]; then
+                    continue
+                fi
+
+                memories+=("$memory")
+                seen_memory_ids["$mem_id"]=1
+                total_chars=$((total_chars + mem_chars))
+                total_tokens=$((total_tokens + mem_tokens))
+            done <<< "$l3_files"
+        fi
+    fi
     
     # Build memories array
     local mem_array="["
@@ -1960,7 +2145,11 @@ _amma_l2_store() {
     
     local l2_path
     l2_path=$(_amma_l2_path)
-    local mem_file="$l2_path/episodes/$mem_id.json"
+    local mem_type
+    mem_type=$(printf '%s\n' "$memory" | grep -o '"type":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local subdir
+    subdir=$(_amma_memory_subdir "$mem_type")
+    local mem_file="$l2_path/$subdir/$mem_id.json"
     
     _amma_atomic_write "$mem_file" "$memory"
     
@@ -2016,45 +2205,47 @@ ammma_stats() {
         _amma_usop_error "NOT_INITIALIZED" "AMMA not initialized" "Call ammma_init first"
         return 1
     fi
+
+    _amma_refresh_session_counters
     
     local l1_count=${#_AMMA_L1_MEMORY[@]}
-    local l2_count=0
-    local l3_count=0
-    local l4_count=0
     
     local l2_path
     l2_path=$(_amma_l2_path)
-    if [[ -d "$l2_path/episodes" ]]; then
-        l2_count=$(find "$l2_path/episodes" -name "*.json" 2>/dev/null | wc -l)
-    fi
+    local l2_count
+    l2_count=$(_amma_count_json_files \
+        "$l2_path/episodes" \
+        "$l2_path/checkpoints" \
+        "$l2_path/facts" \
+        "$l2_path/patterns")
     
     local l3_path
     l3_path=$(_amma_l3_path)
-    if [[ -d "$l3_path/summaries" ]]; then
-        l3_count=$(find "$l3_path/summaries" -name "*.json" 2>/dev/null | wc -l)
-    fi
+    local l3_count
+    l3_count=$(_amma_count_json_files "$l3_path/summaries")
     
     local l4_path
     l4_path=$(_amma_l4_path)
-    for dir in episodes facts patterns; do
-        if [[ -d "$l4_path/$dir" ]]; then
-            l4_count=$((l4_count + $(find "$l4_path/$dir" -name "*.json" 2>/dev/null | wc -l)))
-        fi
-    done
+    local l4_count
+    l4_count=$(_amma_count_json_files "$l4_path/episodes" "$l4_path/facts" "$l4_path/patterns")
     
     local data
     data=$(printf '{\
         "version":"%s",\
+        "session_id":"%s",\
         "session":"%s",\
+        "tier_distribution":{"l1":%d,"l2":%d,"l3":%d,"l4":%d},\
         "tiers":{"l1":%d,"l2":%d,"l3":%d,"l4":%d},\
-        "memory_count":{"episodes":%d,"facts":%d,"patterns":%d,"total":%d},\
+        "memory_count":{"episodes":%d,"facts":%d,"patterns":%d,"checkpoints":%d,"total":%d},\
         "retrievals":%d,\
         "attention_window":%d\
     }' \
         "$AMMA_VERSION" \
         "${_AMMA_SESSION_ID:-null}" \
+        "${_AMMA_SESSION_ID:-null}" \
         "$l1_count" "$l2_count" "$l3_count" "$l4_count" \
-        "$_AMMA_EPISODE_COUNT" "$_AMMA_FACT_COUNT" "$_AMMA_PATTERN_COUNT" "$_AMMA_MEMORY_COUNT" \
+        "$l1_count" "$l2_count" "$l3_count" "$l4_count" \
+        "$_AMMA_EPISODE_COUNT" "$_AMMA_FACT_COUNT" "$_AMMA_PATTERN_COUNT" "$_AMMA_CHECKPOINT_COUNT" "$_AMMA_MEMORY_COUNT" \
         "$_AMMA_RETRIEVAL_COUNT" \
         "${#_AMMA_ATTENTION_WINDOW[@]}")
     
@@ -2117,4 +2308,3 @@ AMMM_EXPORTS=(
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     export -f "${AMMM_EXPORTS[@]}" 2>/dev/null || true
 fi
-

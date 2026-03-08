@@ -90,7 +90,8 @@ teardown() {
     local span_id
     span_id=$(otel_trace_start "test-operation")
 
-    local trace_id="${_OTEL_CTX[trace_id]}"
+    local trace_id
+    trace_id=$(otel_trace_id)
     [[ -f "$OTEL_SPAN_DIR/${trace_id}_${span_id}.span" ]]
 }
 
@@ -108,7 +109,8 @@ teardown() {
     local span_id
     span_id=$(otel_trace_start "my-operation")
 
-    local trace_id="${_OTEL_CTX[trace_id]}"
+    local trace_id
+    trace_id=$(otel_trace_id)
     local span_file="$OTEL_SPAN_DIR/${trace_id}_${span_id}.span"
 
     grep -q '"name": "my-operation"' "$span_file"
@@ -669,6 +671,7 @@ teardown() {
     done
 
     # Verify stack depth
+    _otel_sync_state
     [[ ${#_OTEL_SPAN_STACK[@]} -eq 9 ]]  # 9 parents in stack
 
     # End all spans

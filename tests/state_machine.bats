@@ -39,10 +39,10 @@ teardown() {
 }
 
 @test "state_machine_define validates name" {
-    local result
-    result=$(state_machine_define "invalid/name")
-    
-    [[ "$result" == *'"success":false'* ]]
+    run state_machine_define "invalid/name"
+
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *'"success":false'* ]]
 }
 
 @test "state_machine_add_state adds state to machine" {
@@ -60,11 +60,11 @@ teardown() {
 
 @test "state_machine_add_state validates state name" {
     state_machine_define "test_bad_state" >/dev/null
-    
-    local result
-    result=$(state_machine_add_state "test_bad_state" "invalid/state")
-    
-    [[ "$result" == *'"success":false'* ]]
+
+    run state_machine_add_state "test_bad_state" "invalid/state"
+
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *'"success":false'* ]]
 }
 
 @test "state_machine_add_state supports final states" {
@@ -92,12 +92,23 @@ teardown() {
 # =============================================================================
 
 @test "state_machine_run executes machine" {
-    state_machine_define "test_run" >/dev/null
-    state_machine_add_state "test_run" "start" --transitions '{"complete": "end"}' >/dev/null
-    state_machine_add_state "test_run" "end" --final >/dev/null
-    
+    local runner="$TEST_DIR/run_state_machine.sh"
+    cat > "$runner" <<EOF
+#!/usr/bin/env bash
+source "${BATS_TEST_DIRNAME}/../lib/json.sh"
+source "${BATS_TEST_DIRNAME}/../lib/state.sh"
+source "${BATS_TEST_DIRNAME}/../lib/state_machine.sh"
+export MAINFRAME_QUIET=1
+export STATE_MACHINE_DIR="$STATE_MACHINE_DIR"
+state_machine_define "test_run" >/dev/null
+state_machine_add_state "test_run" "start" --transitions '{"complete": "end"}' >/dev/null
+state_machine_add_state "test_run" "end" --final >/dev/null
+state_machine_run "test_run" --initial "start" --event_timeout 1 >/dev/null
+EOF
+    chmod +x "$runner"
+
     # Run in background to avoid blocking
-    (timeout 2 state_machine_run "test_run" --initial "start" --event_timeout 1) &
+    bash "$runner" &
     local run_pid=$!
     
     # Give it time to start
@@ -106,13 +117,21 @@ teardown() {
     # Send completion event
     state_machine_send_event "test_run" --event "complete" >/dev/null
     
-    wait $run_pid || true
+    local state_file="$STATE_MACHINE_DIR/test_run/machine_state.json"
+    local machine_state=""
+    local attempt=0
+    while [[ $attempt -lt 20 ]]; do
+        [[ -f "$state_file" ]] && machine_state=$(<"$state_file")
+        [[ "$machine_state" == *'"current_state":"end"'* ]] && [[ "$machine_state" == *'"status":"completed"'* ]] && break
+        sleep 0.1
+        attempt=$((attempt + 1))
+    done
+
+    kill "$run_pid" 2>/dev/null || true
+    wait "$run_pid" 2>/dev/null || true
     
-    # Check status
-    local status
-    status=$(state_machine_status "test_run")
-    
-    [[ "$status" == *'"success":true'* ]]
+    [[ "$machine_state" == *'"current_state":"end"'* ]]
+    [[ "$machine_state" == *'"status":"completed"'* ]]
 }
 
 @test "state_machine_send_event sends event to machine" {
@@ -127,11 +146,11 @@ teardown() {
 
 @test "state_machine_send_event validates event name" {
     state_machine_define "test_no_event" >/dev/null
-    
-    local result
-    result=$(state_machine_send_event "test_no_event" --data '{"key":"value"}')
-    
-    [[ "$result" == *'"success":false'* ]]
+
+    run state_machine_send_event "test_no_event" --data '{"key":"value"}'
+
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *'"success":false'* ]]
 }
 
 # =============================================================================
@@ -154,10 +173,10 @@ teardown() {
 }
 
 @test "state_machine_status handles missing machine" {
-    local result
-    result=$(state_machine_status "nonexistent_xyz")
-    
-    [[ "$result" == *'"success":false'* ]]
+    run state_machine_status "nonexistent_xyz"
+
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *'"success":false'* ]]
 }
 
 @test "state_machine_pause pauses machine" {
@@ -214,11 +233,11 @@ teardown() {
 
 @test "state_machine_checkpoint fails for non-running machine" {
     state_machine_define "test_no_checkpoint" >/dev/null
-    
-    local result
-    result=$(state_machine_checkpoint "test_no_checkpoint")
-    
-    [[ "$result" == *'"success":false'* ]]
+
+    run state_machine_checkpoint "test_no_checkpoint"
+
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *'"success":false'* ]]
 }
 
 @test "state_machine_resume_from_checkpoint restores state" {
@@ -238,12 +257,12 @@ teardown() {
 
 @test "state_machine_resume_from_checkpoint fails without checkpoint" {
     state_machine_define "test_no_restore" >/dev/null
-    
-    local result
-    result=$(state_machine_resume_from_checkpoint "test_no_restore")
-    
-    [[ "$result" == *'"success":false'* ]]
-    [[ "$result" == *'No checkpoint found'* ]]
+
+    run state_machine_resume_from_checkpoint "test_no_restore"
+
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *'"success":false'* ]]
+    [[ "$output" == *'No checkpoint found'* ]]
 }
 
 @test "state_machine_replay resets machine" {
@@ -296,10 +315,10 @@ teardown() {
 }
 
 @test "state_machine_visualize handles missing machine" {
-    local result
-    result=$(state_machine_visualize "nonexistent_viz")
-    
-    [[ "$result" == *'Error'* ]]
+    run state_machine_visualize "nonexistent_viz"
+
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *'Error'* ]]
 }
 
 @test "state_machine_to_dot generates DOT format" {

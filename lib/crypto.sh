@@ -84,7 +84,7 @@ base64_encode_file() {
         return 1
     fi
 
-    base64 "$file" | tr -d '\n'
+    base64 < "$file" | tr -d '\n'
     printf '\n'
 }
 

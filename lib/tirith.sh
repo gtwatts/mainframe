@@ -20,28 +20,31 @@ readonly _MAINFRAME_TIRITH_LOADED=1
 # =============================================================================
 
 # Config directory and file
-declare -g TIRITH_CONFIG_DIR="${TIRITH_CONFIG_DIR:-${HOME}/.mainframe/security}"
-declare -g TIRITH_CONFIG_FILE="${TIRITH_CONFIG_FILE:-${TIRITH_CONFIG_DIR}/tirith.yaml}"
+TIRITH_CONFIG_DIR="${TIRITH_CONFIG_DIR:-${HOME}/.mainframe/security}"
+TIRITH_CONFIG_FILE="${TIRITH_CONFIG_FILE:-${TIRITH_CONFIG_DIR}/tirith.yaml}"
 
 # Audit log location
-declare -g TIRITH_AUDIT_LOG="${TIRITH_AUDIT_LOG:-${TIRITH_CONFIG_DIR}/tirith-audit.jsonl}"
+TIRITH_AUDIT_LOG="${TIRITH_AUDIT_LOG:-${TIRITH_CONFIG_DIR}/tirith-audit.jsonl}"
 
 # Fail mode: "open" (warn only) or "closed" (block on HIGH+)
-declare -g TIRITH_FAIL_MODE="${TIRITH_FAIL_MODE:-open}"
+TIRITH_FAIL_MODE="${TIRITH_FAIL_MODE:-open}"
 
 # =============================================================================
 # INTERNAL STATE
 # =============================================================================
 
 # Allowlist and blocklist (loaded from config)
-declare -ga _TIRITH_ALLOWLIST=()
-declare -ga _TIRITH_BLOCKLIST=()
+declare -ga _TIRITH_ALLOWLIST 2>/dev/null || declare -a _TIRITH_ALLOWLIST
+declare -ga _TIRITH_BLOCKLIST 2>/dev/null || declare -a _TIRITH_BLOCKLIST
+_TIRITH_ALLOWLIST=()
+_TIRITH_BLOCKLIST=()
 
 # Severity overrides: associative array of rule_id -> severity
-declare -gA _TIRITH_SEVERITY_OVERRIDES=()
+declare -gA _TIRITH_SEVERITY_OVERRIDES 2>/dev/null || declare -A _TIRITH_SEVERITY_OVERRIDES
+_TIRITH_SEVERITY_OVERRIDES=()
 
 # Track initialization
-declare -g _TIRITH_INITIALIZED=0
+_TIRITH_INITIALIZED=0
 
 # =============================================================================
 # INITIALIZATION
@@ -59,11 +62,12 @@ tirith_init() {
     else
         # Standalone fallback
         if ! declare -p _TIRITH_FINDINGS &>/dev/null 2>&1; then
-            declare -ga _TIRITH_FINDINGS=()
-            declare -g _TIRITH_CRITICAL=0
-            declare -g _TIRITH_HIGH=0
-            declare -g _TIRITH_MEDIUM=0
-            declare -g _TIRITH_LOW=0
+            declare -ga _TIRITH_FINDINGS 2>/dev/null || declare -a _TIRITH_FINDINGS
+            _TIRITH_FINDINGS=()
+            _TIRITH_CRITICAL=0
+            _TIRITH_HIGH=0
+            _TIRITH_MEDIUM=0
+            _TIRITH_LOW=0
         fi
     fi
 
@@ -385,8 +389,10 @@ tirith_scan_input() {
 # Extract URLs from a text string into the named array.
 _tirith_extract_urls() {
     local text="$1"
-    local -n _urls_out="$2"
-    _urls_out=()
+    local urls_var="$2"
+    local -a urls_out=()
+
+    [[ "$urls_var" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || return 1
 
     # Match http://, https://, ftp://, and schemeless //
     local word
@@ -396,9 +402,20 @@ _tirith_extract_urls() {
            [[ "$word" =~ ^// ]]; then
             # Strip trailing punctuation that's likely not part of URL
             word="${word%%[,;)\"\']*}"
-            _urls_out+=("$word")
+            urls_out+=("$word")
         fi
     done
+
+    eval "$urls_var=()"
+    if ((${#urls_out[@]} > 0)); then
+        local quoted_items=""
+        local item
+        for item in "${urls_out[@]}"; do
+            printf -v item '%q' "$item"
+            quoted_items+="${quoted_items:+ }$item"
+        done
+        eval "$urls_var=($quoted_items)"
+    fi
 }
 
 # =============================================================================

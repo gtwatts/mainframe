@@ -10,21 +10,23 @@
 
 # Prevent double-sourcing
 [[ -n "${_MAINFRAME_SANDBOX_LOADED:-}" ]] && return 0
-declare -g _MAINFRAME_SANDBOX_LOADED=1
+_MAINFRAME_SANDBOX_LOADED=1
 
 # =============================================================================
 # Global State
 # =============================================================================
 
-declare -g _SANDBOX_ENABLED=0
-declare -g _SANDBOX_DRY_RUN=0
-declare -g _SANDBOX_ROOT=""
-declare -g _SANDBOX_TIMEOUT=300
-declare -g _SANDBOX_MAX_MEMORY=""
-declare -ga _SANDBOX_ALLOW_WRITE=()
-declare -ga _SANDBOX_DENY_WRITE=()
-declare -g _SANDBOX_NETWORK_ALLOWED=1
-declare -g _SANDBOX_AUDIT_LOG=""
+_SANDBOX_ENABLED=0
+_SANDBOX_DRY_RUN=0
+_SANDBOX_ROOT=""
+_SANDBOX_TIMEOUT=300
+_SANDBOX_MAX_MEMORY=""
+declare -ga _SANDBOX_ALLOW_WRITE 2>/dev/null || declare -a _SANDBOX_ALLOW_WRITE
+declare -ga _SANDBOX_DENY_WRITE 2>/dev/null || declare -a _SANDBOX_DENY_WRITE
+_SANDBOX_ALLOW_WRITE=()
+_SANDBOX_DENY_WRITE=()
+_SANDBOX_NETWORK_ALLOWED=1
+_SANDBOX_AUDIT_LOG=""
 
 # =============================================================================
 # Internal Functions
@@ -360,11 +362,10 @@ sandbox_check() {
         write)
             if _sandbox_can_write "$target"; then
                 echo "ALLOWED: write to $target"
-                return 0
             else
                 echo "DENIED: write to $target"
-                return 1
             fi
+            return 0
             ;;
         exec)
             echo "ALLOWED: execute $target"
@@ -373,11 +374,10 @@ sandbox_check() {
         network)
             if [[ $_SANDBOX_NETWORK_ALLOWED -eq 1 ]]; then
                 echo "ALLOWED: network access"
-                return 0
             else
                 echo "DENIED: network access"
-                return 1
             fi
+            return 0
             ;;
         *)
             echo "Unknown operation type: $op_type" >&2
@@ -394,10 +394,15 @@ sandbox_check() {
 # =============================================================================
 
 # Global state for bubblewrap
-declare -g _BWRAP_BIN=""
-declare -g _BWRAP_PROFILE_DIR="${MAINFRAME_SANDBOX_PROFILES:-$HOME/.config/mainframe/sandbox/profiles}"
-declare -ga _BWRAP_ARGS=()
-declare -g _BWRAP_DEBUG=0
+_BWRAP_BIN=""
+_BWRAP_PROFILE_DIR="${MAINFRAME_SANDBOX_PROFILES:-$HOME/.config/mainframe/sandbox/profiles}"
+declare -ga _BWRAP_ARGS 2>/dev/null || declare -a _BWRAP_ARGS
+_BWRAP_ARGS=()
+_BWRAP_DEBUG=0
+
+_sandbox_profile_dir() {
+    printf '%s\n' "${MAINFRAME_SANDBOX_PROFILES:-$_BWRAP_PROFILE_DIR}"
+}
 
 # =============================================================================
 # Detection & Availability
@@ -658,6 +663,7 @@ sandbox_run_isolated() {
 sandbox_profile_create() {
     local name="$1"
     local config="$2"
+    local profile_dir
 
     if [[ -z "$name" || -z "$config" ]]; then
         echo "Usage: sandbox_profile_create <name> '<json_config>'" >&2
@@ -670,8 +676,9 @@ sandbox_profile_create() {
         return 1
     fi
 
-    mkdir -p "$_BWRAP_PROFILE_DIR"
-    printf '%s\n' "$config" > "$_BWRAP_PROFILE_DIR/${name}.json"
+    profile_dir=$(_sandbox_profile_dir)
+    mkdir -p "$profile_dir"
+    printf '%s\n' "$config" > "$profile_dir/${name}.json"
 
     _sandbox_log "profile_created" "{\"name\":\"$name\"}"
     echo "Profile '$name' created"
@@ -680,12 +687,14 @@ sandbox_profile_create() {
 # sandbox_profile_list - List available profiles
 # @returns JSON array of profile names
 sandbox_profile_list() {
-    mkdir -p "$_BWRAP_PROFILE_DIR"
+    local profile_dir
+    profile_dir=$(_sandbox_profile_dir)
+    mkdir -p "$profile_dir"
 
     local profiles=()
     local file
 
-    for file in "$_BWRAP_PROFILE_DIR"/*.json; do
+    for file in "$profile_dir"/*.json; do
         [[ -f "$file" ]] || continue
         local name
         name=$(basename "$file" .json)
@@ -700,13 +709,15 @@ sandbox_profile_list() {
 # @param name - profile name
 sandbox_profile_delete() {
     local name="$1"
+    local profile_dir
 
     if [[ -z "$name" ]]; then
         echo "Usage: sandbox_profile_delete <name>" >&2
         return 1
     fi
 
-    local profile_file="$_BWRAP_PROFILE_DIR/${name}.json"
+    profile_dir=$(_sandbox_profile_dir)
+    local profile_file="${profile_dir}/${name}.json"
 
     if [[ ! -f "$profile_file" ]]; then
         echo "Error: Profile '$name' not found" >&2
@@ -723,13 +734,15 @@ sandbox_profile_delete() {
 # @returns JSON configuration
 sandbox_profile_get() {
     local name="$1"
+    local profile_dir
 
     if [[ -z "$name" ]]; then
         echo "Usage: sandbox_profile_get <name>" >&2
         return 1
     fi
 
-    local profile_file="$_BWRAP_PROFILE_DIR/${name}.json"
+    profile_dir=$(_sandbox_profile_dir)
+    local profile_file="${profile_dir}/${name}.json"
 
     if [[ ! -f "$profile_file" ]]; then
         echo "Error: Profile '$name' not found" >&2
@@ -742,7 +755,9 @@ sandbox_profile_get() {
 # Internal: Load profile and convert to bwrap args
 _bwrap_load_profile() {
     local name="$1"
-    local profile_file="$_BWRAP_PROFILE_DIR/${name}.json"
+    local profile_dir
+    profile_dir=$(_sandbox_profile_dir)
+    local profile_file="${profile_dir}/${name}.json"
 
     if [[ ! -f "$profile_file" ]]; then
         return 1
@@ -1707,20 +1722,24 @@ sandbox_reset() {
 #   - env:write:*
 
 # Permission mode: strict|permissive|disabled
-declare -g SANDBOX_PERMISSION_MODE="${SANDBOX_PERMISSION_MODE:-strict}"
+SANDBOX_PERMISSION_MODE="${SANDBOX_PERMISSION_MODE:-strict}"
 
 # Associative arrays for permissions (key=permission, value=1)
-declare -gA _SANDBOX_PERM_ALLOWED=()
-declare -gA _SANDBOX_PERM_DENIED=()
+declare -gA _SANDBOX_PERM_ALLOWED 2>/dev/null || declare -A _SANDBOX_PERM_ALLOWED
+declare -gA _SANDBOX_PERM_DENIED 2>/dev/null || declare -A _SANDBOX_PERM_DENIED
+_SANDBOX_PERM_ALLOWED=()
+_SANDBOX_PERM_DENIED=()
 
 # Violations tracking
-declare -ga _SANDBOX_PERM_VIOLATIONS=()
+declare -ga _SANDBOX_PERM_VIOLATIONS 2>/dev/null || declare -a _SANDBOX_PERM_VIOLATIONS
+_SANDBOX_PERM_VIOLATIONS=()
 
 # Operation counter
-declare -g _SANDBOX_PERM_OP_COUNT=0
+_SANDBOX_PERM_OP_COUNT=0
 
 # Dangerous commands list for permission system
-declare -ga _SANDBOX_DANGEROUS_COMMANDS=(
+declare -ga _SANDBOX_DANGEROUS_COMMANDS 2>/dev/null || declare -a _SANDBOX_DANGEROUS_COMMANDS
+_SANDBOX_DANGEROUS_COMMANDS=(
     "rm" "rmdir" "mv" "dd"
     "chmod" "chown" "chgrp"
     "kill" "killall" "pkill"
@@ -2332,7 +2351,8 @@ sandbox_can_network() {
 # Module Exports
 # =============================================================================
 
-declare -ga _SANDBOX_EXPORTS=(
+declare -ga _SANDBOX_EXPORTS 2>/dev/null || declare -a _SANDBOX_EXPORTS
+_SANDBOX_EXPORTS=(
     # Original exports
     sandbox_enable
     sandbox_disable

@@ -580,6 +580,7 @@ teardown() {
 }
 
 @test "mainframe_undo_size reports backup size" {
+    echo "original content" > "$TEST_DIR/sized.txt"
     undo_write "$TEST_DIR/sized.txt" "some content here for sizing"
     local size
     size=$(mainframe_undo_size)

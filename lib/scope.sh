@@ -33,14 +33,17 @@ MAINFRAME_SCOPE_JSON="${MAINFRAME_SCOPE_JSON:-1}"
 # =============================================================================
 
 # Associative arrays for in-memory scope storage
-declare -gA _MAINFRAME_SCOPE_FS=()
-declare -gA _MAINFRAME_SCOPE_NET=()
-declare -gA _MAINFRAME_SCOPE_CMD=()
+declare -gA _MAINFRAME_SCOPE_FS 2>/dev/null || declare -A _MAINFRAME_SCOPE_FS
+declare -gA _MAINFRAME_SCOPE_NET 2>/dev/null || declare -A _MAINFRAME_SCOPE_NET
+declare -gA _MAINFRAME_SCOPE_CMD 2>/dev/null || declare -A _MAINFRAME_SCOPE_CMD
+_MAINFRAME_SCOPE_FS=()
+_MAINFRAME_SCOPE_NET=()
+_MAINFRAME_SCOPE_CMD=()
 
 # Counter for scope entries (used as keys in associative arrays)
-declare -g _MAINFRAME_SCOPE_FS_COUNT=0
-declare -g _MAINFRAME_SCOPE_NET_COUNT=0
-declare -g _MAINFRAME_SCOPE_CMD_COUNT=0
+_MAINFRAME_SCOPE_FS_COUNT=0
+_MAINFRAME_SCOPE_NET_COUNT=0
+_MAINFRAME_SCOPE_CMD_COUNT=0
 
 # =============================================================================
 # INTERNAL HELPERS

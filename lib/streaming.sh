@@ -41,6 +41,50 @@ _streaming_json_escape() {
     printf '%s' "$str"
 }
 
+_streaming_valid_var_name() {
+    [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+}
+
+_streaming_array_clear() {
+    local array_name="$1"
+
+    _streaming_valid_var_name "$array_name" || return 1
+    eval "$array_name=()"
+}
+
+_streaming_array_append() {
+    local array_name="$1"
+    local _streaming_item="$2"
+
+    _streaming_valid_var_name "$array_name" || return 1
+    eval "$array_name+=(\"\$_streaming_item\")"
+}
+
+_streaming_run_pipe_processor() {
+    local processor="$1"
+
+    if declare -F "$processor" >/dev/null 2>&1; then
+        "$processor"
+    elif [[ "$processor" == *[[:space:]]* ]]; then
+        bash -lc "$processor"
+    else
+        "$processor"
+    fi
+}
+
+_streaming_key_for_line() {
+    local key_fn="$1"
+    local line="$2"
+
+    if declare -F "$key_fn" >/dev/null 2>&1; then
+        "$key_fn" "$line"
+    elif [[ "$key_fn" == *[[:space:]]* ]]; then
+        printf '%s\n' "$line" | bash -lc "$key_fn"
+    else
+        "$key_fn" <<< "$line"
+    fi
+}
+
 # =============================================================================
 # CORE STREAMING FUNCTIONS
 # =============================================================================
@@ -70,15 +114,16 @@ stream_map() {
 # Map with nameref output (no subshells)
 # Usage: stream_map_v result_array "double" 1 2 3 4 5
 stream_map_v() {
-    local -n __smv_result=$1
+    local result_name="$1"
     local fn="$2"
     shift 2
-    __smv_result=()
+
+    _streaming_array_clear "$result_name" || return 1
 
     local item tmp
     for item in "$@"; do
         tmp=$("$fn" "$item")
-        __smv_result+=("$tmp")
+        _streaming_array_append "$result_name" "$tmp" || return 1
     done
 }
 
@@ -108,15 +153,16 @@ stream_filter() {
 # Filter with nameref output (no subshells)
 # Usage: stream_filter_v result_array "is_even" 1 2 3 4 5
 stream_filter_v() {
-    local -n __sfv_result=$1
+    local result_name="$1"
     local predicate="$2"
     shift 2
-    __sfv_result=()
+
+    _streaming_array_clear "$result_name" || return 1
 
     local item
     for item in "$@"; do
         if "$predicate" "$item"; then
-            __sfv_result+=("$item")
+            _streaming_array_append "$result_name" "$item" || return 1
         fi
     done
 }
@@ -148,16 +194,18 @@ stream_reduce() {
 # Reduce with nameref output (no subshells for iteration)
 # Usage: stream_reduce_v result "sum" 0 1 2 3 4 5
 stream_reduce_v() {
-    local -n __srv_result=$1
+    local result_name="$1"
     local fn="$2"
     local acc="$3"
     shift 3
+
+    _streaming_valid_var_name "$result_name" || return 1
 
     local item
     for item in "$@"; do
         acc=$("$fn" "$acc" "$item")
     done
-    __srv_result="$acc"
+    printf -v "$result_name" '%s' "$acc"
 }
 
 # @pre: n is positive integer
@@ -349,14 +397,14 @@ stream_batch() {
     while IFS= read -r line || [[ -n "$line" ]]; do
         batch+=("$line")
         if ((${#batch[@]} >= size)); then
-            printf '%s\n' "${batch[@]}" | "$fn"
+            printf '%s\n' "${batch[@]}" | _streaming_run_pipe_processor "$fn"
             batch=()
         fi
     done
 
     # Process remaining items
     if ((${#batch[@]} > 0)); then
-        printf '%s\n' "${batch[@]}" | "$fn"
+        printf '%s\n' "${batch[@]}" | _streaming_run_pipe_processor "$fn"
     fi
 }
 
@@ -415,14 +463,14 @@ stream_fanout() {
     local temp_dir
     temp_dir=$(mktemp -d "${TMPDIR:-/tmp}/streaming_fanout.XXXXXX")
 
-    # Read all input
-    local input
-    input=$(cat)
+    # Preserve exact input bytes, including trailing newlines.
+    local input_file="$temp_dir/input"
+    cat > "$input_file"
 
     # Run each processor
     local i
     for ((i=0; i<n; i++)); do
-        printf '%s' "$input" | "${fns[$i]}" > "$temp_dir/out_$i" &
+        _streaming_run_pipe_processor "${fns[$i]}" < "$input_file" > "$temp_dir/out_$i" &
     done
     wait
 
@@ -788,7 +836,7 @@ stream_group_by() {
     local line key
 
     while IFS= read -r line || [[ -n "$line" ]]; do
-        key=$("$key_fn" <<< "$line")
+        key=$(_streaming_key_for_line "$key_fn" "$line")
         if [[ -n "${groups[$key]:-}" ]]; then
             groups[$key]+=$'\n'"$line"
         else

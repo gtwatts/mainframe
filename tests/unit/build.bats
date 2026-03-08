@@ -52,6 +52,17 @@ result=$(curl -s https://api.example.com/data | jq -r '.name')
 echo "$result"
 EOF
     chmod +x "$TEST_TMP/deps-script.sh"
+
+    # Create a script that relies on common.sh auto-loading its default runtime
+    cat > "$TEST_TMP/common-only.sh" << 'EOF'
+#!/usr/bin/env bash
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+
+if validate_email "person@example.com"; then
+    echo "Valid via common"
+fi
+EOF
+    chmod +x "$TEST_TMP/common-only.sh"
 }
 
 # Teardown - runs after each test
@@ -169,6 +180,16 @@ teardown() {
     grep -q "json_object" "$TEST_TMP/dist/test-agent"
 }
 
+@test "mainframe-build static with MAINFRAME deps runs without filesystem libraries" {
+    run "$BUILD_CMD" static "$TEST_TMP/test-agent.sh" --output "$TEST_TMP/dist" --quiet
+    [ "$status" -eq 0 ]
+
+    run env -u MAINFRAME_ROOT "$TEST_TMP/dist/test-agent" "person@example.com"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Valid email"* ]]
+    [[ "$output" == *'"result":"success"'* ]]
+}
+
 @test "mainframe-build static with --strip-comments removes comments" {
     run "$BUILD_CMD" static "$TEST_TMP/simple-script.sh" --output "$TEST_TMP/dist" --strip-comments
     [ "$status" -eq 0 ]
@@ -276,6 +297,16 @@ teardown() {
     # agent.sh should use relative paths, not MAINFRAME_ROOT
     ! grep -q 'MAINFRAME_ROOT.*lib/' "$TEST_TMP/dist/test-agent-bundle/agent.sh" || \
     grep -q '${BASH_SOURCE%/*}/lib/' "$TEST_TMP/dist/test-agent-bundle/agent.sh"
+}
+
+@test "mainframe-build minimal preserves common.sh default runtime" {
+    run "$BUILD_CMD" minimal "$TEST_TMP/common-only.sh" --output "$TEST_TMP/dist" --quiet
+    [ "$status" -eq 0 ]
+
+    run env -u MAINFRAME_ROOT "$TEST_TMP/dist/common-only-bundle/run.sh"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Valid via common"* ]]
+    [[ "$output" != *"No such file or directory"* ]]
 }
 
 # =============================================================================

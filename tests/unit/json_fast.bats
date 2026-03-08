@@ -12,19 +12,19 @@ setup() {
 @test "json_escape_fast: escapes double quotes" {
     run json_escape_fast 'Hello "World"'
     assert_success
-    assert_output 'Hello \\"World\\"'
+    assert_output 'Hello \"World\"'
 }
 
 @test "json_escape_fast: escapes backslashes" {
     run json_escape_fast 'path\to\file'
     assert_success
-    assert_output 'path\\\\to\\\\file'
+    assert_output 'path\\to\\file'
 }
 
 @test "json_escape_fast: escapes newlines" {
     run json_escape_fast $'Line1\nLine2'
     assert_success
-    assert_output 'Line1\\nLine2'
+    assert_output 'Line1\nLine2'
 }
 
 @test "json_escape_fast: handles empty string" {

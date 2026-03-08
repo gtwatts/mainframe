@@ -8,6 +8,7 @@ setup() {
     export MAINFRAME_ROOT="${BATS_TEST_DIRNAME}/../.."
     export TEST_TMPDIR="$(mktemp -d)"
     export UAP_BASE_DIR="$TEST_TMPDIR/uap"
+    export MAINFRAME_UAP_DIR="$UAP_BASE_DIR"
     source "$MAINFRAME_ROOT/lib/uap.sh"
 }
 
@@ -50,18 +51,26 @@ teardown() {
     run uap_init --agent "test-agent" --capabilities "bash.execute" "json.parse"
     assert_success
     
-    # Verify agent directory was created
-    [ -d "$UAP_BASE_DIR/test-agent" ]
+    # Verify mailbox and registration were created
+    [ -d "$UAP_MAILBOX_DIR/test-agent" ]
+    [ -f "$UAP_REGISTRY_DIR/test-agent.json" ]
 }
 
 @test "uap_heartbeat: updates agent heartbeat" {
     uap_init --agent "test-agent" --capabilities "bash.execute"
+
+    local before
+    before=$(json_get "$(<"$UAP_REGISTRY_DIR/test-agent.json")" "updated")
+    sleep 1
     
     run uap_heartbeat
     assert_success
-    
-    # Verify heartbeat file exists and is recent
-    [ -f "$UAP_BASE_DIR/test-agent/heartbeat" ]
+    assert_output --partial '"message_type":"heartbeat"'
+
+    local after
+    after=$(json_get "$(<"$UAP_REGISTRY_DIR/test-agent.json")" "updated")
+    [[ -n "$after" ]]
+    [[ "$after" != "$before" ]]
 }
 
 @test "uap_send and receive: message delivery" {
@@ -101,9 +110,10 @@ teardown() {
 @test "uap_shutdown: unregisters agent" {
     uap_init --agent "temp-agent" --capabilities "test"
     
-    run uap_shutdown
+    run uap_shutdown --cleanup
     assert_success
     
-    # Verify agent directory was removed
-    [ ! -d "$UAP_BASE_DIR/temp-agent" ]
+    # Verify registration and mailbox were removed
+    [ ! -f "$UAP_REGISTRY_DIR/temp-agent.json" ]
+    [ ! -d "$UAP_MAILBOX_DIR/temp-agent" ]
 }

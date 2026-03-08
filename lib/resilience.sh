@@ -41,19 +41,26 @@ RESILIENCE_BULKHEAD_MAX="${RESILIENCE_BULKHEAD_MAX:-10}"
 # =============================================================================
 
 # Circuit breaker state: name -> "state:failures:successes:last_failure_time"
-declare -A _RESILIENCE_CB_STATE=()
-declare -A _RESILIENCE_CB_CONFIG=()
+declare -gA _RESILIENCE_CB_STATE 2>/dev/null || declare -A _RESILIENCE_CB_STATE
+declare -gA _RESILIENCE_CB_CONFIG 2>/dev/null || declare -A _RESILIENCE_CB_CONFIG
+_RESILIENCE_CB_STATE=()
+_RESILIENCE_CB_CONFIG=()
 
 # Bulkhead state: name -> "current:max"
-declare -A _RESILIENCE_BULKHEAD_STATE=()
-declare -A _RESILIENCE_BULKHEAD_WAITERS=()
+declare -gA _RESILIENCE_BULKHEAD_STATE 2>/dev/null || declare -A _RESILIENCE_BULKHEAD_STATE
+declare -gA _RESILIENCE_BULKHEAD_WAITERS 2>/dev/null || declare -A _RESILIENCE_BULKHEAD_WAITERS
+_RESILIENCE_BULKHEAD_STATE=()
+_RESILIENCE_BULKHEAD_WAITERS=()
 
 # Rate limiter state: name -> "count:window_start"
-declare -A _RESILIENCE_RATE_STATE=()
-declare -A _RESILIENCE_RATE_CONFIG=()
+declare -gA _RESILIENCE_RATE_STATE 2>/dev/null || declare -A _RESILIENCE_RATE_STATE
+declare -gA _RESILIENCE_RATE_CONFIG 2>/dev/null || declare -A _RESILIENCE_RATE_CONFIG
+_RESILIENCE_RATE_STATE=()
+_RESILIENCE_RATE_CONFIG=()
 
 # Health check registry: name -> "function:interval:last_check:last_status"
-declare -A _RESILIENCE_HEALTH_CHECKS=()
+declare -gA _RESILIENCE_HEALTH_CHECKS 2>/dev/null || declare -A _RESILIENCE_HEALTH_CHECKS
+_RESILIENCE_HEALTH_CHECKS=()
 
 # =============================================================================
 # INTERNAL HELPERS
@@ -125,12 +132,93 @@ _resilience_error() {
     return "$code"
 }
 
-# Safe command dispatch (replaces eval for simple cases)
-_resilience_exec() {
-    local -a _cmd_parts
-    read -ra _cmd_parts <<< "$1"
+# Normalize numeric output so integer-like values do not keep trailing zeros.
+_resilience_normalize_number() {
+    local value="${1:-0}"
+
+    while [[ "$value" == *.* && "$value" == *0 ]]; do
+        value="${value%0}"
+    done
+    [[ "$value" == *"." ]] && value="${value%.}"
+    [[ -z "$value" ]] && value="0"
+
+    printf '%s' "$value"
+}
+
+_resilience_multiply_number() {
+    local left="$1"
+    local right="$2"
+    local result
+
+    if [[ "$left" =~ ^-?[0-9]+$ ]] && [[ "$right" =~ ^-?[0-9]+$ ]]; then
+        printf '%s' "$(( left * right ))"
+        return 0
+    fi
+
+    result=$(awk -v a="$left" -v b="$right" 'BEGIN { printf "%.6f", a * b }')
+    _resilience_normalize_number "$result"
+}
+
+_resilience_number_gt() {
+    local left="$1"
+    local right="$2"
+
+    if [[ "$left" =~ ^-?[0-9]+$ ]] && [[ "$right" =~ ^-?[0-9]+$ ]]; then
+        [[ "$left" -gt "$right" ]]
+        return $?
+    fi
+
+    awk -v a="$left" -v b="$right" 'BEGIN { exit !(a > b) }'
+}
+
+_resilience_exec_capture() {
+    local output_var="$1"
     shift
-    "${_cmd_parts[@]}" "$@"
+
+    local tmp_file
+    local status=0
+    local captured=""
+
+    tmp_file=$(mktemp "${TMPDIR:-/tmp}/mainframe-resilience.XXXXXX") || return 1
+
+    if _resilience_exec "$@" >"$tmp_file" 2>&1; then
+        status=0
+    else
+        status=$?
+    fi
+
+    captured=$(<"$tmp_file")
+    rm -f "$tmp_file"
+
+    printf -v "$output_var" '%s' "$captured"
+    return "$status"
+}
+
+# Safe command dispatch that supports either command strings or argv-style calls.
+_resilience_exec() {
+    local command="$1"
+    local shell_bin="${BASH:-}"
+    shift
+
+    if [[ -z "$command" ]]; then
+        return 1
+    fi
+
+    if [[ $# -gt 0 ]]; then
+        "$command" "$@"
+        return $?
+    fi
+
+    if [[ "$command" != *[[:space:]]* ]] && type -t "$command" >/dev/null 2>&1; then
+        "$command"
+        return $?
+    fi
+
+    if [[ -z "$shell_bin" ]] || [[ ! -x "$shell_bin" ]]; then
+        shell_bin="$(command -v bash 2>/dev/null || printf '/bin/bash')"
+    fi
+
+    "$shell_bin" -c "$command"
 }
 
 # =============================================================================
@@ -254,7 +342,7 @@ circuit_breaker_call() {
     # Execute the command
     local exit_code=0
     local output
-    output=$(_resilience_exec "$command" "$@" 2>&1) || exit_code=$?
+    _resilience_exec_capture output "$command" "$@" || exit_code=$?
 
     if [[ $exit_code -eq 0 ]]; then
         # Success
@@ -309,7 +397,7 @@ circuit_breaker_state() {
 
     if [[ -z "$name" ]] || [[ -z "${_RESILIENCE_CB_STATE[$name]:-}" ]]; then
         printf 'unknown'
-        return 1
+        return 0
     fi
 
     local state_str="${_RESILIENCE_CB_STATE[$name]}"
@@ -990,7 +1078,7 @@ retry_exponential() {
     local output
 
     while [[ $attempt -le $max_attempts ]]; do
-        output=$(_resilience_exec "$command" "$@" 2>&1) && {
+        _resilience_exec_capture output "$command" "$@" && {
             printf '%s' "$output"
             return 0
         }
@@ -1001,8 +1089,10 @@ retry_exponential() {
             sleep "$delay"
 
             # Exponential backoff: delay *= 2
-            delay=$((delay * 2))
-            [[ $delay -gt $max_delay ]] && delay="$max_delay"
+            delay=$(_resilience_multiply_number "$delay" 2)
+            if _resilience_number_gt "$delay" "$max_delay"; then
+                delay="$max_delay"
+            fi
         fi
 
         ((attempt++)) || true
@@ -1039,15 +1129,18 @@ retry_linear() {
     local output
 
     while [[ $attempt -le $max_attempts ]]; do
-        output=$(_resilience_exec "$command" "$@" 2>&1) && {
+        _resilience_exec_capture output "$command" "$@" && {
             printf '%s' "$output"
             return 0
         }
         exit_code=$?
 
         if [[ $attempt -lt $max_attempts ]]; then
-            local delay=$((base_delay * attempt))
-            [[ $delay -gt $max_delay ]] && delay="$max_delay"
+            local delay
+            delay=$(_resilience_multiply_number "$base_delay" "$attempt")
+            if _resilience_number_gt "$delay" "$max_delay"; then
+                delay="$max_delay"
+            fi
 
             _resilience_log debug "retry $attempt/$max_attempts failed, waiting ${delay}s"
             sleep "$delay"
@@ -1088,7 +1181,7 @@ retry_fibonacci() {
     local output
 
     while [[ $attempt -le $max_attempts ]]; do
-        output=$(_resilience_exec "$command" "$@" 2>&1) && {
+        _resilience_exec_capture output "$command" "$@" && {
             printf '%s' "$output"
             return 0
         }
@@ -1189,7 +1282,7 @@ retry_until_success() {
     local output
 
     while [[ $attempt -le $max_attempts ]]; do
-        output=$(_resilience_exec "$command" "$@" 2>&1) && {
+        _resilience_exec_capture output "$command" "$@" && {
             printf '%s' "$output"
             return 0
         }
@@ -1199,10 +1292,15 @@ retry_until_success() {
             # Calculate base delay based on backoff type
             case "$backoff_type" in
                 exponential)
-                    delay=$((base_delay * (2 ** (attempt - 1))))
+                    delay="$base_delay"
+                    local step=1
+                    while [[ $step -lt $attempt ]]; do
+                        delay=$(_resilience_multiply_number "$delay" 2)
+                        ((step++)) || true
+                    done
                     ;;
                 linear)
-                    delay=$((base_delay * attempt))
+                    delay=$(_resilience_multiply_number "$base_delay" "$attempt")
                     ;;
                 fibonacci)
                     delay="$fib_curr"
@@ -1221,7 +1319,9 @@ retry_until_success() {
             fi
 
             # Cap at max delay
-            [[ $delay -gt $RESILIENCE_RETRY_MAX_DELAY ]] && delay="$RESILIENCE_RETRY_MAX_DELAY"
+            if _resilience_number_gt "$delay" "$RESILIENCE_RETRY_MAX_DELAY"; then
+                delay="$RESILIENCE_RETRY_MAX_DELAY"
+            fi
 
             _resilience_log debug "retry $attempt/$max_attempts failed, waiting ${delay}s"
             sleep "$delay"
@@ -1257,7 +1357,7 @@ retry_with_fallback() {
 
     # Try primary with retries
     local output
-    output=$(retry_exponential "$command" "$max_attempts" "$base_delay" "$@" 2>&1) && {
+    _resilience_exec_capture output retry_exponential "$command" "$max_attempts" "$base_delay" "$@" && {
         printf '%s' "$output"
         return 0
     }
@@ -1292,7 +1392,7 @@ fallback_to() {
     fi
 
     local output
-    output=$(_resilience_exec "$command" "$@" 2>&1) && {
+    _resilience_exec_capture output "$command" "$@" && {
         printf '%s' "$output"
         return 0
     }
@@ -1321,7 +1421,7 @@ fallback_chain() {
     local cmd
 
     for cmd in "$@"; do
-        output=$(_resilience_exec "$cmd" 2>&1) && {
+        _resilience_exec_capture output "$cmd" && {
             printf '%s' "$output"
             return 0
         }
@@ -1352,7 +1452,7 @@ fallback_default() {
     fi
 
     local output
-    output=$(_resilience_exec "$command" "$@" 2>&1) && {
+    _resilience_exec_capture output "$command" "$@" && {
         printf '%s' "$output"
         return 0
     }
@@ -1362,7 +1462,8 @@ fallback_default() {
 }
 
 # Cache for fallback_cache
-declare -A _RESILIENCE_FALLBACK_CACHE=()
+declare -gA _RESILIENCE_FALLBACK_CACHE 2>/dev/null || declare -A _RESILIENCE_FALLBACK_CACHE
+_RESILIENCE_FALLBACK_CACHE=()
 
 # @pre: command is non-empty
 # @post: command output returned or cached value on failure
@@ -1384,7 +1485,7 @@ fallback_cache() {
     fi
 
     local output
-    output=$(_resilience_exec "$command" "$@" 2>&1) && {
+    _resilience_exec_capture output "$command" "$@" && {
         # Success - cache and return
         _RESILIENCE_FALLBACK_CACHE["$cache_key"]="$output"
         printf '%s' "$output"
@@ -1434,7 +1535,15 @@ with_timeout() {
 
     # Use timeout command if available (GNU coreutils)
     if command -v timeout &>/dev/null; then
-        timeout --signal=TERM "$timeout_seconds" bash -c "$command" "$@"
+        if [[ $# -gt 0 ]]; then
+            timeout --signal=TERM "$timeout_seconds" "$command" "$@"
+        else
+            local shell_bin="${BASH:-}"
+            if [[ -z "$shell_bin" ]] || [[ ! -x "$shell_bin" ]]; then
+                shell_bin="$(command -v bash 2>/dev/null || printf '/bin/bash')"
+            fi
+            timeout --signal=TERM "$timeout_seconds" "$shell_bin" -c "$command"
+        fi
         return $?
     fi
 
@@ -1623,7 +1732,7 @@ health_check_run() {
             # Run the check
             local output
             local status
-            output=$(_resilience_exec "$check_func" 2>&1) && status="healthy" || status="unhealthy"
+            _resilience_exec_capture output "$check_func" && status="healthy" || status="unhealthy"
 
             # Update cache
             local escaped_output
@@ -1774,7 +1883,7 @@ resilient_call() {
         if [[ $attempt -lt $max_attempts ]]; then
             _resilience_log debug "resilient call attempt $attempt/$max_attempts failed"
             sleep "$delay"
-            delay=$((delay * 2))
+            delay=$(_resilience_multiply_number "$delay" 2)
         fi
 
         ((attempt++)) || true
@@ -1834,7 +1943,7 @@ resilient_execute() {
     # Execute with timeout and retry
     local result
     result=$(
-        retry_exponential "with_timeout $timeout '$command'" "$max_retries" 1 2>&1
+        retry_exponential "with_timeout" "$max_retries" 1 "$RESILIENCE_RETRY_MAX_DELAY" "$timeout" "$command" 2>&1
     ) && {
         # Success - update circuit breaker and release bulkhead
         local dummy

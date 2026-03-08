@@ -532,7 +532,7 @@ _awm_file_len() {
 
     [[ ! -f "$file" ]] && echo 0 && return 0
 
-    wc -l < "$file"
+    wc -l < "$file" | tr -d '[:space:]'
 }
 
 _awm_file_search() {

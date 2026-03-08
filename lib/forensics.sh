@@ -53,6 +53,11 @@ _FORENSICS_ERROR_COUNTER=0
 # Trap installed flag
 _FORENSICS_TRAP_INSTALLED=0
 
+# Local EXIT trap chaining state when common.sh is not loaded.
+declare -ga _FORENSICS_EXIT_TRAP_COMMANDS=()
+_FORENSICS_PREVIOUS_EXIT_TRAP=""
+_FORENSICS_EXIT_TRAP_INSTALLED=0
+
 # =============================================================================
 # INTERNAL HELPERS
 # =============================================================================
@@ -82,6 +87,102 @@ _forensics_escape() {
     str="${str//$'\t'/\\t}"
     str="${str//$'\r'/\\r}"
     printf '%s' "$str"
+}
+
+_forensics_get_trap_command() {
+    local signal="$1"
+    local trap_def
+
+    trap_def=$(trap -p "$signal") || return 0
+    [[ -n "$trap_def" ]] || return 0
+
+    trap_def=${trap_def#trap -- \'}
+    trap_def=${trap_def%\' "$signal"}
+    printf '%s\n' "$trap_def"
+}
+
+_forensics_add_exit_trap() {
+    local trap_command="$1"
+
+    [[ -n "${trap_command//[[:space:]]/}" ]] || return 1
+
+    if [[ "${_FORENSICS_EXIT_TRAP_INSTALLED:-0}" != "1" ]]; then
+        _FORENSICS_PREVIOUS_EXIT_TRAP="$(_forensics_get_trap_command EXIT)"
+        trap '_forensics_dispatch_exit_traps "$?"' EXIT
+        _FORENSICS_EXIT_TRAP_INSTALLED=1
+    fi
+
+    _FORENSICS_EXIT_TRAP_COMMANDS+=("$trap_command")
+}
+
+_forensics_dispatch_exit_traps() {
+    local exit_code="$1"
+    local idx
+    local trap_command
+    local restore_errexit=0
+
+    if [[ $- == *e* ]]; then
+        restore_errexit=1
+        set +e
+    fi
+
+    for ((idx=${#_FORENSICS_EXIT_TRAP_COMMANDS[@]} - 1; idx >= 0; idx -= 1)); do
+        trap_command="${_FORENSICS_EXIT_TRAP_COMMANDS[idx]}"
+        builtin eval -- "$trap_command" || true
+    done
+
+    if [[ -n "${_FORENSICS_PREVIOUS_EXIT_TRAP:-}" ]]; then
+        builtin eval -- "$_FORENSICS_PREVIOUS_EXIT_TRAP" || true
+    fi
+
+    if (( restore_errexit )); then
+        set -e
+    fi
+
+    return "$exit_code"
+}
+
+_forensics_ensure_dir() {
+    mkdir -p "$MAINFRAME_FORENSICS_DIR"
+}
+
+_forensics_error_chain_file() {
+    printf '%s/error_chain.jsonl' "$MAINFRAME_FORENSICS_DIR"
+}
+
+_forensics_extract_json_field() {
+    local json="$1"
+    local field="$2"
+
+    sed -n "s/.*\"${field}\":\"\\([^\"]*\\)\".*/\\1/p" <<< "$json" | head -n 1
+}
+
+_forensics_sync_error_chain() {
+    local chain_file
+    local error_json
+
+    _FORENSICS_ERROR_CHAIN=()
+    chain_file=$(_forensics_error_chain_file)
+    [[ -f "$chain_file" ]] || return 0
+
+    while IFS= read -r error_json || [[ -n "$error_json" ]]; do
+        [[ -n "$error_json" ]] || continue
+        _FORENSICS_ERROR_CHAIN+=("$error_json")
+    done < "$chain_file"
+}
+
+_forensics_error_count() {
+    local chain_file
+    local count=0
+
+    chain_file=$(_forensics_error_chain_file)
+    [[ -f "$chain_file" ]] || {
+        printf '0'
+        return 0
+    }
+
+    count=$(wc -l < "$chain_file" | tr -d '[:space:]')
+    printf '%s' "${count:-0}"
 }
 
 # Generate unique ID
@@ -263,7 +364,7 @@ _forensics_capture_vars() {
         first=false
         vars_json+="\"$escaped_name\":\"$escaped_value\""
 
-        ((count++))
+        count=$((count + 1))
         [[ $count -ge $MAINFRAME_FORENSICS_MAX_VAR_DEPTH ]] && break
     done < <(declare -p 2>/dev/null | grep '^declare' | sed 's/^declare -[a-zA-Z-]* //' | cut -d= -f1)
 
@@ -320,7 +421,7 @@ forensics_snapshot() {
     local name="${1:?Snapshot name required}"
 
     # Ensure forensics directory exists
-    mkdir -p "$MAINFRAME_FORENSICS_DIR"
+    _forensics_ensure_dir
 
     local snapshot_file="$MAINFRAME_FORENSICS_DIR/snapshot_${name}.json"
 
@@ -378,8 +479,10 @@ forensics_diff() {
 
     # Simple diff - compare timestamps and key counts
     local time1 time2
-    time1=$(printf '%s' "$vars1" | grep -oP '"timestamp"\s*:\s*"\K[^"]+' || echo "unknown")
-    time2=$(printf '%s' "$vars2" | grep -oP '"timestamp"\s*:\s*"\K[^"]+' || echo "unknown")
+    time1=$(_forensics_extract_json_field "$vars1" "timestamp")
+    time2=$(_forensics_extract_json_field "$vars2" "timestamp")
+    [[ -n "$time1" ]] || time1="unknown"
+    [[ -n "$time2" ]] || time2="unknown"
 
     printf '{"snap1":"%s","snap2":"%s","time1":"%s","time2":"%s","snap1_file":"%s","snap2_file":"%s"}' \
         "$(_forensics_escape "$snap1")" "$(_forensics_escape "$snap2")" \
@@ -406,8 +509,7 @@ forensics_error() {
     local cause="${2:-}"
 
     local error_id
-    ((_FORENSICS_ERROR_COUNTER++)) || true
-    error_id="err_$$_${_FORENSICS_ERROR_COUNTER}"
+    error_id=$(_forensics_gen_id "err")
 
     local timestamp
     timestamp=$(_forensics_iso_time)
@@ -428,6 +530,8 @@ forensics_error() {
     fi
 
     # Add to chain
+    _forensics_ensure_dir
+    printf '%s\n' "$error_json" >> "$(_forensics_error_chain_file)" || return 1
     _FORENSICS_ERROR_CHAIN+=("$error_json")
 
     printf '%s' "$error_id"
@@ -461,6 +565,7 @@ forensics_chain_add() {
 # Usage: all_errors=$(forensics_chain_dump)
 forensics_chain_dump() {
     local error_id="${1:-}"
+    _forensics_sync_error_chain
 
     if [[ ${#_FORENSICS_ERROR_CHAIN[@]} -eq 0 ]]; then
         printf '[]'
@@ -499,13 +604,13 @@ forensics_chain_dump() {
 # Usage: root=$(forensics_root_cause "$err_id")
 forensics_root_cause() {
     local error_id="${1:?Error ID required}"
-
+    _forensics_sync_error_chain
     local current_id="$error_id"
     local iterations=0
     local max_iterations=100
 
     while [[ $iterations -lt $max_iterations ]]; do
-        ((iterations++))
+        iterations=$((iterations + 1))
 
         # Find error with this ID
         local found=""
@@ -617,7 +722,7 @@ forensics_watched_changes() {
         local last_entry=""
         while [[ -n "${_FORENSICS_WATCH_HISTORY[${var_name}_${idx}]:-}" ]]; do
             last_entry="${_FORENSICS_WATCH_HISTORY[${var_name}_${idx}]}"
-            ((idx++))
+            idx=$((idx + 1))
         done
 
         # Parse last value
@@ -650,7 +755,7 @@ forensics_watched_changes() {
             first=false
             result+="{\"var\":\"$escaped_var\",\"timestamp\":$ts,\"action\":\"$action\",\"value\":\"$escaped_value\"}"
 
-            ((idx++))
+            idx=$((idx + 1))
         done
     done
 
@@ -859,7 +964,11 @@ _forensics_cleanup() {
 
 # Register cleanup on exit (only if not already registered)
 if [[ -z "${_FORENSICS_CLEANUP_REGISTERED:-}" ]]; then
-    trap '_forensics_cleanup' EXIT
+    if declare -F _mainframe_add_exit_trap >/dev/null 2>&1; then
+        _mainframe_add_exit_trap "_forensics_cleanup 2>/dev/null || true"
+    else
+        _forensics_add_exit_trap "_forensics_cleanup 2>/dev/null || true"
+    fi
     readonly _FORENSICS_CLEANUP_REGISTERED=1
 fi
 
@@ -899,10 +1008,11 @@ forensics_clear() {
 #
 # Usage: status=$(forensics_status)
 forensics_status() {
-    local error_count=${#_FORENSICS_ERROR_CHAIN[@]}
+    local error_count
     local watch_count=${#_FORENSICS_WATCHED_VARS[@]}
     local snapshot_count=${#_FORENSICS_SNAPSHOTS[@]}
     local trap_status
+    error_count=$(_forensics_error_count)
     [[ $_FORENSICS_TRAP_INSTALLED -eq 1 ]] && trap_status="installed" || trap_status="not_installed"
 
     printf '{"errors":%d,"watches":%d,"snapshots":%d,"trap":"%s","dir":"%s"}' \

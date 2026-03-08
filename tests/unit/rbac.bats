@@ -173,7 +173,7 @@ EOF
     run rbac_get_role "api-reader"
     [[ "$status" -eq 0 ]]
     [[ "$output" =~ '"name":"api-reader"' ]]
-    [[ "$output" =~ '"permissions":\[' ]]
+    [[ "$output" == *'"permissions":['* ]]
     [[ "$output" =~ '"api:read"' ]]
 }
 
@@ -192,7 +192,7 @@ EOF
     rbac_inherit_role "extended" "base"
 
     run rbac_get_role "extended"
-    [[ "$output" =~ '"inherits":\["base"\]' ]]
+    [[ "$output" == *'"inherits":["base"]'* ]]
 }
 
 @test "rbac_inherit_role: effective permissions include inherited" {
@@ -361,7 +361,7 @@ EOF
     run rbac_stats
     [[ "$output" =~ '"cache_entries":' ]]
     # Cache should have at least 1 entry
-    [[ "$output" =~ '"cache_entries":[1-9]' ]]
+    [[ "$output" =~ \"cache_entries\":([1-9][0-9]*) ]]
 }
 
 # =============================================================================
@@ -580,7 +580,7 @@ EOF
     rbac_check_permission "agent-1" "files:read"
 
     run rbac_stats
-    [[ "$output" =~ '"cache_entries":[1-9]' ]]
+    [[ "$output" =~ \"cache_entries\":([1-9][0-9]*) ]]
 
     rbac_clear_cache
 

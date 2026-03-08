@@ -195,8 +195,8 @@ cli::parse() {
         
         if $found_double_dash; then
             # After --, everything is positional
-            _cli_add_positional "$pos_idx" "$arg" && ((pos_idx++)) || true
-            ((i++))
+            _cli_add_positional "$pos_idx" "$arg" && ((pos_idx += 1)) || true
+            ((i += 1))
             continue
         fi
         
@@ -211,7 +211,7 @@ cli::parse() {
                 ;;
             --)
                 found_double_dash=true
-                ((i++))
+                ((i += 1))
                 continue
                 ;;
             --*=*)
@@ -240,8 +240,8 @@ cli::parse() {
                 if _cli_is_flag "$opt"; then
                     _CLI_VALUES["$opt"]=true
                 elif _cli_is_option "$opt"; then
-                    if [[ $((i + 1)) -lt ${#args[@]} && "${args[$((i + 1))]}" != -* ]]; then
-                        ((i++))
+                    if [[ $((i + 1)) -lt ${#args[@]} ]]; then
+                        ((i += 1))
                         _cli_set_option "$opt" "${args[$i]}"
                     else
                         cli::error "Option --$opt requires a value"
@@ -266,14 +266,14 @@ cli::parse() {
                     
                     if _cli_is_flag "$long"; then
                         _CLI_VALUES["$long"]=true
-                        ((j++))
+                        ((j += 1))
                     elif _cli_is_option "$long"; then
                         # Check if value is rest of string or next arg
                         if [[ $((j + 1)) -lt ${#opts} ]]; then
                             _cli_set_option "$long" "${opts:$((j + 1))}"
                             break
                         elif [[ $((i + 1)) -lt ${#args[@]} ]]; then
-                            ((i++))
+                            ((i += 1))
                             _cli_set_option "$long" "${args[$i]}"
                         else
                             cli::error "Option -$short requires a value"
@@ -284,10 +284,10 @@ cli::parse() {
                 ;;
             *)
                 # Positional argument
-                _cli_add_positional "$pos_idx" "$arg" && ((pos_idx++)) || true
+                _cli_add_positional "$pos_idx" "$arg" && ((pos_idx += 1)) || true
                 ;;
         esac
-        ((i++))
+        ((i += 1))
     done
     
     # Export CLI_* variables to caller's scope
@@ -1248,7 +1248,7 @@ cli::complete_zsh() {
         else
             printf "    '%d::%s:_files' \\\\\n" "$pos_idx" "$desc"
         fi
-        ((pos_idx++))
+            ((pos_idx += 1))
     done
 
     # Subcommands

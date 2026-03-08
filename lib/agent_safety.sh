@@ -176,12 +176,22 @@ agent_error() {
     # Get function name and line from call stack
     local func="${FUNCNAME[1]:-unknown}"
     local line="${BASH_LINENO[0]:-0}"
+    local msg_escaped="$msg"
+    local func_escaped="$func"
+
+    msg_escaped="${msg_escaped//\\/\\\\}"
+    msg_escaped="${msg_escaped//\"/\\\"}"
+    msg_escaped="${msg_escaped//$'\n'/\\n}"
+    msg_escaped="${msg_escaped//$'\t'/\\t}"
+
+    func_escaped="${func_escaped//\\/\\\\}"
+    func_escaped="${func_escaped//\"/\\\"}"
 
     # Build JSON manually (avoid subshell for json_object)
     local json
     printf -v json '{"success":false,"error":"%s","function":"%s","line":%d,"context":%s,"timestamp":"%s"}' \
-        "${msg//\"/\\\"}" \
-        "${func//\"/\\\"}" \
+        "$msg_escaped" \
+        "$func_escaped" \
         "$line" \
         "$ctx_json" \
         "$(date -Iseconds)"
@@ -307,13 +317,6 @@ agent_validate_command() {
         return 1
     fi
 
-    # Check command exists (executable or function)
-    if ! type -P "$cmd" &>/dev/null && ! declare -F "$cmd" &>/dev/null; then
-        agent_error "command not found: $cmd" \
-            "suggestion=Check spelling or install package"
-        return 1
-    fi
-
     # Profile-based permission checks
     local can_write="${_AGENT_PROFILE_CAN_WRITE[$AGENT_CURRENT_PROFILE]:-0}"
     local can_system="${_AGENT_PROFILE_CAN_SYSTEM[$AGENT_CURRENT_PROFILE]:-0}"
@@ -346,6 +349,15 @@ agent_validate_command() {
             break
         fi
     done
+
+    # Check command exists (executable or function) after policy gating so
+    # dangerous commands are rejected consistently even on platforms where the
+    # binary is absent.
+    if ! type -P "$cmd" &>/dev/null && ! declare -F "$cmd" &>/dev/null; then
+        agent_error "command not found: $cmd" \
+            "suggestion=Check spelling or install package"
+        return 1
+    fi
 
     # Special handling for rm with -rf
     if [[ "$cmd" == "rm" ]]; then
@@ -392,10 +404,11 @@ _agent_validate_path_safe() {
     [[ "$path" == *"\\"* ]] && return 1
 
     # Resolve paths
-    local abs_base abs_path
+    local abs_base abs_path logical_base logical_path
 
     if [[ -d "$base" ]]; then
         abs_base=$(cd "$base" && pwd -P)
+        logical_base=$(cd "$base" && pwd -L)
     else
         return 1
     fi
@@ -408,13 +421,20 @@ _agent_validate_path_safe() {
         parent_dir=$(dirname "$path")
         if [[ -d "$parent_dir" ]]; then
             abs_path=$(cd "$parent_dir" && pwd -P)/$(basename "$path")
+            logical_path=$(cd "$parent_dir" && pwd -L)/$(basename "$path")
         else
-            return 1
+            if [[ "$path" == /* ]]; then
+                abs_path="$path"
+            else
+                abs_path="$PWD/$path"
+            fi
+            logical_path="$abs_path"
         fi
     fi
 
-    # Ensure path starts with base
-    [[ "$abs_path" == "$abs_base"* ]]
+    # Ensure path starts with either the canonical or lexical base. This
+    # handles macOS temp paths where /tmp resolves to /private/tmp.
+    [[ "$abs_path" == "$abs_base"* ]] || [[ "$logical_path" == "$logical_base"* ]]
 }
 
 # =============================================================================

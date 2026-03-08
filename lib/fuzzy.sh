@@ -94,6 +94,18 @@ _fuzzy_escape_json() {
     printf '%s' "$str"
 }
 
+_fuzzy_scaled_thousand() {
+    local value="${1:-0}"
+    local digits
+    digits="${value//./}"
+    digits="${digits//[!0-9]/}"
+    [[ -n "$digits" ]] || digits=0
+    while (( ${#digits} < 4 )); do
+        digits+="0"
+    done
+    printf '%d' "$((10#$digits))"
+}
+
 # =============================================================================
 # EDIT DISTANCE ALGORITHMS
 # =============================================================================
@@ -402,7 +414,7 @@ jaro_winkler_distance() {
 
     # Parse jaro as integer (multiply by 1000)
     local jaro_int
-    jaro_int=$(printf '%s' "$jaro" | tr -d '.')
+    jaro_int=$(_fuzzy_scaled_thousand "$jaro")
 
     # Calculate common prefix (max 4 characters)
     local prefix_len=0
@@ -411,7 +423,7 @@ jaro_winkler_distance() {
 
     for ((i = 0; i < max_prefix && i < ${#s1} && i < ${#s2}; i++)); do
         if [[ "${s1:i:1}" == "${s2:i:1}" ]]; then
-            ((prefix_len++))
+            prefix_len=$((prefix_len + 1))
         else
             break
         fi
@@ -637,9 +649,9 @@ fuzzy_match() {
 
     while (( pi < plen && si < slen )); do
         if [[ "${pattern:pi:1}" == "${string:si:1}" ]]; then
-            ((pi++))
+            pi=$((pi + 1))
         fi
-        ((si++))
+        si=$((si + 1))
     done
 
     (( pi == plen ))
@@ -689,8 +701,8 @@ fuzzy_score() {
 
             # Bonus for consecutive matches
             if (( prev_match == si - 1 )); then
-                ((consecutive++))
-                ((score += consecutive * 8))
+                consecutive=$((consecutive + 1))
+                ((score += consecutive * 16))
             else
                 consecutive=0
             fi
@@ -698,7 +710,7 @@ fuzzy_score() {
             # Bonus for matching at word boundary
             if (( si == 0 )); then
                 ((score += 32))
-            elif [[ "${string:si-1:1}" =~ [[:space:]_\-/\.] ]]; then
+            elif [[ "${string:si-1:1}" =~ [[:space:]_./-] ]]; then
                 ((score += 24))
             fi
 
@@ -715,9 +727,9 @@ fuzzy_score() {
             fi
 
             prev_match=$si
-            ((pi++))
+            pi=$((pi + 1))
         fi
-        ((si++))
+        si=$((si + 1))
     done
 
     # Penalty for unmatched pattern characters
@@ -851,16 +863,8 @@ fuzzy_contains() {
 
     # Compare using integer math (sim * 1000 vs threshold * 1000)
     local sim_int threshold_int
-    sim_int=$(printf '%s' "$sim" | tr -d '.')
-    threshold_int=$(printf '%s' "$threshold" | tr -d '.')
-
-    # Pad threshold to 4 digits if needed
-    while (( ${#threshold_int} < 4 )); do
-        threshold_int+="0"
-    done
-    while (( ${#sim_int} < 4 )); do
-        sim_int+="0"
-    done
+    sim_int=$(_fuzzy_scaled_thousand "$sim")
+    threshold_int=$(_fuzzy_scaled_thousand "$threshold")
 
     (( sim_int >= threshold_int ))
 }
@@ -1021,12 +1025,7 @@ fuzzy_find_all() {
     for item in "${items[@]}"; do
         sim=$(levenshtein_similarity "$pattern" "$item")
         local sim_int
-        sim_int=$(printf '%s' "$sim" | tr -d '.')
-
-        # Pad to same length
-        while (( ${#sim_int} < 4 )); do
-            sim_int+="0"
-        done
+        sim_int=$(_fuzzy_scaled_thousand "$sim")
 
         if (( sim_int >= threshold_int )); then
             printf '%s\n' "$item"
@@ -1529,7 +1528,7 @@ phonetic_distance() {
 # =============================================================================
 
 # QWERTY keyboard layout for distance calculations
-declare -A _QWERTY_POS
+declare -gA _QWERTY_POS
 _QWERTY_POS=(
     [q]="0,0" [w]="1,0" [e]="2,0" [r]="3,0" [t]="4,0" [y]="5,0" [u]="6,0" [i]="7,0" [o]="8,0" [p]="9,0"
     [a]="0,1" [s]="1,1" [d]="2,1" [f]="3,1" [g]="4,1" [h]="5,1" [j]="6,1" [k]="7,1" [l]="8,1"

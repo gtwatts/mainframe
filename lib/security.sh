@@ -31,13 +31,14 @@ readonly _SEC_MAX_FILE_SIZE=1048576
 # =============================================================================
 
 # Findings array: each entry is "line|severity|cwe|message"
-declare -ga _SEC_FINDINGS=()
+declare -ga _SEC_FINDINGS 2>/dev/null || declare -a _SEC_FINDINGS
+_SEC_FINDINGS=()
 
 # Severity counters
-declare -g _SEC_CRITICAL=0
-declare -g _SEC_HIGH=0
-declare -g _SEC_MEDIUM=0
-declare -g _SEC_LOW=0
+_SEC_CRITICAL=0
+_SEC_HIGH=0
+_SEC_MEDIUM=0
+_SEC_LOW=0
 
 # =============================================================================
 # INTERNAL HELPERS

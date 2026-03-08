@@ -31,15 +31,15 @@ teardown() {
 
 @test "trace_enable sets MAINFRAME_TRACE_ENABLED to 1" {
     trace_disable
-    run trace_enable
-    [ "$status" -eq 0 ]
+    trace_enable
+    [ "$?" -eq 0 ]
     [ "$MAINFRAME_TRACE_ENABLED" = "1" ]
 }
 
 @test "trace_disable sets MAINFRAME_TRACE_ENABLED to 0" {
     trace_enable
-    run trace_disable
-    [ "$status" -eq 0 ]
+    trace_disable
+    [ "$?" -eq 0 ]
     [ "$MAINFRAME_TRACE_ENABLED" = "0" ]
 }
 
@@ -259,16 +259,18 @@ teardown() {
 
 @test "trace_variable starts watching" {
     local watched_var="initial"
-    run trace_variable "watched_var"
-    [ "$status" -eq 0 ]
+    trace_variable "watched_var"
+    [ "$?" -eq 0 ]
+    [ "${_TRACE_WATCHED_VARS[watched_var]}" = "1" ]
     trace_unwatch "watched_var"
 }
 
 @test "trace_unwatch stops watching" {
     local test_var="test"
     trace_variable "test_var"
-    run trace_unwatch "test_var"
-    [ "$status" -eq 0 ]
+    trace_unwatch "test_var"
+    [ "$?" -eq 0 ]
+    [[ -z "${_TRACE_WATCHED_VARS[test_var]:-}" ]]
 }
 
 @test "trace_unwatch returns 0 for unwatched variable" {
@@ -281,8 +283,10 @@ teardown() {
 # =============================================================================
 
 @test "trace_record_start creates recording session" {
-    run trace_record_start "test_session"
-    [ "$status" -eq 0 ]
+    trace_record_start "test_session"
+    [ "$?" -eq 0 ]
+    [ "$_TRACE_RECORDING_ACTIVE" = "1" ]
+    [ "$_TRACE_RECORDING_SESSION" = "test_session" ]
     trace_record_stop
 }
 
@@ -348,8 +352,12 @@ teardown() {
         echo "hello"
     }
 
-    run trace_function "test_trace_func"
-    [ "$status" -eq 0 ]
+    trace_function "test_trace_func"
+    [ "$?" -eq 0 ]
+    [ -n "${_TRACE_FUNC_WRAPPERS[test_trace_func]:-}" ]
+
+    result=$(test_trace_func)
+    [ "$result" = "hello" ]
 
     # Clean up
     trace_untrace "test_trace_func"
@@ -368,8 +376,9 @@ teardown() {
     trace_function "original_test_func"
 
     # Untrace
-    run trace_untrace "original_test_func"
-    [ "$status" -eq 0 ]
+    trace_untrace "original_test_func"
+    [ "$?" -eq 0 ]
+    [[ -z "${_TRACE_FUNC_WRAPPERS[original_test_func]:-}" ]]
 
     # Verify function still works
     result=$(original_test_func)
@@ -384,9 +393,12 @@ teardown() {
 @test "trace_all_in_file processes valid bash file" {
     # Create a test script
     printf 'test_file_func() {\n    echo "test"\n}\n' > "$TEST_DIR/test_script.sh"
+    source "$TEST_DIR/test_script.sh"
 
-    run trace_all_in_file "$TEST_DIR/test_script.sh"
-    [ "$status" -eq 0 ]
+    trace_all_in_file "$TEST_DIR/test_script.sh"
+    [ "$?" -eq 0 ]
+    [ -n "${_TRACE_FUNC_WRAPPERS[test_file_func]:-}" ]
+    trace_untrace "test_file_func"
 }
 
 # =============================================================================

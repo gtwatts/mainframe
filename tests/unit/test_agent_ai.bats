@@ -46,6 +46,24 @@ teardown() {
     unset AGENT_AI_SESSION_ID AGENT_AI_CTX_MAX AGENT_AI_CTX_USED
 }
 
+set_mtime_days_ago() {
+    local path="$1"
+    local days="$2"
+
+    python3 - "$path" "$days" <<'PY'
+import os
+import sys
+import time
+
+path = sys.argv[1]
+days = int(sys.argv[2])
+ts = time.time() - (days * 86400)
+with open(path, "a", encoding="utf-8"):
+    pass
+os.utime(path, (ts, ts))
+PY
+}
+
 # =============================================================================
 # CONTEXT BUDGET TESTS
 # =============================================================================
@@ -377,7 +395,7 @@ Line 3"
     mkdir -p "${AGENT_AI_STATE_DIR}/spillover"
 
     # Create old file
-    touch -d "10 days ago" "${AGENT_AI_STATE_DIR}/spillover/old_file.txt"
+    set_mtime_days_ago "${AGENT_AI_STATE_DIR}/spillover/old_file.txt" 10
 
     agent_ai_spillover_gc 7
 
@@ -868,8 +886,8 @@ foo qux baz
     agent_ai_init
 
     # Create old session file
-    touch -d "10 days ago" "${AGENT_AI_STATE_DIR}/old_session.session"
-    touch -d "10 days ago" "${AGENT_AI_TRANSCRIPT_DIR}/old_transcript.jsonl"
+    set_mtime_days_ago "${AGENT_AI_STATE_DIR}/old_session.session" 10
+    set_mtime_days_ago "${AGENT_AI_TRANSCRIPT_DIR}/old_transcript.jsonl" 10
 
     agent_ai_cleanup --older-than 7
 

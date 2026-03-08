@@ -480,6 +480,9 @@ _async_cleanup() {
 
 # Register cleanup (can be disabled with ASYNC_NO_CLEANUP=1)
 if [[ -z "${ASYNC_NO_CLEANUP:-}" ]]; then
-    trap _async_cleanup EXIT
+    if declare -F _mainframe_add_exit_trap >/dev/null 2>&1; then
+        _mainframe_add_exit_trap "_async_cleanup"
+    else
+        trap _async_cleanup EXIT
+    fi
 fi
-

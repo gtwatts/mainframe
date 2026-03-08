@@ -478,7 +478,8 @@ EOF
 
     local job_id
     job_id=$(pool_submit "test_pool" false)
-    pool_wait "test_pool" "$job_id"
+    run pool_wait "test_pool" "$job_id"
+    [[ "$status" -eq 1 ]]
 
     local status
     status=$(pool_status "test_pool" "$job_id")
@@ -582,7 +583,8 @@ EOF
 
     pool_submit "test_pool" true > /dev/null
     pool_submit "test_pool" false > /dev/null
-    pool_wait "test_pool"
+    run pool_wait "test_pool"
+    [[ "$status" -eq 1 ]]
 
     local info
     info=$(pool_info "test_pool")

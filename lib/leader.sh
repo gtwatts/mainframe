@@ -690,4 +690,8 @@ leader_cleanup() {
 }
 
 # Register cleanup on exit if not already registered
-trap 'leader_cleanup 2>/dev/null || true' EXIT 2>/dev/null || true
+if declare -F _mainframe_add_exit_trap >/dev/null 2>&1; then
+    _mainframe_add_exit_trap 'leader_cleanup 2>/dev/null || true'
+else
+    trap 'leader_cleanup 2>/dev/null || true' EXIT 2>/dev/null || true
+fi

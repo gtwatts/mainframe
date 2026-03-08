@@ -137,19 +137,9 @@ _checkpoint_calc_size() {
     local file
 
     for file in "${files[@]}"; do
-        if [[ -f "$file" ]]; then
-            local size
-            if [[ "$OSTYPE" == darwin* ]]; then
-                size=$(stat -f%z "$file" 2>/dev/null || echo 0)
-            else
-                size=$(stat -c%s "$file" 2>/dev/null || echo 0)
-            fi
-            ((total += size))
-        elif [[ -d "$file" ]]; then
-            local dir_size
-            dir_size=$(du -sb "$file" 2>/dev/null | cut -f1 || echo 0)
-            ((total += dir_size))
-        fi
+        local size
+        size=$(_checkpoint_size_bytes "$file")
+        total=$((total + size))
     done
 
     printf '%d' "$total"
@@ -176,10 +166,76 @@ _checkpoint_hash_file() {
     fi
 }
 
+# Resolve an existing path to an absolute canonical location without relying
+# on GNU-only realpath flags.
+_checkpoint_resolve_existing_path() {
+    local path="$1"
+    [[ -e "$path" ]] || return 1
+
+    local dir
+    dir=$(cd "$(dirname "$path")" 2>/dev/null && pwd -P) || return 1
+    printf '%s/%s' "$dir" "$(basename "$path")"
+}
+
+# Return file or directory size in bytes with BSD/GNU compatible tools.
+_checkpoint_size_bytes() {
+    local path="$1"
+    local size=""
+
+    if [[ -f "$path" ]]; then
+        if [[ "$OSTYPE" == darwin* ]]; then
+            size=$(stat -f%z "$path" 2>/dev/null || echo 0)
+        else
+            size=$(stat -c%s "$path" 2>/dev/null || echo 0)
+        fi
+        printf '%s' "$size"
+        return 0
+    fi
+
+    if [[ -d "$path" ]]; then
+        size=$(du -sb "$path" 2>/dev/null | cut -f1)
+        if [[ -z "$size" ]]; then
+            size=$(du -sk "$path" 2>/dev/null | cut -f1)
+            if [[ -n "$size" ]]; then
+                size=$((size * 1024))
+            else
+                size=0
+            fi
+        fi
+        printf '%s' "$size"
+        return 0
+    fi
+
+    printf '0'
+}
+
+_checkpoint_tar_create() {
+    local archive_path="$1"
+    shift
+    tar -czf "$archive_path" -P "$@" 2>/dev/null
+}
+
+_checkpoint_tar_extract() {
+    local archive_path="$1"
+    tar -xzf "$archive_path" -P -C / 2>/dev/null
+}
+
 # JSON escape helper
-# Delegates to canonical json_escape from lib/json.sh (core tier, always loaded)
+# Delegates to canonical json_escape when available, with a local fallback so
+# this library also works when sourced standalone.
 _checkpoint_json_escape() {
-    json_escape "$@"
+    if declare -F json_escape &>/dev/null; then
+        json_escape "$@"
+        return 0
+    fi
+
+    local value="${1:-}"
+    value=${value//\\/\\\\}
+    value=${value//\"/\\\"}
+    value=${value//$'\n'/\\n}
+    value=${value//$'\r'/\\r}
+    value=${value//$'\t'/\\t}
+    printf '%s' "$value"
 }
 
 # Ensure checkpoint directory exists with proper permissions
@@ -266,7 +322,7 @@ checkpoint_create() {
 
         # Resolve to absolute path
         local abs_path
-        abs_path=$(realpath "$path" 2>/dev/null) || {
+        abs_path=$(_checkpoint_resolve_existing_path "$path") || {
             printf '{"error":"cannot resolve path","path":"%s"}\n' "$(_checkpoint_json_escape "$path")" >&2
             return 1
         }
@@ -305,7 +361,7 @@ checkpoint_create() {
     local tmparchive="${archive_path}.tmp.$$"
 
     # Use tar with absolute paths preserved
-    if ! tar -czf "$tmparchive" --absolute-names "${resolved_paths[@]}" 2>/dev/null; then
+    if ! _checkpoint_tar_create "$tmparchive" "${resolved_paths[@]}"; then
         rm -f "$tmparchive" 2>/dev/null
         rm -rf "$checkpoint_dir" 2>/dev/null
         _checkpoint_unlock
@@ -470,7 +526,7 @@ checkpoint_rollback() {
     _checkpoint_lock || return 3
 
     # Extract archive to restore files
-    if ! tar -xzf "$archive_path" --absolute-names -C / 2>/dev/null; then
+    if ! _checkpoint_tar_extract "$archive_path"; then
         _checkpoint_unlock
         printf '{"error":"archive extraction failed"}\n' >&2
         return 3
@@ -615,7 +671,7 @@ checkpoint_delete() {
 
     # Get size before deletion for reporting
     local freed_bytes
-    freed_bytes=$(du -sb "$checkpoint_dir" 2>/dev/null | cut -f1 || echo 0)
+    freed_bytes=$(_checkpoint_size_bytes "$checkpoint_dir")
 
     rm -rf "$checkpoint_dir" || {
         _checkpoint_unlock
@@ -688,7 +744,7 @@ checkpoint_prune() {
     # Also prune if over max count (oldest first)
     local current_count
     current_count=$(find "$MAINFRAME_CHECKPOINT_DIR" -maxdepth 1 -type d | wc -l)
-    ((current_count--))  # Subtract 1 for the directory itself
+    current_count=$((current_count - 1))
 
     if ((current_count > max_count)); then
         # Get oldest checkpoints
@@ -721,15 +777,15 @@ checkpoint_prune() {
     for id in "${unique_prune[@]}"; do
         local checkpoint_dir="${MAINFRAME_CHECKPOINT_DIR}/${id}"
         local size
-        size=$(du -sb "$checkpoint_dir" 2>/dev/null | cut -f1 || echo 0)
+        size=$(_checkpoint_size_bytes "$checkpoint_dir")
 
         if [[ $dry_run -eq 1 ]]; then
             _checkpoint_log info "[dry-run] Would prune: $id (${size} bytes)"
         else
             rm -rf "$checkpoint_dir" 2>/dev/null && {
                 _checkpoint_log debug "Pruned checkpoint: $id"
-                ((pruned++))
-                ((freed_bytes += size))
+                pruned=$((pruned + 1))
+                freed_bytes=$((freed_bytes + size))
             }
         fi
     done
@@ -883,7 +939,7 @@ _checkpoint_enforce_quotas() {
     # Count enforcement
     local count
     count=$(find "$MAINFRAME_CHECKPOINT_DIR" -maxdepth 1 -type d 2>/dev/null | wc -l)
-    ((count--))  # Subtract 1 for directory itself
+    count=$((count - 1))
 
     if ((count > MAINFRAME_CHECKPOINT_MAX_COUNT)); then
         checkpoint_prune --max-count "$MAINFRAME_CHECKPOINT_MAX_COUNT" &>/dev/null

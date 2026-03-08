@@ -38,7 +38,7 @@ teardown() {
 @test "ensure_dir sets permissions" {
     ensure_dir "$TEST_DIR/permdir" "0750"
     local mode
-    mode=$(stat -c '%a' "$TEST_DIR/permdir")
+    mode=$(file_mode "$TEST_DIR/permdir")
     [ "$mode" = "750" ]
 }
 
@@ -47,7 +47,7 @@ teardown() {
     chmod 0777 "$TEST_DIR/fixdir"
     ensure_dir "$TEST_DIR/fixdir" "0755"
     local mode
-    mode=$(stat -c '%a' "$TEST_DIR/fixdir")
+    mode=$(file_mode "$TEST_DIR/fixdir")
     [ "$mode" = "755" ]
 }
 
@@ -101,7 +101,7 @@ teardown() {
 @test "ensure_file sets permissions" {
     ensure_file "$TEST_DIR/perm.txt" "secret" "0600"
     local mode
-    mode=$(stat -c '%a' "$TEST_DIR/perm.txt")
+    mode=$(file_mode "$TEST_DIR/perm.txt")
     [ "$mode" = "600" ]
 }
 
@@ -139,7 +139,7 @@ teardown() {
     ensure_line "$TEST_DIR/bashrc" 'export PATH="/opt/new:$PATH"' "MY_MARKER"
     # Should NOT add since marker exists
     local count
-    count=$(wc -l < "$TEST_DIR/bashrc")
+    count=$(line_count "$TEST_DIR/bashrc")
     [ "$count" = "1" ]
 }
 
@@ -147,7 +147,7 @@ teardown() {
     printf 'existing line\n' > "$TEST_DIR/append.txt"
     ensure_line "$TEST_DIR/append.txt" "new line" "NEW_MARKER"
     local count
-    count=$(wc -l < "$TEST_DIR/append.txt")
+    count=$(line_count "$TEST_DIR/append.txt")
     [ "$count" = "2" ]
 }
 
@@ -236,7 +236,7 @@ teardown() {
     touch "$TEST_DIR/multi.txt"
     ensure_lines "$TEST_DIR/multi.txt" "line1" "line2" "line3"
     local count
-    count=$(wc -l < "$TEST_DIR/multi.txt")
+    count=$(line_count "$TEST_DIR/multi.txt")
     [ "$count" = "3" ]
 }
 
@@ -245,6 +245,6 @@ teardown() {
     ensure_lines "$TEST_DIR/multi.txt" "a" "b" "c"
     ensure_lines "$TEST_DIR/multi.txt" "a" "b" "c"
     local count
-    count=$(wc -l < "$TEST_DIR/multi.txt")
+    count=$(line_count "$TEST_DIR/multi.txt")
     [ "$count" = "3" ]
 }

@@ -19,57 +19,69 @@ readonly _MAINFRAME_REGEX_LOADED=1
 # CONFIGURATION
 # =============================================================================
 
+_regex_define_const() {
+    local name="$1"
+    local value="$2"
+
+    if declare -p "$name" &>/dev/null 2>&1; then
+        return 0
+    fi
+
+    printf -v "$name" '%s' "$value"
+    readonly "$name"
+}
+
 # ReDoS protection thresholds
-readonly REGEX_MAX_PATTERN_LENGTH="${REGEX_MAX_PATTERN_LENGTH:-500}"
-readonly REGEX_MAX_QUANTIFIERS="${REGEX_MAX_QUANTIFIERS:-10}"
-readonly REGEX_MAX_GROUPS="${REGEX_MAX_GROUPS:-15}"
-readonly REGEX_MAX_ALTERNATIONS="${REGEX_MAX_ALTERNATIONS:-20}"
+_regex_define_const REGEX_MAX_PATTERN_LENGTH "${REGEX_MAX_PATTERN_LENGTH:-500}"
+_regex_define_const REGEX_MAX_QUANTIFIERS "${REGEX_MAX_QUANTIFIERS:-10}"
+_regex_define_const REGEX_MAX_GROUPS "${REGEX_MAX_GROUPS:-15}"
+_regex_define_const REGEX_MAX_ALTERNATIONS "${REGEX_MAX_ALTERNATIONS:-20}"
 
 # =============================================================================
 # COMMON REGEX PATTERNS (Constants)
 # =============================================================================
 
 # Email: RFC 5322 simplified
-readonly REGEX_EMAIL='^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
+_regex_define_const REGEX_EMAIL '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
 
 # URL: HTTP/HTTPS with path, query, fragment
-readonly REGEX_URL='^(https?|ftp)://[A-Za-z0-9.-]+(:[0-9]+)?(/[^[:space:]]*)?$'
+_regex_define_const REGEX_URL '^(https?|ftp)://[A-Za-z0-9.-]+(:[0-9]+)?(/[^[:space:]]*)?$'
 
 # IPv4 address
-readonly REGEX_IPV4='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+_regex_define_const REGEX_IPV4 '^([0-9]{1,3}\.){3}[0-9]{1,3}$'
 
 # IPv6 address (simplified, full form)
-readonly REGEX_IPV6='^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$'
+_regex_define_const REGEX_IPV6 '^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$'
 
 # UUID (v1-v5)
-readonly REGEX_UUID='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+_regex_define_const REGEX_UUID '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
 
 # Semantic version (with optional v prefix)
-readonly REGEX_SEMVER='^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+_regex_define_const REGEX_SEMVER '^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
 
 # ISO 8601 date (YYYY-MM-DD)
-readonly REGEX_DATE_ISO='^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
+_regex_define_const REGEX_DATE_ISO '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
 
 # ISO 8601 datetime
-readonly REGEX_DATETIME_ISO='^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](Z|[+-][0-9]{2}:[0-9]{2})?$'
+_regex_define_const REGEX_DATETIME_ISO '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](Z|[+-][0-9]{2}:[0-9]{2})?$'
 
 # Phone number (international format, simplified)
-readonly REGEX_PHONE='^\+?[0-9]{1,4}[-.\s]?(\([0-9]{1,3}\)|[0-9]{1,4})[-.\s]?[0-9]{1,4}[-.\s]?[0-9]{1,9}$'
+_regex_define_const REGEX_PHONE '^\+?[0-9]{1,4}[-.\s]?(\([0-9]{1,3}\)|[0-9]{1,4})[-.\s]?[0-9]{1,4}[-.\s]?[0-9]{1,9}$'
 
 # Credit card (masked pattern for validation only, not for storage)
-readonly REGEX_CREDIT_CARD='^[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}$'
+_regex_define_const REGEX_CREDIT_CARD '^[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}$'
 
 # URL slug (lowercase alphanumeric with hyphens)
-readonly REGEX_SLUG='^[a-z0-9]+(-[a-z0-9]+)*$'
+_regex_define_const REGEX_SLUG '^[a-z0-9]+(-[a-z0-9]+)*$'
 
 # Identifier (programming variable name)
-readonly REGEX_IDENTIFIER='^[a-zA-Z_][a-zA-Z0-9_]*$'
+_regex_define_const REGEX_IDENTIFIER '^[a-zA-Z_][a-zA-Z0-9_]*$'
 
 # Hexadecimal color
-readonly REGEX_HEX_COLOR='^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$'
+_regex_define_const REGEX_HEX_COLOR '^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$'
 
 # MAC address
-readonly REGEX_MAC_ADDRESS='^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$'
+_regex_define_const REGEX_MAC_ADDRESS '^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$'
 
 # =============================================================================
 # INTERNAL HELPERS
@@ -104,6 +116,36 @@ _regex_error() {
         printf '[regex] ERROR(%d) in %s: %s\n' "$code" "$func" "$msg" >&2
     fi
     return "$code"
+}
+
+_regex_has_nested_quantifiers() {
+    local pattern="$1"
+    local nested_quant_pattern='\([^)]*[*+?][^)]*\)[*+?]'
+
+    [[ -n "$pattern" ]] && [[ "$pattern" =~ $nested_quant_pattern ]]
+}
+
+_regex_has_repeated_alternation() {
+    local pattern="$1"
+    local overlap_alt_pattern='\(([^)]*)\|([^)]*)\)[*+?]'
+    local left right
+
+    [[ -z "$pattern" ]] && return 1
+
+    if [[ "$pattern" =~ $overlap_alt_pattern ]]; then
+        left="${BASH_REMATCH[1]#(}"
+        right="${BASH_REMATCH[2]#(}"
+        right="${right%%[+*?]*}"
+
+        if [[ -n "$left" ]] && [[ -n "$right" ]]; then
+            [[ "$left" == "$right"* ]] || [[ "$right" == "$left"* ]]
+            return $?
+        fi
+
+        return 0
+    fi
+
+    return 1
 }
 
 # =============================================================================
@@ -167,14 +209,12 @@ regex_complexity_score() {
 
     # Detect dangerous patterns: nested quantifiers (a+)+, (a*)*
     # Store pattern in variable to avoid shellcheck parse issues
-    local nested_quant_pattern='\\([^)]*[*+]\\)[*+]'
-    if [[ "$pattern" =~ $nested_quant_pattern ]]; then
+    if _regex_has_nested_quantifiers "$pattern"; then
         score=$((score + 50))
     fi
 
     # Detect overlapping alternations with quantifiers
-    local overlap_alt_pattern='\\([^)|]*\\|[^)]*\\)[*+]'
-    if [[ "$pattern" =~ $overlap_alt_pattern ]]; then
+    if _regex_has_repeated_alternation "$pattern"; then
         score=$((score + 30))
     fi
 
@@ -225,6 +265,16 @@ regex_compile_safe() {
     alternations=$(printf '%s' "$pattern" | grep -o '|' | wc -l)
     if [[ $alternations -gt $REGEX_MAX_ALTERNATIONS ]]; then
         _regex_error 1 "too many alternations ($alternations > $REGEX_MAX_ALTERNATIONS)"
+        return 1
+    fi
+
+    if _regex_has_nested_quantifiers "$pattern"; then
+        _regex_error 1 "dangerous nested quantifiers detected"
+        return 1
+    fi
+
+    if _regex_has_repeated_alternation "$pattern"; then
+        _regex_error 1 "dangerous overlapping alternation detected"
         return 1
     fi
 
@@ -865,13 +915,13 @@ regex_word_boundary() {
     # Note: \b is word boundary in ERE
     case "$boundary" in
         both|full)
-            printf '\b%s\b' "$pattern"
+            printf '\\b%s\\b' "$pattern"
             ;;
         start|begin|left)
-            printf '\b%s' "$pattern"
+            printf '\\b%s' "$pattern"
             ;;
         end|right)
-            printf '%s\b' "$pattern"
+            printf '%s\\b' "$pattern"
             ;;
         *)
             printf '%s' "$pattern"
@@ -892,12 +942,20 @@ regex_word_boundary() {
 regex_to_glob() {
     local pattern="$1"
     local result="$pattern"
+    local escaped_dot='__MAINFRAME_REGEX_DOT__'
+    local escaped_star='__MAINFRAME_REGEX_STAR__'
+    local escaped_qmark='__MAINFRAME_REGEX_QMARK__'
 
     [[ -z "$pattern" ]] && return 1
 
     # Remove anchors
     result="${result#^}"
     result="${result%\$}"
+
+    # Preserve escaped glob literals while converting regex wildcards.
+    result="${result//\\./$escaped_dot}"
+    result="${result//\\*/$escaped_star}"
+    result="${result//\\?/$escaped_qmark}"
 
     # .* -> *
     result="${result//\.\*/\*}"
@@ -908,10 +966,9 @@ regex_to_glob() {
     # . -> ?
     result="${result//\./\?}"
 
-    # Remove escape characters for common chars
-    result="${result//\\\./\.}"
-    result="${result//\\\*/\*}"
-    result="${result//\\\?/\?}"
+    result="${result//$escaped_dot/.}"
+    result="${result//$escaped_star/*}"
+    result="${result//$escaped_qmark/?}"
 
     printf '%s' "$result"
 }

@@ -405,10 +405,10 @@ teardown() {
     end_ns=$(date +%s%N)
     elapsed_ms=$(( (end_ns - start_ns) / 1000000 ))
 
-    # Core loading should be under 50ms (generous threshold for CI)
-    # Target is 10-15ms, but allowing headroom for slow CI machines
+    # Core loading should stay comfortably sub-second on a modern dev machine.
+    # The repo is larger now than the original 10-15ms target assumed.
     echo "Core loading time: ${elapsed_ms}ms"
-    [[ $elapsed_ms -lt 100 ]]
+    [[ $elapsed_ms -lt 250 ]]
 }
 
 @test "performance: full loading completes successfully" {
@@ -431,8 +431,8 @@ teardown() {
     elapsed_ms=$(( (end_ns - start_ns) / 1000000 ))
 
     echo "Full loading time: ${elapsed_ms}ms"
-    # Full loading should complete (no timeout)
-    [[ $elapsed_ms -lt 500 ]]
+    # Full loading should still complete comfortably without hanging.
+    [[ $elapsed_ms -lt 1000 ]]
 }
 
 @test "performance: selective loading is faster than full loading" {

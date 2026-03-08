@@ -60,6 +60,67 @@ _wf_json_escape() {
     printf '%s' "$str"
 }
 
+# Extract a JSON string value for a known top-level key, honoring escaped quotes.
+_wf_json_get_string() {
+    local json="$1"
+    local key="$2"
+    local marker="\"${key}\":\""
+
+    [[ "$json" == *"$marker"* ]] || return 1
+
+    local rest="${json#*"$marker"}"
+    local out=""
+    local escaped="false"
+    local i char hex
+
+    for ((i=0; i<${#rest}; i++)); do
+        char="${rest:i:1}"
+
+        if [[ "$escaped" == "true" ]]; then
+            case "$char" in
+                '"') out+='"' ;;
+                '\') out+='\' ;;
+                /) out+='/' ;;
+                b) out+=$'\b' ;;
+                f) out+=$'\f' ;;
+                n) out+=$'\n' ;;
+                r) out+=$'\r' ;;
+                t) out+=$'\t' ;;
+                u)
+                    hex="${rest:i+1:4}"
+                    if [[ "$hex" =~ ^[0-9A-Fa-f]{4}$ ]]; then
+                        if [[ "$hex" =~ ^00([0-7][0-9A-Fa-f])$ ]]; then
+                            printf -v char "\\x%s" "${BASH_REMATCH[1]}"
+                            out+="$char"
+                        else
+                            out+="\\u$hex"
+                        fi
+                        i=$(( i + 4 ))
+                    else
+                        out+='u'
+                    fi
+                    ;;
+                *) out+="$char" ;;
+            esac
+            escaped="false"
+            continue
+        fi
+
+        case "$char" in
+            '\') escaped="true" ;;
+            '"')
+                printf '%s' "$out"
+                return 0
+                ;;
+            *)
+                out+="$char"
+                ;;
+        esac
+    done
+
+    return 1
+}
+
 # Get workflow directory for a named workflow
 _wf_dir() {
     local name="$1"
@@ -91,16 +152,14 @@ _wf_read_step() {
     local content
     content=$(<"$step_file")
 
-    # Parse command (between "command":" and next ")
     _step_command=""
-    if [[ "$content" =~ \"command\":\"([^\"]*) ]]; then
-        _step_command="${BASH_REMATCH[1]}"
+    if ! _step_command=$(_wf_json_get_string "$content" "command"); then
+        _step_command=""
     fi
 
-    # Parse status
     _step_status="$_MAINFRAME_WF_STATUS_PENDING"
-    if [[ "$content" =~ \"status\":\"([^\"]*) ]]; then
-        _step_status="${BASH_REMATCH[1]}"
+    if ! _step_status=$(_wf_json_get_string "$content" "status"); then
+        _step_status="$_MAINFRAME_WF_STATUS_PENDING"
     fi
 
     # Parse depends array

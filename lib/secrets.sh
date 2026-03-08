@@ -23,16 +23,21 @@ readonly _MAINFRAME_SECRETS_RUNTIME_LOADED=1
 # =============================================================================
 
 # In-memory secret storage (never persisted)
-declare -gA _SECRETS_STORE=()
+declare -gA _SECRETS_STORE 2>/dev/null || declare -A _SECRETS_STORE
+_SECRETS_STORE=()
 
 # Secret metadata (creation time, etc.)
-declare -gA _SECRETS_META=()
+declare -gA _SECRETS_META 2>/dev/null || declare -A _SECRETS_META
+_SECRETS_META=()
 
 # Auto-wrap tracking
 # Key: function name, Value: original function name
+declare -gA _SECRETS_WRAPPED 2>/dev/null || declare -A _SECRETS_WRAPPED
+_SECRETS_WRAPPED=()
 
 # Redaction pattern cache
-declare -ga _SECRETS_PATTERNS=()
+declare -ga _SECRETS_PATTERNS 2>/dev/null || declare -a _SECRETS_PATTERNS
+_SECRETS_PATTERNS=()
 
 # Security configuration
 SECRETS_MAX_LENGTH="${SECRETS_MAX_LENGTH:-8192}"
@@ -45,10 +50,22 @@ SECRETS_PATTERN_ESCAPE="${SECRETS_PATTERN_ESCAPE:-1}"
 _secrets_log() {
     local level="$1"
     shift
+
+    case "$level" in
+        debug)
+            [[ "${MAINFRAME_DEBUG:-}" == "1" ]] || return 0
+            ;;
+        info)
+            [[ "${MAINFRAME_QUIET:-}" != "1" ]] || return 0
+            ;;
+    esac
+
     if declare -F log_"$level" &>/dev/null; then
         log_"$level" "[secrets] $*"
     else
-        printf '[%s] [secrets] %s: %s\n' "$(date +%H:%M:%S)" "${level^^}" "$*" >&2
+        local level_upper
+        level_upper=$(printf '%s' "$level" | tr '[:lower:]' '[:upper:]')
+        printf '[%s] [secrets] %s: %s\n' "$(date +%H:%M:%S)" "$level_upper" "$*" >&2
     fi
 }
 
@@ -56,6 +73,10 @@ _secrets_error() { _secrets_log error "$@"; }
 _secrets_warn() { _secrets_log warn "$@"; }
 _secrets_info() { _secrets_log info "$@"; }
 _secrets_debug() { _secrets_log debug "$@"; }
+
+_secrets_function_body() {
+    declare -f "$1" | sed '1,2d;$d'
+}
 
 # =============================================================================
 # SECRET REGISTRATION
@@ -576,7 +597,7 @@ secret_wrap() {
     local original_name="_secret_original_$func_name"
     
     # Create renamed copy
-    eval "${original_name}() { $(declare -f "$func_name" | tail -n +2 | head -n -1); }"
+    eval "${original_name}() { $(_secrets_function_body "$func_name"); }"
     
     # Create wrapped version
     eval "${func_name}() {
@@ -615,6 +636,7 @@ secret_unwrap() {
     fi
 
     local original_name="${_SECRETS_WRAPPED[$func_name]}"
+    local original_body
 
     # Validate original name format (defense in depth)
     if [[ ! "$original_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
@@ -622,9 +644,15 @@ secret_unwrap() {
         return 1
     fi
 
+    original_body=$(_secrets_function_body "$original_name")
+    if [[ -z "$original_body" ]]; then
+        _secrets_error "secret_unwrap: original function definition missing: $original_name"
+        return 1
+    fi
+
     # Restore original
     unset -f "$func_name"
-    eval "${func_name}() { ${original_name} \"\$@\"; }"
+    eval "${func_name}() { ${original_body}; }"
     unset -f "$original_name"
     unset '_SECRETS_WRAPPED[$func_name]'
 

@@ -1,106 +1,116 @@
 #!/usr/bin/env bats
 
-# Tests for agent_ai.sh - AI Agent Orchestration
-# Critical: Context budget, tool registry, edit strategies, subagents
+# Smoke tests for the current agent_ai.sh API surface.
 
 load ../test_helper
 
+_agent_ai_test_handler() {
+    printf 'handled:%s\n' "${1:-}"
+}
+
+_agent_ai_parallel_handler() {
+    sleep 0.01
+    printf 'parallel:%s\n' "${1:-}"
+}
+
 setup() {
-    source "$MAINFRAME_ROOT/lib/common.sh"
     TEST_DIR=$(mktemp -d)
     export AGENT_AI_TEST_MODE=1
+    export AGENT_AI_STATE_DIR="$TEST_DIR/state"
+    export AGENT_AI_TRANSCRIPT_DIR="$TEST_DIR/transcripts"
+    export AGENT_AI_SESSION_FILE="$TEST_DIR/session"
+
+    source "$MAINFRAME_ROOT/lib/common.sh"
+    source "$MAINFRAME_ROOT/lib/agent_ai.sh"
 }
 
 teardown() {
     rm -rf "$TEST_DIR"
 }
 
-@test "agent_ai_budget_init sets warning and critical thresholds" {
-    agent_ai_budget_init 1000 80 95
-    [ "$AGENT_AI_BUDGET_MAX" -eq 1000 ]
-    [ "$AGENT_AI_BUDGET_WARN" -eq 800 ]
-    [ "$AGENT_AI_BUDGET_CRITICAL" -eq 950 ]
+@test "agent_ai_context_init sets max and reserve budget" {
+    agent_ai_context_init 1000 20
+    [ "$AGENT_AI_CTX_MAX" -eq 1000 ]
+    [ "$AGENT_AI_CTX_RESERVE" -eq 200 ]
+    [ "$AGENT_AI_CTX_USED" -eq 0 ]
 }
 
-@test "agent_ai_budget_check returns warning at threshold" {
-    agent_ai_budget_init 100 80 95
-    run agent_ai_budget_check 85
-    [ "$status" -eq 1 ]  # WARNING
+@test "agent_ai_context_use returns warning at threshold" {
+    agent_ai_context_init 1000 20
+    run agent_ai_context_use 650 "warning_test"
+    [ "$status" -eq 1 ]
 }
 
-@test "agent_ai_budget_check returns critical at threshold" {
-    agent_ai_budget_init 100 80 95
-    run agent_ai_budget_check 96
-    [ "$status" -eq 2 ]  # CRITICAL
+@test "agent_ai_context_use returns critical at threshold" {
+    agent_ai_context_init 1000 20
+    run agent_ai_context_use 770 "critical_test"
+    [ "$status" -eq 2 ]
 }
 
-@test "agent_ai_tool_allow adds function to allow list" {
-    agent_ai_tool_init
-    agent_ai_tool_allow "json_escape"
-    agent_ai_tool_allow "json_parse"
-    [[ "$AGENT_AI_TOOLS_ALLOWED" == *"json_escape"* ]]
-    [[ "$AGENT_AI_TOOLS_ALLOWED" == *"json_parse"* ]]
+@test "agent_ai_tool_register stores allow permission" {
+    agent_ai_tool_register "json_escape" "JSON escape helper" "_agent_ai_test_handler" "allow"
+    agent_ai_tool_register "json_parse" "JSON parse helper" "_agent_ai_test_handler" "allow"
+    [ "${_AGENT_AI_TOOL_PERMS[json_escape]}" = "allow" ]
+    [ "${_AGENT_AI_TOOL_PERMS[json_parse]}" = "allow" ]
 }
 
 @test "agent_ai_tool_deny blocks function execution" {
-    agent_ai_tool_init
-    agent_ai_tool_deny "rm"
-    run agent_ai_tool_check "rm"
-    [ "$status" -eq 1 ]  # DENIED
+    agent_ai_tool_register "rm" "dangerous tool" "_agent_ai_test_handler" "deny"
+    run agent_ai_tool_permitted "rm"
+    [ "$status" -eq 1 ]
 }
 
-@test "agent_ai_tool_check allows permitted function" {
-    agent_ai_tool_init
-    agent_ai_tool_allow "echo"
-    run agent_ai_tool_check "echo"
-    [ "$status" -eq 0 ]  # ALLOWED
+@test "agent_ai_tool_permitted allows permitted function" {
+    agent_ai_tool_register "echo" "echo tool" "_agent_ai_test_handler" "allow"
+    run agent_ai_tool_permitted "echo"
+    [ "$status" -eq 0 ]
 }
 
-@test "agent_ai_edit_strategy_diff returns diff command" {
-    result=$(agent_ai_edit_strategy_diff "file.txt" "old content" "new content")
-    [[ "$result" == *"diff"* ]]
+@test "agent_ai_model_edit_format returns diff for Sonnet models" {
+    result=$(agent_ai_model_edit_format "claude-sonnet-4")
+    [ "$result" = "$AGENT_AI_EDIT_DIFF" ]
 }
 
-@test "agent_ai_edit_strategy_whole returns write command" {
-    result=$(agent_ai_edit_strategy_whole "file.txt" "content")
-    [[ "$result" == *"write"* || "$result" == *"echo"* ]]
+@test "agent_ai_model_edit_format returns whole-file for Opus models" {
+    result=$(agent_ai_model_edit_format "claude-opus-4")
+    [ "$result" = "$AGENT_AI_EDIT_WHOLE" ]
 }
 
-@test "agent_ai_session_init creates session" {
-    sid=$(agent_ai_session_init "test_task")
-    [ -n "$sid" ]
-    [[ "$sid" == ai_* ]]
+@test "agent_ai_session_start creates session" {
+    sid=$(agent_ai_session_start "test_task")
+    [ "$sid" = "test_task" ]
+    [ -f "$AGENT_AI_STATE_DIR/test_task.session" ]
 }
 
 @test "agent_ai_session_fork creates child session" {
-    parent=$(agent_ai_session_init "parent")
-    child=$(agent_ai_session_fork "$parent" "child_task")
-    [ -n "$child" ]
-    [[ "$child" == ai_* ]]
-    [ "$child" != "$parent" ]
+    agent_ai_session_start "parent" >/dev/null
+    child=$(agent_ai_session_fork "child_task")
+    [ "${AGENT_AI_SESSION_ID}" = "parent" ]
+    [ "$child" = "child_task" ]
+    [ -f "$AGENT_AI_STATE_DIR/child_task.session" ]
 }
 
-@test "agent_ai_subagent_spawn creates subagent" {
-    agent_ai_subagent_init
-    aid=$(agent_ai_subagent_spawn "worker" "echo hello")
-    [ -n "$aid" ]
+@test "agent_ai_spawn creates parallel subagent handle" {
+    agent_ai_session_start "spawn_parent" >/dev/null
+    aid=$(agent_ai_spawn "worker" "_agent_ai_parallel_handler" --parallel)
+    [[ "$aid" == sub_*:* ]]
 }
 
-@test "agent_ai_context_compress triggers at critical threshold" {
-    agent_ai_budget_init 100 80 90
-    run agent_ai_context_compress 95
-    [ "$status" -eq 0 ] || [ "$status" -eq 1 ]  # Compressed or attempted
+@test "agent_ai_context_status shows critical state at threshold" {
+    agent_ai_context_init 1000 20
+    agent_ai_context_use 770 "compress_test" || true
+    status_json=$(agent_ai_context_status)
+    [[ "$status_json" == *'"status":"critical"'* ]]
 }
 
-@test "agent_ai_tool_init clears all permissions" {
-    agent_ai_tool_allow "test_func"
-    agent_ai_tool_init
-    [ -z "$AGENT_AI_TOOLS_ALLOWED" ]
-    [ -z "$AGENT_AI_TOOLS_DENIED" ]
+@test "agent_ai_tool_list is empty before registration" {
+    result=$(agent_ai_tool_list)
+    [ "$result" = "[]" ]
 }
 
-@test "agent_ai_budget_remaining calculates correctly" {
-    agent_ai_budget_init 1000
-    remaining=$(agent_ai_budget_remaining 750)
-    [ "$remaining" -eq 250 ]
+@test "agent_ai_context_status reports remaining budget" {
+    agent_ai_context_init 1000 0
+    agent_ai_context_use 750 "budget_test"
+    status_json=$(agent_ai_context_status)
+    [[ "$status_json" == *'"remaining":250'* ]]
 }

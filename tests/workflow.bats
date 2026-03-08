@@ -992,6 +992,34 @@ teardown() {
     [[ "$content" == *"hello world"* ]]
 }
 
+@test "workflow_run preserves embedded double quotes and env vars" {
+    workflow_define "quoted-env"
+    export TEST_VAR="test_value"
+
+    workflow_step "quoted-env" "s1" "echo \"Value is: \$TEST_VAR\""
+
+    run workflow_run "quoted-env"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Value is: test_value"* ]]
+
+    unset TEST_VAR
+}
+
+@test "workflow_run preserves commands that emit JSON strings" {
+    local outfile="$MAINFRAME_WORKFLOW_DIR/data.json"
+    workflow_define "json-cmd"
+    workflow_step "json-cmd" "s1" "echo '{\"name\":\"Alice\",\"role\":\"admin\"}' > '$outfile'"
+
+    run workflow_run "json-cmd"
+    [ "$status" -eq 0 ]
+    [ -f "$outfile" ]
+
+    local content
+    content=$(<"$outfile")
+    [[ "$content" == *'"name":"Alice"'* ]]
+    [[ "$content" == *'"role":"admin"'* ]]
+}
+
 @test "workflow with many independent steps" {
     workflow_define "many"
     local i=1

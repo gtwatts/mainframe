@@ -75,6 +75,50 @@ _device_escape_json() {
     echo "$s"
 }
 
+_device_stat_size() {
+    local file="$1"
+
+    if stat -f%z "$file" >/dev/null 2>&1; then
+        stat -f%z "$file"
+    else
+        stat -c%s "$file"
+    fi
+}
+
+_device_stat_mtime() {
+    local file="$1"
+
+    if stat -f%m "$file" >/dev/null 2>&1; then
+        stat -f%m "$file"
+    else
+        stat -c%Y "$file"
+    fi
+}
+
+_device_format_bytes() {
+    local size="$1"
+
+    if (( size >= 1073741824 )); then
+        awk -v size="$size" 'BEGIN { printf "%.1fG", size / 1073741824 }'
+    elif (( size >= 1048576 )); then
+        awk -v size="$size" 'BEGIN { printf "%.1fM", size / 1048576 }'
+    elif (( size >= 1024 )); then
+        awk -v size="$size" 'BEGIN { printf "%.1fK", size / 1024 }'
+    else
+        printf '%dB' "$size"
+    fi
+}
+
+_device_format_date() {
+    local epoch="$1"
+
+    if date -r "$epoch" +%Y-%m-%d >/dev/null 2>&1; then
+        date -r "$epoch" +%Y-%m-%d
+    else
+        date -d "@$epoch" +%Y-%m-%d
+    fi
+}
+
 # =============================================================================
 # DEVICE DISCOVERY
 # =============================================================================
@@ -360,35 +404,31 @@ device_usage() {
 }
 
 # device_largest_files PATH [N]
-# Top N largest files under PATH (default 10, maxdepth 3)
+# Top N largest files under PATH (default 10)
 device_largest_files() {
     local path="${1:-.}" n="${2:-10}"
     [[ -d "$path" ]] || { log_warn "device: '$path' is not a directory"; return 1; }
-    find "$path" -maxdepth 3 -type f -printf '%s %p\n' 2>/dev/null | \
+    while IFS= read -r file; do
+        printf '%s\t%s\n' "$(_device_stat_size "$file")" "$file"
+    done < <(find "$path" -type f 2>/dev/null) | \
         sort -rn | head -n "$n" | \
-        awk '{
-            size=$1
-            if (size >= 1073741824) printf "%.1fG %s\n", size/1073741824, $2
-            else if (size >= 1048576) printf "%.1fM %s\n", size/1048576, $2
-            else if (size >= 1024) printf "%.1fK %s\n", size/1024, $2
-            else printf "%dB %s\n", size, $2
-        }'
+        while IFS=$'\t' read -r size file; do
+            printf '%s %s\n' "$(_device_format_bytes "$size")" "$file"
+        done
 }
 
 # device_oldest_files PATH [N]
-# Top N oldest files by mtime under PATH (default 10, maxdepth 3)
+# Top N oldest files by mtime under PATH (default 10)
 device_oldest_files() {
     local path="${1:-.}" n="${2:-10}"
     [[ -d "$path" ]] || { log_warn "device: '$path' is not a directory"; return 1; }
-    find "$path" -maxdepth 3 -type f -printf '%T@ %p\n' 2>/dev/null | \
+    while IFS= read -r file; do
+        printf '%s\t%s\n' "$(_device_stat_mtime "$file")" "$file"
+    done < <(find "$path" -type f 2>/dev/null) | \
         sort -n | head -n "$n" | \
-        awk '{
-            ts=int($1)
-            cmd="date -d @" ts " +%Y-%m-%d 2>/dev/null"
-            cmd | getline dt
-            close(cmd)
-            print dt, $2
-        }'
+        while IFS=$'\t' read -r ts file; do
+            printf '%s %s\n' "$(_device_format_date "$ts")" "$file"
+        done
 }
 
 # =============================================================================

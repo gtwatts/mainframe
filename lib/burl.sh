@@ -1508,7 +1508,7 @@ burl_analyze_response() {
         is_array=true
 
         # Count array elements (rough count)
-        record_count=$(grep -o '\{' <<< "$body" | wc -l)
+        record_count=$(printf '%s' "$body" | tr -cd '{' | wc -c | tr -d '[:space:]')
 
         # Try to extract schema from first object
         if [[ "$body" =~ \{([^}]+)\} ]]; then
@@ -1563,11 +1563,11 @@ burl_analyze_response() {
     elif [[ "$trimmed" =~ ^\<\?xml ]] || [[ "$trimmed" =~ ^\<[a-zA-Z] ]]; then
         content_type="xml"
         # Count root-level elements
-        record_count=$(grep -oP '<[a-zA-Z][^>]*>' <<< "$body" | head -20 | wc -l)
+        record_count=$(grep -oE '<[a-zA-Z][^>]*>' <<< "$body" | head -20 | wc -l | tr -d '[:space:]')
 
     elif [[ "$trimmed" =~ ^[a-zA-Z0-9_-]+, ]] || [[ "$body" =~ $'\n'[a-zA-Z0-9_-]+, ]]; then
         content_type="csv"
-        record_count=$(wc -l <<< "$body")
+        record_count=$(wc -l <<< "$body" | tr -d '[:space:]')
         # Get header row
         schema_hint=$(head -1 <<< "$body")
 
@@ -1583,7 +1583,7 @@ burl_analyze_response() {
 
     local char_count=${#body}
     local line_count
-    line_count=$(wc -l <<< "$body")
+    line_count=$(wc -l <<< "$body" | tr -d '[:space:]')
 
     # Escape schema_hint for JSON
     schema_hint="${schema_hint//\\/\\\\}"

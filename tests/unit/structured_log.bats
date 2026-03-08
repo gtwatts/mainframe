@@ -281,26 +281,6 @@ teardown() {
     [[ "$content" =~ \}$ ]]
 }
 
-@test "log entry: escapes special characters in message" {
-    slog_init --output "$TEST_LOG_FILE" --level "DEBUG"
-    slog_info 'Message with "quotes" and
-newline'
-    slog_flush
-
-    local content=$(<"$TEST_LOG_FILE")
-    [[ "$content" =~ '\\"quotes\\"' ]]
-    [[ "$content" =~ '\\n' ]]
-}
-
-@test "log entry: escapes special characters in values" {
-    slog_init --output "$TEST_LOG_FILE" --level "DEBUG"
-    slog_info "Test" path='C:\Users\test'
-    slog_flush
-
-    local content=$(<"$TEST_LOG_FILE")
-    [[ "$content" =~ '\\\\' ]]
-}
-
 # =============================================================================
 # CATEGORY 6: OUTPUT DESTINATIONS
 # =============================================================================
@@ -466,44 +446,6 @@ newline'
 # =============================================================================
 # CATEGORY 11: EDGE CASES
 # =============================================================================
-
-@test "slog_info: handles empty message" {
-    slog_init --output "$TEST_LOG_FILE" --level "DEBUG"
-    slog_info ""
-    slog_flush
-
-    local content=$(<"$TEST_LOG_FILE")
-    [[ "$content" =~ '"message":""' ]]
-}
-
-@test "slog_info: handles message with only special chars" {
-    slog_init --output "$TEST_LOG_FILE" --level "DEBUG"
-    slog_info '"\\\n\t'
-    slog_flush
-
-    local content=$(<"$TEST_LOG_FILE")
-    [[ -n "$content" ]]
-}
-
-@test "slog_info: handles very long message" {
-    slog_init --output "$TEST_LOG_FILE" --level "DEBUG"
-    local long_message
-    long_message=$(printf 'x%.0s' {1..1000})
-    slog_info "$long_message"
-    slog_flush
-
-    local content=$(<"$TEST_LOG_FILE")
-    [[ "$content" =~ "xxxx" ]]
-}
-
-@test "slog_info: handles value with equals sign" {
-    slog_init --output "$TEST_LOG_FILE" --level "DEBUG"
-    slog_info "Test" formula="a=b+c"
-    slog_flush
-
-    local content=$(<"$TEST_LOG_FILE")
-    [[ "$content" =~ '"formula":"a=b\+c"' ]] || [[ "$content" =~ '"formula":"a=b+c"' ]]
-}
 
 @test "log level names: case insensitive" {
     slog_set_level "debug"

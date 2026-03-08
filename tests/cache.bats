@@ -673,14 +673,12 @@ slow_func() {
 # =============================================================================
 
 @test "cache_max_size sets limit" {
-    run cache_max_size "256MB"
-    [ "$status" -eq 0 ]
+    cache_max_size "256MB"
     [ "$MAINFRAME_CACHE_MAX_SIZE_MB" -eq 256 ]
 }
 
 @test "cache_max_size accepts numeric MB" {
-    run cache_max_size 128
-    [ "$status" -eq 0 ]
+    cache_max_size 128
     [ "$MAINFRAME_CACHE_MAX_SIZE_MB" -eq 128 ]
 }
 

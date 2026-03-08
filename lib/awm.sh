@@ -22,7 +22,7 @@
 
 # Prevent double-sourcing
 [[ -n "${_MAINFRAME_AWM_LOADED:-}" ]] && return 0
-readonly _MAINFRAME_AWM_LOADED=1
+declare -g _MAINFRAME_AWM_LOADED=1
 
 # Source dependencies
 SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
@@ -139,6 +139,54 @@ _awm_session_dir() {
     else
         printf '%s/sessions/%s' "$AWM_ROOT" "$sid"
     fi
+}
+
+# Temporarily switch the active session for compatibility wrappers.
+_awm_with_session() {
+    local sid="$1"
+    shift
+    local previous_sid="$_AWM_SESSION_ID"
+    _AWM_SESSION_ID="$sid"
+    "$@"
+    local rc=$?
+    _AWM_SESSION_ID="$previous_sid"
+    return $rc
+}
+
+# Return 0 when the argument points at an existing AWM session.
+_awm_session_exists() {
+    local sid="$1"
+    [[ -n "$sid" ]] || return 1
+    [[ -d "$(_awm_session_dir "$sid")" ]]
+}
+
+# Save a full session snapshot under checkpoints/<name>.
+_awm_checkpoint_snapshot() {
+    local sid="$1"
+    local checkpoint_name="$2"
+    local dir checkpoint_dir
+
+    [[ -n "$checkpoint_name" ]] || {
+        _awm_log error "awm_checkpoint: checkpoint name required"
+        return 1
+    }
+
+    dir=$(_awm_session_dir "$sid")
+    [[ -d "$dir" ]] || {
+        _awm_log error "awm_checkpoint: session not found: $sid"
+        return 1
+    }
+
+    checkpoint_dir="${dir}/checkpoints/${checkpoint_name}"
+    mkdir -p "${checkpoint_dir}/data" || return 1
+    if [[ -d "${dir}/data" ]]; then
+        cp -R "${dir}/data/." "${checkpoint_dir}/data/" 2>/dev/null || true
+    fi
+
+    local snapshot
+    snapshot=$(printf '{"session_id":"%s","checkpoint":"%s","created_at":"%s"}' \
+        "$sid" "$(_awm_json_escape "$checkpoint_name")" "$(_awm_iso_timestamp)")
+    _awm_atomic_write "${checkpoint_dir}/snapshot.json" "$snapshot"
 }
 
 # JSON-escape a string
@@ -422,6 +470,11 @@ awm_team_namespace() {
 # Example: awm_checkpoint "current_step" "3"
 # Example: awm_checkpoint "api_response" "$json_response"
 awm_checkpoint() {
+    if [[ $# -eq 2 ]] && _awm_session_exists "$1"; then
+        _awm_checkpoint_snapshot "$1" "$2"
+        return $?
+    fi
+
     local key="$1"
     local value="$2"
 
@@ -630,11 +683,20 @@ awm_discovery() {
 # Usage: value=$(awm_get "key")
 # Example: step=$(awm_get "current_step")
 awm_get() {
+    local sid=""
+    if [[ $# -ge 2 ]] && _awm_session_exists "$1"; then
+        sid="$1"
+        shift
+    fi
+
     local key="$1"
     local default="${2:-}"
+    local previous_sid="$_AWM_SESSION_ID"
+    [[ -n "$sid" ]] && _AWM_SESSION_ID="$sid"
 
     if [[ -z "$_AWM_SESSION_ID" ]]; then
         printf '%s' "$default"
+        [[ -n "$sid" ]] && _AWM_SESSION_ID="$previous_sid"
         return 1
     fi
 
@@ -647,10 +709,12 @@ awm_get() {
 
     if [[ -f "$file" ]]; then
         cat "$file"
+        [[ -n "$sid" ]] && _AWM_SESSION_ID="$previous_sid"
         return 0
     fi
 
     printf '%s' "$default"
+    [[ -n "$sid" ]] && _AWM_SESSION_ID="$previous_sid"
     return 1
 }
 
@@ -1213,6 +1277,87 @@ awm_list() {
 
             printf '%s\t%s\t%s\t%s\n' "$id" "$name" "$status" "$created_at"
         done
+    done
+}
+
+# =============================================================================
+# COMPATIBILITY WRAPPERS
+# =============================================================================
+
+# Session-scoped key/value setter retained for older integration tests.
+awm_set() {
+    local sid="$1"
+    local key="$2"
+    local value="${3:-}"
+    _awm_with_session "$sid" awm_checkpoint "$key" "$value"
+}
+
+# Append plain text to a named session field.
+awm_append() {
+    local sid="$1"
+    local key="$2"
+    local value="$3"
+    local previous_sid="$_AWM_SESSION_ID"
+
+    _AWM_SESSION_ID="$sid"
+    if [[ -z "$_AWM_SESSION_ID" ]]; then
+        _AWM_SESSION_ID="$previous_sid"
+        return 1
+    fi
+
+    local safe_key="${key//[^a-zA-Z0-9_.-]/_}"
+    local dir file
+    dir=$(_awm_session_dir)
+    file="${dir}/data/${safe_key}"
+    _awm_locked_append "$file" "$value"
+    local rc=$?
+    _AWM_SESSION_ID="$previous_sid"
+    return $rc
+}
+
+# Remove a stored key from a session.
+awm_unset() {
+    local sid="$1"
+    local key="$2"
+    local previous_sid="$_AWM_SESSION_ID"
+    _AWM_SESSION_ID="$sid"
+
+    local safe_key="${key//[^a-zA-Z0-9_.-]/_}"
+    local dir file
+    dir=$(_awm_session_dir)
+    file="${dir}/data/${safe_key}"
+    rm -f "$file"
+    local rc=$?
+    _AWM_SESSION_ID="$previous_sid"
+    return $rc
+}
+
+# Return snapshot metadata for a named checkpoint.
+awm_get_checkpoint() {
+    local sid="$1"
+    local checkpoint_name="$2"
+    local file
+    file="$(_awm_session_dir "$sid")/checkpoints/${checkpoint_name}/snapshot.json"
+    [[ -f "$file" ]] || return 1
+    cat "$file"
+}
+
+# Destroy a session directory entirely.
+awm_destroy() {
+    local sid="$1"
+    local dir
+    dir=$(_awm_session_dir "$sid")
+    rm -rf "$dir" || return 1
+    if [[ "$_AWM_SESSION_ID" == "$sid" ]]; then
+        _AWM_SESSION_ID=""
+    fi
+    return 0
+}
+
+# Return only session IDs, one per line.
+awm_list_sessions() {
+    awm_list | while IFS=$'\t' read -r sid _; do
+        [[ -n "$sid" ]] && printf '%s\n' "$sid"
     done
 }
 

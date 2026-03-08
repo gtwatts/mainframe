@@ -138,6 +138,73 @@ _otel_log() {
     fi
 }
 
+_otel_context_file() {
+    printf '%s/.context' "$_OTEL_SPAN_DIR"
+}
+
+_otel_stack_file() {
+    printf '%s/.stack' "$_OTEL_SPAN_DIR"
+}
+
+_otel_ensure_state_dir() {
+    [[ -d "$_OTEL_SPAN_DIR" ]] || mkdir -p "$_OTEL_SPAN_DIR" 2>/dev/null
+}
+
+_otel_sync_state() {
+    local line key value
+
+    _OTEL_CTX[trace_id]=""
+    _OTEL_CTX[span_id]=""
+    _OTEL_CTX[parent_span_id]=""
+    _OTEL_CTX[flags]="01"
+    _OTEL_CTX[tracestate]=""
+    _OTEL_SPAN_STACK=()
+
+    if [[ -f "$(_otel_context_file)" ]]; then
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            key="${line%%=*}"
+            value="${line#*=}"
+            case "$key" in
+                trace_id|span_id|parent_span_id|flags|tracestate)
+                    _OTEL_CTX["$key"]="$value"
+                    ;;
+            esac
+        done < "$(_otel_context_file)"
+    fi
+
+    if [[ -f "$(_otel_stack_file)" ]]; then
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ -n "$line" ]] && _OTEL_SPAN_STACK+=("$line")
+        done < "$(_otel_stack_file)"
+    fi
+}
+
+_otel_write_state() {
+    local span_id
+
+    _otel_ensure_state_dir
+
+    cat > "$(_otel_context_file)" << EOF
+trace_id=${_OTEL_CTX[trace_id]}
+span_id=${_OTEL_CTX[span_id]}
+parent_span_id=${_OTEL_CTX[parent_span_id]}
+flags=${_OTEL_CTX[flags]}
+tracestate=${_OTEL_CTX[tracestate]}
+EOF
+
+    : > "$(_otel_stack_file)"
+    for span_id in "${_OTEL_SPAN_STACK[@]}"; do
+        printf '%s\n' "$span_id" >> "$(_otel_stack_file)"
+    done
+}
+
+_otel_json_field() {
+    local json="$1"
+    local field="$2"
+
+    sed -n "s/.*\"${field}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" <<< "$json" | head -n 1
+}
+
 # =============================================================================
 # INITIALIZATION
 # =============================================================================
@@ -179,15 +246,20 @@ otel_init() {
     [[ -n "$sample_rate" ]] && OTEL_SAMPLE_RATE="$sample_rate"
 
     # Create span storage directory
-    mkdir -p "$_OTEL_SPAN_DIR" 2>/dev/null
+    _otel_ensure_state_dir
 
     # Register cleanup handler
-    if [[ -z "${_OTEL_CLEANUP_REGISTERED:-}" ]]; then
-        trap 'otel_flush 2>/dev/null' EXIT
+    if [[ -z "${_OTEL_CLEANUP_REGISTERED:-}" ]] && (( ${BASH_SUBSHELL:-0} == 0 )); then
+        if declare -F _mainframe_add_exit_trap >/dev/null 2>&1; then
+            _mainframe_add_exit_trap "otel_flush 2>/dev/null || true"
+        else
+            trap 'otel_flush 2>/dev/null || true' EXIT
+        fi
         _OTEL_CLEANUP_REGISTERED=1
     fi
 
     _OTEL_INITIALIZED=1
+    _otel_write_state
     _otel_log "info" "Initialized: service=$OTEL_SERVICE_NAME endpoint=$OTEL_EXPORTER_ENDPOINT"
 
     return 0
@@ -200,46 +272,46 @@ otel_init() {
 # Start a new trace/span
 # Usage: otel_trace_start "operation_name"
 # Returns: Prints span_id to stdout
-otel_trace_start() {
+_otel_trace_start_into() {
+    local __otel_outvar="$1"
+    shift
     local name="${1:-operation}"
 
-    _otel_should_trace || { printf ''; return 0; }
+    _otel_should_trace || {
+        printf -v "$__otel_outvar" '%s' ''
+        return 0
+    }
 
-    # Auto-initialize if needed
     [[ "$_OTEL_INITIALIZED" != "1" ]] && otel_init
+    _otel_sync_state
 
-    local trace_id span_id parent_span_id=""
+    local trace_id new_span_id parent_span_id=""
     local start_time
 
-    # Check if we're in an existing trace
     if [[ -n "${_OTEL_CTX[trace_id]}" ]]; then
-        # Continue existing trace
         trace_id="${_OTEL_CTX[trace_id]}"
         parent_span_id="${_OTEL_CTX[span_id]}"
     else
-        # New trace
         trace_id=$(_otel_gen_trace_id)
     fi
 
-    span_id=$(_otel_gen_span_id)
+    new_span_id=$(_otel_gen_span_id)
     start_time=$(_otel_now_nanos)
 
-    # Push current span to stack
     if [[ -n "${_OTEL_CTX[span_id]}" ]]; then
         _OTEL_SPAN_STACK+=("${_OTEL_CTX[span_id]}")
     fi
 
-    # Update context
     _OTEL_CTX[trace_id]="$trace_id"
-    _OTEL_CTX[span_id]="$span_id"
+    _OTEL_CTX[span_id]="$new_span_id"
     _OTEL_CTX[parent_span_id]="$parent_span_id"
+    _otel_write_state
 
-    # Create span file
-    local span_file="$_OTEL_SPAN_DIR/${trace_id}_${span_id}.span"
+    local span_file="$_OTEL_SPAN_DIR/${trace_id}_${new_span_id}.span"
     cat > "$span_file" << EOF
 {
   "traceId": "$trace_id",
-  "spanId": "$span_id",
+  "spanId": "$new_span_id",
   "parentSpanId": "$parent_span_id",
   "name": "$(_otel_json_escape "$name")",
   "kind": 1,
@@ -251,12 +323,20 @@ otel_trace_start() {
 }
 EOF
 
+    printf -v "$__otel_outvar" '%s' "$new_span_id"
+}
+
+otel_trace_start() {
+    local span_id
+    _otel_trace_start_into span_id "$@"
     printf '%s' "$span_id"
 }
 
 # End the current span
 # Usage: otel_trace_end
 otel_trace_end() {
+    _otel_sync_state
+
     local trace_id="${_OTEL_CTX[trace_id]}"
     local span_id="${_OTEL_CTX[span_id]}"
 
@@ -289,7 +369,7 @@ otel_trace_end() {
         parent_file=$(find "$_OTEL_SPAN_DIR" -name "${trace_id}_${parent_span_id}.span" 2>/dev/null | head -1)
         if [[ -f "$parent_file" ]]; then
             local parent_parent
-            parent_parent=$(grep -oP '"parentSpanId"\s*:\s*"\K[^"]*' "$parent_file" 2>/dev/null || echo "")
+            parent_parent=$(_otel_json_field "$(<"$parent_file")" "parentSpanId")
             _OTEL_CTX[parent_span_id]="$parent_parent"
         fi
     else
@@ -298,6 +378,8 @@ otel_trace_end() {
         _OTEL_CTX[span_id]=""
         _OTEL_CTX[parent_span_id]=""
     fi
+
+    _otel_write_state
 
     return 0
 }
@@ -309,6 +391,8 @@ otel_trace_end() {
 # Add an event to the current span
 # Usage: otel_trace_add_event "event_name" key="value" key2="value2"
 otel_trace_add_event() {
+    _otel_sync_state
+
     local event_name="$1"
     shift
 
@@ -359,6 +443,8 @@ otel_trace_add_event() {
 # Set an attribute on the current span
 # Usage: otel_trace_set_attribute "key" "value"
 otel_trace_set_attribute() {
+    _otel_sync_state
+
     local key="$1"
     local value="$2"
 
@@ -401,6 +487,8 @@ otel_trace_set_attribute() {
 # Set span status
 # Usage: otel_trace_set_status "OK|ERROR" "description"
 otel_trace_set_status() {
+    _otel_sync_state
+
     local status="$1"
     local description="${2:-}"
 
@@ -446,12 +534,14 @@ otel_trace_set_status() {
 # Get current trace ID
 # Usage: trace_id=$(otel_trace_id)
 otel_trace_id() {
+    _otel_sync_state
     printf '%s' "${_OTEL_CTX[trace_id]}"
 }
 
 # Get current span ID
 # Usage: span_id=$(otel_span_id)
 otel_span_id() {
+    _otel_sync_state
     printf '%s' "${_OTEL_CTX[span_id]}"
 }
 
@@ -463,6 +553,8 @@ otel_span_id() {
 # Usage: headers=$(otel_inject_headers)
 # Returns: traceparent and tracestate headers
 otel_inject_headers() {
+    _otel_sync_state
+
     local trace_id="${_OTEL_CTX[trace_id]}"
     local span_id="${_OTEL_CTX[span_id]}"
     local flags="${_OTEL_CTX[flags]:-01}"
@@ -484,6 +576,8 @@ otel_inject_headers() {
 # Extract context from incoming headers
 # Usage: otel_extract_headers "00-traceid-spanid-01" "key=value"
 otel_extract_headers() {
+    _otel_sync_state
+
     local traceparent="$1"
     local tracestate="${2:-}"
 
@@ -510,6 +604,7 @@ otel_extract_headers() {
 
         # Generate new span ID for this service
         _OTEL_CTX[span_id]=$(_otel_gen_span_id)
+        _otel_write_state
 
         return 0
     fi
@@ -679,12 +774,14 @@ _otel_export_zipkin() {
 
             # Extract values for Zipkin format
             local trace_id span_id parent_id name start_ns end_ns
-            trace_id=$(printf '%s' "$span_json" | grep -oP '"traceId"\s*:\s*"\K[^"]*' || echo "")
-            span_id=$(printf '%s' "$span_json" | grep -oP '"spanId"\s*:\s*"\K[^"]*' || echo "")
-            parent_id=$(printf '%s' "$span_json" | grep -oP '"parentSpanId"\s*:\s*"\K[^"]*' || echo "")
-            name=$(printf '%s' "$span_json" | grep -oP '"name"\s*:\s*"\K[^"]*' || echo "")
-            start_ns=$(printf '%s' "$span_json" | grep -oP '"startTimeUnixNano"\s*:\s*"\K[^"]*' || echo "0")
-            end_ns=$(printf '%s' "$span_json" | grep -oP '"endTimeUnixNano"\s*:\s*"\K[^"]*' || echo "0")
+            trace_id=$(_otel_json_field "$span_json" "traceId")
+            span_id=$(_otel_json_field "$span_json" "spanId")
+            parent_id=$(_otel_json_field "$span_json" "parentSpanId")
+            name=$(_otel_json_field "$span_json" "name")
+            start_ns=$(_otel_json_field "$span_json" "startTimeUnixNano")
+            end_ns=$(_otel_json_field "$span_json" "endTimeUnixNano")
+            [[ -n "$start_ns" ]] || start_ns="0"
+            [[ -n "$end_ns" ]] || end_ns="0"
 
             # Convert nanoseconds to microseconds for Zipkin
             local start_us=$((start_ns / 1000))
@@ -776,6 +873,8 @@ _otel_cleanup_exported() {
 # Flush all pending spans
 # Usage: otel_flush
 otel_flush() {
+    _otel_sync_state
+
     # End any unclosed spans
     while [[ -n "${_OTEL_CTX[span_id]}" ]]; do
         otel_trace_set_status "ERROR" "Span not properly closed"
@@ -799,7 +898,7 @@ otel_instrument() {
     shift
 
     local span_id exit_code
-    span_id=$(otel_trace_start "$func_name")
+    _otel_trace_start_into span_id "$func_name"
 
     # Execute
     "$func_name" "$@"
@@ -824,7 +923,7 @@ otel_timed() {
     shift
 
     local span_id
-    span_id=$(otel_trace_start "$span_name")
+    _otel_trace_start_into span_id "$span_name"
 
     otel_trace_set_attribute "command" "$*"
 

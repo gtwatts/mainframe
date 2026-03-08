@@ -10,9 +10,10 @@
 # "Mainframe can make a computer do anything short of tap dance."
 # =============================================================================
 
-# Prevent double-sourcing
+# Prevent double-sourcing. Keep the sentinel mutable so tests can reload
+# the module with different environment settings.
 [[ -n "${_MAINFRAME_TELEMETRY_LOADED:-}" ]] && return 0
-readonly _MAINFRAME_TELEMETRY_LOADED=1
+_MAINFRAME_TELEMETRY_LOADED=1
 
 # =============================================================================
 # CONFIGURATION
@@ -184,7 +185,7 @@ telemetry_track() {
     _TELEMETRY_LAST_SEEN["$key"]="$now"
 
     # Increment total
-    ((_TELEMETRY_TOTAL_EVENTS++))
+    _TELEMETRY_TOTAL_EVENTS=$((_TELEMETRY_TOTAL_EVENTS + 1))
 
     _telemetry_debug "Tracked: $key (count: ${_TELEMETRY_COUNTS["$key"]})"
 
@@ -332,7 +333,7 @@ telemetry_report() {
             [[ $file_epoch -lt $start_epoch ]] && continue
         fi
 
-        ((files_processed++))
+        files_processed=$((files_processed + 1))
 
         # Parse each line (JSONL format)
         while IFS= read -r line; do
@@ -349,7 +350,7 @@ telemetry_report() {
             local line_total
             if [[ "$line" =~ \"total\":([0-9]+) ]]; then
                 line_total="${BASH_REMATCH[1]}"
-                ((total_calls += line_total))
+                total_calls=$((total_calls + line_total))
             fi
 
             # Extract events array and parse
@@ -362,8 +363,8 @@ telemetry_report() {
                     local func="${BASH_REMATCH[2]}"
                     local count="${BASH_REMATCH[3]}"
 
-                    ((func_counts["$func"] += count)) 2>/dev/null || func_counts["$func"]=$count
-                    ((category_counts["$cat"] += count)) 2>/dev/null || category_counts["$cat"]=$count
+                    func_counts["$func"]=$(( ${func_counts["$func"]:-0} + count ))
+                    category_counts["$cat"]=$(( ${category_counts["$cat"]:-0} + count ))
 
                     # Remove matched portion to continue parsing
                     events_str="${events_str#*\}}"
@@ -377,7 +378,7 @@ telemetry_report() {
     local s
     # shellcheck disable=SC2086,SC2034
     for s in $sessions_seen; do
-        ((session_count++))
+        session_count=$((session_count + 1))
     done
 
     # Output report
@@ -453,7 +454,11 @@ _telemetry_cleanup() {
 
 # Register cleanup handler (only if we're not being sourced for testing)
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
-    trap _telemetry_cleanup EXIT
+    if declare -F _mainframe_add_exit_trap >/dev/null 2>&1; then
+        _mainframe_add_exit_trap "_telemetry_cleanup"
+    else
+        trap _telemetry_cleanup EXIT
+    fi
 fi
 
 # =============================================================================
@@ -461,7 +466,7 @@ fi
 # =============================================================================
 
 # shellcheck disable=SC2034  # Used by MAINFRAME lazy loading system
-readonly TELEMETRY_EXPORTS=(
+TELEMETRY_EXPORTS=(
     telemetry_enabled
     telemetry_init
     telemetry_track

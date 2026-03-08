@@ -133,8 +133,8 @@ setup() {
 @test "go_dep_count counts direct deps correctly" {
     local result direct
     result=$(go_dep_count "$FIXTURE_DIR")
-    direct=$(echo "$result" | grep -oP '^direct=\K[0-9]+|(?<=,)direct=\K[0-9]+' | head -1)
-    [[ -z "$direct" ]] && direct=$(echo "$result" | sed 's/,.*//' | sed 's/direct=//')
+    direct="${result#*direct=}"
+    direct="${direct%%,*}"
     [[ $direct -eq 3 ]]
 }
 
@@ -198,7 +198,8 @@ setup() {
 @test "go_test_coverage counts test functions" {
     local result funcs
     result=$(go_test_coverage "$FIXTURE_DIR")
-    funcs=$(echo "$result" | grep -oP 'test_functions=\K[0-9]+')
+    funcs="${result#*test_functions=}"
+    funcs="${funcs%%,*}"
     [[ $funcs -eq 2 ]]
 }
 

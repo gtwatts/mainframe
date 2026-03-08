@@ -172,3 +172,22 @@ cleanup_test_dir() {
     local dir="$1"
     [[ -d "$dir" ]] && rm -rf "$dir"
 }
+
+# Return numeric file mode in portable octal form
+file_mode() {
+    local path="$1"
+    local mode
+
+    mode=$(stat -c '%a' "$path" 2>/dev/null || stat -f '%Lp' "$path" 2>/dev/null) || return 1
+    printf '%s\n' "$mode"
+}
+
+# Return a trimmed line count for a file
+line_count() {
+    local path="$1"
+    local count
+
+    count=$(wc -l < "$path") || return 1
+    count="${count//[[:space:]]/}"
+    printf '%s\n' "$count"
+}

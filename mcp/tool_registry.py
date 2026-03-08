@@ -14,6 +14,7 @@ class ToolRegistry:
         )
         self.functions_json_path = os.path.join(self.mainframe_root, 'FUNCTIONS.json')
         self._functions: Dict[str, Any] = {}
+        self.functions = self._functions
         self._loaded = False
 
     def load(self) -> bool:

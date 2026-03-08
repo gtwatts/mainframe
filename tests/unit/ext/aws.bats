@@ -736,7 +736,7 @@ EOF
     '
     result=$(aws_s3_list)
     [[ "$result" =~ ^\{.*\}$ ]]
-    [[ "$result" =~ '"data":\[' ]]
+    [[ "$result" == *'"data":['* ]]
 }
 
 @test "aws_ec2_list: returns valid JSON with filter" {

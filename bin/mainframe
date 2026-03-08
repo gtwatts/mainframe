@@ -23,7 +23,7 @@ set -euo pipefail
 
 # Determine MAINFRAME root directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export MAINFRAME_ROOT="${MAINFRAME_ROOT:-$SCRIPT_DIR}"
+export MAINFRAME_ROOT="$SCRIPT_DIR"
 
 # Source common library
 source "$MAINFRAME_ROOT/lib/common.sh"
@@ -337,6 +337,8 @@ cmd_benchmark() {
 cmd_test() {
     local bats="${MAINFRAME_ROOT}/tests/bats/bin/bats"
     local tests_dir="${MAINFRAME_ROOT}/tests"
+    local test_shell=""
+    local candidate=""
 
     if [[ ! -x "$bats" ]]; then
         echo "BATS not installed. Run: make test-deps"
@@ -347,7 +349,22 @@ cmd_test() {
         return 1
     fi
 
-    "$bats" "${tests_dir}/unit/" "${tests_dir}/integration/"
+    for candidate in "${BASH:-}" /opt/homebrew/bin/bash /usr/local/bin/bash "$(command -v bash 2>/dev/null)"; do
+        [[ -z "$candidate" || ! -x "$candidate" ]] && continue
+        if "$candidate" -lc '(( BASH_VERSINFO[0] >= 4 ))' >/dev/null 2>&1; then
+            test_shell="$candidate"
+            break
+        fi
+    done
+
+    if [[ -z "$test_shell" ]]; then
+        echo "MAINFRAME tests require Bash 4.0+."
+        echo "Install a newer bash and ensure it is available at /opt/homebrew/bin/bash,"
+        echo "/usr/local/bin/bash, or earlier in PATH."
+        return 1
+    fi
+
+    BATS_TEST_SHELL="$test_shell" "$bats" "${tests_dir}/unit/" "${tests_dir}/integration/"
 }
 
 cmd_update() {

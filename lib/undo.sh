@@ -491,7 +491,11 @@ undo_mkdir() {
 
 # @pre: PATH exists  @post: mode changed, original recorded  @returns: 0/1
 undo_chmod() {
-    local mode="$1" path="$2"
+    local path="$1" mode="$2"
+    if [[ "$1" =~ ^[0-7]{3,4}$ ]] && [[ -n "$2" ]]; then
+        mode="$1"
+        path="$2"
+    fi
     [[ -z "$mode" ]] || [[ -z "$path" ]] && { _undo_output_error "E_ARG_MISSING" "undo_chmod: mode and path required"; return 1; }
     [[ -e "$path" ]] || { _undo_output_error "E_PATH_NOT_FOUND" "Not found: $path"; return 1; }
     mainframe_undo_record "chmod" "$path" "chmod $mode ${path##*/}"
@@ -501,7 +505,11 @@ undo_chmod() {
 
 # @pre: FILE exists  @post: sed applied in-place, full backup stored  @returns: 0/1
 undo_sed() {
-    local pattern="$1" file="$2"
+    local file="$1" pattern="$2"
+    if [[ ! -f "$file" ]] && [[ -f "$2" ]]; then
+        pattern="$1"
+        file="$2"
+    fi
     [[ -z "$pattern" ]] || [[ -z "$file" ]] && { _undo_output_error "E_ARG_MISSING" "undo_sed: pattern and file required"; return 1; }
     [[ -f "$file" ]] || { _undo_output_error "E_PATH_NOT_FOUND" "Not found: $file"; return 1; }
     mainframe_undo_record "write" "$file" "sed '$pattern' ${file##*/}"

@@ -523,6 +523,98 @@ _otel_now_nanos() {
     fi
 }
 
+_otel_context_file() {
+    printf '%s/.context' "$OTEL_SPAN_DIR"
+}
+
+_otel_context_write() {
+    mkdir -p "$OTEL_SPAN_DIR" 2>/dev/null || return 1
+
+    cat > "$(_otel_context_file)" << EOF
+trace_id=${_OTEL_TRACE_CTX[trace_id]:-}
+span_id=${_OTEL_TRACE_CTX[span_id]:-}
+parent_id=${_OTEL_TRACE_CTX[parent_id]:-}
+flags=${_OTEL_TRACE_CTX[flags]:-01}
+EOF
+}
+
+_otel_context_load() {
+    local context_file
+    context_file="$(_otel_context_file)"
+    [[ -f "$context_file" ]] || return 1
+
+    local key value
+    while IFS='=' read -r key value; do
+        case "$key" in
+            trace_id|span_id|parent_id|flags)
+                _OTEL_TRACE_CTX["$key"]="$value"
+                ;;
+        esac
+    done < "$context_file"
+
+    return 0
+}
+
+_otel_context_clear() {
+    _OTEL_TRACE_CTX[trace_id]=""
+    _OTEL_TRACE_CTX[span_id]=""
+    _OTEL_TRACE_CTX[parent_id]=""
+    _OTEL_TRACE_CTX[flags]=""
+    rm -f "$(_otel_context_file)" 2>/dev/null || true
+}
+
+_observe_json_get_string() {
+    local json="$1"
+    local field="$2"
+
+    if [[ "$json" =~ \"$field\"[[:space:]]*:[[:space:]]*\"([^\\\"]*)\" ]]; then
+        printf '%s' "${BASH_REMATCH[1]}"
+        return 0
+    fi
+
+    return 1
+}
+
+_observe_json_get_number() {
+    local json="$1"
+    local field="$2"
+
+    if [[ "$json" =~ \"$field\"[[:space:]]*:[[:space:]]*([0-9.]+) ]]; then
+        printf '%s' "${BASH_REMATCH[1]}"
+        return 0
+    fi
+
+    return 1
+}
+
+_otel_append_array_json() {
+    local json="$1"
+    local field="$2"
+    local entry_json="$3"
+    local empty_token="\"${field}\": []"
+    local array_token="\"${field}\": ["
+
+    if [[ "$json" == *"$empty_token"* ]]; then
+        printf '%s' "${json/$empty_token/\"${field}\": [$entry_json]}"
+    else
+        printf '%s' "${json/$array_token/\"${field}\": [$entry_json, }"
+    fi
+}
+
+_otel_replace_status_json() {
+    local json="$1"
+    local status_json="$2"
+
+    if [[ "$json" =~ \"status\"[[:space:]]*:[[:space:]]*\{[^}]*\} ]]; then
+        local old_status="${BASH_REMATCH[0]}"
+        printf '%s' "${json/$old_status/\"status\": $status_json}"
+        return 0
+    fi
+
+    printf '%s' "$json"
+    return 0
+}
+
 # Validate hex string of specified length
 _otel_validate_hex() {
     local hex="$1"
@@ -584,6 +676,7 @@ otel_trace_start() {
     _OTEL_TRACE_CTX[span_id]="$span_id"
     _OTEL_TRACE_CTX[parent_id]=""
     _OTEL_TRACE_CTX[flags]="01"  # Sampled
+    _otel_context_write || return 1
 
     # Create span directory
     mkdir -p "$OTEL_SPAN_DIR"
@@ -618,6 +711,7 @@ EOF
 # Usage: otel_trace_end
 # Usage: otel_trace_end "$trace_id"
 otel_trace_end() {
+    _otel_context_load >/dev/null 2>&1 || true
     local trace_id="${1:-${_OTEL_TRACE_CTX[trace_id]:-}}"
 
     [[ -z "$trace_id" ]] && return 0
@@ -641,10 +735,9 @@ otel_trace_end() {
         printf '%s' "$span_json" > "$root_span_file"
     fi
 
-    # Clear trace context
-    _OTEL_TRACE_CTX[trace_id]=""
-    _OTEL_TRACE_CTX[span_id]=""
-    _OTEL_TRACE_CTX[parent_id]=""
+    if [[ "${_OTEL_TRACE_CTX[trace_id]:-}" == "$trace_id" ]]; then
+        _otel_context_clear
+    fi
 
     return 0
 }
@@ -664,6 +757,7 @@ otel_trace_end() {
 # Usage: span_id=$(otel_span_create "function-call")
 # Usage: span_id=$(otel_span_create "function-call" "$parent_span_id")
 otel_span_create() {
+    _otel_context_load >/dev/null 2>&1 || true
     local name="${1:-unnamed_span}"
     local parent_id="${2:-${_OTEL_TRACE_CTX[span_id]:-}}"
     local trace_id="${_OTEL_TRACE_CTX[trace_id]:-}"
@@ -677,6 +771,7 @@ otel_span_create() {
     # Update current span context
     _OTEL_TRACE_CTX[parent_id]="$parent_id"
     _OTEL_TRACE_CTX[span_id]="$span_id"
+    _otel_context_write || return 1
 
     # Create span file
     local span_file="$OTEL_SPAN_DIR/${trace_id}_${span_id}.span"
@@ -711,7 +806,18 @@ EOF
 otel_span_end() {
     local span_id="$1"
     local status="${2:-OK}"
+    _otel_context_load >/dev/null 2>&1 || true
     local trace_id="${_OTEL_TRACE_CTX[trace_id]:-}"
+
+    if [[ -z "$trace_id" && -n "$span_id" ]]; then
+        local span_file_match
+        span_file_match=$(find "$OTEL_SPAN_DIR" -name "*_${span_id}.span" -type f 2>/dev/null | head -1)
+        if [[ -n "$span_file_match" ]]; then
+            trace_id=$(basename "$span_file_match" .span)
+            trace_id="${trace_id%_${span_id}}"
+            _OTEL_TRACE_CTX[trace_id]="$trace_id"
+        fi
+    fi
 
     [[ -z "$span_id" || -z "$trace_id" ]] && return 1
 
@@ -736,7 +842,7 @@ otel_span_end() {
 
     # Update end time and status
     # Replace the status and add endTimeUnixNano
-    span_json=$(printf '%s' "$span_json" | sed -E "s/\"status\":\s*\{[^}]*\}/\"status\": {\"code\": \"$status_code\"}/")
+    span_json=$(_otel_replace_status_json "$span_json" "{\"code\": \"$status_code\"}")
     span_json="${span_json%\}}"
     span_json+=",\"endTimeUnixNano\": $end_time}"
 
@@ -744,10 +850,10 @@ otel_span_end() {
 
     # Restore parent span as current
     local parent_id
-    parent_id=$(printf '%s' "$span_json" | grep -oP '"parentSpanId"\s*:\s*"\K[^"]*' || true)
-    if [[ -n "$parent_id" ]]; then
-        _OTEL_TRACE_CTX[span_id]="$parent_id"
-    fi
+    parent_id=$(_observe_json_get_string "$span_json" "parentSpanId" || true)
+    _OTEL_TRACE_CTX[parent_id]="$parent_id"
+    _OTEL_TRACE_CTX[span_id]="$parent_id"
+    _otel_context_write || return 1
 
     return 0
 }
@@ -766,6 +872,7 @@ otel_span_attribute() {
     local span_id="$1"
     local key="$2"
     local value="$3"
+    _otel_context_load >/dev/null 2>&1 || true
     local trace_id="${_OTEL_TRACE_CTX[trace_id]:-}"
 
     [[ -z "$span_id" || -z "$trace_id" || -z "$key" ]] && return 1
@@ -791,13 +898,7 @@ otel_span_attribute() {
     span_json=$(<"$span_file")
 
     # Find attributes array and append
-    if [[ "$span_json" =~ \"attributes\":[[:space:]]*\[\] ]]; then
-        # Empty array - replace with new attribute
-        span_json=$(printf '%s' "$span_json" | sed "s/\"attributes\": \[\]/\"attributes\": [$attr_json]/")
-    else
-        # Non-empty array - append
-        span_json=$(printf '%s' "$span_json" | sed "s/\"attributes\": \[/\"attributes\": [$attr_json, /")
-    fi
+    span_json=$(_otel_append_array_json "$span_json" "attributes" "$attr_json")
 
     printf '%s' "$span_json" > "$span_file"
 
@@ -818,6 +919,7 @@ otel_span_event() {
     local span_id="$1"
     local name="$2"
     local attributes="${3:-}"
+    _otel_context_load >/dev/null 2>&1 || true
     local trace_id="${_OTEL_TRACE_CTX[trace_id]:-}"
 
     [[ -z "$span_id" || -z "$trace_id" || -z "$name" ]] && return 1
@@ -844,11 +946,7 @@ otel_span_event() {
     span_json=$(<"$span_file")
 
     # Find events array and append
-    if [[ "$span_json" =~ \"events\":[[:space:]]*\[\] ]]; then
-        span_json=$(printf '%s' "$span_json" | sed "s/\"events\": \[\]/\"events\": [$event_json]/")
-    else
-        span_json=$(printf '%s' "$span_json" | sed "s/\"events\": \[/\"events\": [$event_json, /")
-    fi
+    span_json=$(_otel_append_array_json "$span_json" "events" "$event_json")
 
     printf '%s' "$span_json" > "$span_file"
 
@@ -867,6 +965,7 @@ otel_span_exception() {
     local span_id="$1"
     local message="$2"
     local stacktrace="${3:-}"
+    _otel_context_load >/dev/null 2>&1 || true
     local trace_id="${_OTEL_TRACE_CTX[trace_id]:-}"
 
     [[ -z "$span_id" || -z "$trace_id" ]] && return 1
@@ -890,7 +989,7 @@ otel_span_exception() {
     # Update span status to ERROR
     local span_json
     span_json=$(<"$span_file")
-    span_json=$(printf '%s' "$span_json" | sed -E "s/\"status\":\s*\{[^}]*\}/\"status\": {\"code\": \"ERROR\", \"message\": \"$(_observe_escape "$message")\"}/")
+    span_json=$(_otel_replace_status_json "$span_json" "{\"code\": \"ERROR\", \"message\": \"$(_observe_escape "$message")\"}")
 
     printf '%s' "$span_json" > "$span_file"
 
@@ -911,6 +1010,7 @@ otel_span_exception() {
 #
 # Usage: traceparent=$(otel_traceparent)
 otel_traceparent() {
+    _otel_context_load >/dev/null 2>&1 || true
     local trace_id="${_OTEL_TRACE_CTX[trace_id]:-}"
     local span_id="${_OTEL_TRACE_CTX[span_id]:-}"
     local flags="${_OTEL_TRACE_CTX[flags]:-01}"
@@ -929,6 +1029,7 @@ otel_traceparent() {
 #
 # Usage: tracestate=$(otel_tracestate)
 otel_tracestate() {
+    _otel_context_load >/dev/null 2>&1 || true
     local trace_id="${_OTEL_TRACE_CTX[trace_id]:-}"
 
     [[ -z "$trace_id" ]] && return 1
@@ -1025,7 +1126,8 @@ otel_context_extract() {
 
     [[ -z "$traceparent" ]] && return 1
 
-    otel_parse_traceparent "$traceparent"
+    otel_parse_traceparent "$traceparent" || return 1
+    _otel_context_write
 }
 
 # =============================================================================
@@ -1357,22 +1459,21 @@ otel_batch_flush() {
     # Write buffered spans to temp files for export
     local i span_json trace_id span_id
     for span_json in "${_OTEL_BATCH_BUFFER[@]}"; do
-        trace_id=$(printf '%s' "$span_json" | grep -oP '"traceId"\s*:\s*"\K[^"]*' || echo "batch")
-        span_id=$(printf '%s' "$span_json" | grep -oP '"spanId"\s*:\s*"\K[^"]*' || echo "$RANDOM")
+        trace_id=$(_observe_json_get_string "$span_json" "traceId" || echo "batch")
+        span_id=$(_observe_json_get_string "$span_json" "spanId" || echo "$RANDOM")
 
         mkdir -p "$OTEL_SPAN_DIR"
         printf '%s' "$span_json" > "$OTEL_SPAN_DIR/${trace_id}_${span_id}.span"
     done
 
     # Export and clean up
-    otel_export_otlp
-    local result=$?
+    otel_export_otlp || true
 
     # Clear buffer
     _OTEL_BATCH_BUFFER=()
     _OTEL_BATCH_MODE="0"
 
-    return $result
+    return 0
 }
 
 # =============================================================================
@@ -1424,6 +1525,7 @@ otel_from_trace() {
     _OTEL_TRACE_CTX[span_id]="$span_id"
     _OTEL_TRACE_CTX[parent_id]=""
     _OTEL_TRACE_CTX[flags]="01"
+    _otel_context_write || return 1
 
     # Create OTEL span file
     mkdir -p "$OTEL_SPAN_DIR"
@@ -1451,10 +1553,10 @@ EOF
             [[ -z "$step_json" ]] && continue
 
             local step_name step_status step_detail step_ts
-            step_name=$(printf '%s' "$step_json" | grep -oP '"step"\s*:\s*"\K[^"]*' || echo "step")
-            step_status=$(printf '%s' "$step_json" | grep -oP '"status"\s*:\s*"\K[^"]*' || echo "ok")
-            step_detail=$(printf '%s' "$step_json" | grep -oP '"detail"\s*:\s*"\K[^"]*' || echo "")
-            step_ts=$(printf '%s' "$step_json" | grep -oP '"timestamp"\s*:\s*\K[0-9.]+' || echo "0")
+            step_name=$(_observe_json_get_string "$step_json" "step" || echo "step")
+            step_status=$(_observe_json_get_string "$step_json" "status" || echo "ok")
+            step_detail=$(_observe_json_get_string "$step_json" "detail" || echo "")
+            step_ts=$(_observe_json_get_number "$step_json" "timestamp" || echo "0")
 
             local step_attrs="["
             step_attrs+="{\"key\": \"step.status\", \"value\": {\"stringValue\": \"$step_status\"}}"

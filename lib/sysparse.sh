@@ -327,13 +327,16 @@ parse_df() {
         fi
 
         local fs blocks used avail percent mount
-        # shellcheck disable=SC2034
-        read -r fs blocks used avail percent mount <<< "$line"
-
-        # Mount path may contain spaces - capture rest of line
-        local rest="${line#*"$percent"}"
-        rest="${rest# }"
-        [[ -n "$rest" ]] && mount="$rest"
+        if [[ "$line" =~ ^(.*[^[:space:]])[[:space:]]+([0-9]+)[[:space:]]+([0-9]+)[[:space:]]+([0-9]+)[[:space:]]+([0-9]+%)[[:space:]]+(.+)$ ]]; then
+            fs="${BASH_REMATCH[1]}"
+            blocks="${BASH_REMATCH[2]}"
+            used="${BASH_REMATCH[3]}"
+            avail="${BASH_REMATCH[4]}"
+            percent="${BASH_REMATCH[5]}"
+            mount="${BASH_REMATCH[6]}"
+        else
+            continue
+        fi
 
         # Remove % from percent
         percent="${percent%\%}"
@@ -356,7 +359,7 @@ parse_df() {
         local fstype=""
         if [[ "$(compat::get_os_family)" == "bsd" ]]; then
             # macOS: Get type from mount output
-            fstype=$(mount 2>/dev/null | grep " on ${mount} " | sed 's/.*(\([^,]*\).*/\1/' | head -1)
+            fstype=$(mount 2>/dev/null | awk -v mp="$mount" 'index($0, " on " mp " (") { line=$0; sub(/^.*\(/, "", line); sub(/,.*/, "", line); print line; exit }')
         else
             # Linux: Use df -T or stat -f
             fstype=$(df -T "$mount" 2>/dev/null | tail -1 | awk '{print $2}')

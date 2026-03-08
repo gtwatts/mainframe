@@ -280,26 +280,26 @@ teardown() {
 }
 
 @test "usop_read_file failure for missing file" {
-    local result
-    result=$(usop_read_file "$TEST_DIR/nonexistent.txt")
-    ! usop_ok "$result"
-    assert_contains "$result" "not found"
-    assert_contains "$result" "suggestion"
+    run usop_read_file "$TEST_DIR/nonexistent.txt"
+    [ "$status" -eq 1 ]
+    ! usop_ok "$output"
+    assert_contains "$output" "not found"
+    assert_contains "$output" "suggestion"
 }
 
 @test "usop_read_file failure for directory" {
     mkdir -p "$TEST_DIR/subdir"
-    local result
-    result=$(usop_read_file "$TEST_DIR/subdir")
-    ! usop_ok "$result"
-    assert_contains "$result" "not a regular file"
+    run usop_read_file "$TEST_DIR/subdir"
+    [ "$status" -eq 1 ]
+    ! usop_ok "$output"
+    assert_contains "$output" "not a regular file"
 }
 
 @test "usop_read_file failure for empty path" {
-    local result
-    result=$(usop_read_file "")
-    ! usop_ok "$result"
-    assert_contains "$result" "path required"
+    run usop_read_file ""
+    [ "$status" -eq 1 ]
+    ! usop_ok "$output"
+    assert_contains "$output" "path required"
 }
 
 @test "usop_read_file handles multiline content" {
@@ -360,17 +360,17 @@ teardown() {
 }
 
 @test "usop_write_file failure for empty path" {
-    local result
-    result=$(usop_write_file "" "content")
-    ! usop_ok "$result"
-    assert_contains "$result" "path required"
+    run usop_write_file "" "content"
+    [ "$status" -eq 1 ]
+    ! usop_ok "$output"
+    assert_contains "$output" "path required"
 }
 
 @test "usop_write_file failure for nonexistent parent" {
-    local result
-    result=$(usop_write_file "$TEST_DIR/no/such/dir/file.txt" "content")
-    ! usop_ok "$result"
-    assert_contains "$result" "parent directory"
+    run usop_write_file "$TEST_DIR/no/such/dir/file.txt" "content"
+    [ "$status" -eq 1 ]
+    ! usop_ok "$output"
+    assert_contains "$output" "parent directory"
 }
 
 @test "usop_write_file handles multiline content" {
@@ -448,18 +448,18 @@ teardown() {
 }
 
 @test "usop_list_dir failure for nonexistent path" {
-    local result
-    result=$(usop_list_dir "$TEST_DIR/nonexistent")
-    ! usop_ok "$result"
-    assert_contains "$result" "not found"
+    run usop_list_dir "$TEST_DIR/nonexistent"
+    [ "$status" -eq 1 ]
+    ! usop_ok "$output"
+    assert_contains "$output" "not found"
 }
 
 @test "usop_list_dir failure for file path" {
     touch "$TEST_DIR/notadir.txt"
-    local result
-    result=$(usop_list_dir "$TEST_DIR/notadir.txt")
-    ! usop_ok "$result"
-    assert_contains "$result" "not a directory"
+    run usop_list_dir "$TEST_DIR/notadir.txt"
+    [ "$status" -eq 1 ]
+    ! usop_ok "$output"
+    assert_contains "$output" "not a directory"
 }
 
 @test "usop_list_dir lists subdirectories" {
@@ -531,10 +531,10 @@ teardown() {
 }
 
 @test "usop_run_background failure for no command" {
-    local result
-    result=$(usop_run_background)
-    ! usop_ok "$result"
-    assert_contains "$result" "no command provided"
+    run usop_run_background
+    [ "$status" -eq 1 ]
+    ! usop_ok "$output"
+    assert_contains "$output" "no command provided"
 }
 
 @test "usop_run_background captures output to files" {
@@ -604,17 +604,17 @@ teardown() {
 }
 
 @test "usop_check_pid failure for empty pid" {
-    local result
-    result=$(usop_check_pid "")
-    ! usop_ok "$result"
-    assert_contains "$result" "pid required"
+    run usop_check_pid ""
+    [ "$status" -eq 1 ]
+    ! usop_ok "$output"
+    assert_contains "$output" "pid required"
 }
 
 @test "usop_check_pid failure for invalid pid format" {
-    local result
-    result=$(usop_check_pid "abc")
-    ! usop_ok "$result"
-    assert_contains "$result" "invalid pid format"
+    run usop_check_pid "abc"
+    [ "$status" -eq 1 ]
+    ! usop_ok "$output"
+    assert_contains "$output" "invalid pid format"
 }
 
 @test "usop_check_pid returns exit_code for completed process" {

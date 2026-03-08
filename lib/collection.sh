@@ -621,7 +621,7 @@ array_take() {
     for elem in "${_at_input[@]}"; do
         (( count >= n )) && break
         _at_output+=("$elem")
-        ((count++))
+        count=$((count + 1))
     done
 
     return 0
@@ -665,7 +665,7 @@ array_drop() {
         if (( count >= n )); then
             _ad_output+=("$elem")
         fi
-        ((count++))
+        count=$((count + 1))
     done
 
     return 0
@@ -859,8 +859,8 @@ array_chunk() {
             escaped=$(_collection_escape_json "${_ac_input[$i]}")
             printf '"%s"' "$escaped"
 
-            ((i++))
-            ((j++))
+            i=$((i + 1))
+            j=$((j + 1))
         done
         printf ']'
     done
@@ -1099,7 +1099,7 @@ array_count() {
     local elem
     for elem in "${_acnt_input[@]}"; do
         if "$predicate" "$elem"; then
-            ((count++))
+            count=$((count + 1))
         fi
     done
 
@@ -1325,7 +1325,7 @@ pipe_through() {
                 for elem in "${input[@]}"; do
                     (( count >= n )) && break
                     temp_result+=("$elem")
-                    ((count++))
+                    count=$((count + 1))
                 done
                 ;;
             drop)
@@ -1336,7 +1336,7 @@ pipe_through() {
                     if (( count >= n )); then
                         temp_result+=("$elem")
                     fi
-                    ((count++))
+                    count=$((count + 1))
                 done
                 ;;
             *)
@@ -1613,7 +1613,7 @@ array_sum() {
     local elem
     for elem in "${_asum_input[@]}"; do
         if [[ "$elem" =~ ^-?[0-9]+$ ]]; then
-            (( sum += elem ))
+            sum=$((sum + elem))
         fi
     done
 
@@ -1646,7 +1646,7 @@ array_product() {
     local elem
     for elem in "${_aprod_input[@]}"; do
         if [[ "$elem" =~ ^-?[0-9]+$ ]]; then
-            (( product *= elem ))
+            product=$((product * elem))
         fi
     done
 
@@ -2037,4 +2037,3 @@ array_length() {
     printf '%d' "${#_alen_input[@]}"
     return 0
 }
-

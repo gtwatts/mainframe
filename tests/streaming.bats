@@ -35,7 +35,7 @@ setup() {
     product() { echo $(($1 * $2)); }
     export -f product
 
-    to_upper() { echo "${1^^}"; }
+    to_upper() { printf '%s\n' "$1" | tr '[:lower:]' '[:upper:]'; }
     export -f to_upper
 
     starts_with_hash() { [[ "$1" == \#* ]]; }

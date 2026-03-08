@@ -102,10 +102,10 @@ args_parse() {
                 ;;
             --)
                 # End of options, rest are positional
-                ((i++))
+                i=$((i + 1))
                 while [[ $i -lt ${#args[@]} ]]; do
                     _ARGS_REMAINING+=("${args[$i]}")
-                    ((i++))
+                    i=$((i + 1))
                 done
                 break
                 ;;
@@ -116,7 +116,7 @@ args_parse() {
                 opt="${opt#--}"
 
                 if _args_set_option "" "$opt" "$val"; then
-                    ((i++))
+                    i=$((i + 1))
                     continue
                 else
                     die_usage "Unknown option: --$opt"
@@ -131,7 +131,7 @@ args_parse() {
 
                 if [[ "$has_arg" == "true" ]]; then
                     if [[ $((i + 1)) -lt ${#args[@]} ]]; then
-                        ((i++))
+                        i=$((i + 1))
                         _args_set_option "" "$opt" "${args[$i]}"
                     else
                         die_usage "Option --$opt requires an argument"
@@ -158,7 +158,7 @@ args_parse() {
                             _args_set_option "$opt" "" "${opts:$((j + 1))}"
                             break
                         elif [[ $((i + 1)) -lt ${#args[@]} ]]; then
-                            ((i++))
+                            i=$((i + 1))
                             _args_set_option "$opt" "" "${args[$i]}"
                         else
                             die_usage "Option -$opt requires an argument"
@@ -168,7 +168,7 @@ args_parse() {
                     else
                         die_usage "Unknown option: -$opt"
                     fi
-                    ((j++))
+                    j=$((j + 1))
                 done
                 ;;
             *)
@@ -177,13 +177,13 @@ args_parse() {
                     local spec="${_ARGS_POSITIONALS[$pos_idx]}"
                     local name="${spec%%:*}"
                     _ARGS_VALUES["$name"]="$arg"
-                    ((pos_idx++))
+                    pos_idx=$((pos_idx + 1))
                 else
                     _ARGS_REMAINING+=("$arg")
                 fi
                 ;;
         esac
-        ((i++))
+        i=$((i + 1))
     done
 
     # Validate required positional arguments
@@ -334,8 +334,8 @@ args_usage() {
             local short="${parts[0]}"
             local long="${parts[1]}"
             local has_arg="${parts[2]}"
-            local description="${parts[3]}"
-            local default="${parts[4]}"
+            local description="${parts[3]:-}"
+            local default="${parts[4]:-}"
 
             local opt_str=""
 
@@ -373,8 +373,8 @@ args_usage() {
             read -ra parts <<< "$spec"
             local name="${parts[0]}"
             local required="${parts[1]}"
-            local description="${parts[2]}"
-            local default="${parts[3]}"
+            local description="${parts[2]:-}"
+            local default="${parts[3]:-}"
 
             local req_str=""
             [[ "$required" == "true" ]] && req_str=" (required)"

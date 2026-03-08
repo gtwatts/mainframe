@@ -345,10 +345,10 @@ compat::date_format() {
     
     if [[ "$_COMPAT_OS_FAMILY" == "bsd" ]]; then
         # BSD date uses -r for timestamp
-        date -r "$timestamp" +"$format"
+        TZ=UTC date -r "$timestamp" +"$format"
     else
         # GNU date uses -d @timestamp
-        date -d "@$timestamp" +"$format"
+        TZ=UTC date -d "@$timestamp" +"$format"
     fi
 }
 
@@ -365,16 +365,8 @@ compat::date_now() {
 compat::date_add_days() {
     local days="$1"
     local base="${2:-$(date +%s)}"
-    
-    _compat_detect_os
-    
-    if [[ "$_COMPAT_OS_FAMILY" == "bsd" ]]; then
-        # BSD date with -v for relative dates
-        date -j -v+"${days}d" -f '%s' "$base" '+%s'
-    else
-        # GNU date: calculate manually for reliability
-        echo $((base + days * 86400))
-    fi
+
+    echo $((base + days * 86400))
 }
 
 # Subtract days from current date (or specified date)
@@ -383,15 +375,8 @@ compat::date_add_days() {
 compat::date_sub_days() {
     local days="$1"
     local base="${2:-$(date +%s)}"
-    
-    _compat_detect_os
-    
-    if [[ "$_COMPAT_OS_FAMILY" == "bsd" ]]; then
-        date -j -v-"${days}d" -f '%s' "$base" '+%s'
-    else
-        # GNU date: calculate manually for reliability
-        echo $((base - days * 86400))
-    fi
+
+    echo $((base - days * 86400))
 }
 
 # Add hours to current date (or specified date)
@@ -400,15 +385,8 @@ compat::date_sub_days() {
 compat::date_add_hours() {
     local hours="$1"
     local base="${2:-$(date +%s)}"
-    
-    _compat_detect_os
-    
-    if [[ "$_COMPAT_OS_FAMILY" == "bsd" ]]; then
-        date -j -v+"${hours}H" -f '%s' "$base" '+%s'
-    else
-        # GNU date: calculate manually for reliability
-        echo $((base + hours * 3600))
-    fi
+
+    echo $((base + hours * 3600))
 }
 
 # Parse a date string to Unix timestamp
@@ -417,13 +395,20 @@ compat::date_add_hours() {
 compat::date_parse() {
     local datestr="$1"
     local format="${2:-%Y-%m-%d}"
+    local parse_datestr="$datestr"
+    local parse_format="$format"
     
     _compat_detect_os
+
+    if [[ "$format" != *%H* && "$format" != *%M* && "$format" != *%S* ]]; then
+        parse_datestr="$datestr 00:00:00"
+        parse_format="$format %H:%M:%S"
+    fi
     
     if [[ "$_COMPAT_OS_FAMILY" == "bsd" ]]; then
-        date -j -f "$format" "$datestr" '+%s'
+        TZ=UTC date -j -f "$parse_format" "$parse_datestr" '+%s'
     else
-        date -d "$datestr" '+%s'
+        TZ=UTC date -d "$parse_datestr" '+%s'
     fi
 }
 
@@ -608,9 +593,9 @@ compat::realpath() {
     if [[ "$_COMPAT_OS_FAMILY" == "bsd" ]]; then
         # macOS: Use Python as fallback, or manual resolution
         if command -v python3 &>/dev/null; then
-            python3 -c "import os; print(os.path.realpath('$path'))"
+            python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$path"
         elif command -v python &>/dev/null; then
-            python -c "import os; print(os.path.realpath('$path'))"
+            python -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$path"
         else
             # Manual resolution for simple cases
             cd "$(dirname "$path")" && pwd -P
@@ -1244,7 +1229,7 @@ pdate_from_epoch() {
     local format="${2:-%Y-%m-%d %H:%M:%S}"
 
     if is_mac && command -v gdate &>/dev/null; then
-        gdate -d "@$timestamp" +"$format"
+        TZ=UTC gdate -d "@$timestamp" +"$format"
     else
         compat::date_format "$format" "$timestamp"
     fi
@@ -2094,11 +2079,11 @@ compat_cmd_has_flag() {
     # Try to run command with flag on null input
     case "$cmd" in
         grep)
-            "$cmd" "$flag" '' /dev/null 2>/dev/null
+            printf 'x\n' | "$cmd" "$flag" 'x' >/dev/null 2>&1
             return $?
             ;;
         sed)
-            echo '' | "$cmd" "$flag" '' 2>/dev/null
+            printf 'x\n' | "$cmd" "$flag" 's/x/x/' >/dev/null 2>&1
             return $?
             ;;
         *)

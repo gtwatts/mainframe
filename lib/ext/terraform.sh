@@ -55,7 +55,7 @@ tf_detect() {
 
     if [[ ! -d "$dir" ]]; then
         printf '{"success":false,"error":"Directory not found","directory":"%s"}' "$(_tf_json_escape "$dir")"
-        return 1
+        return 0
     fi
 
     local tf_files
@@ -106,7 +106,7 @@ tf_version() {
             printf '{"success":true,"data":{"terraform_version":"%s"}}' "$version"
         else
             printf '{"success":false,"error":"Failed to get Terraform version"}'
-            return 1
+            return 0
         fi
     fi
 }
@@ -147,7 +147,7 @@ tf_init() {
     else
         printf '{"success":false,"error":"Terraform init failed","exit_code":%d,"output":"%s","directory":"%s"}' \
             "$exit_code" "$(_tf_json_escape "$output")" "$(_tf_json_escape "$dir")"
-        return 1
+        return 0
     fi
 }
 
@@ -228,7 +228,7 @@ tf_plan() {
     else
         printf '{"success":false,"error":"Terraform plan failed","exit_code":%d,"directory":"%s"}' \
             "$exit_code" "$(_tf_json_escape "$dir")"
-        return 1
+        return 0
     fi
 }
 
@@ -284,7 +284,7 @@ tf_apply() {
     else
         printf '{"success":false,"error":"Terraform apply failed","exit_code":%d,"directory":"%s"}' \
             "$exit_code" "$(_tf_json_escape "$dir")"
-        return 1
+        return 0
     fi
 }
 
@@ -320,7 +320,7 @@ tf_destroy() {
     else
         printf '{"success":false,"error":"Terraform destroy failed","exit_code":%d,"directory":"%s"}' \
             "$exit_code" "$(_tf_json_escape "$dir")"
-        return 1
+        return 0
     fi
 }
 
@@ -357,16 +357,18 @@ tf_state_list() {
         # Convert newline-separated list to JSON array
         local json_array="["
         local first=true
+        local count=0
         while IFS= read -r resource; do
             [[ -z "$resource" ]] && continue
             $first || json_array+=","
             first=false
             json_array+="\"$(_tf_json_escape "$resource")\""
+            count=$((count + 1))
         done <<< "$output"
         json_array+="]"
 
         printf '{"success":true,"data":{"resources":%s,"count":%d,"directory":"%s"}}' \
-            "$json_array" "$(echo "$output" | grep -c . 2>/dev/null || echo 0)" "$(_tf_json_escape "$dir")"
+            "$json_array" "$count" "$(_tf_json_escape "$dir")"
     else
         # Empty state returns exit code 0 but we handle other errors
         if [[ "$output" =~ "No state file" || "$output" =~ "does not exist" ]]; then
@@ -375,7 +377,7 @@ tf_state_list() {
         else
             printf '{"success":false,"error":"Failed to list state","exit_code":%d,"output":"%s","directory":"%s"}' \
                 "$exit_code" "$(_tf_json_escape "$output")" "$(_tf_json_escape "$dir")"
-            return 1
+            return 0
         fi
     fi
 }
@@ -426,7 +428,7 @@ tf_output() {
         else
             printf '{"success":false,"error":"Failed to get outputs","exit_code":%d,"output":"%s","directory":"%s"}' \
                 "$exit_code" "$(_tf_json_escape "$output")" "$(_tf_json_escape "$dir")"
-            return 1
+            return 0
         fi
     fi
 }
@@ -461,7 +463,7 @@ tf_validate() {
     else
         printf '{"success":false,"error":"Validation failed","exit_code":%d,"output":"%s","directory":"%s"}' \
             "$exit_code" "$(_tf_json_escape "$output")" "$(_tf_json_escape "$dir")"
-        return 1
+        return 0
     fi
 }
 
@@ -499,7 +501,7 @@ tf_fmt_check() {
     else
         printf '{"success":false,"error":"Format check failed","exit_code":%d,"output":"%s","directory":"%s"}' \
             "$exit_code" "$(_tf_json_escape "$output")" "$(_tf_json_escape "$dir")"
-        return 1
+        return 0
     fi
 }
 
@@ -553,7 +555,7 @@ tf_workspace_list() {
     else
         printf '{"success":false,"error":"Failed to list workspaces","exit_code":%d,"output":"%s","directory":"%s"}' \
             "$exit_code" "$(_tf_json_escape "$output")" "$(_tf_json_escape "$dir")"
-        return 1
+        return 0
     fi
 }
 
@@ -561,15 +563,15 @@ tf_workspace_list() {
 # Usage: tf_workspace_select "workspace_name" [directory]
 # Returns: JSON with selection result
 tf_workspace_select() {
-    _tf_require_cli || return 1
-
-    local workspace="$1"
+    local workspace="${1:-}"
     local dir="${2:-.}"
 
     if [[ -z "$workspace" ]]; then
         printf '{"success":false,"error":"Workspace name required"}'
-        return 1
+        return 0
     fi
+
+    _tf_require_cli || return 1
 
     local output
     local exit_code
@@ -589,7 +591,7 @@ tf_workspace_select() {
             printf '{"success":false,"error":"Failed to select workspace","exit_code":%d,"output":"%s","directory":"%s"}' \
                 "$exit_code" "$(_tf_json_escape "$output")" "$(_tf_json_escape "$dir")"
         fi
-        return 1
+        return 0
     fi
 }
 

@@ -29,7 +29,7 @@ tests/
 ├── bats-support/       # BATS support library (git submodule)
 ├── bats-assert/        # BATS assertion library (git submodule)
 ├── bats-file/          # BATS file assertions (git submodule)
-└── run-tests.sh        # Test runner script
+└── run_bats_suite.sh   # Canonical Bats test runner
 ```
 
 ## Prerequisites
@@ -48,6 +48,18 @@ git submodule update --init --recursive
 # Run all tests
 make test
 
+# Run the same full Bats matrix directly
+./tests/run_bats_suite.sh --scope all
+
+# Run unit + contract suites
+./tests/run_bats_suite.sh --scope unit
+
+# Run top-level suites in tests/*.bats
+./tests/run_bats_suite.sh --scope top
+
+# Run integration suites
+./tests/run_bats_suite.sh --scope integration
+
 # Run specific test file
 bats tests/unit/data/json-to-csv.bats
 
@@ -61,7 +73,7 @@ bats --verbose-run tests/unit/
 bats --timing tests/unit/
 
 # Generate TAP output for CI
-bats --formatter tap tests/ > results.tap
+./tests/run_bats_suite.sh --scope all --formatter tap > results.tap
 ```
 
 ## Test Naming Convention

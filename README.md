@@ -548,11 +548,10 @@ ok 11360 - verify_command: detects typos
 11360 tests, 0 failures
 ```
 
-Run the test suite:
+Run the same suite local development and CI both use:
 ```bash
-# bats-core is included as a git submodule
-git submodule update --init
-./tests/bats/bin/bats tests/unit/
+make test-deps
+./tests/run_bats_suite.sh --scope all
 ```
 
 ---

@@ -224,7 +224,8 @@ teardown() {
     audit_log "test2" "actor2" "/resource2" "success"
 
     # Tamper with the log by modifying middle entry
-    sed -i 's/"success"/"failure"/' "$TEST_AUDIT_LOG"
+    sed 's/"success"/"failure"/' "$TEST_AUDIT_LOG" > "${TEST_AUDIT_LOG}.tmp"
+    mv "${TEST_AUDIT_LOG}.tmp" "$TEST_AUDIT_LOG"
 
     run audit_verify "$TEST_AUDIT_LOG"
     [[ "$output" =~ \"chain_valid\":false ]] || [[ "$output" =~ \"status\":\"invalid\" ]]

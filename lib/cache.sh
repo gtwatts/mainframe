@@ -458,12 +458,20 @@ memoize() {
         fi
     fi
 
-    # Execute function and capture output
+    # Execute in the current shell so memoized shell functions can update
+    # caller-visible state, while still capturing combined stdout/stderr.
     _MAINFRAME_CACHE_MISSES=$((_MAINFRAME_CACHE_MISSES + 1))
     local output
     local exit_code
-    output=$("$func_name" "${func_args[@]}" 2>&1)
-    exit_code=$?
+    local output_file="${MAINFRAME_CACHE_ROOT}/memo/.memo_output_${$}_${RANDOM}"
+
+    if "$func_name" "${func_args[@]}" >"$output_file" 2>&1; then
+        exit_code=0
+    else
+        exit_code=$?
+    fi
+    output=$(< "$output_file")
+    rm -f "$output_file" 2>/dev/null
 
     if [[ $exit_code -eq 0 ]]; then
         # Store result atomically
@@ -911,18 +919,16 @@ cache_clear() {
         force=true
     fi
 
-    if [[ ! -d "$MAINFRAME_CACHE_ROOT" ]]; then
-        return 0
-    fi
-
     if [[ "$force" != true ]]; then
         _cache_log warn "cache_clear: use --force to confirm cache deletion"
         return 1
     fi
 
-    rm -rf "${MAINFRAME_CACHE_ROOT}/memo" 2>/dev/null
-    rm -rf "${MAINFRAME_CACHE_ROOT}/cas" 2>/dev/null
-    rm -rf "${MAINFRAME_CACHE_ROOT}/locks" 2>/dev/null
+    if [[ -d "$MAINFRAME_CACHE_ROOT" ]]; then
+        rm -rf "${MAINFRAME_CACHE_ROOT}/memo" 2>/dev/null
+        rm -rf "${MAINFRAME_CACHE_ROOT}/cas" 2>/dev/null
+        rm -rf "${MAINFRAME_CACHE_ROOT}/locks" 2>/dev/null
+    fi
 
     # Reset statistics
     _MAINFRAME_CACHE_HITS=0
@@ -1380,8 +1386,15 @@ memo_wrap() {
         # Cache miss - compute
         _MAINFRAME_CACHE_MISSES=\$((_MAINFRAME_CACHE_MISSES + 1))
         local _memo_result
-        _memo_result=\$($orig_fn \"\$@\")
-        local _memo_exit=\$?
+        local _memo_exit
+        local _memo_output_file=\"\${MAINFRAME_CACHE_ROOT}/memo/.memo_wrap_\$\$_${fn_name}_\${RANDOM}\"
+        if $orig_fn \"\$@\" >\"\$_memo_output_file\"; then
+            _memo_exit=0
+        else
+            _memo_exit=\$?
+        fi
+        _memo_result=\$(<\"\$_memo_output_file\")
+        rm -f \"\$_memo_output_file\" 2>/dev/null
 
         if [[ \$_memo_exit -eq 0 ]]; then
             _cache_atomic_write \"\$_memo_file\" \"\$_memo_result\"
@@ -1539,16 +1552,10 @@ cache_file() {
 
     _cache_ensure_dirs
 
-    # Build cache key from path + stat info
-    local stat_info
-    stat_info=$(stat -c '%i_%Y_%s' "$path" 2>/dev/null || stat -f '%i_%m_%z' "$path" 2>/dev/null)
-    if [[ -z "$stat_info" ]]; then
-        # Fallback: just use path hash
-        stat_info=$(date +%s)
-    fi
-
     local path_safe="${path//\//_}"
-    local cache_key="file_${path_safe}_$(_cache_sha256 "$stat_info")"
+    local content_hash
+    content_hash=$(_cache_sha256_file "$path")
+    local cache_key="file_${path_safe}_$(_cache_sha256 "$content_hash")"
     local cache_file="${MAINFRAME_CACHE_ROOT}/memo/${cache_key}"
     local meta_file="${cache_file}.meta"
 
@@ -1634,14 +1641,13 @@ cache_compute() {
 
     _cache_ensure_dirs
 
-    # Build dependency hash from all file stats
+    # Build dependency hash from file content so same-second edits on
+    # coarse-resolution filesystems still invalidate correctly.
     local dep_hash=""
     local dep
     for dep in "${deps[@]}"; do
         if [[ -f "$dep" ]]; then
-            local stat_info
-            stat_info=$(stat -c '%i_%Y_%s' "$dep" 2>/dev/null || stat -f '%i_%m_%z' "$dep" 2>/dev/null)
-            dep_hash+="${dep}:${stat_info}|"
+            dep_hash+="${dep}:$(_cache_sha256_file "$dep")|"
         else
             dep_hash+="${dep}:missing|"
         fi

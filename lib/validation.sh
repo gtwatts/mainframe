@@ -832,26 +832,38 @@ validate_base64() {
 # Inspired by DevOps-Bash-tools. Use with regex_match() or [[ =~ ]].
 # =============================================================================
 
+_validation_define_regex_const() {
+    local name="$1"
+    local value="$2"
+
+    if declare -p "$name" &>/dev/null 2>&1; then
+        return 0
+    fi
+
+    printf -v "$name" '%s' "$value"
+    readonly "$name"
+}
+
 # Email validation (RFC 5322 simplified)
-readonly REGEX_EMAIL='^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+_validation_define_regex_const REGEX_EMAIL '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
 
 # Domain name (RFC 1123)
 readonly REGEX_DOMAIN='^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
 
 # IPv4 address
-readonly REGEX_IPV4='^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'
+_validation_define_regex_const REGEX_IPV4 '^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'
 
 # IPv6 address (simplified - full 8 groups without compression)
-readonly REGEX_IPV6='^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$'
+_validation_define_regex_const REGEX_IPV6 '^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$'
 
 # URL (http/https)
-readonly REGEX_URL='^https?://[a-zA-Z0-9.-]+(/[a-zA-Z0-9._~:/?#@!$&()*+,;=-]*)?$'
+_validation_define_regex_const REGEX_URL '^https?://[a-zA-Z0-9.-]+(/[a-zA-Z0-9._~:/?#@!$&()*+,;=-]*)?$'
 
 # Semantic version (MAJOR.MINOR.PATCH with optional prerelease and build)
-readonly REGEX_SEMVER='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$'
+_validation_define_regex_const REGEX_SEMVER '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$'
 
 # UUID v4
-readonly REGEX_UUID='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+_validation_define_regex_const REGEX_UUID '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
 
 # UUID (any version)
 readonly REGEX_UUID_ANY='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
@@ -866,10 +878,10 @@ readonly REGEX_MAC='^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$'
 readonly REGEX_MAC_ANY='^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$'
 
 # Phone number (E.164 international format)
-readonly REGEX_PHONE='^[+][1-9][0-9]{1,14}$'
+_validation_define_regex_const REGEX_PHONE '^[+][1-9][0-9]{1,14}$'
 
 # Credit card (basic digit count, no Luhn check)
-readonly REGEX_CREDIT_CARD='^[0-9]{13,19}$'
+_validation_define_regex_const REGEX_CREDIT_CARD '^[0-9]{13,19}$'
 
 # ISO date (YYYY-MM-DD)
 readonly REGEX_ISO_DATE='^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
@@ -887,7 +899,7 @@ readonly REGEX_ALNUM='^[a-zA-Z0-9]+$'
 readonly REGEX_ALNUM_UNDERSCORE='^[a-zA-Z0-9_]+$'
 
 # Slug (URL-safe identifier)
-readonly REGEX_SLUG='^[a-z0-9]+(-[a-z0-9]+)*$'
+_validation_define_regex_const REGEX_SLUG '^[a-z0-9]+(-[a-z0-9]+)*$'
 
 # Port number (1-65535)
 readonly REGEX_PORT='^([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$'

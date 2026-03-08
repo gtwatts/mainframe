@@ -30,6 +30,9 @@ setup() {
 teardown() {
     rm -rf "$TEST_TMPDIR"
     unset BASHER_LOG_FILE
+    unset MAINFRAME_DEFAULT_BUNDLE
+    unset MAINFRAME_PROFILE
+    unset MAINFRAME_ROOT
 }
 
 # =============================================================================
@@ -230,13 +233,14 @@ teardown() {
 }
 
 @test "on_exit: registers cleanup function" {
-    result=$(bash -c '
+    run bash -c '
         source "'"$MAINFRAME_ROOT"'/lib/common.sh" 2>/dev/null
         my_cleanup() { echo "cleanup called"; }
         on_exit my_cleanup
         exit 0
-    ')
-    [[ "$result" =~ "cleanup called" ]]
+    '
+    [[ "$status" -eq 0 ]]
+    [[ "$output" =~ "cleanup called" ]]
 }
 
 # =============================================================================
@@ -409,8 +413,10 @@ teardown() {
 }
 
 @test "temp_file: registers file for cleanup" {
+    local tmpfile_path="$TEST_TMPDIR/temp_file_path"
     local tmpfile
-    tmpfile=$(temp_file "cleanup_test")
+    temp_file "cleanup_test" > "$tmpfile_path"
+    tmpfile=$(<"$tmpfile_path")
     # File should be tracked in _mainframe_cleanup_files
     [[ " ${_mainframe_cleanup_files[*]} " =~ " $tmpfile " ]]
 }
@@ -423,8 +429,10 @@ teardown() {
 }
 
 @test "temp_dir: registers directory for cleanup" {
+    local tmpdir_path="$TEST_TMPDIR/temp_dir_path"
     local tmpdir
-    tmpdir=$(temp_dir "cleanup_test")
+    temp_dir "cleanup_test" > "$tmpdir_path"
+    tmpdir=$(<"$tmpdir_path")
     # Directory should be tracked in _mainframe_cleanup_dirs
     [[ " ${_mainframe_cleanup_dirs[*]} " =~ " $tmpdir " ]]
 }
@@ -457,7 +465,7 @@ teardown() {
 }
 
 @test "file_ext: returns empty for no extension" {
-    result=$(file_ext "Makefile")
+    result="$(file_ext "Makefile" || true)"
     [[ -z "$result" ]]
 }
 
@@ -486,13 +494,13 @@ teardown() {
 }
 
 @test "version_compare: returns 1 when v1 > v2" {
-    version_compare "2.0.0" "1.9.9"
-    [[ $? -eq 1 ]]
+    run version_compare "2.0.0" "1.9.9"
+    [[ "$status" -eq 1 ]]
 }
 
 @test "version_compare: returns 2 when v1 < v2" {
-    version_compare "1.0.0" "2.0.0"
-    [[ $? -eq 2 ]]
+    run version_compare "1.0.0" "2.0.0"
+    [[ "$status" -eq 2 ]]
 }
 
 @test "version_compare: handles different segment counts" {
@@ -501,13 +509,13 @@ teardown() {
 }
 
 @test "version_compare: compares minor versions correctly" {
-    version_compare "1.10.0" "1.9.0"
-    [[ $? -eq 1 ]]
+    run version_compare "1.10.0" "1.9.0"
+    [[ "$status" -eq 1 ]]
 }
 
 @test "version_at_least: returns true when version meets minimum" {
-    version_at_least "2.0.0" "1.5.0"
-    [[ $? -eq 0 ]]
+    run version_at_least "2.0.0" "1.5.0"
+    [[ "$status" -eq 0 ]]
 }
 
 @test "version_at_least: returns true for equal versions" {
@@ -576,6 +584,22 @@ EOF
     [[ "$status" -eq 0 ]]
 }
 
+@test "_mainframe_load_config: does not override explicit environment values" {
+    mkdir -p "$TEST_TMPDIR/.mainframe"
+    cat > "$TEST_TMPDIR/.mainframe/config" << 'EOF'
+root=/tmp/wrong-root
+profile=full
+EOF
+    export HOME="$TEST_TMPDIR"
+    export MAINFRAME_ROOT="/tmp/expected-root"
+    export MAINFRAME_PROFILE="minimal"
+
+    _mainframe_load_config
+
+    [[ "$MAINFRAME_ROOT" == "/tmp/expected-root" ]]
+    [[ "$MAINFRAME_PROFILE" == "minimal" ]]
+}
+
 # =============================================================================
 # CATEGORY 11: LAZY LOADING ENGINE
 # =============================================================================
@@ -635,6 +659,16 @@ EOF
 @test "mainframe_bundle: fails for unknown bundle" {
     run mainframe_bundle "nonexistent_bundle"
     [[ "$status" -eq 1 ]]
+}
+
+@test "mainframe_bundle: uses configured default bundle" {
+    unset _MAINFRAME_LOADED_LIBS
+    declare -gA _MAINFRAME_LOADED_LIBS
+    export MAINFRAME_DEFAULT_BUNDLE="data"
+
+    mainframe_bundle
+    [[ $? -eq 0 ]]
+    [[ "${_MAINFRAME_LOADED_LIBS[csv]:-}" == "1" ]]
 }
 
 @test "mainframe_bundles: lists available bundles" {
@@ -726,13 +760,13 @@ EOF
 }
 
 @test "version_compare: handles single digit versions" {
-    version_compare "1" "2"
-    [[ $? -eq 2 ]]
+    run version_compare "1" "2"
+    [[ "$status" -eq 2 ]]
 }
 
 @test "version_compare: handles large version numbers" {
-    version_compare "100.200.300" "100.200.299"
-    [[ $? -eq 1 ]]
+    run version_compare "100.200.300" "100.200.299"
+    [[ "$status" -eq 1 ]]
 }
 
 @test "file_ext: handles hidden files" {

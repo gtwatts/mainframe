@@ -127,14 +127,17 @@ service_pid() {
         systemd)
             local pid
             pid=$(systemctl show "$name" -p MainPID --value 2>/dev/null)
-            [[ "$pid" -gt 0 ]] 2>/dev/null && echo "$pid" ;;
+            [[ "$pid" -gt 0 ]] 2>/dev/null && echo "$pid"
+            return 0 ;;
         launchctl)
             local pid
             pid=$(launchctl list 2>/dev/null | awk -v n="$name" '$3 == n {print $1}')
-            [[ -n "$pid" && "$pid" != "-" ]] && echo "$pid" ;;
+            [[ -n "$pid" && "$pid" != "-" ]] && echo "$pid"
+            return 0 ;;
         *)
             # Best-effort: pidof or pgrep
-            pidof "$name" 2>/dev/null | awk '{print $1}' ;;
+            pidof "$name" 2>/dev/null | awk '{print $1}' || true
+            return 0 ;;
     esac
 }
 

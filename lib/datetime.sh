@@ -26,6 +26,42 @@ readonly _DT_DAYS_PER_LEAP_YEAR=366
 # Days in each month (non-leap year)
 readonly _DT_DAYS_IN_MONTH=(0 31 28 31 30 31 30 31 31 30 31 30 31)
 
+_dt_fmt_utc() {
+    local epoch="${1:--1}"
+    local format="$2"
+
+    # Historical name notwithstanding, public datetime helpers operate in local
+    # time, so boundary/component extraction should match local strftime output.
+    if date -r "$epoch" +"$format" 2>/dev/null; then
+        return 0
+    fi
+
+    if date -d "@$epoch" +"$format" 2>/dev/null; then
+        return 0
+    fi
+
+    printf "%(${format})T\n" "$epoch"
+}
+
+_dt_to_epoch_local() {
+    local year="$1" month="$2" day="$3" hour="$4" minute="$5" second="$6"
+    local dt
+    printf -v dt '%04d-%02d-%02d %02d:%02d:%02d' \
+        "$year" "$month" "$day" "$hour" "$minute" "$second"
+
+    if date -j -f '%Y-%m-%d %H:%M:%S' "$dt" '+%s' >/dev/null 2>&1; then
+        date -j -f '%Y-%m-%d %H:%M:%S' "$dt" '+%s'
+        return 0
+    fi
+
+    if date -d "$dt" '+%s' >/dev/null 2>&1; then
+        date -d "$dt" '+%s'
+        return 0
+    fi
+
+    _dt_to_epoch "$year" "$month" "$day" "$hour" "$minute" "$second"
+}
+
 # =============================================================================
 # CURRENT TIME
 # =============================================================================
@@ -64,13 +100,18 @@ now_rfc2822() {
 parse_iso() {
     local input="$1"
     local year month day hour minute second
+    local has_explicit_tz=0
 
     # Remove trailing Z if present
-    input="${input%Z}"
+    if [[ "$input" == *Z ]]; then
+        has_explicit_tz=1
+        input="${input%Z}"
+    fi
 
     # Handle timezone offset (+HH:MM or -HH:MM)
     local tz_offset=0
     if [[ "$input" =~ ([+-])([0-9]{2}):?([0-9]{2})$ ]]; then
+        has_explicit_tz=1
         local tz_sign="${BASH_REMATCH[1]}"
         local tz_hours="${BASH_REMATCH[2]#0}"  # Remove leading zero
         local tz_mins="${BASH_REMATCH[3]#0}"
@@ -107,7 +148,11 @@ parse_iso() {
     fi
 
     local epoch
-    epoch=$(_dt_to_epoch "$year" "$month" "$day" "$hour" "$minute" "$second")
+    if (( has_explicit_tz )); then
+        epoch=$(_dt_to_epoch "$year" "$month" "$day" "$hour" "$minute" "$second")
+    else
+        epoch=$(_dt_to_epoch_local "$year" "$month" "$day" "$hour" "$minute" "$second")
+    fi
     echo $(( epoch + tz_offset ))
 }
 
@@ -120,7 +165,7 @@ parse_date() {
         local year="${BASH_REMATCH[1]}"
         local month="${BASH_REMATCH[2]#0}"
         local day="${BASH_REMATCH[3]#0}"
-        _dt_to_epoch "$year" "$month" "$day" 0 0 0
+        _dt_to_epoch_local "$year" "$month" "$day" 0 0 0
     else
         printf '%s\n' "0"
         return 1
@@ -139,14 +184,14 @@ parse_datetime() {
         local hour="${BASH_REMATCH[4]#0}"
         local minute="${BASH_REMATCH[5]#0}"
         local second="${BASH_REMATCH[6]#0}"
-        _dt_to_epoch "$year" "$month" "$day" "$hour" "$minute" "$second"
+        _dt_to_epoch_local "$year" "$month" "$day" "$hour" "$minute" "$second"
     elif [[ "$input" =~ ^([0-9]{4})-([0-9]{2})-([0-9]{2})\ ([0-9]{2}):([0-9]{2})$ ]]; then
         local year="${BASH_REMATCH[1]}"
         local month="${BASH_REMATCH[2]#0}"
         local day="${BASH_REMATCH[3]#0}"
         local hour="${BASH_REMATCH[4]#0}"
         local minute="${BASH_REMATCH[5]#0}"
-        _dt_to_epoch "$year" "$month" "$day" "$hour" "$minute" 0
+        _dt_to_epoch_local "$year" "$month" "$day" "$hour" "$minute" 0
     else
         printf '%s\n' "0"
         return 1
@@ -419,7 +464,7 @@ date_diff_human() {
 year() {
     local epoch="${1:--1}"
     [[ "$epoch" == "-1" ]] && epoch=$(now)
-    TZ=UTC date -d "@$epoch" +%Y 2>/dev/null || printf '%(%Y)T\n' "$epoch"
+    _dt_fmt_utc "$epoch" '%Y'
 }
 
 # Extract month from epoch (1-12)
@@ -428,7 +473,7 @@ month() {
     local epoch="${1:--1}"
     [[ "$epoch" == "-1" ]] && epoch=$(now)
     local m
-    m=$(TZ=UTC date -d "@$epoch" +%m 2>/dev/null) || printf -v m '%(%m)T' "$epoch"
+    m=$(_dt_fmt_utc "$epoch" '%m')
     printf '%d\n' "${m#0}"
 }
 
@@ -438,7 +483,7 @@ day() {
     local epoch="${1:--1}"
     [[ "$epoch" == "-1" ]] && epoch=$(now)
     local d
-    d=$(TZ=UTC date -d "@$epoch" +%d 2>/dev/null) || printf -v d '%(%d)T' "$epoch"
+    d=$(_dt_fmt_utc "$epoch" '%d')
     printf '%d\n' "${d#0}"
 }
 
@@ -448,7 +493,7 @@ hour() {
     local epoch="${1:--1}"
     [[ "$epoch" == "-1" ]] && epoch=$(now)
     local h
-    h=$(TZ=UTC date -d "@$epoch" +%H 2>/dev/null) || printf -v h '%(%H)T' "$epoch"
+    h=$(_dt_fmt_utc "$epoch" '%H')
     printf '%d\n' "${h#0}"
 }
 
@@ -458,7 +503,7 @@ minute() {
     local epoch="${1:--1}"
     [[ "$epoch" == "-1" ]] && epoch=$(now)
     local m
-    m=$(TZ=UTC date -d "@$epoch" +%M 2>/dev/null) || printf -v m '%(%M)T' "$epoch"
+    m=$(_dt_fmt_utc "$epoch" '%M')
     printf '%d\n' "${m#0}"
 }
 
@@ -468,7 +513,7 @@ second() {
     local epoch="${1:--1}"
     [[ "$epoch" == "-1" ]] && epoch=$(now)
     local s
-    s=$(TZ=UTC date -d "@$epoch" +%S 2>/dev/null) || printf -v s '%(%S)T' "$epoch"
+    s=$(_dt_fmt_utc "$epoch" '%S')
     printf '%d\n' "${s#0}"
 }
 
@@ -476,7 +521,7 @@ second() {
 # Usage: day_of_week "epoch"
 day_of_week() {
     local epoch="${1:--1}"
-    printf '%(%A)T\n' "$epoch"
+    _dt_fmt_utc "$epoch" '%A'
 }
 
 # Get day of year (1-366)
@@ -484,7 +529,7 @@ day_of_week() {
 day_of_year() {
     local epoch="${1:--1}"
     local doy
-    printf -v doy '%(%j)T' "$epoch"
+    doy=$(_dt_fmt_utc "$epoch" '%j')
     printf '%d\n' "${doy#0}"
 }
 
@@ -493,7 +538,7 @@ day_of_year() {
 week_of_year() {
     local epoch="${1:--1}"
     local week
-    printf -v week '%(%V)T' "$epoch"
+    week=$(_dt_fmt_utc "$epoch" '%V')
     printf '%d\n' "${week#0}"
 }
 
@@ -542,8 +587,7 @@ is_same_day() {
 is_weekend() {
     local epoch="${1:--1}"
     local dow
-    # Use UTC to match how dates are parsed
-    dow=$(TZ=UTC date -d "@$epoch" +%u 2>/dev/null || printf '%(%u)T' "$epoch")  # 1=Monday, 7=Sunday
+    dow=$(_dt_fmt_utc "$epoch" '%u')  # 1=Monday, 7=Sunday
     ((dow == 6 || dow == 7))
 }
 
@@ -552,8 +596,7 @@ is_weekend() {
 is_weekday() {
     local epoch="${1:--1}"
     local dow
-    # Use UTC to match how dates are parsed
-    dow=$(TZ=UTC date -d "@$epoch" +%u 2>/dev/null || printf '%(%u)T' "$epoch")  # 1=Monday, 7=Sunday
+    dow=$(_dt_fmt_utc "$epoch" '%u')  # 1=Monday, 7=Sunday
     ((dow >= 1 && dow <= 5))
 }
 
@@ -629,7 +672,7 @@ start_of_year() {
     local y
     y=$(year "$epoch")
 
-    _dt_to_epoch "$y" 1 1 0 0 0
+    _dt_to_epoch_local "$y" 1 1 0 0 0
 }
 
 # Get end of year for given epoch
@@ -642,7 +685,7 @@ end_of_year() {
     y=$(year "$epoch")
 
     local end
-    end=$(_dt_to_epoch "$y" 12 31 23 59 59)
+    end=$(_dt_to_epoch_local "$y" 12 31 23 59 59)
     printf '%d\n' "$end"
 }
 
@@ -673,7 +716,7 @@ make_datetime() {
     local minute="${5:-0}"
     local second="${6:-0}"
 
-    _dt_to_epoch "$year" "$month" "$day" "$hour" "$minute" "$second"
+    _dt_to_epoch_local "$year" "$month" "$day" "$hour" "$minute" "$second"
 }
 
 # Get timezone offset in seconds

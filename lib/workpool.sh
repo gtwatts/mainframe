@@ -101,11 +101,7 @@ _pool_escape_json() {
 
 # Wait for any background job (version-gated)
 _pool_wait_any() {
-    if ((BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 3))); then
-        wait -n 2>/dev/null || sleep 0.1
-    else
-        sleep 0.2
-    fi
+    sleep 0.05
 }
 
 # Get number of running jobs for a pool
@@ -123,7 +119,7 @@ _pool_running_count() {
             local pid
             pid=$(cat "$pid_file" 2>/dev/null)
             if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-                ((count++))
+                count=$(( count + 1 ))
             fi
         fi
     done
@@ -131,11 +127,119 @@ _pool_running_count() {
     printf '%d' "$count"
 }
 
+# Acquire an exclusive lock using flock when available, with a portable mkdir
+# fallback for platforms like macOS that do not ship flock.
+_pool_lock_acquire() {
+    local lock_file="$1"
+    local fd_var="$2"
+
+    if command -v flock &>/dev/null; then
+        local fd
+        exec {fd}> "$lock_file" || return 1
+        flock -x "$fd" || {
+            exec {fd}>&- 2>/dev/null || true
+            return 1
+        }
+        printf -v "$fd_var" '%s' "$fd"
+        return 0
+    fi
+
+    while ! mkdir "${lock_file}.d" 2>/dev/null; do
+        sleep 0.05
+    done
+
+    printf -v "$fd_var" '%s' ""
+    return 0
+}
+
+_pool_lock_release() {
+    local lock_file="$1"
+    local fd="${2:-}"
+
+    if command -v flock &>/dev/null; then
+        if [[ -n "$fd" ]]; then
+            flock -u "$fd" 2>/dev/null || true
+            exec {fd}>&- 2>/dev/null || true
+        fi
+        return 0
+    fi
+
+    rmdir "${lock_file}.d" 2>/dev/null || rm -rf "${lock_file}.d" 2>/dev/null || true
+    return 0
+}
+
 # Update job status
 _pool_update_status() {
     local job_dir="$1"
     local status="$2"
     printf '%s' "$status" > "$job_dir/status"
+}
+
+_pool_worker_main() {
+    local job_dir="$1"
+    local pool_dir="$2"
+    local semaphore="$3"
+    shift 3
+    local -a command=("$@")
+
+    _pool_update_status "$job_dir" "$POOL_STATUS_RUNNING"
+
+    local exit_code=0
+    if "${command[@]}" > "$job_dir/stdout" 2> "$job_dir/stderr"; then
+        exit_code=0
+    else
+        exit_code=$?
+    fi
+
+    printf '%d\n' "$exit_code" > "$job_dir/exit_code"
+
+    if [[ "$exit_code" -eq 0 ]]; then
+        _pool_update_status "$job_dir" "$POOL_STATUS_DONE"
+    else
+        _pool_update_status "$job_dir" "$POOL_STATUS_FAILED"
+    fi
+
+    if [[ "$semaphore" -gt 0 ]]; then
+        local lock_file="$pool_dir/semaphore.lock"
+        local lock_fd=""
+        _pool_lock_acquire "$lock_file" lock_fd || return 1
+
+        local current
+        current=$(cat "$pool_dir/semaphore_count" 2>/dev/null || echo 1)
+        if [[ "$current" -gt 0 ]]; then
+            current=$(( current - 1 ))
+        else
+            current=0
+        fi
+        printf '%d\n' "$current" > "$pool_dir/semaphore_count"
+        _pool_lock_release "$lock_file" "$lock_fd"
+    fi
+}
+
+_pool_write_worker_script() {
+    local job_dir="$1"
+    local pool_dir="$2"
+    local semaphore="$3"
+    shift 3
+    local -a command=("$@")
+    local script="$job_dir/worker.sh"
+    local mainframe_root="${MAINFRAME_ROOT:-${HOME}/.mainframe}"
+
+    {
+        printf '#!/usr/bin/env bash\n'
+        printf 'export MAINFRAME_ROOT=%q\n' "$mainframe_root"
+        printf 'source %q || exit 1\n' "$mainframe_root/lib/workpool.sh"
+        printf '_pool_worker_main %q %q %q' "$job_dir" "$pool_dir" "$semaphore"
+
+        local arg
+        for arg in "${command[@]}"; do
+            printf ' %q' "$arg"
+        done
+        printf '\n'
+    } > "$script" || return 1
+
+    chmod 700 "$script" || return 1
+    return 0
 }
 
 # =============================================================================
@@ -326,7 +430,7 @@ pool_submit() {
     # Generate job ID
     local job_counter job_id
     job_counter=$(cat "$pool_dir/job_counter" 2>/dev/null || echo 0)
-    ((job_counter++))
+    job_counter=$(( job_counter + 1 ))
     printf '%d\n' "$job_counter" > "$pool_dir/job_counter"
     job_id="job_$job_counter"
 
@@ -359,61 +463,32 @@ pool_submit() {
     local semaphore
     semaphore=$(cat "$pool_dir/semaphore" 2>/dev/null || echo 0)
     if [[ "$semaphore" -gt 0 ]]; then
-        # Use flock-protected semaphore acquisition
-        # File descriptor 200 is used for the lock file
         local lock_file="$pool_dir/semaphore.lock"
         while true; do
-            (
-                flock -x 200 || exit 1
-                local current_count
-                current_count=$(cat "$pool_dir/semaphore_count" 2>/dev/null || echo 0)
-                if [[ "$current_count" -lt "$semaphore" ]]; then
-                    printf '%d\n' $((current_count + 1)) > "$pool_dir/semaphore_count"
-                    exit 0  # Acquired
-                fi
-                exit 1  # Not available
-            ) 200>"$lock_file" && break
+            local lock_fd=""
+            _pool_lock_acquire "$lock_file" lock_fd || return 1
+
+            local current_count
+            current_count=$(cat "$pool_dir/semaphore_count" 2>/dev/null || echo 0)
+            if [[ "$current_count" -lt "$semaphore" ]]; then
+                printf '%d\n' $((current_count + 1)) > "$pool_dir/semaphore_count"
+                _pool_lock_release "$lock_file" "$lock_fd"
+                break
+            fi
+
+            _pool_lock_release "$lock_file" "$lock_fd"
             sleep 0.1
         done
     fi
 
-    # Launch job in background
-    (
-        _pool_update_status "$job_dir" "$POOL_STATUS_RUNNING"
+    _pool_write_worker_script "$job_dir" "$pool_dir" "$semaphore" "${command[@]}" || return 1
 
-        # Execute command and capture output
-        local exit_code=0
-        if "${command[@]}" > "$job_dir/stdout" 2> "$job_dir/stderr"; then
-            exit_code=0
-        else
-            exit_code=$?
-        fi
+    local worker_pid
+    worker_pid="$(
+        bash -c 'bash "$1" </dev/null >/dev/null 2>&1 & printf "%s\n" "$!"' _ "$job_dir/worker.sh"
+    )" || return 1
 
-        # Store exit code
-        printf '%d\n' "$exit_code" > "$job_dir/exit_code"
-
-        # Update status based on exit code
-        if [[ "$exit_code" -eq 0 ]]; then
-            _pool_update_status "$job_dir" "$POOL_STATUS_DONE"
-        else
-            _pool_update_status "$job_dir" "$POOL_STATUS_FAILED"
-        fi
-
-        # Release semaphore if used (atomic with flock)
-        if [[ "$semaphore" -gt 0 ]]; then
-            local lock_file="$pool_dir/semaphore.lock"
-            (
-                flock -x 200 || exit 1
-                local current
-                current=$(cat "$pool_dir/semaphore_count" 2>/dev/null || echo 1)
-                ((current--)) || current=0
-                printf '%d\n' "$current" > "$pool_dir/semaphore_count"
-            ) 200>"$lock_file"
-        fi
-    ) &
-
-    # Store PID
-    printf '%d\n' "$!" > "$job_dir/pid"
+    printf '%d\n' "$worker_pid" > "$job_dir/pid"
 
     # Output job ID
     printf '%s\n' "$job_id"
@@ -567,34 +642,53 @@ pool_wait() {
             return 1
         fi
 
-        local pid_file="$job_dir/pid"
-        if [[ -f "$pid_file" ]]; then
-            local pid
-            pid=$(cat "$pid_file" 2>/dev/null)
-            if [[ -n "$pid" ]]; then
-                wait "$pid" 2>/dev/null || true
-            fi
-        fi
+        while true; do
+            _pool_cleanup_finished "$name"
 
-        # Check result
+            local status
+            status=$(cat "$job_dir/status" 2>/dev/null)
+            if [[ "$status" == "$POOL_STATUS_DONE" || "$status" == "$POOL_STATUS_FAILED" ]]; then
+                break
+            fi
+
+            _pool_wait_any
+        done
+
         local exit_code
         exit_code=$(cat "$job_dir/exit_code" 2>/dev/null || echo 1)
         [[ "$exit_code" -ne 0 ]] && any_failed=1
     else
-        # Wait for all jobs
+        while true; do
+            _pool_cleanup_finished "$name"
+
+            local has_active=0
+            local job_dir
+            for job_dir in "$pool_dir/jobs"/*; do
+                [[ -d "$job_dir" ]] || continue
+
+                local status
+                status=$(cat "$job_dir/status" 2>/dev/null)
+                case "$status" in
+                    "$POOL_STATUS_PENDING" | "$POOL_STATUS_RUNNING")
+                        has_active=1
+                        ;;
+                    "$POOL_STATUS_FAILED")
+                        any_failed=1
+                        ;;
+                esac
+            done
+
+            if [[ "$has_active" -eq 0 ]]; then
+                break
+            fi
+
+            _pool_wait_any
+        done
+
         local job_dir
         for job_dir in "$pool_dir/jobs"/*; do
             [[ -d "$job_dir" ]] || continue
-            local pid_file="$job_dir/pid"
-            if [[ -f "$pid_file" ]]; then
-                local pid
-                pid=$(cat "$pid_file" 2>/dev/null)
-                if [[ -n "$pid" ]]; then
-                    wait "$pid" 2>/dev/null || true
-                fi
-            fi
 
-            # Check result
             local exit_code
             exit_code=$(cat "$job_dir/exit_code" 2>/dev/null || echo 1)
             [[ "$exit_code" -ne 0 ]] && any_failed=1
@@ -944,9 +1038,9 @@ pool_info() {
         [[ -d "$job_dir" ]] || continue
         status=$(cat "$job_dir/status" 2>/dev/null)
         case "$status" in
-            "$POOL_STATUS_PENDING") ((pending++)) ;;
-            "$POOL_STATUS_DONE") ((completed++)) ;;
-            "$POOL_STATUS_FAILED") ((failed++)) ;;
+            "$POOL_STATUS_PENDING") pending=$(( pending + 1 )) ;;
+            "$POOL_STATUS_DONE") completed=$(( completed + 1 )) ;;
+            "$POOL_STATUS_FAILED") failed=$(( failed + 1 )) ;;
         esac
     done
 

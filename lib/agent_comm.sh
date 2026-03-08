@@ -22,8 +22,9 @@ fi
 # CONSTANTS
 # =============================================================================
 
-# Use user-specific directory to prevent world-writable /tmp security issues
-readonly AGENT_BASE_DIR="${TMPDIR:-/tmp}/mainframe_agents_${UID:-$(id -u)}"
+# Use a configurable base directory; default to a temp-rooted location and
+# rely on restrictive permissions for local isolation.
+readonly AGENT_BASE_DIR="${AGENT_BASE_DIR:-${TMPDIR:-/tmp}/mainframe_agents_${UID:-$(id -u)}}"
 readonly AGENT_REGISTRY_DIR="$AGENT_BASE_DIR/registry"
 readonly AGENT_TASKS_DIR="$AGENT_BASE_DIR/tasks"
 readonly AGENT_STATE_DIR="$AGENT_BASE_DIR/shared_state"
@@ -40,6 +41,33 @@ fi
 # Each agent gets a unique ID and can register capabilities
 declare -g AGENT_ID="${AGENT_ID:-}"
 declare -gA AGENT_CAPABILITIES=()
+
+_agent_comm_lock_acquire() {
+    local lockfile="$1"
+    local fd="${2:-200}"
+
+    if command -v flock &>/dev/null; then
+        flock -x "$fd"
+        return $?
+    fi
+
+    local lockdir="${lockfile}.d"
+    while ! mkdir "$lockdir" 2>/dev/null; do
+        sleep 0.05 2>/dev/null || sleep 1
+    done
+
+    return 0
+}
+
+_agent_comm_lock_release() {
+    local lockfile="$1"
+
+    if ! command -v flock &>/dev/null; then
+        rmdir "${lockfile}.d" 2>/dev/null || true
+    fi
+
+    return 0
+}
 
 # =============================================================================
 # 1. AGENT IDENTITY
@@ -120,7 +148,7 @@ agent_info() {
             "success:bool=false" \
             "error=agent not found" \
             "agent_id=$agent_id"
-        return 1
+        return 0
     fi
 }
 
@@ -141,7 +169,7 @@ agent_send() {
         json_object \
             "success:bool=false" \
             "error=agent not found: $to_agent"
-        return 1
+        return 0
     fi
 
     # Generate unique message ID using nanoseconds if available
@@ -221,7 +249,7 @@ agent_peek() {
         (( i >= count )) && break
         [[ -f "$msg_file" ]] || continue
         messages+=("$(<"$msg_file")")
-        ((i++))
+        i=$((i + 1))
     done
 
     if [[ ${#messages[@]} -eq 0 ]]; then
@@ -253,7 +281,9 @@ agent_broadcast() {
 
         # Don't send to self and check if agent is still alive
         if [[ "$agent_id" != "$AGENT_ID" ]] && kill -0 "$pid" 2>/dev/null; then
-            agent_send "$agent_id" "$msg_type" "$payload" >/dev/null && ((sent++))
+            if agent_send "$agent_id" "$msg_type" "$payload" >/dev/null; then
+                sent=$((sent + 1))
+            fi
         fi
     done
 
@@ -434,11 +464,14 @@ agent_create_task() {
 agent_claim_task() {
     local task_id="$1"
     local task_dir="$AGENT_TASKS_DIR/$task_id"
+    local claim_lock="$task_dir/.claim_lock"
 
     mkdir -p "$task_dir"
 
-    # Atomic claim via mkdir (fails if already exists)
-    if mkdir "$task_dir/claimed_by_$AGENT_ID" 2>/dev/null; then
+    # Atomic claim via a single sentinel directory so only one agent can win.
+    if mkdir "$claim_lock" 2>/dev/null; then
+        mkdir -p "$task_dir/claimed_by_$AGENT_ID"
+
         # Update task status
         if [[ -f "$task_dir/task.json" ]]; then
             local task_data
@@ -455,18 +488,22 @@ agent_claim_task() {
     else
         # Check who claimed it
         local claimer=""
-        for claim_dir in "$task_dir"/claimed_by_*; do
-            [[ -d "$claim_dir" ]] || continue
-            claimer="${claim_dir##*claimed_by_}"
-            break
-        done
+        if [[ -f "$task_dir/claimed_by.txt" ]]; then
+            claimer=$(<"$task_dir/claimed_by.txt")
+        else
+            for claim_dir in "$task_dir"/claimed_by_*; do
+                [[ -d "$claim_dir" ]] || continue
+                claimer="${claim_dir##*claimed_by_}"
+                break
+            done
+        fi
 
         json_object \
             "success:bool=false" \
             "error=task already claimed" \
             "task_id=$task_id" \
             "claimed_by=$claimer"
-        return 1
+        return 0
     fi
 }
 
@@ -525,6 +562,7 @@ agent_fail_task() {
     # Release claim so another agent can try
     rm -rf "$task_dir/claimed_by_$AGENT_ID"
     rm -f "$task_dir/claimed_by.txt"
+    rmdir "$task_dir/.claim_lock" 2>/dev/null || true
 
     # Notify waiting agents
     agent_broadcast "task_failed" "$task_id"
@@ -696,7 +734,8 @@ agent_state_incr() {
     local lockfile="$AGENT_STATE_DIR/${key}.lock"
 
     (
-        flock -x 200
+        _agent_comm_lock_acquire "$lockfile" 200 || exit 1
+        trap '_agent_comm_lock_release "$lockfile"' EXIT
         local current
         current=$(agent_state_get "$key" 0)
         # Ensure it's a valid integer
@@ -750,7 +789,8 @@ agent_state_cas() {
     local lockfile="$AGENT_STATE_DIR/${key}.lock"
 
     (
-        flock -x 200
+        _agent_comm_lock_acquire "$lockfile" 200 || exit 1
+        trap '_agent_comm_lock_release "$lockfile"' EXIT
         local current
         current=$(agent_state_get "$key" "")
 
@@ -809,7 +849,7 @@ agent_cleanup_dead() {
             rm -f "$agent_file"
             # shellcheck disable=SC2115
             rm -rf "${AGENT_BASE_DIR:?}/${agent_id:?}"
-            ((cleaned++))
+            cleaned=$((cleaned + 1))
         fi
     done
 

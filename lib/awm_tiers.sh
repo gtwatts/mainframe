@@ -216,7 +216,18 @@ awm_warm_exists() {
 # Get warm tier size in bytes
 # Usage: awm_warm_size
 awm_warm_size() {
-    du -sb "$AWM_WARM_DIR" 2>/dev/null | cut -f1 || echo 0
+    if [[ ! -d "$AWM_WARM_DIR" ]]; then
+        printf '0\n'
+        return 0
+    fi
+
+    if du -sk "$AWM_WARM_DIR" >/dev/null 2>&1; then
+        local kb
+        kb=$(du -sk "$AWM_WARM_DIR" 2>/dev/null | awk '{print $1}')
+        printf '%d\n' "$(( ${kb:-0} * 1024 ))"
+    else
+        printf '0\n'
+    fi
 }
 
 # =============================================================================
@@ -553,12 +564,16 @@ awm_tier_stats() {
     local warm_size
     warm_size=$(awm_warm_size)
     local warm_count
-    warm_count=$(find "$AWM_WARM_DIR" -type f 2>/dev/null | wc -l)
+    warm_count=$(find "$AWM_WARM_DIR" -type f 2>/dev/null | wc -l | tr -d '[:space:]')
 
     local cold_size
-    cold_size=$(du -sb "$AWM_COLD_DIR" 2>/dev/null | cut -f1 || echo 0)
+    if du -sk "$AWM_COLD_DIR" >/dev/null 2>&1; then
+        cold_size=$(du -sk "$AWM_COLD_DIR" 2>/dev/null | awk '{print $1 * 1024}')
+    else
+        cold_size=0
+    fi
     local cold_count
-    cold_count=$(find "$AWM_COLD_DIR" -type f 2>/dev/null | wc -l)
+    cold_count=$(find "$AWM_COLD_DIR" -type f 2>/dev/null | wc -l | tr -d '[:space:]')
 
     local budget_max budget_remaining
     budget_max=$(awm_budget_max)

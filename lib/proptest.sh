@@ -432,11 +432,17 @@ gen_ipv4() {
 # If privileged is true, includes ports 1-1023
 gen_port() {
     local privileged="${1:-false}"
-    local min=1024
-
-    [[ "$privileged" == "true" ]] && min=1
-
-    _proptest_rand_range "$min" 65535
+    if [[ "$privileged" == "true" ]]; then
+        # Intentionally sample from privileged ports some of the time so the
+        # generator actually exercises that range during a normal test run.
+        if [[ $(_proptest_rand_range 0 1) -eq 0 ]]; then
+            _proptest_rand_range 1 1023
+        else
+            _proptest_rand_range 1024 65535
+        fi
+    else
+        _proptest_rand_range 1024 65535
+    fi
 }
 
 # Generate one of several types (sum type)

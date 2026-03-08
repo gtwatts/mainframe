@@ -21,10 +21,10 @@ readonly _MAINFRAME_TIRITH_HOOK_LOADED=1
 # =============================================================================
 
 # Track whether the hook is active
-declare -g _TIRITH_HOOK_ACTIVE=0
+_TIRITH_HOOK_ACTIVE=0
 
 # Store original DEBUG trap for chaining
-declare -g _TIRITH_ORIGINAL_DEBUG_TRAP=""
+_TIRITH_ORIGINAL_DEBUG_TRAP=""
 
 # Builtins and trivial commands to skip (no security risk)
 readonly _TIRITH_SKIP_CMDS="^(cd|pwd|echo|printf|type|which|alias|unalias|export|local|declare|readonly|set|unset|shopt|enable|help|history|fc|bg|fg|jobs|wait|disown|kill|trap|true|false|:|return|exit|break|continue|shift|getopts|read|mapfile|readarray|source|\\.)[[:space:]]*"

@@ -6,6 +6,7 @@
 # =============================================================================
 
 load 'test_helper'
+bats_require_minimum_version 1.5.0
 
 setup() {
     # Force fresh load by unsetting the guard
@@ -565,8 +566,8 @@ teardown() {
 }
 
 @test "safewrap handles command not found" {
-    run safewrap nonexistent_command_xyz123
-    [ "$status" -ne 0 ]
+    run -127 safewrap nonexistent_command_xyz123
+    [ "$status" -eq 127 ]
 }
 
 @test "safewrap_status works with no wrappers registered" {

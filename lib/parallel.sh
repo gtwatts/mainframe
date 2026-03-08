@@ -1348,7 +1348,11 @@ parallel_cleanup() {
 
 # Register cleanup on exit if enabled
 if [[ -z "${PARALLEL_NO_CLEANUP:-}" ]]; then
-    trap parallel_cleanup EXIT
+    if declare -F _mainframe_add_exit_trap >/dev/null 2>&1; then
+        _mainframe_add_exit_trap "parallel_cleanup"
+    else
+        trap parallel_cleanup EXIT
+    fi
 fi
 
 # =============================================================================

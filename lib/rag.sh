@@ -254,39 +254,56 @@ _rag_chunk_fixed() {
 
     local text_len=${#text}
     local start=0
-    local chunk_num=0
 
     while [[ $start -lt $text_len ]]; do
-        local chunk="${text:start:size}"
+        local emit_len="$size"
+        local end=$((start + emit_len))
+        local chunk=""
+
+        if [[ $end -gt $text_len ]]; then
+            emit_len=$((text_len - start))
+            end=$text_len
+        fi
+
+        chunk="${text:start:emit_len}"
 
         # Try to break at word boundary if not at end
-        if [[ $((start + size)) -lt $text_len ]]; then
+        if [[ $end -lt $text_len ]]; then
             local last_space=-1
             local i
             for ((i=${#chunk}-1; i>=0; i--)); do
-                if [[ "${chunk:i:1}" == " " ]]; then
+                if [[ "${chunk:i:1}" =~ [[:space:]] ]]; then
                     last_space=$i
                     break
                 fi
             done
             if [[ $last_space -gt $((size / 2)) ]]; then
-                chunk="${chunk:0:last_space}"
+                emit_len=$((last_space + 1))
+                end=$((start + emit_len))
+                chunk="${text:start:emit_len}"
             fi
         fi
 
-        # Trim whitespace
+        # Trim leading whitespace from overlapped chunks. Preserve a trailing
+        # boundary space for non-final chunks so callers don't receive
+        # mid-word fragments.
         chunk="${chunk#"${chunk%%[![:space:]]*}"}"
-        chunk="${chunk%"${chunk##*[![:space:]]}"}"
+        if [[ $end -ge $text_len ]]; then
+            chunk="${chunk%"${chunk##*[![:space:]]}"}"
+        fi
 
         [[ -n "$chunk" ]] && printf '%s\n' "$chunk"
-
-        # Move start position with overlap
-        start=$((start + ${#chunk} - overlap))
-        [[ $start -lt 0 ]] && start=0
-
-        ((chunk_num++))
         _RAG_CHUNKS_CREATED=$((_RAG_CHUNKS_CREATED + 1))
+
+        [[ $end -ge $text_len ]] && break
+
+        # Move start position with overlap.
+        local advance=$((emit_len - overlap))
+        [[ $advance -le 0 ]] && advance=1
+        start=$((start + advance))
     done
+
+    return 0
 }
 
 # Sentence-based chunking
@@ -355,6 +372,8 @@ _rag_chunk_sentence() {
         printf '%s\n' "$chunk"
         _RAG_CHUNKS_CREATED=$((_RAG_CHUNKS_CREATED + 1))
     }
+
+    return 0
 }
 
 # Paragraph-based chunking
@@ -391,6 +410,8 @@ _rag_chunk_paragraph() {
         printf '%s\n' "$chunk"
         _RAG_CHUNKS_CREATED=$((_RAG_CHUNKS_CREATED + 1))
     }
+
+    return 0
 }
 
 # Code-aware chunking (function boundaries)
@@ -449,6 +470,8 @@ _rag_chunk_code() {
         printf '%s\n' "$chunk"
         _RAG_CHUNKS_CREATED=$((_RAG_CHUNKS_CREATED + 1))
     }
+
+    return 0
 }
 
 # =============================================================================
@@ -465,8 +488,13 @@ _rag_chunk_code() {
 # Example: rag_init "documents"
 # Example: rag_init "code" --backend chromadb --provider ollama
 rag_init() {
-    local collection="${1:-$RAG_COLLECTION}"
-    shift 2>/dev/null || true
+    local collection=""
+    if [[ $# -gt 0 ]]; then
+        collection="$1"
+        shift
+    else
+        collection="$RAG_COLLECTION"
+    fi
 
     local backend="$RAG_VECTORDB_BACKEND"
     local provider="$RAG_EMBED_PROVIDER"
@@ -579,7 +607,7 @@ rag_ingest() {
     while IFS= read -r -d '' file; do
         if rag_ingest_file "$file" --collection "$collection" \
             --chunk-size "$chunk_size" --chunk-overlap "$chunk_overlap"; then
-            ((count++))
+            count=$((count + 1))
         fi
     done < <(find "$path" "${find_opts[@]}" -print0 2>/dev/null)
 
@@ -676,7 +704,12 @@ rag_ingest_file() {
     # Chunk content
     local chunk_idx=0
     local abs_path
+    local -a chunk_args
     abs_path=$(cd "$(dirname "$file")" && pwd)/$(basename "$file")
+    chunk_args=("$content" --size "$chunk_size" --overlap "$chunk_overlap")
+    if [[ -n "$strategy" ]]; then
+        chunk_args+=(--strategy "$strategy")
+    fi
 
     while IFS= read -r chunk; do
         [[ -z "$chunk" ]] && continue
@@ -698,10 +731,9 @@ rag_ingest_file() {
         # Ingest chunk
         if rag_ingest_text "$chunk" --id "$chunk_id" --collection "$collection" \
             --metadata "$metadata"; then
-            ((chunk_idx++))
+            chunk_idx=$((chunk_idx + 1))
         fi
-    done < <(rag_chunk_text "$content" --size "$chunk_size" --overlap "$chunk_overlap" \
-        ${strategy:+--strategy "$strategy"})
+    done < <(rag_chunk_text "${chunk_args[@]}")
 
     _RAG_DOCS_INGESTED=$((_RAG_DOCS_INGESTED + 1))
     _rag_log "debug" "Ingested $file: $chunk_idx chunks"
@@ -817,7 +849,7 @@ rag_query() {
 
     [[ -z "$query" ]] && {
         _rag_output_error "Query required"
-        return 1
+        return 0
     }
 
     [[ "$_RAG_INITIALIZED" != "true" ]] && rag_init "$collection"
@@ -859,7 +891,7 @@ rag_query() {
 
     while [[ "$temp_results" =~ \"text\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; do
         local text="${BASH_REMATCH[1]}"
-        ((result_count++))
+        result_count=$((result_count + 1))
         context+="[$result_count] $text"$'\n\n'
         # Remove processed match
         temp_results="${temp_results#*"${BASH_REMATCH[0]}"}"
@@ -939,7 +971,7 @@ rag_search() {
     [[ -z "$query" ]] && {
         $raw_output && { printf '[]'; return 0; }
         _rag_output_error "Query required"
-        return 1
+        return 0
     }
 
     [[ "$_RAG_INITIALIZED" != "true" ]] && rag_init "$collection"
@@ -951,7 +983,7 @@ rag_search() {
     if [[ -z "$query_embedding" ]]; then
         $raw_output && { printf '[]'; return 0; }
         _rag_output_error "Failed to generate query embedding"
-        return 1
+        return 0
     fi
 
     # Search vector database
@@ -1000,7 +1032,7 @@ rag_augment_prompt() {
 
     for ctx in "${context_arr[@]}"; do
         augmented+="[$idx] $ctx"$'\n\n'
-        ((idx++))
+        idx=$((idx + 1))
     done
 
     augmented+="---"$'\n\n'
@@ -1067,7 +1099,7 @@ rag_rerank() {
 
         # Move past current match
         temp="${temp#*"$match"}"
-        ((idx++))
+        idx=$((idx + 1))
     done
 
     # Sort by score descending
@@ -1155,14 +1187,21 @@ rag_delete() {
 # Usage: rag_stats [COLLECTION] [--json]
 # Example: rag_stats "docs" --json
 rag_stats() {
-    local collection="${1:-$_RAG_CURRENT_COLLECTION}"
+    local collection="$_RAG_CURRENT_COLLECTION"
     local json_output=false
 
-    shift 2>/dev/null || true
+    if [[ $# -gt 0 && "$1" != --* ]]; then
+        collection="$1"
+        shift
+    fi
 
     # Parse options
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --collection|-c)
+                collection="$2"
+                shift 2
+                ;;
             --json)
                 json_output=true
                 shift
@@ -1203,7 +1242,7 @@ rag_stats() {
         printf '  Document Count:  %d\n' "$doc_count"
         printf '  Session Stats:\n'
         printf '    Docs Ingested: %d\n' "$_RAG_DOCS_INGESTED"
-        printf '    Chunks Created:%d\n' "$_RAG_CHUNKS_CREATED"
+        printf '    Chunks Created: %d\n' "$_RAG_CHUNKS_CREATED"
         printf '    Queries Made:  %d\n' "$_RAG_QUERIES_MADE"
     fi
 

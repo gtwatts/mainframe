@@ -22,6 +22,9 @@ readonly _MAINFRAME_COMPOSE_LOADED=1
 # Lazy thunk storage directory
 MAINFRAME_THUNK_DIR="${MAINFRAME_THUNK_DIR:-${TMPDIR:-/tmp}/mainframe-thunks}"
 
+# Absolute path to this library, used by generated wrapper scripts.
+_MAINFRAME_COMPOSE_LIB_PATH="${BASH_SOURCE[0]}"
+
 # =============================================================================
 # INTERNAL STATE
 # =============================================================================
@@ -79,16 +82,290 @@ _compose_err() {
     return 1
 }
 
-# Generate unique thunk ID
-_compose_gen_thunk_id() {
-    _MAINFRAME_THUNK_COUNTER=$((_MAINFRAME_THUNK_COUNTER + 1))
-    printf 'thunk_%d_%d' "$$" "$_MAINFRAME_THUNK_COUNTER"
-}
-
 # Check if function exists (declared or command)
 _compose_fn_exists() {
     local fn="$1"
-    declare -F "$fn" &>/dev/null || type -p "$fn" &>/dev/null
+    declare -F "$fn" &>/dev/null || type -t "$fn" &>/dev/null || [[ -x "$fn" ]]
+}
+
+_compose_add_wrapper_dir_to_path() {
+    local wrapper_dir="${MAINFRAME_THUNK_DIR}/wrappers"
+    case ":$PATH:" in
+        *":$wrapper_dir:"*) ;;
+        *)
+            PATH="${wrapper_dir}:$PATH"
+            export PATH
+            ;;
+    esac
+}
+
+_compose_ensure_dirs() {
+    mkdir -p \
+        "${MAINFRAME_THUNK_DIR}/wrappers" \
+        "${MAINFRAME_THUNK_DIR}/thunks" \
+        "${MAINFRAME_THUNK_DIR}/seq" \
+        "${MAINFRAME_THUNK_DIR}/memo"
+    _compose_add_wrapper_dir_to_path
+}
+
+_compose_sanitize_name() {
+    local value="$1"
+    value="${value//[^a-zA-Z0-9_]/_}"
+    printf '%s' "$value"
+}
+
+_compose_unique_suffix() {
+    printf '%s_%s_%s' "$$" "${BASHPID:-$$}" "${RANDOM}${RANDOM}"
+}
+
+_compose_make_name() {
+    local prefix="$1"
+    shift
+
+    local name="$prefix"
+    local part
+    for part in "$@"; do
+        [[ -n "$part" ]] || continue
+        name+="_$(_compose_sanitize_name "$part")"
+    done
+    name+="_$(_compose_unique_suffix)"
+    printf '%s' "$name"
+}
+
+_compose_wrapper_path() {
+    local name="$1"
+    printf '%s/wrappers/%s' "$MAINFRAME_THUNK_DIR" "$name"
+}
+
+_compose_thunk_meta_path() {
+    local thunk_id="$1"
+    printf '%s/thunks/%s.meta' "$MAINFRAME_THUNK_DIR" "$thunk_id"
+}
+
+_compose_thunk_cache_path() {
+    local thunk_id="$1"
+    printf '%s/thunks/%s.cache' "$MAINFRAME_THUNK_DIR" "$thunk_id"
+}
+
+_compose_seq_meta_path() {
+    local seq_id="$1"
+    printf '%s/seq/%s.meta' "$MAINFRAME_THUNK_DIR" "$seq_id"
+}
+
+_compose_memo_dir() {
+    local memo_name="$1"
+    printf '%s/memo/%s' "$MAINFRAME_THUNK_DIR" "$memo_name"
+}
+
+_compose_emit_context() {
+    local var
+    while IFS= read -r var; do
+        case "$var" in
+            MAINFRAME_*|TEST_*|BATS_*)
+                declare -p "$var" 2>/dev/null || true
+                ;;
+        esac
+    done < <(compgen -v)
+}
+
+_compose_array_literal() {
+    local literal="("
+    local arg quoted
+    for arg in "$@"; do
+        printf -v quoted '%q' "$arg"
+        literal+=" ${quoted}"
+    done
+    literal+=" )"
+    printf '%s' "$literal"
+}
+
+_compose_write_script() {
+    local name="$1"
+    local body="$2"
+    local path
+    local indented_body
+    path=$(_compose_wrapper_path "$name")
+    indented_body="${body//$'\n'/$'\n    '}"
+
+    _compose_ensure_dirs || return 1
+
+    {
+        printf '#!/usr/bin/env bash\n'
+        _compose_emit_context
+        printf '\nmain() {\n    %s\n}\n\nmain "$@"\n' "$indented_body"
+    } >"$path" || return 1
+
+    chmod 700 "$path" || return 1
+    printf '%s' "$path"
+}
+
+_compose_publish_wrapper() {
+    local name="$1"
+    local body="$2"
+    _compose_write_script "$name" "$body" >/dev/null || return 1
+    printf '%s' "$name"
+}
+
+_compose_result_ref() {
+    local callable="$1"
+    local wrapper_prefix="${MAINFRAME_THUNK_DIR}/wrappers/"
+    if [[ "$callable" == "${wrapper_prefix}"* ]]; then
+        printf '%s' "${callable##*/}"
+    else
+        printf '%s' "$callable"
+    fi
+}
+
+_compose_materialize_callable() {
+    local fn="$1"
+    local command_path
+
+    if [[ -x "$fn" ]]; then
+        printf '%s' "$fn"
+        return 0
+    fi
+
+    command_path=$(type -P "$fn" 2>/dev/null || true)
+    if [[ -n "$command_path" ]]; then
+        printf '%s' "$command_path"
+        return 0
+    fi
+
+    if declare -F "$fn" &>/dev/null; then
+        local name
+        name=$(_compose_make_name "_call" "$fn")
+        local fn_q
+        printf -v fn_q '%q' "$fn"
+        local body=""
+        body+="$(declare -f "$fn")"$'\n'
+        body+="${fn_q} \"\$@\""
+        _compose_write_script "$name" "$body" || return 1
+        return 0
+    fi
+
+    if type -t "$fn" &>/dev/null; then
+        local name
+        name=$(_compose_make_name "_call" "$fn")
+        local fn_q
+        printf -v fn_q '%q' "$fn"
+        _compose_write_script "$name" "${fn_q} \"\$@\"" || return 1
+        return 0
+    fi
+
+    return 1
+}
+
+_compose_hash_text() {
+    local input="$1"
+    local digest
+    if command -v sha256sum &>/dev/null; then
+        digest=$(printf '%s' "$input" | sha256sum)
+    elif command -v shasum &>/dev/null; then
+        digest=$(printf '%s' "$input" | shasum -a 256)
+    else
+        digest=$(printf '%s' "$input" | cksum)
+    fi
+    printf '%s' "${digest%% *}"
+}
+
+_compose_hash_args() {
+    local payload=""
+    local arg quoted
+    for arg in "$@"; do
+        printf -v quoted '%q' "$arg"
+        payload+="${quoted}"$'\n'
+    done
+    _compose_hash_text "$payload"
+}
+
+_compose_count_regular_files() {
+    local dir="$1"
+    local pattern="$2"
+    local count=0
+    local nullglob_was_set=0
+    local file
+    shopt -q nullglob && nullglob_was_set=1
+    shopt -s nullglob
+    local -a files=("$dir"/$pattern)
+    if [[ $nullglob_was_set -eq 0 ]]; then
+        shopt -u nullglob
+    fi
+    for file in "${files[@]}"; do
+        [[ -f "$file" ]] && count=$((count + 1))
+    done
+    printf '%d' "$count"
+}
+
+_compose_memo_entry_count() {
+    local memo_dir="$1"
+    _compose_count_regular_files "${memo_dir}/entries" '*'
+}
+
+_compose_write_state_file() {
+    local path="$1"
+    shift
+    {
+        printf '%s\n' "$@"
+    } >"$path"
+}
+
+_compose_create_curry_wrapper_internal() {
+    local callable="$1"
+    local label="$2"
+    local arity="$3"
+    shift 3
+    local -a collected=("$@")
+
+    local name
+    name=$(_compose_make_name "_curry" "$label" "$arity")
+
+    local callable_q label_q arity_q lib_q
+    local collected_literal
+    printf -v callable_q '%q' "$callable"
+    printf -v label_q '%q' "$label"
+    printf -v arity_q '%q' "$arity"
+    printf -v lib_q '%q' "$_MAINFRAME_COMPOSE_LIB_PATH"
+    collected_literal=$(_compose_array_literal "${collected[@]}")
+
+    local body=""
+    body+="source ${lib_q}"$'\n'
+    body+="local -a _compose_collected=${collected_literal}"$'\n'
+    body+='local -a _compose_combined=("${_compose_collected[@]}" "$@")'$'\n'
+    body+="if [[ \${#_compose_combined[@]} -ge ${arity} ]]; then"$'\n'
+    body+="    ${callable_q} \"\${_compose_combined[@]}\""$'\n'
+    body+='else'$'\n'
+    body+="    _compose_create_curry_wrapper_internal ${callable_q} ${label_q} ${arity_q} \"\${_compose_combined[@]}\""$'\n'
+    body+='fi'
+
+    _compose_publish_wrapper "$name" "$body"
+}
+
+_compose_memo_wrapper_run() {
+    local memo_name="$1"
+    local callable="$2"
+    shift 2
+
+    local memo_dir entry_dir key cache_path
+    memo_dir=$(_compose_memo_dir "$memo_name")
+    entry_dir="${memo_dir}/entries"
+    mkdir -p "$entry_dir" || return 1
+
+    key=$(_compose_hash_args "$@")
+    cache_path="${entry_dir}/${key}"
+
+    if [[ -f "$cache_path" ]]; then
+        cat "$cache_path"
+        return 0
+    fi
+
+    local result rc
+    result=$("$callable" "$@")
+    rc=$?
+    if [[ $rc -eq 0 ]]; then
+        printf '%s' "$result" >"$cache_path"
+    fi
+    printf '%s' "$result"
+    return $rc
 }
 
 # =============================================================================
@@ -124,17 +401,27 @@ compose() {
         return 1
     fi
 
-    # Generate unique composed function name
-    local composed_name="_composed_${f}_${g}_$$_${RANDOM}"
+    local f_cmd g_cmd
+    f_cmd=$(_compose_materialize_callable "$f") || {
+        _compose_err "compose: failed to materialize '$f'"
+        return 1
+    }
+    g_cmd=$(_compose_materialize_callable "$g") || {
+        _compose_err "compose: failed to materialize '$g'"
+        return 1
+    }
 
-    # Create the composed function
-    eval "${composed_name}() {
-        local _inner_result
-        _inner_result=\$($g \"\$@\")
-        $f \"\$_inner_result\"
-    }"
+    local composed_name body f_q g_q
+    composed_name=$(_compose_make_name "_composed" "$f" "$g")
+    printf -v f_q '%q' "$f_cmd"
+    printf -v g_q '%q' "$g_cmd"
+    body='local _compose_inner_result _compose_rc'$'\n'
+    body+="_compose_inner_result=\$(${g_q} \"\$@\")"$'\n'
+    body+='_compose_rc=$?'$'\n'
+    body+='[[ $_compose_rc -eq 0 ]] || return $_compose_rc'$'\n'
+    body+="${f_q} \"\$_compose_inner_result\""
 
-    printf '%s' "$composed_name"
+    _compose_publish_wrapper "$composed_name" "$body"
 }
 
 # @pre: f1, f2, ... are valid function names
@@ -165,26 +452,35 @@ pipe_fn() {
         fi
     done
 
+    local -a callables=()
+    for fn in "${funcs[@]}"; do
+        local callable
+        callable=$(_compose_materialize_callable "$fn") || {
+            _compose_err "pipe_fn: failed to materialize '$fn'"
+            return 1
+        }
+        callables+=("$callable")
+    done
+
     # Single function - return as-is
     if [[ $n -eq 1 ]]; then
-        printf '%s' "${funcs[0]}"
+        _compose_result_ref "${callables[0]}"
         return 0
     fi
 
-    # Generate unique piped function name
-    local piped_name="_piped_$$_${RANDOM}"
+    local piped_name body callables_literal
+    piped_name=$(_compose_make_name "_piped" "${funcs[@]}")
+    callables_literal=$(_compose_array_literal "${callables[@]}")
+    body+="local -a _compose_cmds=${callables_literal}"$'\n'
+    body+='local _compose_value="${1-}"'$'\n'
+    body+='if [[ $# -gt 0 ]]; then shift; fi'$'\n'
+    body+='local _compose_cmd'$'\n'
+    body+='for _compose_cmd in "${_compose_cmds[@]}"; do'$'\n'
+    body+='    _compose_value=$("$_compose_cmd" "$_compose_value" "$@")'$'\n'
+    body+='done'$'\n'
+    body+='printf "%s" "$_compose_value"'
 
-    # Build the function body
-    local body='local __val="$1"; shift'
-    local i
-    for ((i=0; i<n; i++)); do
-        body+=$'\n'"__val=\$(${funcs[$i]} \"\$__val\" \"\$@\")"
-    done
-    body+=$'\n''printf "%s" "$__val"'
-
-    eval "${piped_name}() { $body; }"
-
-    printf '%s' "$piped_name"
+    _compose_publish_wrapper "$piped_name" "$body"
 }
 
 # @pre: f1, f2, ... are valid function names
@@ -215,21 +511,31 @@ chain() {
         fi
     done
 
-    # Generate unique chained function name
-    local chained_name="_chained_$$_${RANDOM}"
-
-    # Build the function body with error checking
-    local body='local __val="$1"; shift; local __rc'
-    local i
-    for ((i=0; i<n; i++)); do
-        body+=$'\n'"__val=\$(${funcs[$i]} \"\$__val\" \"\$@\")"
-        body+=$'\n''__rc=$?; [[ $__rc -ne 0 ]] && return $__rc'
+    local -a callables=()
+    for fn in "${funcs[@]}"; do
+        local callable
+        callable=$(_compose_materialize_callable "$fn") || {
+            _compose_err "chain: failed to materialize '$fn'"
+            return 1
+        }
+        callables+=("$callable")
     done
-    body+=$'\n''printf "%s" "$__val"'
 
-    eval "${chained_name}() { $body; }"
+    local chained_name body callables_literal
+    chained_name=$(_compose_make_name "_chained" "${funcs[@]}")
+    callables_literal=$(_compose_array_literal "${callables[@]}")
+    body+="local -a _compose_cmds=${callables_literal}"$'\n'
+    body+='local _compose_value="${1-}" _compose_rc'$'\n'
+    body+='if [[ $# -gt 0 ]]; then shift; fi'$'\n'
+    body+='local _compose_cmd'$'\n'
+    body+='for _compose_cmd in "${_compose_cmds[@]}"; do'$'\n'
+    body+='    _compose_value=$("$_compose_cmd" "$_compose_value" "$@")'$'\n'
+    body+='    _compose_rc=$?'$'\n'
+    body+='    [[ $_compose_rc -eq 0 ]] || return $_compose_rc'$'\n'
+    body+='done'$'\n'
+    body+='printf "%s" "$_compose_value"'
 
-    printf '%s' "$chained_name"
+    _compose_publish_wrapper "$chained_name" "$body"
 }
 
 # =============================================================================
@@ -261,24 +567,20 @@ partial() {
         return 1
     fi
 
-    # Generate unique partial function name
-    local partial_name="_partial_${fn}_$$_${RANDOM}"
+    local callable
+    callable=$(_compose_materialize_callable "$fn") || {
+        _compose_err "partial: failed to materialize '$fn'"
+        return 1
+    }
 
-    # Serialize preset args for embedding in function
-    local args_serialized=""
-    local arg
-    for arg in "${preset_args[@]}"; do
-        # Escape single quotes for safe embedding
-        arg="${arg//\'/\'\\\'\'}"
-        args_serialized+="'$arg' "
-    done
+    local partial_name body callable_q preset_literal
+    partial_name=$(_compose_make_name "_partial" "$fn")
+    printf -v callable_q '%q' "$callable"
+    preset_literal=$(_compose_array_literal "${preset_args[@]}")
+    body+="local -a _compose_preset=${preset_literal}"$'\n'
+    body+="${callable_q} \"\${_compose_preset[@]}\" \"\$@\""
 
-    # Create the partial function
-    eval "${partial_name}() {
-        $fn $args_serialized\"\$@\"
-    }"
-
-    printf '%s' "$partial_name"
+    _compose_publish_wrapper "$partial_name" "$body"
 }
 
 # @pre: fn is a valid function name, arity is a positive integer
@@ -310,36 +612,13 @@ curry() {
         return 1
     fi
 
-    # Generate curried function name
-    local curry_name="_curry_${fn}_${arity}_$$_${RANDOM}"
+    local callable
+    callable=$(_compose_materialize_callable "$fn") || {
+        _compose_err "curry: failed to materialize '$fn'"
+        return 1
+    }
 
-    # Create the curried function (recursive partial application)
-    eval "${curry_name}() {
-        local _collected=\"\${_CURRY_ARGS_${curry_name}:-}\"
-        if [[ -n \"\$_collected\" ]]; then
-            _collected+=$'\\n'\"\$1\"
-        else
-            _collected=\"\$1\"
-        fi
-        local _count=0
-        while IFS= read -r _line; do
-            ((_count++))
-        done <<< \"\$_collected\"
-
-        if [[ \$_count -ge $arity ]]; then
-            local -a _args=()
-            while IFS= read -r _line; do
-                _args+=(\"\$_line\")
-            done <<< \"\$_collected\"
-            unset _CURRY_ARGS_${curry_name}
-            $fn \"\${_args[@]}\"
-        else
-            export _CURRY_ARGS_${curry_name}=\"\$_collected\"
-            printf '%s' \"$curry_name\"
-        fi
-    }"
-
-    printf '%s' "$curry_name"
+    _compose_create_curry_wrapper_internal "$callable" "$fn" "$arity"
 }
 
 # @pre: fn is a valid function name
@@ -364,18 +643,20 @@ flip() {
         return 1
     fi
 
-    # Generate flipped function name
-    local flip_name="_flip_${fn}_$$_${RANDOM}"
+    local callable
+    callable=$(_compose_materialize_callable "$fn") || {
+        _compose_err "flip: failed to materialize '$fn'"
+        return 1
+    }
 
-    # Create the flipped function
-    eval "${flip_name}() {
-        local _a=\"\$1\"
-        local _b=\"\$2\"
-        shift 2
-        $fn \"\$_b\" \"\$_a\" \"\$@\"
-    }"
+    local flip_name body callable_q
+    flip_name=$(_compose_make_name "_flip" "$fn")
+    printf -v callable_q '%q' "$callable"
+    body+='local _compose_a="${1-}" _compose_b="${2-}"'$'\n'
+    body+='if [[ $# -ge 2 ]]; then shift 2; else shift $#; fi'$'\n'
+    body+="${callable_q} \"\$_compose_b\" \"\$_compose_a\" \"\$@\""
 
-    printf '%s' "$flip_name"
+    _compose_publish_wrapper "$flip_name" "$body"
 }
 
 # =============================================================================
@@ -405,17 +686,20 @@ tap() {
         return 1
     fi
 
-    # Generate tap function name
-    local tap_name="_tap_${fn}_$$_${RANDOM}"
+    local callable
+    callable=$(_compose_materialize_callable "$fn") || {
+        _compose_err "tap: failed to materialize '$fn'"
+        return 1
+    }
 
-    # Create the tap function
-    eval "${tap_name}() {
-        local _input=\"\$1\"
-        $fn \"\$_input\" >/dev/null 2>&1 || true
-        printf '%s' \"\$_input\"
-    }"
+    local tap_name body callable_q
+    tap_name=$(_compose_make_name "_tap" "$fn")
+    printf -v callable_q '%q' "$callable"
+    body+='local _compose_input="${1-}"'$'\n'
+    body+="${callable_q} \"\$_compose_input\" >/dev/null 2>&1 || true"$'\n'
+    body+='printf "%s" "$_compose_input"'
 
-    printf '%s' "$tap_name"
+    _compose_publish_wrapper "$tap_name" "$body"
 }
 
 # @pre: none
@@ -443,18 +727,12 @@ identity() {
 constant() {
     local value="$1"
 
-    # Generate constant function name
-    local const_name="_const_$$_${RANDOM}"
+    local const_name body value_q
+    const_name=$(_compose_make_name "_const")
+    printf -v value_q '%q' "$value"
+    body="printf '%s' ${value_q}"
 
-    # Escape the value for safe embedding
-    local escaped_value="${value//\'/\'\\\'\'}"
-
-    # Create the constant function
-    eval "${const_name}() {
-        printf '%s' '$escaped_value'
-    }"
-
-    printf '%s' "$const_name"
+    _compose_publish_wrapper "$const_name" "$body"
 }
 
 # @pre: fn is a valid function name, args_array is an array
@@ -515,20 +793,20 @@ lazy() {
         return 1
     fi
 
-    # Generate unique thunk ID
-    local thunk_id
-    thunk_id=$(_compose_gen_thunk_id)
+    local callable
+    callable=$(_compose_materialize_callable "$fn") || {
+        _compose_err "lazy: failed to materialize '$fn'"
+        return 1
+    }
 
-    # Serialize args for storage
-    local args_serialized=""
-    local arg
-    for arg in "${args[@]}"; do
-        arg="${arg//\'/\'\\\'\'}"
-        args_serialized+="'$arg' "
-    done
+    local thunk_id thunk_meta
+    thunk_id="thunk_$(_compose_unique_suffix)"
+    thunk_meta=$(_compose_thunk_meta_path "$thunk_id")
 
-    # Store thunk definition
-    _MAINFRAME_THUNKS["$thunk_id"]="${fn}|${args_serialized}"
+    _compose_ensure_dirs || return 1
+    _compose_write_state_file "$thunk_meta" \
+        "callable=$(printf '%q' "$callable")" \
+        "declare -a args=$(_compose_array_literal "${args[@]}")"
 
     printf '%s' "$thunk_id"
 }
@@ -550,30 +828,33 @@ force() {
         return 1
     fi
 
-    # Check if already evaluated (memoized)
-    if [[ -v "_MAINFRAME_THUNK_CACHE[$thunk_id]" ]]; then
-        printf '%s' "${_MAINFRAME_THUNK_CACHE[$thunk_id]}"
+    _compose_ensure_dirs || return 1
+
+    local thunk_meta thunk_cache
+    thunk_meta=$(_compose_thunk_meta_path "$thunk_id")
+    thunk_cache=$(_compose_thunk_cache_path "$thunk_id")
+
+    if [[ -f "$thunk_cache" ]]; then
+        cat "$thunk_cache"
         return 0
     fi
 
-    # Get thunk definition
-    if [[ ! -v "_MAINFRAME_THUNKS[$thunk_id]" ]]; then
+    if [[ ! -f "$thunk_meta" ]]; then
         _compose_err "force: unknown thunk '$thunk_id'"
         return 1
     fi
 
-    local thunk_def="${_MAINFRAME_THUNKS[$thunk_id]}"
-    local fn="${thunk_def%%|*}"
-    local args_serialized="${thunk_def#*|}"
+    local callable
+    local -a args=()
+    # shellcheck disable=SC1090
+    source "$thunk_meta"
 
-    # Execute the thunk
-    local result
-    result=$(eval "$fn $args_serialized")
-    local rc=$?
+    local result rc
+    result=$("$callable" "${args[@]}")
+    rc=$?
 
     if [[ $rc -eq 0 ]]; then
-        # Cache the result
-        _MAINFRAME_THUNK_CACHE["$thunk_id"]="$result"
+        printf '%s' "$result" >"$thunk_cache"
     fi
 
     printf '%s' "$result"
@@ -603,13 +884,19 @@ lazy_seq() {
         return 1
     fi
 
-    # Generate unique sequence ID
-    local seq_id
-    seq_id="seq_$$_${RANDOM}"
+    local callable
+    callable=$(_compose_materialize_callable "$gen_fn") || {
+        _compose_err "lazy_seq: failed to materialize '$gen_fn'"
+        return 1
+    }
 
-    # Store sequence state: generator and current index
-    _MAINFRAME_LAZY_SEQ_STATE["${seq_id}_gen"]="$gen_fn"
-    _MAINFRAME_LAZY_SEQ_STATE["${seq_id}_idx"]=0
+    local seq_id seq_meta
+    seq_id="seq_$(_compose_unique_suffix)"
+    seq_meta=$(_compose_seq_meta_path "$seq_id")
+    _compose_ensure_dirs || return 1
+    _compose_write_state_file "$seq_meta" \
+        "callable=$(printf '%q' "$callable")" \
+        "idx=0"
 
     printf '%s' "$seq_id"
 }
@@ -637,26 +924,29 @@ take_lazy() {
         return 1
     fi
 
-    # Get generator function
-    local gen_fn="${_MAINFRAME_LAZY_SEQ_STATE[${seq_id}_gen]:-}"
-    if [[ -z "$gen_fn" ]]; then
+    _compose_ensure_dirs || return 1
+
+    local seq_meta callable idx=0
+    seq_meta=$(_compose_seq_meta_path "$seq_id")
+
+    if [[ ! -f "$seq_meta" ]]; then
         _compose_err "take_lazy: unknown sequence '$seq_id'"
         return 1
     fi
 
-    # Get current index
-    local idx="${_MAINFRAME_LAZY_SEQ_STATE[${seq_id}_idx]:-0}"
+    # shellcheck disable=SC1090
+    source "$seq_meta"
 
-    # Generate n values
     local i
     for ((i=0; i<n; i++)); do
-        "$gen_fn" "$idx"
+        "$callable" "$idx"
         printf '\n'
         idx=$((idx + 1))
     done
 
-    # Update sequence state
-    _MAINFRAME_LAZY_SEQ_STATE["${seq_id}_idx"]="$idx"
+    _compose_write_state_file "$seq_meta" \
+        "callable=$(printf '%q' "$callable")" \
+        "idx=${idx}"
 }
 
 # =============================================================================
@@ -687,38 +977,27 @@ memoize_fn() {
         return 1
     fi
 
-    # Generate memoized function name
-    local memo_name="_memo_${fn}_$$_${RANDOM}"
+    local callable
+    callable=$(_compose_materialize_callable "$fn") || {
+        _compose_err "memoize_fn: failed to materialize '$fn'"
+        return 1
+    }
 
-    # Create the memoized function
-    eval "${memo_name}() {
-        # Build cache key from args
-        local _key=\"${fn}\"
-        local _arg
-        for _arg in \"\$@\"; do
-            _key+=\"|\${_arg}\"
-        done
+    local memo_name memo_dir body callable_q memo_q lib_q
+    memo_name=$(_compose_make_name "_memo" "$fn")
+    memo_dir=$(_compose_memo_dir "$memo_name")
+    mkdir -p "${memo_dir}/entries" || return 1
+    _compose_write_state_file "${memo_dir}/meta" \
+        "label=$(printf '%q' "$fn")" \
+        "callable=$(printf '%q' "$callable")"
 
-        # Check cache
-        if [[ -v \"_MAINFRAME_COMPOSE_MEMO_CACHE[\$_key]\" ]]; then
-            printf '%s' \"\${_MAINFRAME_COMPOSE_MEMO_CACHE[\$_key]}\"
-            return 0
-        fi
+    printf -v callable_q '%q' "$callable"
+    printf -v memo_q '%q' "$memo_name"
+    printf -v lib_q '%q' "$_MAINFRAME_COMPOSE_LIB_PATH"
+    body="source ${lib_q}"$'\n'
+    body+="_compose_memo_wrapper_run ${memo_q} ${callable_q} \"\$@\""
 
-        # Compute and cache
-        local _result
-        _result=\$($fn \"\$@\")
-        local _rc=\$?
-
-        if [[ \$_rc -eq 0 ]]; then
-            _MAINFRAME_COMPOSE_MEMO_CACHE[\"\$_key\"]=\"\$_result\"
-        fi
-
-        printf '%s' \"\$_result\"
-        return \$_rc
-    }"
-
-    printf '%s' "$memo_name"
+    _compose_publish_wrapper "$memo_name" "$body"
 }
 
 # @pre: fn_pattern matches function names in memo cache
@@ -735,17 +1014,42 @@ cache_clear_fn() {
     local pattern="${1:-}"
     local count=0
 
+    _compose_ensure_dirs || return 1
+
     if [[ -z "$pattern" ]]; then
-        # Clear all
-        count=${#_MAINFRAME_COMPOSE_MEMO_CACHE[@]}
-        _MAINFRAME_COMPOSE_MEMO_CACHE=()
+        local memo_dir
+        local nullglob_was_set=0
+        shopt -q nullglob && nullglob_was_set=1
+        shopt -s nullglob
+        local -a memo_dirs=("${MAINFRAME_THUNK_DIR}/memo"/*)
+        if [[ $nullglob_was_set -eq 0 ]]; then
+            shopt -u nullglob
+        fi
+        for memo_dir in "${memo_dirs[@]}"; do
+            [[ -d "$memo_dir" ]] || continue
+            count=$((count + $(_compose_memo_entry_count "$memo_dir")))
+            rm -rf "${memo_dir}/entries"
+            mkdir -p "${memo_dir}/entries"
+        done
     else
-        # Clear matching
-        local key
-        for key in "${!_MAINFRAME_COMPOSE_MEMO_CACHE[@]}"; do
-            if [[ "$key" == $pattern* ]]; then
-                unset "_MAINFRAME_COMPOSE_MEMO_CACHE[$key]"
-                count=$((count + 1))
+        local meta_file memo_dir label callable
+        local nullglob_was_set=0
+        shopt -q nullglob && nullglob_was_set=1
+        shopt -s nullglob
+        local -a meta_files=("${MAINFRAME_THUNK_DIR}/memo"/*/meta)
+        if [[ $nullglob_was_set -eq 0 ]]; then
+            shopt -u nullglob
+        fi
+        for meta_file in "${meta_files[@]}"; do
+            label=""
+            callable=""
+            # shellcheck disable=SC1090
+            source "$meta_file"
+            if [[ "$label" == ${pattern}* ]]; then
+                memo_dir="${meta_file%/meta}"
+                count=$((count + $(_compose_memo_entry_count "$memo_dir")))
+                rm -rf "${memo_dir}/entries"
+                mkdir -p "${memo_dir}/entries"
             fi
         done
     fi
@@ -772,6 +1076,8 @@ compose_reset() {
     _MAINFRAME_THUNK_COUNTER=0
     _MAINFRAME_LAZY_SEQ_STATE=()
     _MAINFRAME_COMPOSE_MEMO_CACHE=()
+    rm -rf "$MAINFRAME_THUNK_DIR"
+    _compose_ensure_dirs
 }
 
 # @pre: none
@@ -787,15 +1093,25 @@ compose_stats() {
     local json_output=false
     [[ "${1:-}" == "--json" ]] && json_output=true
 
-    local thunk_count=${#_MAINFRAME_THUNKS[@]}
-    local cached_thunks=${#_MAINFRAME_THUNK_CACHE[@]}
-    local seq_count=0
-    local memo_entries=${#_MAINFRAME_COMPOSE_MEMO_CACHE[@]}
+    _compose_ensure_dirs || return 1
 
-    # Count unique sequences
-    local key
-    for key in "${!_MAINFRAME_LAZY_SEQ_STATE[@]}"; do
-        [[ "$key" == *_gen ]] && seq_count=$((seq_count + 1))
+    local thunk_count cached_thunks seq_count memo_entries
+    thunk_count=$(_compose_count_regular_files "${MAINFRAME_THUNK_DIR}/thunks" '*.meta')
+    cached_thunks=$(_compose_count_regular_files "${MAINFRAME_THUNK_DIR}/thunks" '*.cache')
+    seq_count=$(_compose_count_regular_files "${MAINFRAME_THUNK_DIR}/seq" '*.meta')
+    memo_entries=0
+
+    local memo_dir
+    local nullglob_was_set=0
+    shopt -q nullglob && nullglob_was_set=1
+    shopt -s nullglob
+    local -a memo_dirs=("${MAINFRAME_THUNK_DIR}/memo"/*)
+    if [[ $nullglob_was_set -eq 0 ]]; then
+        shopt -u nullglob
+    fi
+    for memo_dir in "${memo_dirs[@]}"; do
+        [[ -d "$memo_dir" ]] || continue
+        memo_entries=$((memo_entries + $(_compose_memo_entry_count "$memo_dir")))
     done
 
     if [[ "$json_output" == true ]]; then
@@ -841,22 +1157,29 @@ try_each() {
         fi
     done
 
-    # Generate function name
-    local try_name="_try_each_$$_${RANDOM}"
-
-    # Build function body
-    local body='local _result _rc'
-    local i
-    for ((i=0; i<n; i++)); do
-        body+=$'\n'"_result=\$(${funcs[$i]} \"\$@\" 2>/dev/null)"
-        body+=$'\n''_rc=$?'
-        body+=$'\n''if [[ $_rc -eq 0 ]]; then printf "%s" "$_result"; return 0; fi'
+    local -a callables=()
+    for fn in "${funcs[@]}"; do
+        local callable
+        callable=$(_compose_materialize_callable "$fn") || {
+            _compose_err "try_each: failed to materialize '$fn'"
+            return 1
+        }
+        callables+=("$callable")
     done
-    body+=$'\n''return 1'
 
-    eval "${try_name}() { $body; }"
+    local try_name body callables_literal
+    try_name=$(_compose_make_name "_try_each" "${funcs[@]}")
+    callables_literal=$(_compose_array_literal "${callables[@]}")
+    body+="local -a _compose_cmds=${callables_literal}"$'\n'
+    body+='local _compose_cmd _compose_result _compose_rc'$'\n'
+    body+='for _compose_cmd in "${_compose_cmds[@]}"; do'$'\n'
+    body+='    _compose_result=$("$_compose_cmd" "$@" 2>/dev/null)'$'\n'
+    body+='    _compose_rc=$?'$'\n'
+    body+='    if [[ $_compose_rc -eq 0 ]]; then printf "%s" "$_compose_result"; return 0; fi'$'\n'
+    body+='done'$'\n'
+    body+='return 1'
 
-    printf '%s' "$try_name"
+    _compose_publish_wrapper "$try_name" "$body"
 }
 
 # @pre: predicate and fn are valid functions
@@ -887,20 +1210,28 @@ when() {
         return 1
     fi
 
-    # Generate function name
-    local when_name="_when_${predicate}_${fn}_$$_${RANDOM}"
+    local predicate_cmd fn_cmd
+    predicate_cmd=$(_compose_materialize_callable "$predicate") || {
+        _compose_err "when: failed to materialize predicate '$predicate'"
+        return 1
+    }
+    fn_cmd=$(_compose_materialize_callable "$fn") || {
+        _compose_err "when: failed to materialize '$fn'"
+        return 1
+    }
 
-    # Create conditional function
-    eval "${when_name}() {
-        local _input=\"\$1\"
-        if $predicate \"\$_input\"; then
-            $fn \"\$_input\"
-        else
-            printf '%s' \"\$_input\"
-        fi
-    }"
+    local when_name body predicate_q fn_q
+    when_name=$(_compose_make_name "_when" "$predicate" "$fn")
+    printf -v predicate_q '%q' "$predicate_cmd"
+    printf -v fn_q '%q' "$fn_cmd"
+    body+='local _compose_input="${1-}"'$'\n'
+    body+="if ${predicate_q} \"\$_compose_input\" >/dev/null 2>&1; then"$'\n'
+    body+="    ${fn_q} \"\$_compose_input\""$'\n'
+    body+='else'$'\n'
+    body+='    printf "%s" "$_compose_input"'$'\n'
+    body+='fi'
 
-    printf '%s' "$when_name"
+    _compose_publish_wrapper "$when_name" "$body"
 }
 
 # @pre: predicate, then_fn, else_fn are valid functions
@@ -936,19 +1267,32 @@ if_else() {
         return 1
     fi
 
-    # Generate function name
-    local ifelse_name="_ifelse_$$_${RANDOM}"
+    local predicate_cmd then_cmd else_cmd
+    predicate_cmd=$(_compose_materialize_callable "$predicate") || {
+        _compose_err "if_else: failed to materialize predicate '$predicate'"
+        return 1
+    }
+    then_cmd=$(_compose_materialize_callable "$then_fn") || {
+        _compose_err "if_else: failed to materialize '$then_fn'"
+        return 1
+    }
+    else_cmd=$(_compose_materialize_callable "$else_fn") || {
+        _compose_err "if_else: failed to materialize '$else_fn'"
+        return 1
+    }
 
-    # Create if-else function
-    eval "${ifelse_name}() {
-        if $predicate \"\$@\"; then
-            $then_fn \"\$@\"
-        else
-            $else_fn \"\$@\"
-        fi
-    }"
+    local ifelse_name body predicate_q then_q else_q
+    ifelse_name=$(_compose_make_name "_ifelse" "$predicate" "$then_fn" "$else_fn")
+    printf -v predicate_q '%q' "$predicate_cmd"
+    printf -v then_q '%q' "$then_cmd"
+    printf -v else_q '%q' "$else_cmd"
+    body+="if ${predicate_q} \"\$@\" >/dev/null 2>&1; then"$'\n'
+    body+="    ${then_q} \"\$@\""$'\n'
+    body+='else'$'\n'
+    body+="    ${else_q} \"\$@\""$'\n'
+    body+='fi'
 
-    printf '%s' "$ifelse_name"
+    _compose_publish_wrapper "$ifelse_name" "$body"
 }
 
 # @pre: n is a positive integer, fn is a valid function
@@ -978,20 +1322,23 @@ times() {
         return 1
     fi
 
-    # Generate function name
-    local times_name="_times_${n}_${fn}_$$_${RANDOM}"
+    local callable
+    callable=$(_compose_materialize_callable "$fn") || {
+        _compose_err "times: failed to materialize '$fn'"
+        return 1
+    }
 
-    # Build function body
-    local body='local __val="$1"'
-    local i
-    for ((i=0; i<n; i++)); do
-        body+=$'\n'"__val=\$($fn \"\$__val\")"
-    done
-    body+=$'\n''printf "%s" "$__val"'
+    local times_name body callable_q
+    times_name=$(_compose_make_name "_times" "$n" "$fn")
+    printf -v callable_q '%q' "$callable"
+    body+='local _compose_value="${1-}"'$'\n'
+    body+='local _compose_i'$'\n'
+    body+="for ((_compose_i=0; _compose_i<${n}; _compose_i++)); do"$'\n'
+    body+="    _compose_value=\$(${callable_q} \"\$_compose_value\")"$'\n'
+    body+='done'$'\n'
+    body+='printf "%s" "$_compose_value"'
 
-    eval "${times_name}() { $body; }"
-
-    printf '%s' "$times_name"
+    _compose_publish_wrapper "$times_name" "$body"
 }
 
 # =============================================================================

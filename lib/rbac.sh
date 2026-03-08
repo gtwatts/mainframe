@@ -79,6 +79,12 @@ _rbac_clear_all_cache() {
     _RBAC_PERM_CACHE=()
 }
 
+# Check whether a role exists, even if it intentionally has no direct permissions.
+_rbac_role_exists() {
+    local role_name="$1"
+    [[ -n "${_RBAC_ROLES[$role_name]+x}" ]] || [[ -n "${_RBAC_ROLE_INHERITS[$role_name]+x}" ]] || [[ -n "${_RBAC_ROLE_DESC[$role_name]+x}" ]]
+}
+
 # Get all permissions for a role (including inherited)
 # Usage: _rbac_get_role_permissions "role_name"
 # Output: space-separated permissions
@@ -387,7 +393,7 @@ rbac_inherit_role() {
     fi
 
     # Check parent role exists
-    if [[ -z "${_RBAC_ROLES[$parent_role]:-}" && -z "${_RBAC_ROLE_INHERITS[$parent_role]:-}" ]]; then
+    if ! _rbac_role_exists "$parent_role"; then
         _rbac_log "warn" "Parent role '$parent_role' not defined"
     fi
 
@@ -425,7 +431,7 @@ rbac_delete_role() {
         return 1
     fi
 
-    if [[ -z "${_RBAC_ROLES[$role_name]:-}" && -z "${_RBAC_ROLE_INHERITS[$role_name]:-}" ]]; then
+    if ! _rbac_role_exists "$role_name"; then
         _rbac_log "warn" "Role not found: $role_name"
         return 1
     fi
@@ -528,7 +534,7 @@ rbac_get_role() {
         return 1
     fi
 
-    if [[ -z "${_RBAC_ROLES[$role_name]:-}" && -z "${_RBAC_ROLE_INHERITS[$role_name]:-}" ]]; then
+    if ! _rbac_role_exists "$role_name"; then
         return 1
     fi
 
@@ -610,7 +616,7 @@ rbac_assign_role() {
     fi
 
     # Check role exists
-    if [[ -z "${_RBAC_ROLES[$role_name]:-}" && -z "${_RBAC_ROLE_INHERITS[$role_name]:-}" ]]; then
+    if ! _rbac_role_exists "$role_name"; then
         _rbac_log "error" "Role not found: $role_name"
         return 1
     fi

@@ -14,7 +14,8 @@
 
 # Prevent double-sourcing
 [[ -n "${_MAINFRAME_RISK_LOADED:-}" ]] && return 0
-readonly _MAINFRAME_RISK_LOADED=1
+_MAINFRAME_RISK_LOADED=1
+readonly _MAINFRAME_RISK_LOADED
 
 # =============================================================================
 # RISK LEVEL CONSTANTS

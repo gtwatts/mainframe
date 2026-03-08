@@ -305,8 +305,9 @@ gcp_compute_status() {
         return 1
     }
 
-    local args=("compute" "instances" "describe" "$instance_name" "--format=json")
+    local args=("compute" "instances" "describe" "$instance_name")
     [[ -n "$zone" ]] && args+=("--zone=$zone")
+    args+=("--format=json")
 
     local result
     result=$(gcloud "${args[@]}" 2>/dev/null) || {
@@ -371,7 +372,8 @@ gcp_functions_invoke() {
     _gcp_require_cli || return 1
 
     local function_name="$1"
-    local data="${2:-{}}"
+    local data="${2-}"
+    [[ -n "$data" ]] || data='{}'
     local region="${3:-}"
 
     [[ -z "$function_name" ]] && {

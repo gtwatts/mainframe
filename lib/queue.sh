@@ -143,7 +143,8 @@ queue_push() {
 # @return      0 on success, 1 if empty
 #
 # Usage:
-#   value=$(queue_pop myqueue)
+#   queue_pop myqueue              # emits to stdout, mutates current shell
+#   queue_pop_v myqueue result     # capture value and mutate caller state
 # -----------------------------------------------------------------------------
 queue_pop() {
     local -n _qpop_queue=$1
@@ -438,7 +439,8 @@ stack_push() {
 # @return      0 on success, 1 if empty
 #
 # Usage:
-#   value=$(stack_pop mystack)
+#   stack_pop mystack              # emits to stdout, mutates current shell
+#   stack_pop_v mystack result     # capture value and mutate caller state
 # -----------------------------------------------------------------------------
 stack_pop() {
     local -n _spop_stack=$1
@@ -742,7 +744,8 @@ deque_push_back() {
 # @return      0 on success, 1 if empty
 #
 # Usage:
-#   value=$(deque_pop_front mydeque)
+#   deque_pop_front mydeque            # emits to stdout in current shell
+#   deque_pop_front_v mydeque result   # capture value and mutate caller state
 # -----------------------------------------------------------------------------
 deque_pop_front() {
     local -n _dpof_deque=$1
@@ -797,7 +800,8 @@ deque_pop_front_v() {
 # @return      0 on success, 1 if empty
 #
 # Usage:
-#   value=$(deque_pop_back mydeque)
+#   deque_pop_back mydeque            # emits to stdout in current shell
+#   deque_pop_back_v mydeque result   # capture value and mutate caller state
 # -----------------------------------------------------------------------------
 deque_pop_back() {
     local -n _dpob_deque=$1
@@ -973,7 +977,7 @@ deque_rotate_left() {
 
     local len=${#_drl_deque[@]}
     (( len == 0 )) && return 0
-    (( count %= len ))
+    count=$(( count % len ))
     (( count == 0 )) && return 0
 
     # Take first 'count' elements and move to end
@@ -1003,7 +1007,7 @@ deque_rotate_right() {
 
     local len=${#_drr_deque[@]}
     (( len == 0 )) && return 0
-    (( count %= len ))
+    count=$(( count % len ))
     (( count == 0 )) && return 0
 
     # Take last 'count' elements and move to front
@@ -1112,7 +1116,8 @@ pqueue_push() {
 # @return      0 on success, 1 if empty
 #
 # Usage:
-#   task=$(pqueue_pop mypqueue)
+#   pqueue_pop mypqueue             # emits to stdout in current shell
+#   pqueue_pop_v mypqueue result    # capture value and mutate caller state
 # -----------------------------------------------------------------------------
 pqueue_pop() {
     local -n _pqpop_pqueue=$1
@@ -1420,7 +1425,8 @@ ring_push() {
 # @return      0 on success, 1 if empty
 #
 # Usage:
-#   oldest=$(ring_pop mybuffer mybuffer_meta)
+#   ring_pop mybuffer mybuffer_meta                 # emits to stdout in current shell
+#   ring_pop_v mybuffer mybuffer_meta oldest_value  # capture value and mutate caller state
 # -----------------------------------------------------------------------------
 ring_pop() {
     local -n _rpop_ring=$1

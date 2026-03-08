@@ -986,7 +986,11 @@ parallel_v2_cleanup() {
 
 # Register cleanup on exit (only cleans old files)
 if [[ -z "${PARALLEL_V2_NO_CLEANUP:-}" ]]; then
-    trap parallel_v2_cleanup EXIT
+    if declare -F _mainframe_add_exit_trap >/dev/null 2>&1; then
+        _mainframe_add_exit_trap "parallel_v2_cleanup"
+    else
+        trap parallel_v2_cleanup EXIT
+    fi
 fi
 
 # =============================================================================

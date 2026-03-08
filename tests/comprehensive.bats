@@ -86,6 +86,7 @@ teardown() {
     ensure_line "$TEST_DIR/conf" "cmd1 | cmd2 && cmd3 || cmd4"
     local count
     count=$(wc -l < "$TEST_DIR/conf")
+    count=${count//[[:space:]]/}
     [ "$count" = "1" ]
 }
 
@@ -126,6 +127,7 @@ teardown() {
     done
     local count
     count=$(wc -l < "$target")
+    count=${count//[[:space:]]/}
     [ "$count" = "10" ]
     # Verify no interleaving (each line is complete)
     while IFS= read -r line; do
@@ -663,9 +665,17 @@ line","back\\slash","quote""inside"'
     done
     [ "$(cat "$TEST_DIR/seq_write.txt")" = "iteration_50" ]
     # No leftover temp files
-    local temps
-    temps=$(ls "$TEST_DIR"/.mainframe_atomic_* 2>/dev/null | wc -l || echo 0)
-    [ "$temps" = "0" ]
+    local nullglob_was_set=0
+    shopt -q nullglob && nullglob_was_set=1
+    shopt -s nullglob
+    local -a temp_files=(
+        "$TEST_DIR"/.mainframe_atomic.*
+        "$TEST_DIR"/.mainframe_atomic_*
+    )
+    if [[ $nullglob_was_set -eq 0 ]]; then
+        shopt -u nullglob
+    fi
+    [ "${#temp_files[@]}" = "0" ]
 }
 
 @test "ensure_dirs creates 20 directories" {

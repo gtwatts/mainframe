@@ -330,7 +330,11 @@ teardown() {
 @test "otel_span_create creates span file with parent" {
     local trace_id span_id
     trace_id=$(otel_trace_start "parent_test")
-    local root_span_id="${_OTEL_TRACE_CTX[span_id]}"
+    local root_span_file
+    root_span_file=$(ls "$OTEL_SPAN_DIR"/${trace_id}_*.span 2>/dev/null | head -1)
+    local root_span_id
+    root_span_id=$(basename "$root_span_file" .span)
+    root_span_id="${root_span_id#${trace_id}_}"
     span_id=$(otel_span_create "child_span")
     local span_file="$OTEL_SPAN_DIR/${trace_id}_${span_id}.span"
     [ -f "$span_file" ]
@@ -341,9 +345,10 @@ teardown() {
 
 @test "otel_span_create fails without trace context" {
     _OTEL_TRACE_CTX[trace_id]=""
-    local span_id
-    span_id=$(otel_span_create "orphan_span")
-    [ -z "$span_id" ]
+    rm -f "$OTEL_SPAN_DIR/.context"
+    run otel_span_create "orphan_span"
+    [ "$status" -eq 1 ]
+    [ -z "$output" ]
 }
 
 @test "otel_span_end sets OK status" {
@@ -574,11 +579,13 @@ teardown() {
 @test "otel_timed measures command duration" {
     local trace_id
     trace_id=$(otel_trace_start "timed_test")
+    local root_span_file
+    root_span_file=$(ls "$OTEL_SPAN_DIR"/${trace_id}_*.span 2>/dev/null | head -1)
     otel_timed "sleep_span" sleep 0.1
 
     # Find the span file
     local span_file
-    span_file=$(ls "$OTEL_SPAN_DIR"/${trace_id}_*.span 2>/dev/null | grep -v "^$OTEL_SPAN_DIR/${trace_id}_${_OTEL_TRACE_CTX[span_id]}" | head -1)
+    span_file=$(ls "$OTEL_SPAN_DIR"/${trace_id}_*.span 2>/dev/null | grep -v "^$root_span_file$" | head -1)
 
     # Should have command and exit_code attributes
     [ -f "$span_file" ]

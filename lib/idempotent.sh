@@ -490,7 +490,9 @@ ensure_dirs() {
     local dir
     local failed=0
     for dir in "$@"; do
-        ensure_dir "$dir" || ((failed++))
+        if ! ensure_dir "$dir"; then
+            failed=$((failed + 1))
+        fi
     done
     return $((failed > 0 ? 1 : 0))
 }
@@ -509,7 +511,9 @@ ensure_lines() {
     local line
     local failed=0
     for line in "$@"; do
-        ensure_line "$file" "$line" || ((failed++))
+        if ! ensure_line "$file" "$line"; then
+            failed=$((failed + 1))
+        fi
     done
     return $((failed > 0 ? 1 : 0))
 }

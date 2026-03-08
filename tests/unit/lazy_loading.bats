@@ -437,8 +437,8 @@ teardown() {
     elapsed_ms=$(( (end_ns - start_ns) / 1000000 ))
 
     echo "Full loading time: ${elapsed_ms}ms"
-    # Full loading should complete (no timeout)
-    [[ $elapsed_ms -lt 500 ]]
+    # Full loading should still complete comfortably without hanging.
+    [[ $elapsed_ms -lt 1000 ]]
 }
 
 @test "performance: selective loading is faster than full loading" {

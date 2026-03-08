@@ -55,10 +55,10 @@ readonly UAP_PLATFORM_MAINFRAME="mainframe"
 readonly UAP_PLATFORM_UNKNOWN="unknown"
 
 # Base directory for UAP communication
-readonly UAP_BASE_DIR="${MAINFRAME_UAP_DIR:-${HOME}/.mainframe/uap}"
-readonly UAP_MAILBOX_DIR="$UAP_BASE_DIR/mailbox"
-readonly UAP_REGISTRY_DIR="$UAP_BASE_DIR/registry"
-readonly UAP_LOG_DIR="$UAP_BASE_DIR/logs"
+readonly UAP_BASE_DIR="${MAINFRAME_UAP_DIR:-${UAP_BASE_DIR:-${HOME}/.mainframe/uap}}"
+readonly UAP_MAILBOX_DIR="${UAP_MAILBOX_DIR:-$UAP_BASE_DIR/mailbox}"
+readonly UAP_REGISTRY_DIR="${UAP_REGISTRY_DIR:-$UAP_BASE_DIR/registry}"
+readonly UAP_LOG_DIR="${UAP_LOG_DIR:-$UAP_BASE_DIR/logs}"
 
 # Default timeouts
 readonly UAP_DEFAULT_TIMEOUT=30
@@ -292,7 +292,7 @@ uap_encode_message() {
     
     # Build complete message
     json_object \
-        "uap_version=$UAP_VERSION" \
+        "uap_version:string=$UAP_VERSION" \
         "message_type=$msg_type" \
         "message_id=$message_id" \
         "timestamp=$(_uap_timestamp)" \
@@ -306,15 +306,23 @@ uap_encode_message() {
 # @usage uap_decode_message 'JSON_MESSAGE' [--get field]
 # @returns Full message or extracted field value
 uap_decode_message() {
-    local json="$1"
-    shift
+    local json=""
     local get_field=""
+
+    if [[ $# -gt 0 && "$1" != --* ]]; then
+        json="$1"
+        shift
+    fi
     
     # Parse optional arguments
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --get)
+            --get|--field)
                 get_field="$2"
+                shift 2
+                ;;
+            --message)
+                json="$2"
                 shift 2
                 ;;
             *)
@@ -322,6 +330,11 @@ uap_decode_message() {
                 ;;
         esac
     done
+
+    if [[ -z "$json" ]]; then
+        _uap_log "error" "JSON message is required"
+        return 1
+    fi
     
     # Validate JSON
     if ! json_valid "$json" 2>/dev/null; then
@@ -850,10 +863,28 @@ uap_heartbeat() {
 }
 
 # @desc Get information about a specific agent
-# @usage uap_get_agent_info [AGENT_ID]
+# @usage uap_get_agent_info [AGENT_ID] [--agent AGENT_ID]
 # @returns JSON agent info or error
 uap_get_agent_info() {
     local agent_id="${1:-}"
+
+    if [[ "$agent_id" == --* ]]; then
+        agent_id=""
+    else
+        shift
+    fi
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --agent|--id)
+                agent_id="$2"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
     
     # Default to current agent if no ID provided and we're initialized
     if [[ -z "$agent_id" && -n "$UAP_AGENT_ID" ]]; then
@@ -924,7 +955,7 @@ uap_list_agents() {
 # =============================================================================
 
 # @desc Initialize this agent for UAP communication
-# @usage uap_init [--id ID] [--platform PLATFORM] [--capabilities "cap1,cap2"]
+# @usage uap_init [--id ID|--agent ID] [--platform PLATFORM] [--capabilities "cap1,cap2"]
 # @returns JSON with agent info
 # shellcheck disable=SC2120
 uap_init() {
@@ -934,7 +965,7 @@ uap_init() {
     
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --id)
+            --id|--agent)
                 agent_id="$2"
                 shift 2
                 ;;
@@ -945,6 +976,10 @@ uap_init() {
             --capabilities)
                 capabilities="$2"
                 shift 2
+                while [[ $# -gt 0 && "$1" != --* ]]; do
+                    capabilities+=",${1}"
+                    shift
+                done
                 ;;
             *)
                 shift

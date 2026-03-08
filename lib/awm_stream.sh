@@ -692,7 +692,7 @@ awm_compress() {
     case "$level" in
         1)
             # Light: normalize whitespace
-            echo "$content" | sed 's/[[:space:]]\+/ /g' | sed 's/^ //;s/ $//'
+            printf '%s' "$content" | tr '\t\r\n' '   ' | awk '{$1=$1; print}'
             ;;
         2)
             # Medium: remove comments and docstrings

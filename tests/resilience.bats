@@ -53,8 +53,10 @@ teardown() {
 }
 
 @test "circuit_breaker_call auto-creates breaker if not exists" {
+    local result_file="$TEST_DIR/auto_cb.out"
     local result
-    result=$(circuit_breaker_call "auto_cb" "echo auto")
+    circuit_breaker_call "auto_cb" "echo auto" >"$result_file"
+    result=$(<"$result_file")
     [ "$result" = "auto" ]
     local state
     state=$(circuit_breaker_state "auto_cb")

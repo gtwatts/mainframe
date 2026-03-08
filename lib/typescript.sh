@@ -230,9 +230,13 @@ ts_type_only_imports() {
                         [[ -z "$name" ]] && continue
                         # Count usages excluding the import line and type annotations
                         local usage_count
-                        usage_count=$(grep -c "\b$name\b" "$file" 2>/dev/null || echo 0)
+                        usage_count=$(grep -c "\b$name\b" "$file" 2>/dev/null || true)
+                        usage_count="${usage_count//$'\n'/}"
+                        [[ -n "$usage_count" ]] || usage_count=0
                         local type_usage
-                        type_usage=$(grep -cE ":\s*$name\b|<$name>|as\s+$name\b" "$file" 2>/dev/null || echo 0)
+                        type_usage=$(grep -cE ":\s*$name\b|<$name>|as\s+$name\b" "$file" 2>/dev/null || true)
+                        type_usage="${type_usage//$'\n'/}"
+                        [[ -n "$type_usage" ]] || type_usage=0
                         # If all usages are type-only (import + type annotations)
                         if [[ $usage_count -le $((type_usage + 1)) && $usage_count -gt 1 ]]; then
                             printf '%s:%d\t%s (type-only, consider: import type)\n' \
@@ -449,6 +453,20 @@ ts_api_summary() {
 # IMPORTCOST - Bundle Size Impact Analysis
 # =============================================================================
 
+_ts_sum_file_bytes() {
+    local total=0
+    local file size
+
+    while IFS= read -r -d '' file; do
+        size=$(wc -c < "$file" 2>/dev/null) || continue
+        size="${size//[[:space:]]/}"
+        [[ "$size" =~ ^[0-9]+$ ]] || continue
+        total=$((total + size))
+    done
+
+    printf '%s\n' "$total"
+}
+
 # Calculate the disk size of a node_modules package
 # Output: size in bytes (or human-readable with -h flag)
 ts_import_cost() {
@@ -464,7 +482,7 @@ ts_import_cost() {
     if [[ "$human" == "-h" ]]; then
         du -sh "$mod_path" 2>/dev/null | cut -f1
     else
-        du -sb "$mod_path" 2>/dev/null | cut -f1
+        find "$mod_path" -type f -print0 2>/dev/null | _ts_sum_file_bytes
     fi
 }
 
@@ -479,7 +497,7 @@ ts_import_cost_js() {
     [[ -d "$mod_path" ]] || { printf '0\n'; return 1; }
 
     find "$mod_path" -type f \( -name "*.js" -o -name "*.mjs" -o -name "*.cjs" \) \
-        -exec du -cb {} + 2>/dev/null | tail -1 | cut -f1
+        -print0 2>/dev/null | _ts_sum_file_bytes
 }
 
 # Analyze all imports in a file and show their bundle cost

@@ -294,8 +294,10 @@ teardown() {
 
 @test "sandbox_exec_checked: increments operation counter" {
     local before=$_SANDBOX_PERM_OP_COUNT
-    sandbox_allow "exec:/bin/true"
-    sandbox_exec_checked /bin/true
+    local true_bin
+    true_bin=$(command -v true)
+    sandbox_allow "exec:${true_bin}"
+    sandbox_exec_checked "$true_bin"
     [[ "$_SANDBOX_PERM_OP_COUNT" -gt "$before" ]]
 }
 

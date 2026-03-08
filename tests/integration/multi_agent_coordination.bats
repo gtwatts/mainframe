@@ -110,6 +110,7 @@ teardown() {
     
     # Simulate agent 1 reaching barrier
     (
+        _MAINFRAME_AGENT_NAME="sync_agent_1"
         echo "agent_1:before_barrier:$(date +%s%N)" >> "$results_file"
         agent_barrier_wait "$barrier_name" 5  # 5 second timeout
         echo "agent_1:after_barrier:$(date +%s%N)" >> "$results_file"
@@ -119,6 +120,7 @@ teardown() {
     # Simulate agent 2 reaching barrier
     (
         sleep 0.1  # Slight delay
+        _MAINFRAME_AGENT_NAME="sync_agent_2"
         echo "agent_2:before_barrier:$(date +%s%N)" >> "$results_file"
         agent_barrier_wait "$barrier_name" 5
         echo "agent_2:after_barrier:$(date +%s%N)" >> "$results_file"
@@ -128,6 +130,7 @@ teardown() {
     # Simulate agent 3 reaching barrier
     (
         sleep 0.2  # More delay
+        _MAINFRAME_AGENT_NAME="sync_agent_3"
         echo "agent_3:before_barrier:$(date +%s%N)" >> "$results_file"
         agent_barrier_wait "$barrier_name" 5
         echo "agent_3:after_barrier:$(date +%s%N)" >> "$results_file"
@@ -225,10 +228,10 @@ teardown() {
     local broadcast_msg='{"type": "system_alert", "severity": "high", "message": "Maintenance in 5 minutes"}'
     agent_broadcast "$broadcast_msg" "alert"
     
-    # Verify each agent received the message
+    # Current contract matches the unit suite: broadcasts go to all other agents,
+    # not to the sender. The last registered agent is the active sender here.
     local inbox_count_1 inbox_count_2 inbox_count_3
-    inbox_count_1=$(agent_inbox_count)
-    
+
     # Switch to each agent and check inbox
     _MAINFRAME_AGENT_NAME="listener_1"
     inbox_count_1=$(agent_inbox_count)
@@ -237,10 +240,10 @@ teardown() {
     _MAINFRAME_AGENT_NAME="listener_2"
     inbox_count_2=$(agent_inbox_count)
     [ "$inbox_count_2" -ge 1 ]
-    
+
     _MAINFRAME_AGENT_NAME="listener_3"
     inbox_count_3=$(agent_inbox_count)
-    [ "$inbox_count_3" -ge 1 ]
+    [ "$inbox_count_3" -eq 0 ]
     
     # Verify message content
     _MAINFRAME_AGENT_NAME="listener_1"
@@ -318,14 +321,16 @@ teardown() {
     local map_results=()
     for mapper in mapper_1 mapper_2; do
         # Each mapper takes 2 chunks
-        local chunk1 chunk2
-        chunk1=$(agent_work_pop "$map_queue")
-        chunk2=$(agent_work_pop "$map_queue")
+        local chunk1_env chunk2_env chunk1 chunk2
+        chunk1_env=$(agent_work_pop "$map_queue")
+        chunk2_env=$(agent_work_pop "$map_queue")
         
-        if [[ -n "$chunk1" ]]; then
+        if [[ -n "$chunk1_env" ]]; then
+            chunk1=$(json_get "$chunk1_env" "item")
             map_results+=("${mapper}_result_${chunk1}")
         fi
-        if [[ -n "$chunk2" ]]; then
+        if [[ -n "$chunk2_env" ]]; then
+            chunk2=$(json_get "$chunk2_env" "item")
             map_results+=("${mapper}_result_${chunk2}")
         fi
     done

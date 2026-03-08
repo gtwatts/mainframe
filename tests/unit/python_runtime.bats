@@ -88,8 +88,7 @@ usop_get_data() {
     local json="$1"
     local field="$2"
 
-    # Simple extraction using grep/sed (works for simple cases)
-    echo "$json" | grep -oP "\"$field\":\s*\"?\K[^,\"}]+" | head -1
+    sed -n "s/.*\"$field\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p; s/.*\"$field\"[[:space:]]*:[[:space:]]*\\([^,}\"[:space:]][^,}]*\\).*/\\1/p" <<< "$json" | head -1
 }
 
 # Check if USOP data field equals expected value
@@ -1529,7 +1528,8 @@ EOF
     create_mock_python_project "$TEST_DIR" "pip"
 
     # Modify name to include unicode
-    sed -i 's/name = "myproject"/name = "my_project_v2"/' "$TEST_DIR/pyproject.toml"
+    sed -i.bak 's/name = "myproject"/name = "my_project_v2"/' "$TEST_DIR/pyproject.toml"
+    rm -f "$TEST_DIR/pyproject.toml.bak"
 
     run py_config "$TEST_DIR"
 

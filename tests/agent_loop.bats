@@ -29,7 +29,7 @@ teardown() {
     agent_loop_list --json 2>/dev/null | grep -o '"name":"[^"]*"' | while read -r name; do
         name="${name#\"name\":\"}"
         name="${name%\"}"
-        [[ "$name" == test_* ]] && agent_loop_stop "$name" 2>/dev/null || true
+        [[ "$name" == test_* ]] && agent_loop_stop "$name" >/dev/null 2>&1 || true
     done
     
     rm -rf "$TEST_DIR"

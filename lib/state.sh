@@ -9,15 +9,16 @@
 
 # Prevent double-sourcing
 [[ -n "${_MAINFRAME_STATE_LOADED:-}" ]] && return 0
-declare -g _MAINFRAME_STATE_LOADED=1
+_MAINFRAME_STATE_LOADED=1
+readonly _MAINFRAME_STATE_LOADED
 
 # =============================================================================
 # Global State
 # =============================================================================
 
-declare -g _STATE_CURRENT_PATH=""
-declare -g _STATE_FORMAT="json"
-declare -g _STATE_TTL=0
+_STATE_CURRENT_PATH=""
+_STATE_FORMAT="json"
+_STATE_TTL=0
 
 # =============================================================================
 # Internal Functions
@@ -437,7 +438,8 @@ state_destroy() {
 # Module Exports
 # =============================================================================
 
-declare -ga _STATE_EXPORTS=(
+declare -ga _STATE_EXPORTS 2>/dev/null || declare -a _STATE_EXPORTS
+_STATE_EXPORTS=(
     state_init
     state_set
     state_get
