@@ -288,7 +288,10 @@ _cache_is_expired() {
     now=$(_cache_epoch)
     local age=$((now - timestamp))
 
-    [[ $age -ge $ttl ]]
+    # Metadata timestamps are stored in whole seconds. Expire only after the
+    # entry becomes older than the TTL so a 1-second TTL does not invalidate
+    # immediately on the next wall-clock tick.
+    [[ $age -gt $ttl ]]
 }
 
 # Update access time on meta file for LRU tracking

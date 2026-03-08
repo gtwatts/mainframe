@@ -379,10 +379,11 @@ teardown() {
 }
 
 @test "retry_with_jitter returns modified delay" {
-    local delay
-    delay=$(retry_with_jitter 10 0.5)
+    run retry_with_jitter 10 0.5
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ ^[0-9]+$ ]]
     # Should be between 5 and 15 (10 +/- 50%)
-    [ "$delay" -ge 1 ] && [ "$delay" -le 20 ]
+    [ "$output" -ge 1 ] && [ "$output" -le 20 ]
 }
 
 @test "retry_until_success with exponential backoff" {

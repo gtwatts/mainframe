@@ -141,6 +141,23 @@ slow_func() {
     [ "$first_result" = "1" ]
 }
 
+@test "memoize keeps cache valid at exact TTL boundary second" {
+    local cache_key cache_file meta_file
+    cache_key=$(_cache_make_key "counter_func")
+    cache_file="${MAINFRAME_CACHE_ROOT}/memo/${cache_key}"
+    meta_file="${cache_file}.meta"
+
+    _cache_ensure_dirs
+    _cache_atomic_write "$cache_file" "cached-value"
+    _cache_atomic_write "$meta_file" "$(_cache_build_meta 1000 1 0 "counter_func")"
+
+    _cache_epoch() { printf '1001'; }
+
+    local result
+    result=$(memoize --ttl 1 counter_func)
+    [ "$result" = "cached-value" ]
+}
+
 @test "memoize returns stale value before TTL expires" {
     export _TEST_COUNTER=0
 

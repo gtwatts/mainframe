@@ -1226,14 +1226,36 @@ retry_with_jitter() {
         return 1
     fi
 
-    # Generate random factor between (1-jitter) and (1+jitter)
-    # Using $RANDOM which is 0-32767
-    local random_val=$RANDOM
-    local jitter_range
-    jitter_range=$(printf '%s' "$jitter_factor * 2" | bc -l 2>/dev/null || echo "0.6")
+    if [[ ! "$delay" =~ ^-?[0-9]+([.][0-9]+)?$ ]] || [[ ! "$jitter_factor" =~ ^-?[0-9]+([.][0-9]+)?$ ]]; then
+        printf '0'
+        return 1
+    fi
 
-    # Simple integer approximation if bc not available
-    if ! command -v bc &>/dev/null; then
+    # Prefer awk for numeric stability across CI environments. Preserve integer
+    # output when the input delay is an integer so existing callers can keep
+    # using shell integer comparisons.
+    if command -v awk &>/dev/null; then
+        local jittered
+        jittered=$(awk -v delay="$delay" -v jitter="$jitter_factor" -v random_val="${RANDOM:-0}" '
+            BEGIN {
+                factor = (1 - jitter) + (random_val / 32767) * (jitter * 2)
+                value = delay * factor
+                if (delay ~ /^-?[0-9]+$/) {
+                    printf "%d", int(value)
+                } else {
+                    printf "%.6f", value
+                }
+            }'
+        )
+
+        if [[ -n "$jittered" ]]; then
+            _resilience_normalize_number "$jittered"
+            return 0
+        fi
+    fi
+
+    # Pure-shell integer fallback when awk is unavailable.
+    if [[ "$delay" =~ ^-?[0-9]+$ ]]; then
         local jitter_pct=$((RANDOM % 60))  # 0-59%
         local adjustment=$(( (delay * jitter_pct) / 100 ))
         if [[ $((RANDOM % 2)) -eq 0 ]]; then
@@ -1244,13 +1266,7 @@ retry_with_jitter() {
         return 0
     fi
 
-    # Use bc for floating point
-    local factor
-    factor=$(printf '%s\n' "scale=3; 1 - $jitter_factor + ($random_val / 32767) * $jitter_range" | bc -l)
-    local result
-    result=$(printf '%s\n' "scale=0; $delay * $factor / 1" | bc)
-
-    printf '%d' "$result"
+    printf '%s' "$delay"
 }
 
 # @pre: command is non-empty
