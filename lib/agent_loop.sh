@@ -417,16 +417,39 @@ agent_loop_start() {
     ) &
     
     local pid=$!
+    local state_file
+    state_file=$(_agent_loop_state_file "$name")
     
     # Write PID file
     pidfile_create "$(_agent_loop_pidfile "$name")" "$pid"
     
-    # Wait a moment to verify it started
-    sleep 0.5
+    # Wait for the background loop to initialize its state before reporting
+    # success. macOS runners in particular can schedule the child process
+    # slowly enough that the caller observes a missing state.json otherwise.
+    local ready=0
+    local attempt
+    for attempt in {1..20}; do
+        if [[ -f "$state_file" ]]; then
+            ready=1
+            break
+        fi
+        if ! proc_exists "$pid"; then
+            break
+        fi
+        sleep 0.1
+    done
+
     if ! proc_exists "$pid"; then
         json_object \
             "success:bool=false" \
             "error=Agent process failed to start"
+        return 0
+    fi
+
+    if [[ $ready -ne 1 ]]; then
+        json_object \
+            "success:bool=false" \
+            "error=Agent state failed to initialize"
         return 0
     fi
     
