@@ -462,6 +462,28 @@ teardown() {
     [[ "$h" -eq 23 && "$m" -eq 59 && "$s" -eq 59 ]]
 }
 
+@test "start_of_day: handles DST transition day in local time" {
+    (
+        export TZ=America/New_York
+        local epoch result rendered
+        epoch=$(parse_datetime "2026-03-08 13:30:00")
+        result=$(start_of_day "$epoch")
+        printf -v rendered '%(%Y-%m-%d %H:%M:%S %z)T' "$result"
+        [[ "$rendered" == "2026-03-08 00:00:00 -0500" ]]
+    )
+}
+
+@test "end_of_day: handles DST transition day in local time" {
+    (
+        export TZ=America/New_York
+        local epoch result rendered
+        epoch=$(parse_datetime "2026-03-08 13:30:00")
+        result=$(end_of_day "$epoch")
+        printf -v rendered '%(%Y-%m-%d %H:%M:%S %z)T' "$result"
+        [[ "$rendered" == "2026-03-08 23:59:59 -0400" ]]
+    )
+}
+
 @test "start_of_month: returns first day of month" {
     result=$(start_of_month "$TEST_EPOCH")
     d=$(day "$result")

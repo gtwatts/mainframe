@@ -392,12 +392,16 @@ setup() {
     [ "$h" = "23:59:59" ]
 }
 
-@test "end_of_day is start_of_day plus one day minus one second" {
-    local current start end
+@test "end_of_day stays on the same calendar day as start_of_day" {
+    local current start end start_day end_day end_time
     current=$(now)
     start=$(start_of_day "$current")
     end=$(end_of_day "$current")
-    [ "$end" -eq $((start + 86399)) ]
+    printf -v start_day '%(%Y-%m-%d)T' "$start"
+    printf -v end_day '%(%Y-%m-%d)T' "$end"
+    printf -v end_time '%(%H:%M:%S)T' "$end"
+    [ "$start_day" = "$end_day" ]
+    [ "$end_time" = "23:59:59" ]
 }
 
 # =============================================================================

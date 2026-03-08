@@ -610,41 +610,17 @@ start_of_day() {
     local epoch="${1:--1}"
     [[ "$epoch" == "-1" ]] && epoch=$(now)
 
-    local h m s
-    h=$(hour "$epoch")
-    m=$(minute "$epoch")
-    s=$(second "$epoch")
+    local y m d
+    y=$(year "$epoch")
+    m=$(month "$epoch")
+    d=$(day "$epoch")
 
-    printf '%d\n' $(( epoch - h * _DT_SECONDS_PER_HOUR - m * _DT_SECONDS_PER_MINUTE - s ))
+    _dt_to_epoch_local "$y" "$m" "$d" 0 0 0
 }
 
 # Get end of day (23:59:59) for given epoch
 # Usage: end_of_day "epoch"
 end_of_day() {
-    local epoch="${1:--1}"
-    local start
-    start=$(start_of_day "$epoch")
-    printf '%d\n' $(( start + _DT_SECONDS_PER_DAY - 1 ))
-}
-
-# Get start of month for given epoch
-# Usage: start_of_month "epoch"
-start_of_month() {
-    local epoch="${1:--1}"
-    [[ "$epoch" == "-1" ]] && epoch=$(now)
-
-    local d
-    d=$(day "$epoch")
-
-    # Get start of current day, then subtract days
-    local start
-    start=$(start_of_day "$epoch")
-    printf '%d\n' $(( start - (d - 1) * _DT_SECONDS_PER_DAY ))
-}
-
-# Get end of month for given epoch
-# Usage: end_of_month "epoch"
-end_of_month() {
     local epoch="${1:--1}"
     [[ "$epoch" == "-1" ]] && epoch=$(now)
 
@@ -653,14 +629,37 @@ end_of_month() {
     m=$(month "$epoch")
     d=$(day "$epoch")
 
+    _dt_to_epoch_local "$y" "$m" "$d" 23 59 59
+}
+
+# Get start of month for given epoch
+# Usage: start_of_month "epoch"
+start_of_month() {
+    local epoch="${1:--1}"
+    [[ "$epoch" == "-1" ]] && epoch=$(now)
+
+    local y m
+    y=$(year "$epoch")
+    m=$(month "$epoch")
+
+    _dt_to_epoch_local "$y" "$m" 1 0 0 0
+}
+
+# Get end of month for given epoch
+# Usage: end_of_month "epoch"
+end_of_month() {
+    local epoch="${1:--1}"
+    [[ "$epoch" == "-1" ]] && epoch=$(now)
+
+    local y m
+    y=$(year "$epoch")
+    m=$(month "$epoch")
+
     # Get days in this month
     local dim
     dim=$(days_in_month "$y" "$m")
 
-    # Start of day + remaining days in month
-    local start
-    start=$(start_of_day "$epoch")
-    printf '%d\n' $(( start + (dim - d) * _DT_SECONDS_PER_DAY + _DT_SECONDS_PER_DAY - 1 ))
+    _dt_to_epoch_local "$y" "$m" "$dim" 23 59 59
 }
 
 # Get start of year for given epoch
