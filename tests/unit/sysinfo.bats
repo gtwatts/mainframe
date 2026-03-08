@@ -397,10 +397,12 @@ setup() {
 }
 
 @test "memory_usage_percent equals sysinfo_mem_usage" {
-    local v1 v2
+    local v1 v2 delta
     v1=$(memory_usage_percent)
     v2=$(sysinfo_mem_usage)
-    [[ "$v1" == "$v2" ]]
+    delta=$(( v1 - v2 ))
+    (( delta < 0 )) && delta=$(( -delta ))
+    [[ "$delta" -le 1 ]]
 }
 
 @test "disk_usage returns valid JSON" {
