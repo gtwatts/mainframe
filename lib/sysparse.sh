@@ -930,7 +930,7 @@ parse_ss() {
     fi
 
     # Build ss command options
-    local ss_opts="-n"
+    local ss_opts="-Hn"
     (( listening_only )) && ss_opts+="l"
     (( tcp_only )) && ss_opts+="t"
     (( udp_only )) && ss_opts+="u"
@@ -955,10 +955,15 @@ parse_ss() {
         fi
 
         # Parse based on socket type
-        if (( unix_only )); then
+        local netid=""
+        netid="${line%%[[:space:]]*}"
+
+        if (( unix_only )) || [[ "$netid" =~ ^u_(str|seq|dgr|dgm)$ ]] || [[ "$netid" == "unix" ]]; then
             # Unix socket format: Netid State Recv-Q Send-Q Local Address:Port Peer Address:Port
-            local netid state recvq sendq local_path peer_path
-            read -r netid state recvq sendq local_path peer_path <<< "$line"
+            local state recvq sendq local_path peer_path process_info
+            read -r netid state recvq sendq local_path peer_path process_info <<< "$line"
+            [[ "$recvq" =~ ^[0-9]+$ ]] || recvq=0
+            [[ "$sendq" =~ ^[0-9]+$ ]] || sendq=0
 
             local escaped_local escaped_peer escaped_state
             escaped_local=$(_sysparse_escape_json "$local_path")
@@ -967,14 +972,23 @@ parse_ss() {
 
             results+=("{\"type\":\"unix\",\"state\":\"$escaped_state\",\"recv_q\":$recvq,\"send_q\":$sendq,\"local_path\":\"$escaped_local\",\"peer_path\":\"$escaped_peer\"}")
         else
-            # TCP/UDP format - delegate to parse_netstat logic style
+            # ss -a includes families like netlink and packet on Linux; skip
+            # unsupported rows rather than emitting malformed numeric fields.
             local proto state recvq sendq local_addr peer_addr process_info
-            if [[ "$line" =~ ^(tcp|udp) ]]; then
-                read -r proto state recvq sendq local_addr peer_addr process_info <<< "$line"
-            else
-                read -r state recvq sendq local_addr peer_addr process_info <<< "$line"
-                proto="tcp"
-            fi
+            case "$netid" in
+                tcp|tcp6)
+                    proto="tcp"
+                    ;;
+                udp|udp6)
+                    proto="udp"
+                    ;;
+                *)
+                    continue
+                    ;;
+            esac
+            read -r netid state recvq sendq local_addr peer_addr process_info <<< "$line"
+            [[ "$recvq" =~ ^[0-9]+$ ]] || recvq=0
+            [[ "$sendq" =~ ^[0-9]+$ ]] || sendq=0
 
             # Parse addresses
             local laddr lport raddr rport

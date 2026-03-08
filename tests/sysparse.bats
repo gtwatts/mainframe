@@ -339,6 +339,32 @@ json_get() {
     is_valid_json "$result"
 }
 
+@test "parse_ss: ignores unsupported socket families in ss output" {
+    cat > "${TEST_TEMP_DIR}/ss" <<'EOF'
+#!/usr/bin/env bash
+cat <<'OUT'
+Netid State Recv-Q Send-Q Local Address:Port Peer Address:Port Process
+nl UNCONN 0 0 kernel:1 * users:(("systemd",pid=1,fd=1))
+u_str ESTAB 0 0 * 12345 * 54321 users:(("dbus-daemon",pid=786,fd=34))
+tcp LISTEN 0 128 127.0.0.1:22 0.0.0.0:* users:(("sshd",pid=123,fd=3))
+udp UNCONN 0 0 127.0.0.53%lo:53 0.0.0.0:* users:(("systemd-resolve",pid=222,fd=12))
+OUT
+EOF
+    chmod +x "${TEST_TEMP_DIR}/ss"
+
+    local old_path="$PATH"
+    local result
+    PATH="${TEST_TEMP_DIR}:$PATH"
+    result=$(parse_ss --json)
+    PATH="$old_path"
+
+    is_valid_json "$result"
+    [[ "$result" == *'"proto":"tcp"'* ]]
+    [[ "$result" == *'"proto":"udp"'* ]]
+    [[ "$result" == *'"type":"unix"'* ]]
+    [[ "$result" != *'"proto":"nl"'* ]]
+}
+
 @test "parse_ss: summary mode returns object" {
     skip_if_no_ss
     local result

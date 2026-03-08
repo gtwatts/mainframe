@@ -660,12 +660,13 @@ EOF
 
 @test "large stream performance (1000 elements)" {
     local elapsed
+    local max_elapsed="${MAINFRAME_STREAM_PERF_MAX_SECONDS:-30}"
     SECONDS=0
     local result
     result=$(stream_from_range 1 1000 | stream_filter '(( item % 2 == 0 ))' | stream_count)
     elapsed=$SECONDS
 
     [ "$result" = "500" ]
-    # Even with subprocess isolation, this should not take unreasonably long.
-    [ "$elapsed" -lt 10 ]
+    # This is a smoke test, not a strict benchmark; GitHub macOS runners vary.
+    [ "$elapsed" -lt "$max_elapsed" ]
 }
