@@ -22,12 +22,12 @@ setup() {
 }
 
 teardown() {
-    [[ -d "${TEST_DIR:-}" ]] && rm -rf "$TEST_DIR"
     # Restore PATH if modified
     if [[ -n "${ORIG_PATH:-}" ]]; then
         export PATH="$ORIG_PATH"
         unset ORIG_PATH
     fi
+    [[ -d "${TEST_DIR:-}" ]] && rm -rf "$TEST_DIR"
 }
 
 # =============================================================================
@@ -146,11 +146,17 @@ teardown() {
     if [[ "$PLATFORM" != "Linux" ]]; then
         skip "Linux-specific test"
     fi
-    # Hide lsblk by overriding PATH
+    mkdir -p "$TEST_DIR/bin"
+
+    # Hide lsblk without removing the base utilities the test and warning path use.
+    local tool
+    for tool in date mkdir rm uname; do
+        ln -sf "$(command -v "$tool")" "$TEST_DIR/bin/$tool"
+    done
+
     ORIG_PATH="$PATH"
     export PATH="$TEST_DIR/bin"
-    mkdir -p "$TEST_DIR/bin"
-    # Provide only essential tools (bash, etc.) but not lsblk
+
     run device_list_blocks
     [ "$status" -eq 1 ]
     export PATH="$ORIG_PATH"
