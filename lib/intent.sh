@@ -1207,9 +1207,18 @@ _intent_classify_analysis() {
         fi
     fi
 
-    # Check safe patterns (can override to SAFE level)
+    # Prefer a direct command-prefix check for known read-only commands so the
+    # safe classification does not depend solely on regex-engine quirks.
     if [[ $risk_ref -le $INTENT_RISK_LOW ]]; then
-        if _intent_matches_patterns "$command" _INTENT_SAFE_PATTERNS >/dev/null; then
+        local base_cmd="${command%%[[:space:]]*}"
+        case "$base_cmd" in
+            cat|ls|head|tail|grep|find|echo|printf|pwd|whoami|date|file)
+                risk_ref=$INTENT_RISK_SAFE
+                reasons_ref=("read-only operation")
+                ;;
+        esac
+
+        if [[ $risk_ref -le $INTENT_RISK_LOW ]] && _intent_matches_patterns "$command" _INTENT_SAFE_PATTERNS >/dev/null; then
             risk_ref=$INTENT_RISK_SAFE
             reasons_ref=("read-only operation")
         fi
