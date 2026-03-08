@@ -33,7 +33,7 @@ fi
 # =============================================================================
 
 # Base directory for state machine storage
-STATE_MACHINE_DIR="${MAINFRAME_STATE_MACHINE_DIR:-${HOME}/.mainframe/state_machines}"
+STATE_MACHINE_DIR="${MAINFRAME_STATE_MACHINE_DIR:-${STATE_MACHINE_DIR:-${HOME}/.mainframe/state_machines}}"
 
 # Default timeout for state transitions (seconds)
 STATE_MACHINE_DEFAULT_TIMEOUT="${STATE_MACHINE_DEFAULT_TIMEOUT:-300}"

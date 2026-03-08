@@ -25,6 +25,27 @@ teardown() {
     rm -rf "$TEST_DIR"
 }
 
+wait_for_state_machine_state_file() {
+    local name="$1"
+    local state_file="$STATE_MACHINE_DIR/$name/machine_state.json"
+    local attempt=0
+
+    while [[ $attempt -lt 30 ]]; do
+        [[ -f "$state_file" ]] && return 0
+        sleep 0.1
+        attempt=$((attempt + 1))
+    done
+
+    return 1
+}
+
+stop_state_machine_run() {
+    local pid="${1:-}"
+    [[ -n "$pid" ]] || return 0
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+}
+
 # =============================================================================
 # DEFINITION TESTS
 # =============================================================================
@@ -36,6 +57,13 @@ teardown() {
     [[ "$result" == *'"success":true'* ]]
     [[ "$result" == *'"name":"test_machine"'* ]]
     [[ -d "$STATE_MACHINE_DIR/test_machine" ]]
+}
+
+@test "state_machine honors STATE_MACHINE_DIR override" {
+    state_machine_define "test_dir_override" >/dev/null
+
+    [[ "$STATE_MACHINE_DIR" == "$TEST_DIR/state_machines" ]]
+    [[ -d "$TEST_DIR/state_machines/test_dir_override" ]]
 }
 
 @test "state_machine_define validates name" {
@@ -162,11 +190,13 @@ EOF
     state_machine_add_state "test_status" "idle" >/dev/null
     
     # Initialize state file
-    state_machine_run "test_status" --initial "idle" --event_timeout 0 &
-    sleep 0.2
+    state_machine_run "test_status" --initial "idle" --event_timeout 1 &
+    local run_pid=$!
+    wait_for_state_machine_state_file "test_status"
     
     local result
     result=$(state_machine_status "test_status")
+    stop_state_machine_run "$run_pid"
     
     [[ "$result" == *'"success":true'* ]]
     [[ "$result" == *'"machine":"test_status"'* ]]
@@ -184,11 +214,13 @@ EOF
     state_machine_add_state "test_pause" "idle" >/dev/null
     
     # Initialize
-    state_machine_run "test_pause" --initial "idle" --event_timeout 0 &
-    sleep 0.2
+    state_machine_run "test_pause" --initial "idle" --event_timeout 1 &
+    local run_pid=$!
+    wait_for_state_machine_state_file "test_pause"
     
     local result
     result=$(state_machine_pause "test_pause")
+    stop_state_machine_run "$run_pid"
     
     [[ "$result" == *'"success":true'* ]]
     [[ "$result" == *'"status":"paused"'* ]]
@@ -200,12 +232,14 @@ EOF
     state_machine_add_state "test_resume" "idle" >/dev/null
     
     # Initialize and pause
-    state_machine_run "test_resume" --initial "idle" --event_timeout 0 &
-    sleep 0.2
+    state_machine_run "test_resume" --initial "idle" --event_timeout 1 &
+    local run_pid=$!
+    wait_for_state_machine_state_file "test_resume"
     state_machine_pause "test_resume" >/dev/null
     
     local result
     result=$(state_machine_resume "test_resume")
+    stop_state_machine_run "$run_pid"
     
     [[ "$result" == *'"success":true'* ]]
     [[ "$result" == *'"status":"running"'* ]]
@@ -221,11 +255,13 @@ EOF
     state_machine_add_state "test_checkpoint" "active" >/dev/null
     
     # Initialize state
-    state_machine_run "test_checkpoint" --initial "active" --event_timeout 0 &
-    sleep 0.2
+    state_machine_run "test_checkpoint" --initial "active" --event_timeout 1 &
+    local run_pid=$!
+    wait_for_state_machine_state_file "test_checkpoint"
     
     local result
     result=$(state_machine_checkpoint "test_checkpoint")
+    stop_state_machine_run "$run_pid"
     
     [[ "$result" == *'"success":true'* ]]
     [[ -f "$STATE_MACHINE_DIR/test_checkpoint/checkpoint.json" ]]
@@ -245,9 +281,11 @@ EOF
     state_machine_add_state "test_restore" "saved" >/dev/null
     
     # Initialize and checkpoint
-    state_machine_run "test_restore" --initial "saved" --event_timeout 0 &
-    sleep 0.2
+    state_machine_run "test_restore" --initial "saved" --event_timeout 1 &
+    local run_pid=$!
+    wait_for_state_machine_state_file "test_restore"
     state_machine_checkpoint "test_restore" >/dev/null
+    stop_state_machine_run "$run_pid"
     
     local result
     result=$(state_machine_resume_from_checkpoint "test_restore")
