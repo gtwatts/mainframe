@@ -560,8 +560,8 @@ _test_error_callback() { echo "ERROR: $1 ($2)"; }
 
     # Hide real curl
     hash -r  # Clear bash's command hash table
-    run bash -c 'source "$MAINFRAME_ROOT/lib/llm_stream.sh"; PATH=""; llm_stream_request "http://test.com" "{}"'
-    # Should fail due to missing curl (status may vary by system)
+    run env MAINFRAME_ROOT="$MAINFRAME_ROOT" bash -c 'source "$MAINFRAME_ROOT/lib/llm_stream.sh"; PATH=""; llm_stream_request "http://test.com" "{}"'
+    [[ "$status" -eq 1 ]]
 }
 
 # =============================================================================

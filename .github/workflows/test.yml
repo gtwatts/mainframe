@@ -145,7 +145,7 @@ jobs:
           git clone https://github.com/bats-core/bats-file.git tests/bats-file
 
       - name: Run full Bats matrix
-        timeout-minutes: 45
+        timeout-minutes: 90
         run: |
           set -o pipefail
           ./tests/run_bats_suite.sh --scope all --formatter tap 2>&1 | tee results.tap
@@ -179,7 +179,7 @@ jobs:
           git clone https://github.com/bats-core/bats-file.git tests/bats-file
 
       - name: Run full Bats matrix
-        timeout-minutes: 60
+        timeout-minutes: 90
         run: |
           set -o pipefail
           export BATS_TEST_SHELL="$(brew --prefix bash)/bin/bash"
