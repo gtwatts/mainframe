@@ -86,6 +86,23 @@ init_session() {
     [[ "$content" == *'"session_id":"'${sid}'"'* ]]
     [[ "$content" == *'"name":"my-test"'* ]]
     [[ "$content" == *'"status":"active"'* ]]
+    [[ "$content" == *'"schema_version":2'* ]]
+}
+
+@test "awm_init supports namespace model backend and canonical layout" {
+    awm_init "memory-task" --namespace "team red" --model "gpt-4o" --backend file > /dev/null
+    local sid="$_AWM_SESSION_ID"
+    local dir="${AWM_ROOT}/sessions/team_red/${sid}"
+    local manifest
+    manifest=$(<"${dir}/manifest.json")
+
+    [ -d "${dir}/handoffs" ]
+    [ -d "${dir}/index" ]
+    [ -d "${dir}/journal" ]
+    [ -f "${dir}/discoveries.jsonl" ]
+    [[ "$manifest" == *'"namespace":"team_red"'* ]]
+    [[ "$manifest" == *'"model":"gpt-4o"'* ]]
+    [[ "$manifest" == *'"backend":"file"'* ]]
 }
 
 @test "awm_init with parent inherits data" {
@@ -257,6 +274,20 @@ init_session() {
     [[ "$content" == *"migrate"* ]]
 }
 
+@test "awm_checkpoint records metadata for importance tags and ttl" {
+    awm_init "test" > /dev/null
+    local sid="$_AWM_SESSION_ID"
+
+    awm_checkpoint "api_response" '{"ok":true}' --importance critical --tags auth,api --ttl 60
+
+    local meta
+    meta=$(<"${AWM_ROOT}/sessions/${sid}/logs/checkpoints.jsonl")
+    [[ "$meta" == *'"kind":"checkpoint"'* ]]
+    [[ "$meta" == *'"importance":"critical"'* ]]
+    [[ "$meta" == *'"ttl":60'* ]]
+    [[ "$meta" == *'"key":"api_response"'* ]]
+}
+
 @test "awm_get retrieves checkpointed data" {
     awm_init "test" > /dev/null
 
@@ -308,6 +339,20 @@ init_session() {
 
     # Should contain session info
     [ -n "$output" ]
+}
+
+@test "awm_find searches discoveries checkpoints and logs" {
+    awm_init "searchable" > /dev/null
+
+    awm_discovery "Database uses PostgreSQL 15"
+    awm_checkpoint "database_engine" "postgres"
+    awm_log "decisions" "picked postgres for transactions"
+
+    run awm_find "postgres" --kind mixed --limit 5
+    assert_success
+    [[ "$output" == *'"kind":"discovery"'* ]]
+    [[ "$output" == *'"kind":"checkpoint"'* ]]
+    [[ "$output" == *'"kind":"log"'* ]]
 }
 
 @test "awm_list shows available sessions" {
@@ -403,6 +448,23 @@ init_session() {
     assert_success
 }
 
+@test "awm_migrate upgrades legacy session layout and schema" {
+    local sid="legacy123abcd"
+    local dir="${AWM_ROOT}/sessions/${sid}"
+    mkdir -p "${dir}/logs" "${dir}/data"
+    printf '{"session_id":"%s","name":"legacy","created_at":"2026-03-11T00:00:00-0400","created_epoch":1773201600,"status":"active","namespace":"","parent_session":""}' "$sid" > "${dir}/manifest.json"
+    printf '{"ts":1,"discovery":"old discovery"}\n' > "${dir}/logs/discoveries.jsonl"
+
+    run awm_migrate "$sid"
+    assert_success
+    [[ "$output" == "$sid" ]]
+    [ -d "${dir}/handoffs" ]
+    [ -d "${dir}/index" ]
+    [ -d "${dir}/journal" ]
+    [ -f "${dir}/discoveries.jsonl" ]
+    [[ $(<"${dir}/manifest.json") == *'"schema_version":2'* ]]
+}
+
 # =============================================================================
 # CONTEXT INHERITANCE TESTS
 # =============================================================================
@@ -417,6 +479,19 @@ init_session() {
     run awm_context_for "child-task"
     assert_success
     [ -n "$output" ]
+}
+
+@test "awm_context_for supports prompt format and related matches" {
+    awm_init "handoff-parent" > /dev/null
+    awm_discovery "JWT refresh tokens are enabled" --importance critical
+    awm_checkpoint "open_questions" '["Should we rotate secrets?"]'
+    awm_log "decisions" "Need auth hardening for JWT rotation"
+
+    run awm_context_for "JWT hardening" --tokens 1200 --format prompt --include discoveries,progress,checkpoints,logs
+    assert_success
+    [[ "$output" == *"Task: JWT hardening"* ]]
+    [[ "$output" == *"Discoveries:"* ]]
+    [[ "$output" == *"Related Matches:"* ]]
 }
 
 @test "awm_inherit loads parent context" {
@@ -439,6 +514,41 @@ init_session() {
 
     run awm_export "result.txt"
     assert_success
+}
+
+@test "awm_handoff_prepare and accept preserve provenance" {
+    awm_init "parent" --namespace "blue-team" > /dev/null
+    local parent_sid="$_AWM_SESSION_ID"
+    awm_discovery "Found critical issue in auth middleware" --importance critical
+    awm_checkpoint "open_questions" '["How should rotation work?"]'
+
+    run awm_handoff_prepare "review-agent" --tokens 1500
+    assert_success
+    [[ "$output" == *'"type":"handoff"'* ]]
+    [[ "$output" == *'"parent_session":"'"${parent_sid}"'"'* ]]
+    [[ "$output" == *'"target_agent":"review-agent"'* ]]
+
+    _AWM_SESSION_ID=""
+    _AWM_SESSION_DIR=""
+    run awm_handoff_accept "$output"
+    assert_success
+    [ -n "$output" ]
+}
+
+@test "awm_status and awm_doctor report canonical health" {
+    awm_init "status-check" > /dev/null
+    awm_log "decisions" "picked postgres"
+    awm_discovery "Critical finding" --importance critical
+
+    run awm_status
+    assert_success
+    [[ "$output" == *'"schema_version":2'* ]]
+    [[ "$output" == *'"discoveries":1'* ]]
+
+    run awm_doctor
+    assert_success
+    [[ "$output" == *'"layout_ok":true'* ]]
+    [[ "$output" == *'"expected_schema":2'* ]]
 }
 
 # =============================================================================
@@ -531,6 +641,21 @@ init_session() {
     [ "$count" -eq 20 ]
 }
 
+@test "awm_log handles mkdir lock fallback" {
+    export AWM_FORCE_MKDIR_LOCKS=1
+    awm_init "fallback-locks" > /dev/null
+    local sid="$_AWM_SESSION_ID"
+
+    for i in {1..10}; do
+        awm_log "fallback" "entry $i"
+    done
+
+    local count
+    count=$(wc -l < "${AWM_ROOT}/sessions/${sid}/logs/fallback.jsonl")
+    [ "$count" -eq 10 ]
+    unset AWM_FORCE_MKDIR_LOCKS
+}
+
 # =============================================================================
 # FUNCTION EXISTENCE TESTS
 # =============================================================================
@@ -549,4 +674,10 @@ init_session() {
     declare -F awm_recent >/dev/null
     declare -F awm_summary >/dev/null
     declare -F awm_token_estimate >/dev/null
+    declare -F awm_find >/dev/null
+    declare -F awm_handoff_prepare >/dev/null
+    declare -F awm_handoff_accept >/dev/null
+    declare -F awm_status >/dev/null
+    declare -F awm_doctor >/dev/null
+    declare -F awm_migrate >/dev/null
 }

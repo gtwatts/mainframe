@@ -98,102 +98,64 @@ source "${MAINFRAME_ROOT}/lib/common.sh"
 
 **The breakthrough feature for AI agents with finite context windows.**
 
-AI agents forget everything outside their context window. AWM provides persistent external memory that survives context limits, session interruptions, and even crashes.
+AI agents forget everything outside their context window. AWM gives them a file-backed working memory that survives context limits, interruptions, and crashes.
 
-### How It Works
-
-```bash
-# Initialize a session
-awm_init "migrate-database"
-# Session ID: a1b2c3d4e5f6
-
-# Store key findings OUTSIDE the context window
-awm_discovery "Database uses UTF-8 encoding"
-awm_discovery "API rate limit is 100 req/min, not 1000"
-awm_checkpoint "current_step" "3"
-awm_checkpoint "api_config" '{"endpoint":"https://api.example.com"}'
-
-# Track progress
-awm_progress "file-processing" "47/200" "Processing batch 47"
-
-# Log categorized messages
-awm_log "decisions" "Chose PostgreSQL over MySQL for transactions"
-awm_log "errors" "Warning: config missing, using defaults"
-
-# Later: Resume where you left off
-awm_resume "a1b2c3d4e5f6"
-step=$(awm_get "current_step")  # Returns "3"
-```
-
-### Sub-Agent Inheritance
-
-Parent agents can pass context to child agents - discoveries, checkpoints, and learned state transfer automatically:
+### Golden Path
 
 ```bash
-# Parent agent discovers important facts
-awm_init "orchestrator"
-awm_discovery "Project uses TypeScript 5.0"
-awm_discovery "Deployment target is AWS Lambda"
-awm_checkpoint "active_branch" "feature/auth"
+# Start a canonical AWM session
+sid=$(awm_init "security-audit" --namespace review --model gpt-4o --backend file)
+awm_resume "$sid"
 
-# Spawn a child agent with inherited context
-awm_init "code-reviewer" "$PARENT_SESSION_ID"
-# Child automatically has access to:
-# - All parent discoveries
-# - All parent checkpoints
-# - Parent's learned state
+# Persist high-signal state outside the context window
+awm_checkpoint "current_phase" "scanning" --importance high
+awm_discovery "Auth uses JWT refresh tokens" --importance critical --tags auth,jwt
+awm_log "decisions" "Prefer PostgreSQL for transactional guarantees" --importance high
+awm_progress "scan" "12/40" "Scanning auth module"
+
+# Retrieve only what the next step needs
+results=$(awm_find "jwt postgres" --kind mixed --limit 5)
+ctx=$(awm_context_for "dependency review" --tokens 2000)
+
+# Hand off to a sub-agent or later continuation
+handoff=$(awm_handoff_prepare "dependency-reviewer" --tokens 2000)
 ```
 
-### Namespace Isolation
+### Why It Matters
 
-Multiple agents can work simultaneously without interference:
+- **Persistent state**: checkpoints, discoveries, logs, and progress survive across turns.
+- **Deterministic retrieval**: `awm_find` and `awm_context_for` pull back the highest-signal memory instead of replaying the whole session.
+- **Clean handoffs**: `awm_handoff_prepare` and `awm_handoff_accept` turn memory transfer into a first-class product surface.
+- **Safe defaults**: file-backed storage is the default; advanced backends are opt-in.
+- **Migration path**: older sessions upgrade in place with `awm_migrate`.
 
-```bash
-# Each agent operates in its own namespace
-awm_namespace "code-reviewer"
-awm_init "review-auth-module"
-awm_discovery "Found SQL injection in line 42"
-
-awm_namespace "debugger"
-awm_init "debug-crash"
-awm_discovery "Stack overflow at recursive call"
-# Completely isolated from code-reviewer's findings
-```
-
-### Token Budget Management
-
-AWM estimates token usage and helps agents stay within context limits:
-
-```bash
-# Estimate how many tokens the session will consume
-tokens=$(awm_token_estimate)
-echo "Session would use ~$tokens tokens"
-
-# Check if within limits
-awm_check_limits || echo "Session too large, consider compression"
-
-# Get a context-efficient summary
-summary=$(awm_summary)
-```
-
-### Key AWM Functions
+### Canonical AWM Surface
 
 | Function | Purpose |
 |----------|---------|
-| `awm_init` | Create a new session, optionally inheriting from parent |
-| `awm_close` | Close session, mark as complete |
-| `awm_resume` | Resume a previous session by ID |
-| `awm_checkpoint` | Store key-value pair (atomic, persistent) |
-| `awm_get` | Retrieve a checkpointed value |
-| `awm_discovery` | Log a high-priority insight |
-| `awm_log` | Categorized logging (tasks, errors, decisions, etc.) |
-| `awm_progress` | Track progress with current/total |
-| `awm_summary` | Get JSON summary of session state |
-| `awm_context_for` | Generate context package for sub-agent |
-| `awm_namespace` | Set namespace for agent isolation |
-| `awm_token_estimate` | Estimate tokens for session data |
-| `awm_recent` | Get last N entries from a category |
-| `awm_list` | List all sessions |
+| `awm_init` | Create a new session, optionally inheriting from a parent |
+| `awm_resume` | Resume a session by ID |
+| `awm_checkpoint` | Store persistent key/value state with metadata |
+| `awm_discovery` | Record critical insights that should stay visible |
+| `awm_log` | Append structured categorized events |
+| `awm_progress` | Track current progress and latest task state |
+| `awm_find` | Search discoveries, checkpoints, and logs |
+| `awm_context_for` | Build a deterministic context package for a task |
+| `awm_handoff_prepare` | Create a budgeted handoff package |
+| `awm_handoff_accept` | Accept a handoff into a receiving session |
+| `awm_status` / `awm_doctor` | Inspect session health, schema, and layout |
+| `awm_export` / `awm_migrate` | Export human-readable reports and upgrade older sessions |
+
+### CLI
+
+```bash
+sid=$(mainframe awm init security-audit --namespace review)
+mainframe awm checkpoint --session "$sid" current_phase scanning --importance high
+mainframe awm discovery --session "$sid" "JWT refresh tokens enabled" --importance critical
+mainframe awm find --session "$sid" jwt --kind mixed
+mainframe awm handoff prepare --session "$sid" reviewer --tokens 2000
+mainframe awm doctor --session "$sid"
+```
 
 ---
 

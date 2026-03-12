@@ -656,6 +656,17 @@ EOF
     [[ "$status" -eq 0 ]]
 }
 
+@test "mainframe_bundle: loads agent_memory bundle" {
+    unset _MAINFRAME_LOADED_LIBS
+    declare -gA _MAINFRAME_LOADED_LIBS
+
+    mainframe_bundle "agent_memory"
+    [[ "$?" -eq 0 ]]
+    [[ "${_MAINFRAME_LOADED_LIBS[awm]:-}" == "1" ]]
+    [[ "${_MAINFRAME_LOADED_LIBS[awm_storage]:-}" == "1" ]]
+    [[ "${_MAINFRAME_LOADED_LIBS[agent_context]:-}" == "1" ]]
+}
+
 @test "mainframe_bundle: fails for unknown bundle" {
     run mainframe_bundle "nonexistent_bundle"
     [[ "$status" -eq 1 ]]
@@ -674,8 +685,22 @@ EOF
 @test "mainframe_bundles: lists available bundles" {
     result=$(mainframe_bundles)
     [[ "$result" =~ "agent_minimal" ]]
+    [[ "$result" =~ "agent_memory" ]]
+    [[ "$result" =~ "agent_runtime" ]]
+    [[ "$result" =~ "agent_full" ]]
     [[ "$result" =~ "data" ]]
     [[ "$result" =~ "net" ]]
+}
+
+@test "_mainframe_load_selected: supports bundle syntax" {
+    unset _MAINFRAME_LOADED_LIBS
+    declare -gA _MAINFRAME_LOADED_LIBS
+
+    _mainframe_load_selected "core,bundle:agent_memory"
+
+    [[ "${_MAINFRAME_LOADED_LIBS[json]:-}" == "1" ]]
+    [[ "${_MAINFRAME_LOADED_LIBS[awm]:-}" == "1" ]]
+    [[ "${_MAINFRAME_LOADED_LIBS[awm_storage]:-}" == "1" ]]
 }
 
 @test "_mainframe_load_tier: loads core tier" {

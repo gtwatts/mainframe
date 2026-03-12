@@ -785,6 +785,9 @@ _MAINFRAME_TIER_AI=(
 
 declare -gA MAINFRAME_BUNDLES=(
     [agent_minimal]="core,agent,awm,validation"
+    [agent_memory]="core,awm,awm_storage,awm_tiers,awm_stream,agent_context"
+    [agent_runtime]="core,agent,agent_exec,agent_comm,agent_safety,agent_loop,workflow,taskstate,validation,retry,queue,state_machine,awm,awm_storage,awm_tiers,awm_stream"
+    [agent_full]="core,agent,agent_exec,agent_comm,agent_safety,agent_ai,agent_loop,agent_context,workflow,taskstate,observe,idempotent,atomic,validation,retry,queue,state_machine,diff,awm,awm_storage,awm_tiers,awm_stream,embeddings,rag"
     [data]="core,json,csv,datetime,parsers"
     [net]="core,http,burl,github"
     [devops]="core,git,docker,github_actions"
@@ -927,10 +930,51 @@ _mainframe_load_tier() {
     done
 }
 
+# Load a named bundle from MAINFRAME_BUNDLES.
+_mainframe_load_bundle() {
+    local bundle_name="$1"
+    local libs="${MAINFRAME_BUNDLES[$bundle_name]:-}"
+    local lib
+    local IFS=','
+
+    [[ -n "$libs" ]] || {
+        log_warn "Unknown bundle: ${bundle_name}"
+        return 1
+    }
+
+    if [[ "$libs" == "all" ]]; then
+        _mainframe_load_tier "standard"
+        _mainframe_load_tier "extended"
+        _mainframe_load_tier "ai"
+        return 0
+    fi
+
+    for lib in $libs; do
+        lib="${lib#"${lib%%[![:space:]]*}"}"
+        lib="${lib%"${lib##*[![:space:]]}"}"
+        case "$lib" in
+            core|standard|extended|ai)
+                [[ "$lib" == "core" ]] || _mainframe_load_tier "$lib"
+                ;;
+            bundle:*)
+                _mainframe_load_bundle "${lib#bundle:}"
+                ;;
+            *+*)
+                _mainframe_load_selected "$lib"
+                ;;
+            *)
+                [[ -n "$lib" ]] && _mainframe_load_library "$lib"
+                ;;
+        esac
+    done
+}
+
 # Parse MAINFRAME_LIBS value and load requested libraries
-# Supports: comma-separated names, tier names with +, 'all'
+# Supports: comma-separated names, tier names with +, bundle:name, 'all'
 _mainframe_load_selected() {
     local libs_spec="$1"
+    local IFS=','
+    local item
 
     # Always load core tier first
     _mainframe_load_tier "core"
@@ -967,14 +1011,29 @@ _mainframe_load_selected() {
         return
     fi
 
-    # Handle comma-separated library names (e.g., 'json,validation,git')
-    local IFS=','
-    local lib
-    for lib in $libs_spec; do
+    # Handle comma-separated bundle/tier/library selections
+    for item in $libs_spec; do
         # Trim whitespace
-        lib="${lib#"${lib%%[![:space:]]*}"}"
-        lib="${lib%"${lib##*[![:space:]]}"}"
-        [[ -n "$lib" ]] && _mainframe_load_library "$lib"
+        item="${item#"${item%%[![:space:]]*}"}"
+        item="${item%"${item##*[![:space:]]}"}"
+        [[ -n "$item" ]] || continue
+
+        case "$item" in
+            core)
+                ;;
+            standard|extended|ai)
+                _mainframe_load_tier "$item"
+                ;;
+            bundle:*)
+                _mainframe_load_bundle "${item#bundle:}"
+                ;;
+            *+*)
+                _mainframe_load_selected "$item"
+                ;;
+            *)
+                _mainframe_load_library "$item"
+                ;;
+        esac
     done
 }
 

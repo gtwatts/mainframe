@@ -2,29 +2,16 @@
 # =============================================================================
 # MAINFRAME/lib/awm.sh - Agent Working Memory (AWM)
 # =============================================================================
-# Description: Persistent external memory for AI agents with finite context.
-#              Enables agents to write state/discoveries OUTSIDE their context,
-#              read back relevant portions, support sub-agent inheritance,
-#              and resume sessions after interruption.
-#
-# Design Goals:
-#   - Minimize context cost when reading memory back
-#   - Support concurrent sub-agents safely
-#   - Enable session resumption after crashes/timeouts
-#   - Auto-compress old entries to prevent memory bloat
-#   - Provide inheritance mechanism for sub-agent spawning
-#
-# Version: 1.0.0
+# Description: Canonical Agent Working Memory facade for persistent session
+#              state, discovery logging, handoff preparation, retrieval, and
+#              context packing for finite-context agents.
+# Version: 2.0.0
 # Requires: Bash 4.0+
 # =============================================================================
-# "Mainframe can make a computer do anything short of tap dance."
-# =============================================================================
 
-# Prevent double-sourcing
 [[ -n "${_MAINFRAME_AWM_LOADED:-}" ]] && return 0
 declare -g _MAINFRAME_AWM_LOADED=1
 
-# Source dependencies
 SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
 source "${SCRIPT_DIR}/json.sh"
 
@@ -32,108 +19,176 @@ source "${SCRIPT_DIR}/json.sh"
 # CONFIGURATION
 # =============================================================================
 
-# Root directory for all AWM storage
 AWM_ROOT="${AWM_ROOT:-${HOME}/.mainframe/awm}"
-
-# Maximum size of a single memory file before compression (bytes)
-AWM_MAX_FILE_SIZE="${AWM_MAX_FILE_SIZE:-65536}"  # 64KB default
-
-# Maximum entries in a category log before auto-compression
+AWM_SCHEMA_VERSION="${AWM_SCHEMA_VERSION:-2}"
+AWM_MAX_FILE_SIZE="${AWM_MAX_FILE_SIZE:-65536}"
 AWM_MAX_LOG_ENTRIES="${AWM_MAX_LOG_ENTRIES:-100}"
-
-# Default compression threshold (entries older than N seconds are compressed)
-AWM_COMPRESS_AGE="${AWM_COMPRESS_AGE:-3600}"  # 1 hour
-
-# Token estimation ratio (chars per token, approximate)
+AWM_COMPRESS_AGE="${AWM_COMPRESS_AGE:-3600}"
 AWM_CHARS_PER_TOKEN="${AWM_CHARS_PER_TOKEN:-4}"
+AWM_LOCK_TIMEOUT="${AWM_LOCK_TIMEOUT:-5}"
+AWM_FIND_DEFAULT_LIMIT="${AWM_FIND_DEFAULT_LIMIT:-10}"
+AWM_CONTEXT_DEFAULT_TOKENS="${AWM_CONTEXT_DEFAULT_TOKENS:-4000}"
+AWM_CONTEXT_DISCOVERY_LIMIT="${AWM_CONTEXT_DISCOVERY_LIMIT:-12}"
+AWM_CONTEXT_LOG_LIMIT="${AWM_CONTEXT_LOG_LIMIT:-8}"
+AWM_LOG_KEEP_RECENT="${AWM_LOG_KEEP_RECENT:-50}"
+AWM_COMPAT_WARNINGS="${AWM_COMPAT_WARNINGS:-1}"
 
 # =============================================================================
 # INTERNAL STATE
 # =============================================================================
 
-# Currently active session ID
-_AWM_SESSION_ID=""
-
-# Namespace for isolation (sub-agents can have their own namespace)
-_AWM_NAMESPACE=""
+declare -g _AWM_SESSION_ID=""
+declare -g _AWM_SESSION_DIR=""
+declare -g _AWM_NAMESPACE=""
+declare -g _AWM_ACTIVE_BACKEND="${AWM_BACKEND:-file}"
+declare -g _AWM_V2_INITIALIZED=0
+declare -g _AWM_EMBEDDINGS_ATTEMPTED=0
+declare -gA _AWM_DEPRECATION_WARNED=()
 
 # =============================================================================
 # INTERNAL HELPERS
 # =============================================================================
 
-# Delegate to centralized logging (with fallback for standalone testing)
 _awm_log() {
-    if declare -F _mainframe_log &>/dev/null; then
+    if declare -F _mainframe_log >/dev/null 2>&1; then
         _mainframe_log "awm" "$@"
     else
-        local level="$1"; shift
+        local level="$1"
+        shift
         [[ "${MAINFRAME_QUIET:-}" != "1" ]] && printf '[awm] %s: %s\n' "$level" "$*" >&2
-        :  # Ensure return 0 even when quiet mode suppresses output
+        :
     fi
 }
 
-# Get epoch seconds (optimized: EPOCHSECONDS > printf builtin > date fallback)
 _awm_epoch() {
     local ts
-    # Fastest: Bash 5.0+ EPOCHSECONDS variable
     if [[ -n "${EPOCHSECONDS:-}" ]]; then
         printf '%s' "$EPOCHSECONDS"
-    # Fast: Bash 4.2+ printf builtin (~100x faster than date)
     elif printf -v ts '%(%s)T' -1 2>/dev/null && [[ -n "$ts" ]]; then
         printf '%s' "$ts"
-    # Fallback: external date command
     else
         date +%s
     fi
 }
 
-# Get high-resolution timestamp for ordering
-# Priority: EPOCHREALTIME (Bash 5.0+) > EPOCHSECONDS > printf builtin > date
 _awm_timestamp() {
     local ts
-    # Fastest: Bash 5.0+ EPOCHREALTIME (microsecond precision)
     if [[ -n "${EPOCHREALTIME:-}" ]]; then
         printf '%s' "$EPOCHREALTIME"
-    # Fast: Bash 5.0+ EPOCHSECONDS (second precision)
     elif [[ -n "${EPOCHSECONDS:-}" ]]; then
         printf '%s.000000' "$EPOCHSECONDS"
-    # Medium: Bash 4.2+ printf builtin (~100x faster than date)
     elif printf -v ts '%(%s)T' -1 2>/dev/null && [[ -n "$ts" ]]; then
         printf '%s.000000' "$ts"
-    # Fallback: external date command
     else
         date '+%s.%N' 2>/dev/null || date +%s
     fi
 }
 
-# ISO 8601 timestamp for human readability
-# Uses printf builtin when available (Bash 4.2+)
 _awm_iso_timestamp() {
     local ts
-    # Bash 4.2+ printf builtin for ISO format
     if printf -v ts '%(%Y-%m-%dT%H:%M:%S%z)T' -1 2>/dev/null && [[ -n "$ts" ]]; then
         printf '%s' "$ts"
-    # Fallback: external date command
     else
         date '+%Y-%m-%dT%H:%M:%S%z' 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S'
     fi
 }
 
-# Generate 12-character hex session ID
 _awm_gen_session_id() {
     local id
     id=$(od -An -tx1 -N6 /dev/urandom 2>/dev/null | tr -d ' \n')
     if [[ -z "$id" || ${#id} -lt 12 ]]; then
-        # Fallback: use RANDOM + PID + date
-        printf '%04x%04x%04x' "$$" "$RANDOM" "$(date +%s | cut -c6-10)"
+        printf '%04x%04x%04x' "$$" "$RANDOM" "$((_awm_epoch % 65535))"
         return
     fi
     printf '%s' "${id:0:12}"
 }
 
-# Get the session directory
+_awm_json_escape() {
+    json_escape "$@"
+}
+
+_awm_sanitize_key() {
+    local raw="$1"
+    printf '%s' "${raw//[^a-zA-Z0-9_.:-]/_}"
+}
+
+_awm_sanitize_name() {
+    local raw="$1"
+    printf '%s' "${raw//[^a-zA-Z0-9_-]/_}"
+}
+
+_awm_trim() {
+    local value="$1"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    printf '%s' "$value"
+}
+
+_awm_tags_json() {
+    local csv="${1:-}"
+    local tags_json="["
+    local first=1
+    local tag
+    local IFS=','
+
+    [[ -z "$csv" ]] && {
+        printf '[]'
+        return 0
+    }
+
+    for tag in $csv; do
+        tag=$(_awm_trim "$tag")
+        [[ -z "$tag" ]] && continue
+        [[ $first -eq 1 ]] || tags_json+=","
+        first=0
+        tags_json+="\"$(_awm_json_escape "$tag")\""
+    done
+    tags_json+="]"
+    printf '%s' "$tags_json"
+}
+
+_awm_current_agent() {
+    printf '%s' "${MAINFRAME_AGENT_NAME:-${_MAINFRAME_AGENT_NAME:-${_AWM_AGENT_ID:-${USER:-unknown}}}}"
+}
+
+_awm_find_session_dir() {
+    local sid="$1"
+    local candidate
+
+    [[ -z "$sid" ]] && return 1
+
+    if [[ "$sid" == "$_AWM_SESSION_ID" && -n "$_AWM_SESSION_DIR" && -f "$_AWM_SESSION_DIR/manifest.json" ]]; then
+        printf '%s' "$_AWM_SESSION_DIR"
+        return 0
+    fi
+
+    candidate="${AWM_ROOT}/sessions/${sid}"
+    if [[ -f "${candidate}/manifest.json" ]]; then
+        printf '%s' "$candidate"
+        return 0
+    fi
+
+    for candidate in "${AWM_ROOT}/sessions"/*/"${sid}"; do
+        [[ -f "${candidate}/manifest.json" ]] || continue
+        printf '%s' "$candidate"
+        return 0
+    done
+
+    return 1
+}
+
 _awm_session_dir() {
     local sid="${1:-$_AWM_SESSION_ID}"
+    local dir
+
+    [[ -z "$sid" ]] && return 1
+
+    dir=$(_awm_find_session_dir "$sid") || true
+    if [[ -n "$dir" ]]; then
+        printf '%s' "$dir"
+        return 0
+    fi
+
     if [[ -n "$_AWM_NAMESPACE" ]]; then
         printf '%s/sessions/%s/%s' "$AWM_ROOT" "$_AWM_NAMESPACE" "$sid"
     else
@@ -141,30 +196,395 @@ _awm_session_dir() {
     fi
 }
 
-# Temporarily switch the active session for compatibility wrappers.
-_awm_with_session() {
-    local sid="$1"
-    shift
-    local previous_sid="$_AWM_SESSION_ID"
-    _AWM_SESSION_ID="$sid"
-    "$@"
-    local rc=$?
-    _AWM_SESSION_ID="$previous_sid"
-    return $rc
-}
-
-# Return 0 when the argument points at an existing AWM session.
 _awm_session_exists() {
     local sid="$1"
     [[ -n "$sid" ]] || return 1
-    [[ -d "$(_awm_session_dir "$sid")" ]]
+    [[ -n "$(_awm_find_session_dir "$sid" 2>/dev/null)" ]]
 }
 
-# Save a full session snapshot under checkpoints/<name>.
-_awm_checkpoint_snapshot() {
+_awm_manifest_path() {
+    local sid="${1:-$_AWM_SESSION_ID}"
+    printf '%s/manifest.json' "$(_awm_session_dir "$sid")"
+}
+
+_awm_discoveries_file() {
+    local sid="${1:-$_AWM_SESSION_ID}"
+    local dir
+    dir=$(_awm_session_dir "$sid")
+    if [[ -f "${dir}/discoveries.jsonl" ]]; then
+        printf '%s/discoveries.jsonl' "$dir"
+    else
+        printf '%s/logs/discoveries.jsonl' "$dir"
+    fi
+}
+
+_awm_discoveries_compat_file() {
+    local sid="${1:-$_AWM_SESSION_ID}"
+    printf '%s/logs/discoveries.jsonl' "$(_awm_session_dir "$sid")"
+}
+
+_awm_category_index_path() {
+    local sid="${1:-$_AWM_SESSION_ID}"
+    printf '%s/index/categories.json' "$(_awm_session_dir "$sid")"
+}
+
+_awm_progress_index_file() {
+    local sid="${1:-$_AWM_SESSION_ID}"
+    local task="$2"
+    printf '%s/index/progress/%s.json' "$(_awm_session_dir "$sid")" "$(_awm_sanitize_key "$task")"
+}
+
+_awm_journal_file() {
+    local sid="${1:-$_AWM_SESSION_ID}"
+    printf '%s/journal/events.jsonl' "$(_awm_session_dir "$sid")"
+}
+
+_awm_handoff_dir() {
+    local sid="${1:-$_AWM_SESSION_ID}"
+    printf '%s/handoffs' "$(_awm_session_dir "$sid")"
+}
+
+_awm_line_count() {
+    local file="$1"
+    [[ -f "$file" ]] || {
+        printf '0'
+        return 0
+    }
+    wc -l < "$file" 2>/dev/null | tr -d ' '
+}
+
+_awm_file_size() {
+    local file="$1"
+    [[ -f "$file" ]] || {
+        printf '0'
+        return 0
+    }
+    if [[ "$OSTYPE" == darwin* ]]; then
+        stat -f%z "$file" 2>/dev/null || printf '0'
+    else
+        stat -c%s "$file" 2>/dev/null || printf '0'
+    fi
+}
+
+_awm_atomic_write() {
+    local target="$1"
+    local content="$2"
+    local parent_dir="${target%/*}"
+    local tmpfile="${target}.tmp.$$"
+
+    [[ "$parent_dir" != "$target" ]] && mkdir -p "$parent_dir" 2>/dev/null
+
+    if printf '%s' "$content" > "$tmpfile" 2>/dev/null; then
+        mv -f "$tmpfile" "$target" 2>/dev/null && return 0
+    fi
+
+    rm -f "$tmpfile" 2>/dev/null
+    return 1
+}
+
+_awm_append_unlocked() {
+    local target="$1"
+    local content="$2"
+    local parent_dir="${target%/*}"
+    [[ "$parent_dir" != "$target" ]] && mkdir -p "$parent_dir" 2>/dev/null
+    printf '%s\n' "$content" >> "$target"
+}
+
+_awm_lock_strategy() {
+    if [[ "${AWM_FORCE_MKDIR_LOCKS:-0}" == "1" ]]; then
+        printf 'mkdir'
+    elif command -v flock >/dev/null 2>&1; then
+        printf 'flock'
+    else
+        printf 'mkdir'
+    fi
+}
+
+_awm_with_lock() {
+    local lock_name="$1"
+    shift
+    local strategy
+    strategy=$(_awm_lock_strategy)
+
+    if [[ "$strategy" == "flock" ]]; then
+        (
+            exec 9>"$lock_name" || exit 1
+            flock -w "${AWM_LOCK_TIMEOUT}" 9 || exit 97
+            "$@"
+        )
+        return $?
+    fi
+
+    local lock_dir="${lock_name}.dir"
+    local start now
+    start=$(_awm_epoch)
+
+    while ! mkdir "$lock_dir" 2>/dev/null; do
+        now=$(_awm_epoch)
+        if [[ $((now - start)) -ge ${AWM_LOCK_TIMEOUT:-5} ]]; then
+            return 97
+        fi
+        sleep 0.05
+    done
+
+    "$@"
+    local rc=$?
+    rmdir "$lock_dir" 2>/dev/null || true
+    return $rc
+}
+
+_awm_locked_atomic_write() {
+    local target="$1"
+    local content="$2"
+    _awm_with_lock "${target}.lock" _awm_atomic_write "$target" "$content"
+}
+
+_awm_locked_append() {
+    local target="$1"
+    local content="$2"
+    _awm_with_lock "${target}.lock" _awm_append_unlocked "$target" "$content"
+}
+
+_awm_manifest_field() {
+    local sid="$1"
+    local field="$2"
+    local manifest
+    manifest=$(_awm_manifest_path "$sid")
+    [[ -f "$manifest" ]] || return 1
+    sed -n "s/.*\"${field}\":\"\\([^\"]*\\)\".*/\\1/p" "$manifest" | head -n 1
+}
+
+_awm_manifest_number_field() {
+    local sid="$1"
+    local field="$2"
+    local manifest
+    manifest=$(_awm_manifest_path "$sid")
+    [[ -f "$manifest" ]] || return 1
+    sed -n "s/.*\"${field}\":\\([0-9][0-9]*\\).*/\\1/p" "$manifest" | head -n 1
+}
+
+_awm_build_manifest() {
+    local session_id="$1"
+    local name="$2"
+    local parent_session="$3"
+    local status="$4"
+    local namespace="$5"
+    local model="$6"
+    local backend="$7"
+    local created_at="$8"
+    local created_epoch="$9"
+    local updated_at="${10}"
+    local updated_epoch="${11}"
+
+    printf '{"schema_version":%s,"session_id":"%s","name":"%s","created_at":"%s","created_epoch":%s,"updated_at":"%s","updated_epoch":%s,"parent_session":"%s","status":"%s","namespace":"%s","model":"%s","backend":"%s"}' \
+        "$AWM_SCHEMA_VERSION" \
+        "$session_id" \
+        "$(_awm_json_escape "${name:-unnamed}")" \
+        "$created_at" \
+        "$created_epoch" \
+        "$updated_at" \
+        "$updated_epoch" \
+        "$(_awm_json_escape "$parent_session")" \
+        "$(_awm_json_escape "$status")" \
+        "$(_awm_json_escape "$namespace")" \
+        "$(_awm_json_escape "$model")" \
+        "$(_awm_json_escape "$backend")"
+}
+
+_awm_update_manifest() {
+    local sid="$1"
+    local status="${2:-$(_awm_manifest_field "$sid" status)}"
+    local now iso created_at created_epoch name parent namespace model backend manifest
+
+    now=$(_awm_epoch)
+    iso=$(_awm_iso_timestamp)
+    created_at="${3:-$(_awm_manifest_field "$sid" created_at)}"
+    created_epoch="${4:-$(_awm_manifest_number_field "$sid" created_epoch)}"
+    name="${5:-$(_awm_manifest_field "$sid" name)}"
+    parent="${6:-$(_awm_manifest_field "$sid" parent_session)}"
+    namespace="${7:-$(_awm_manifest_field "$sid" namespace)}"
+    model="${8:-$(_awm_manifest_field "$sid" model)}"
+    backend="${9:-$(_awm_manifest_field "$sid" backend)}"
+
+    [[ -z "$created_at" ]] && created_at="$iso"
+    [[ -z "$created_epoch" ]] && created_epoch="$now"
+    [[ -z "$backend" ]] && backend="${_AWM_ACTIVE_BACKEND:-file}"
+
+    manifest=$(_awm_build_manifest \
+        "$sid" \
+        "$name" \
+        "$parent" \
+        "$status" \
+        "$namespace" \
+        "${model:-}" \
+        "$backend" \
+        "$created_at" \
+        "$created_epoch" \
+        "$iso" \
+        "$now")
+
+    _awm_locked_atomic_write "$(_awm_manifest_path "$sid")" "$manifest"
+}
+
+_awm_ensure_session_layout() {
+    local sid="$1"
+    local dir
+    dir=$(_awm_session_dir "$sid")
+
+    mkdir -p \
+        "${dir}/logs" \
+        "${dir}/data" \
+        "${dir}/checkpoints" \
+        "${dir}/handoffs" \
+        "${dir}/index" \
+        "${dir}/index/progress" \
+        "${dir}/journal" || return 1
+
+    [[ -f "${dir}/discoveries.jsonl" ]] || : > "${dir}/discoveries.jsonl"
+    [[ -f "${dir}/logs/discoveries.jsonl" ]] || : > "${dir}/logs/discoveries.jsonl"
+    [[ -f "${dir}/logs/index.json" ]] || _awm_atomic_write "${dir}/logs/index.json" '{"categories":[]}'
+    [[ -f "${dir}/index/categories.json" ]] || _awm_atomic_write "${dir}/index/categories.json" '[]'
+    [[ -f "${dir}/journal/events.jsonl" ]] || : > "${dir}/journal/events.jsonl"
+}
+
+_awm_journal_write() {
+    local sid="$1"
+    local event_kind="$2"
+    local payload_json="$3"
+    local entry
+
+    entry=$(printf '{"timestamp":"%s","kind":"%s","session_id":"%s","payload":%s}' \
+        "$(_awm_iso_timestamp)" \
+        "$(_awm_json_escape "$event_kind")" \
+        "$sid" \
+        "${payload_json:-{}}")
+
+    _awm_locked_append "$(_awm_journal_file "$sid")" "$entry"
+}
+
+_awm_update_category_index() {
+    local sid="$1"
+    local category="$2"
+    local logs_index category_index existing categories_json
+
+    logs_index="$(_awm_session_dir "$sid")/logs/index.json"
+    category_index=$(_awm_category_index_path "$sid")
+
+    existing=$(tr -d '[:space:]' <"$category_index" 2>/dev/null || printf '[]')
+    [[ -n "$existing" ]] || existing='[]'
+    if [[ "$existing" != *"\"${category}\""* ]]; then
+        categories_json="${existing%]}"
+        if [[ "$categories_json" == "[" ]]; then
+            categories_json+="\"$(_awm_json_escape "$category")\"]"
+        else
+            categories_json+=",\"$(_awm_json_escape "$category")\"]"
+        fi
+        _awm_locked_atomic_write "$category_index" "$categories_json"
+        _awm_locked_atomic_write "$logs_index" "{\"categories\":${categories_json}}"
+    fi
+}
+
+_awm_read_recent_lines() {
+    local file="$1"
+    local count="$2"
+    [[ -f "$file" ]] || return 0
+    tail -n "$count" "$file" 2>/dev/null
+}
+
+_awm_record_log_entry() {
+    local sid="$1"
+    local category="$2"
+    local message="$3"
+    local importance="$4"
+    local tags_csv="$5"
+    local log_file entry tags_json
+
+    log_file="$(_awm_session_dir "$sid")/logs/${category}.jsonl"
+    tags_json=$(_awm_tags_json "$tags_csv")
+
+    entry=$(printf '{"timestamp":"%s","ts":%s,"kind":"log","category":"%s","importance":"%s","tags":%s,"source_agent":"%s","session_id":"%s","msg":"%s"}' \
+        "$(_awm_iso_timestamp)" \
+        "$(_awm_timestamp)" \
+        "$(_awm_json_escape "$category")" \
+        "$(_awm_json_escape "$importance")" \
+        "$tags_json" \
+        "$(_awm_json_escape "$(_awm_current_agent)")" \
+        "$sid" \
+        "$(_awm_json_escape "$message")")
+
+    _awm_locked_append "$log_file" "$entry" || return 1
+    _awm_update_category_index "$sid" "$category"
+    _awm_journal_write "$sid" "log" "$entry"
+    return 0
+}
+
+_awm_record_discovery_entry() {
+    local sid="$1"
+    local insight="$2"
+    local importance="$3"
+    local tags_csv="$4"
+    local entry tags_json root_file compat_file
+
+    root_file=$(_awm_discoveries_file "$sid")
+    compat_file=$(_awm_discoveries_compat_file "$sid")
+    tags_json=$(_awm_tags_json "$tags_csv")
+
+    entry=$(printf '{"timestamp":"%s","ts":%s,"kind":"discovery","importance":"%s","tags":%s,"source_agent":"%s","session_id":"%s","discovery":"%s","msg":"%s"}' \
+        "$(_awm_iso_timestamp)" \
+        "$(_awm_timestamp)" \
+        "$(_awm_json_escape "$importance")" \
+        "$tags_json" \
+        "$(_awm_json_escape "$(_awm_current_agent)")" \
+        "$sid" \
+        "$(_awm_json_escape "$insight")" \
+        "$(_awm_json_escape "$insight")")
+
+    _awm_locked_append "$root_file" "$entry" || return 1
+    if [[ "$compat_file" != "$root_file" ]]; then
+        _awm_locked_append "$compat_file" "$entry" || return 1
+    fi
+    _awm_update_category_index "$sid" "discoveries"
+    _awm_journal_write "$sid" "discovery" "$entry"
+    return 0
+}
+
+_awm_record_checkpoint_meta() {
+    local sid="$1"
+    local key="$2"
+    local value="$3"
+    local importance="$4"
+    local tags_csv="$5"
+    local ttl="$6"
+    local preview entry tags_json index_file meta_file safe_key
+
+    safe_key=$(_awm_sanitize_key "$key")
+    preview="${value:0:256}"
+    tags_json=$(_awm_tags_json "$tags_csv")
+    entry=$(printf '{"timestamp":"%s","ts":%s,"kind":"checkpoint","importance":"%s","tags":%s,"source_agent":"%s","session_id":"%s","key":"%s","preview":"%s","ttl":%s}' \
+        "$(_awm_iso_timestamp)" \
+        "$(_awm_timestamp)" \
+        "$(_awm_json_escape "$importance")" \
+        "$tags_json" \
+        "$(_awm_json_escape "$(_awm_current_agent)")" \
+        "$sid" \
+        "$(_awm_json_escape "$key")" \
+        "$(_awm_json_escape "$preview")" \
+        "${ttl:-0}")
+
+    index_file="$(_awm_session_dir "$sid")/logs/checkpoints.jsonl"
+    meta_file="$(_awm_session_dir "$sid")/index/${safe_key}.json"
+
+    _awm_locked_append "$index_file" "$entry" || return 1
+    _awm_locked_atomic_write "$meta_file" "$entry" || return 1
+    _awm_update_category_index "$sid" "checkpoints"
+    _awm_journal_write "$sid" "checkpoint" "$entry"
+    return 0
+}
+
+_awm_snapshot_checkpoint() {
     local sid="$1"
     local checkpoint_name="$2"
-    local dir checkpoint_dir
+    local dir checkpoint_dir snapshot
 
     [[ -n "$checkpoint_name" ]] || {
         _awm_log error "awm_checkpoint: checkpoint name required"
@@ -183,260 +603,443 @@ _awm_checkpoint_snapshot() {
         cp -R "${dir}/data/." "${checkpoint_dir}/data/" 2>/dev/null || true
     fi
 
-    local snapshot
-    snapshot=$(printf '{"session_id":"%s","checkpoint":"%s","created_at":"%s"}' \
-        "$sid" "$(_awm_json_escape "$checkpoint_name")" "$(_awm_iso_timestamp)")
-    _awm_atomic_write "${checkpoint_dir}/snapshot.json" "$snapshot"
+    snapshot=$(printf '{"session_id":"%s","checkpoint":"%s","created_at":"%s","kind":"snapshot"}' \
+        "$sid" \
+        "$(_awm_json_escape "$checkpoint_name")" \
+        "$(_awm_iso_timestamp)")
+
+    _awm_locked_atomic_write "${checkpoint_dir}/snapshot.json" "$snapshot" || return 1
+    _awm_journal_write "$sid" "snapshot" "$snapshot"
 }
 
-# JSON-escape a string
-# Delegates to canonical json_escape from lib/json.sh (core tier, always loaded)
-_awm_json_escape() {
-    json_escape "$@"
+_awm_parse_log_options() {
+    local default_importance="$1"
+    shift
+    local category="$1"
+    local message="$2"
+    shift 2
+    local importance="$default_importance"
+    local tags=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --importance)
+                importance="${2:-$importance}"
+                shift 2
+                ;;
+            --tags)
+                tags="${2:-}"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    printf '%s\t%s\t%s\t%s' "$category" "$message" "$importance" "$tags"
 }
 
-# Atomic write using temp file + rename
-_awm_atomic_write() {
-    local target="$1"
-    local content="$2"
-    local tmpfile="${target}.tmp.$$"
-    local dir="${target%/*}"
+_awm_parse_checkpoint_options() {
+    local key="$1"
+    local value="$2"
+    shift 2
+    local importance="normal"
+    local tags=""
+    local ttl="0"
 
-    [[ "$dir" != "$target" ]] && mkdir -p "$dir" 2>/dev/null
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --importance)
+                importance="${2:-$importance}"
+                shift 2
+                ;;
+            --tags)
+                tags="${2:-}"
+                shift 2
+                ;;
+            --ttl)
+                ttl="${2:-0}"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
 
-    if printf '%s' "$content" > "$tmpfile" 2>/dev/null; then
-        mv -f "$tmpfile" "$target" 2>/dev/null && return 0
+    printf '%s\t%s\t%s\t%s\t%s' "$key" "$value" "$importance" "$tags" "$ttl"
+}
+
+_awm_with_session() {
+    local sid="$1"
+    shift
+    local previous_sid="$_AWM_SESSION_ID"
+    local previous_dir="$_AWM_SESSION_DIR"
+
+    _AWM_SESSION_ID="$sid"
+    _AWM_SESSION_DIR="$(_awm_session_dir "$sid")"
+    "$@"
+    local rc=$?
+    _AWM_SESSION_ID="$previous_sid"
+    _AWM_SESSION_DIR="$previous_dir"
+    return $rc
+}
+
+_awm_deprecate() {
+    local symbol="$1"
+    local replacement="$2"
+    [[ "${AWM_COMPAT_WARNINGS:-1}" == "1" ]] || return 0
+    [[ -n "${_AWM_DEPRECATION_WARNED[$symbol]:-}" ]] && return 0
+    _AWM_DEPRECATION_WARNED["$symbol"]=1
+    _awm_log warn "${symbol} is deprecated; use ${replacement}"
+}
+
+_awm_list_log_categories() {
+    local sid="${1:-$_AWM_SESSION_ID}"
+    local index
+    index=$(_awm_category_index_path "$sid")
+    if [[ -f "$index" ]]; then
+        while IFS= read -r category || [[ -n "$category" ]]; do
+            [[ -n "$category" ]] && printf '%s\n' "$category"
+        done < <(tr -d '[]"' < "$index" | tr ',' '\n' | sed '/^$/d')
+        return 0
     fi
-    rm -f "$tmpfile" 2>/dev/null
-    return 1
+
+    local file
+    for file in "$(_awm_session_dir "$sid")/logs/"*.jsonl; do
+        [[ -f "$file" ]] || continue
+        basename "$file" .jsonl
+    done | sort -u
 }
 
-# Append with flock for concurrent safety
-_awm_locked_append() {
-    local target="$1"
-    local content="$2"
-    local dir="${target%/*}"
+_awm_search_score() {
+    local query="$1"
+    local haystack="$2"
+    local score=0
+    local query_lc haystack_lc token
 
-    [[ "$dir" != "$target" ]] && mkdir -p "$dir" 2>/dev/null
+    query_lc=$(printf '%s' "$query" | tr '[:upper:]' '[:lower:]')
+    haystack_lc=$(printf '%s' "$haystack" | tr '[:upper:]' '[:lower:]')
 
-    if command -v flock &>/dev/null; then
-        (
-            flock -x 200
-            printf '%s\n' "$content" >> "$target"
-        ) 200>"${target}.lock"
-        rm -f "${target}.lock" 2>/dev/null
-    else
-        printf '%s\n' "$content" >> "$target"
+    [[ -z "$query_lc" ]] && {
+        printf '1'
+        return 0
+    }
+
+    if [[ "$haystack_lc" == *"$query_lc"* ]]; then
+        score=$((score + 50))
     fi
+
+    for token in $query_lc; do
+        [[ ${#token} -lt 2 ]] && continue
+        if [[ "$haystack_lc" == *"$token"* ]]; then
+            score=$((score + 10))
+        fi
+    done
+
+    printf '%s' "$score"
 }
 
-# Count lines in a file (safely)
-_awm_line_count() {
-    local file="$1"
-    [[ -f "$file" ]] || { printf '0'; return; }
-    wc -l < "$file" 2>/dev/null | tr -d ' '
-}
+_awm_try_load_embeddings() {
+    [[ $_AWM_EMBEDDINGS_ATTEMPTED -eq 1 ]] && return 0
+    _AWM_EMBEDDINGS_ATTEMPTED=1
 
-# Get file size in bytes
-_awm_file_size() {
-    local file="$1"
-    [[ -f "$file" ]] || { printf '0'; return; }
-    if [[ "$OSTYPE" == darwin* ]]; then
-        stat -f%z "$file" 2>/dev/null || echo 0
-    else
-        stat -c%s "$file" 2>/dev/null || echo 0
+    if declare -F embed_text >/dev/null 2>&1 && declare -F embed_similarity >/dev/null 2>&1; then
+        return 0
     fi
+
+    [[ "${MAINFRAME_AWM_FIND_EMBEDDINGS:-0}" == "1" ]] || return 0
+    [[ -f "${SCRIPT_DIR}/embeddings.sh" ]] || return 0
+
+    # shellcheck source=./embeddings.sh
+    source "${SCRIPT_DIR}/embeddings.sh" 2>/dev/null || true
+}
+
+_awm_rerank_results_with_embeddings() {
+    local query="$1"
+    local input_file="$2"
+    local output_file="$3"
+
+    _awm_try_load_embeddings
+    if ! declare -F embed_text >/dev/null 2>&1 || ! declare -F embed_similarity >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+        cp "$input_file" "$output_file"
+        return 0
+    fi
+
+    local query_vec
+    query_vec=$(embed_text "$query" "${MAINFRAME_EMBED_PROVIDER:-local}" 2>/dev/null || true)
+    if [[ -z "$query_vec" ]]; then
+        cp "$input_file" "$output_file"
+        return 0
+    fi
+
+    : > "$output_file"
+    while IFS=$'\t' read -r score payload; do
+        [[ -n "$payload" ]] || continue
+        local preview cand_vec similarity semantic_score
+        preview=$(printf '%s' "$payload" | jq -r '.preview // .msg // .discovery // .value // ""' 2>/dev/null || true)
+        [[ -n "$preview" ]] || preview=$(printf '%s' "$payload" | jq -r '.title // ""' 2>/dev/null || true)
+        cand_vec=$(embed_text "$preview" "${MAINFRAME_EMBED_PROVIDER:-local}" 2>/dev/null || true)
+        if [[ -n "$cand_vec" ]]; then
+            similarity=$(embed_similarity "$query_vec" "$cand_vec" 2>/dev/null || printf '0')
+            semantic_score=$(awk -v base="$score" -v sim="$similarity" 'BEGIN { printf "%.6f", base + (sim * 25.0) }')
+        else
+            semantic_score="$score"
+        fi
+        printf '%s\t%s\n' "$semantic_score" "$payload" >> "$output_file"
+    done < "$input_file"
+}
+
+_awm_select_top_results() {
+    local input_file="$1"
+    local limit="$2"
+    local sorted_file
+    sorted_file="$(mktemp "${TMPDIR:-/tmp}/awm-find-sort.XXXXXX")"
+
+    _awm_rerank_results_with_embeddings "${3:-}" "$input_file" "$sorted_file"
+
+    printf '['
+    local first=1
+    while IFS=$'\t' read -r _ payload; do
+        [[ -n "$payload" ]] || continue
+        [[ $first -eq 1 ]] || printf ','
+        first=0
+        printf '%s' "$payload"
+    done < <(sort -t $'\t' -k1,1nr "$sorted_file" | head -n "$limit")
+    printf ']'
+
+    rm -f "$sorted_file" 2>/dev/null
+}
+
+_awm_progress_summary_json() {
+    local sid="${1:-$_AWM_SESSION_ID}"
+    local dir file first=1 result="{"
+    dir="$(_awm_session_dir "$sid")/index/progress"
+    [[ -d "$dir" ]] || {
+        printf '{}'
+        return 0
+    }
+
+    for file in "$dir"/*.json; do
+        [[ -f "$file" ]] || continue
+        local task current total status entry
+        entry=$(<"$file")
+        task=$(sed -n 's/.*"task":"\([^"]*\)".*/\1/p' <<<"$entry" | head -n 1)
+        current=$(sed -n 's/.*"current":\([0-9][0-9]*\).*/\1/p' <<<"$entry" | head -n 1)
+        total=$(sed -n 's/.*"total":\([0-9][0-9]*\).*/\1/p' <<<"$entry" | head -n 1)
+        status=$(sed -n 's/.*"status":"\([^"]*\)".*/\1/p' <<<"$entry" | head -n 1)
+        [[ $first -eq 1 ]] || result+=","
+        first=0
+        result+="\"$(_awm_json_escape "$task")\":{\"current\":${current:-0},\"total\":${total:-0},\"status\":\"$(_awm_json_escape "$status")\"}"
+    done
+    result+="}"
+    printf '%s' "$result"
+}
+
+_awm_build_prompt_context() {
+    local task="$1"
+    local discoveries="$2"
+    local progress="$3"
+    local checkpoints="$4"
+    local logs="$5"
+    local related="$6"
+    local summary="$7"
+
+    printf 'Task: %s\n\n' "$task"
+    printf 'Discoveries:\n%s\n\n' "$discoveries"
+    printf 'Current Progress:\n%s\n\n' "$progress"
+    printf 'Relevant Checkpoints:\n%s\n\n' "$checkpoints"
+    printf 'Recent Logs:\n%s\n\n' "$logs"
+    printf 'Related Matches:\n%s\n\n' "$related"
+    printf 'Summary:\n%s\n' "$summary"
 }
 
 # =============================================================================
 # SESSION LIFECYCLE
 # =============================================================================
 
-# @pre: none
-# @post: new session initialized, _AWM_SESSION_ID set
-# @idempotent: no - creates new session each time (use awm_resume for existing)
-# @returns: 0, prints session_id to stdout
-#
-# Initialize a new AWM session. Creates the storage directory and manifest.
-# Optionally inherits from a parent session.
-#
-# Usage: session_id=$(awm_init ["session_name"] ["parent_session_id"])
-# Example: sid=$(awm_init "deploy-config")
-# Example: sid=$(awm_init "subtask" "$parent_sid")
 awm_init() {
-    local name="${1:-}"
-    local parent_session="${2:-}"
+    local name=""
+    local parent_session=""
+    local namespace="${_AWM_NAMESPACE:-}"
+    local model="${MAINFRAME_MODEL:-}"
+    local backend="${AWM_BACKEND:-file}"
 
-    local session_id
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --parent)
+                parent_session="${2:-}"
+                shift 2
+                ;;
+            --namespace)
+                namespace="${2:-}"
+                shift 2
+                ;;
+            --model)
+                model="${2:-}"
+                shift 2
+                ;;
+            --backend)
+                backend="${2:-file}"
+                shift 2
+                ;;
+            --*)
+                _awm_log warn "awm_init: ignoring unknown option $1"
+                shift
+                ;;
+            *)
+                if [[ -z "$name" ]]; then
+                    name="$1"
+                elif [[ -z "$parent_session" ]]; then
+                    parent_session="$1"
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    [[ -z "$backend" ]] && backend="file"
+    if [[ "$backend" == "auto" ]]; then
+        _AWM_ACTIVE_BACKEND="auto"
+    else
+        _AWM_ACTIVE_BACKEND="$backend"
+    fi
+
+    if [[ -n "$namespace" ]]; then
+        awm_namespace "$namespace"
+    fi
+
+    local session_id dir now now_iso manifest
     session_id=$(_awm_gen_session_id)
-
-    _AWM_SESSION_ID="$session_id"
-
-    local dir
     dir=$(_awm_session_dir "$session_id")
-    mkdir -p "${dir}/logs" "${dir}/data" "${dir}/checkpoints" || {
+    now=$(_awm_epoch)
+    now_iso=$(_awm_iso_timestamp)
+
+    mkdir -p "$dir" || {
         _awm_log error "awm_init: failed to create session directory"
         return 1
     }
 
-    # Create manifest
-    local now
-    now=$(_awm_iso_timestamp)
-    local epoch
-    epoch=$(_awm_epoch)
+    _AWM_SESSION_ID="$session_id"
+    _AWM_SESSION_DIR="$dir"
+    _awm_ensure_session_layout "$session_id" || return 1
 
-    local escaped_name
-    escaped_name=$(_awm_json_escape "${name:-unnamed}")
+    manifest=$(_awm_build_manifest \
+        "$session_id" \
+        "${name:-unnamed}" \
+        "${parent_session:-}" \
+        "active" \
+        "${_AWM_NAMESPACE:-}" \
+        "${model:-}" \
+        "$backend" \
+        "$now_iso" \
+        "$now" \
+        "$now_iso" \
+        "$now")
 
-    local manifest
-    manifest=$(printf '{"session_id":"%s","name":"%s","created_at":"%s","created_epoch":%s,"parent_session":"%s","status":"active","namespace":"%s"}' \
-        "$session_id" "$escaped_name" "$now" "$epoch" "${parent_session:-}" "${_AWM_NAMESPACE:-}")
+    _awm_locked_atomic_write "${dir}/manifest.json" "$manifest" || return 1
+    _awm_journal_write "$session_id" "init" "{\"name\":\"$(_awm_json_escape "${name:-unnamed}")\",\"backend\":\"$(_awm_json_escape "$backend")\"}"
 
-    _awm_atomic_write "${dir}/manifest.json" "$manifest"
-
-    # Initialize empty logs index
-    _awm_atomic_write "${dir}/logs/index.json" '{"categories":[]}'
-
-    # If parent session provided, inherit its discoveries and checkpoints
     if [[ -n "$parent_session" ]]; then
         _awm_inherit "$parent_session" "$session_id"
     fi
 
-    _awm_log info "initialized session: $session_id"
     printf '%s' "$session_id"
 }
 
-# @pre: session_id exists
-# @post: _AWM_SESSION_ID set to existing session
-# @returns: 0 if found, 1 if not
-#
-# Resume an existing AWM session by ID.
-#
-# Usage: awm_resume "session_id"
-# Example: awm_resume "a1b2c3d4e5f6"
 awm_resume() {
     local session_id="$1"
+    local dir namespace
 
     if [[ -z "$session_id" ]]; then
         _awm_log error "awm_resume: session_id required"
         return 1
     fi
 
-    local dir
-    dir=$(_awm_session_dir "$session_id")
-
-    if [[ ! -d "$dir" || ! -f "${dir}/manifest.json" ]]; then
+    dir=$(_awm_find_session_dir "$session_id") || {
         _awm_log error "awm_resume: session not found: $session_id"
         return 1
-    fi
+    }
 
     _AWM_SESSION_ID="$session_id"
-    _awm_log info "resumed session: $session_id"
+    _AWM_SESSION_DIR="$dir"
+    awm_migrate "$session_id" >/dev/null 2>&1 || true
+
+    namespace=$(_awm_manifest_field "$session_id" namespace)
+    _AWM_NAMESPACE="${namespace:-}"
+    _AWM_ACTIVE_BACKEND="$(_awm_manifest_field "$session_id" backend)"
+    [[ -z "$_AWM_ACTIVE_BACKEND" ]] && _AWM_ACTIVE_BACKEND="file"
+
     return 0
 }
 
-# @pre: active session exists
-# @post: session marked as complete
-# @returns: 0
-#
-# Close the current AWM session (marks as complete but doesn't delete).
-#
-# Usage: awm_close
 awm_close() {
+    local export_path=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --export)
+                export_path="${2:-}"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
     if [[ -z "$_AWM_SESSION_ID" ]]; then
         _awm_log warn "awm_close: no active session"
         return 0
     fi
 
-    local dir
-    dir=$(_awm_session_dir)
-    local manifest="${dir}/manifest.json"
-
-    if [[ -f "$manifest" ]]; then
-        local content
-        content=$(<"$manifest")
-        # Update status to completed
-        content="${content/\"status\":\"active\"/\"status\":\"completed\"}"
-        _awm_atomic_write "$manifest" "$content"
-    fi
-
-    _awm_log info "closed session: $_AWM_SESSION_ID"
+    _awm_update_manifest "$_AWM_SESSION_ID" "completed" || return 1
+    _awm_journal_write "$_AWM_SESSION_ID" "close" '{"status":"completed"}'
+    [[ -n "$export_path" ]] && awm_export "$export_path" >/dev/null
     _AWM_SESSION_ID=""
+    _AWM_SESSION_DIR=""
+    return 0
 }
 
-# Internal: inherit from parent session
 _awm_inherit() {
     local parent_id="$1"
     local child_id="$2"
+    local parent_dir child_dir parent_disc
 
-    local parent_dir child_dir
-    parent_dir=$(_awm_session_dir "$parent_id")
-    child_dir=$(_awm_session_dir "$child_id")
-
-    if [[ ! -d "$parent_dir" ]]; then
+    parent_dir=$(_awm_find_session_dir "$parent_id") || {
         _awm_log warn "_awm_inherit: parent session not found: $parent_id"
         return 1
+    }
+    child_dir=$(_awm_session_dir "$child_id")
+
+    parent_disc=$(_awm_discoveries_file "$parent_id")
+    if [[ -f "$parent_disc" ]]; then
+        cp -f "$parent_disc" "${child_dir}/logs/inherited_discoveries.jsonl" 2>/dev/null || true
     fi
 
-    # Copy discoveries (key learnings to inherit)
-    if [[ -f "${parent_dir}/logs/discoveries.jsonl" ]]; then
-        cp -f "${parent_dir}/logs/discoveries.jsonl" "${child_dir}/logs/inherited_discoveries.jsonl" 2>/dev/null
-    fi
-
-    # Copy key-value data
     if [[ -d "${parent_dir}/data" ]]; then
-        for file in "${parent_dir}/data"/*; do
-            [[ -f "$file" ]] || continue
-            local key="${file##*/}"
-            [[ ! -f "${child_dir}/data/${key}" ]] && cp -f "$file" "${child_dir}/data/${key}" 2>/dev/null
-        done
+        cp -R "${parent_dir}/data/." "${child_dir}/data/" 2>/dev/null || true
     fi
 
-    _awm_log debug "_awm_inherit: inherited from $parent_id to $child_id"
+    _awm_journal_write "$child_id" "inherit" "{\"parent_session\":\"$(_awm_json_escape "$parent_id")\"}"
+    return 0
 }
 
-# =============================================================================
-# NAMESPACE MANAGEMENT (Sub-Agent Isolation)
-# =============================================================================
-
-# @pre: none
-# @post: _AWM_NAMESPACE set
-# @returns: 0
-#
-# Set a namespace for sub-agent isolation.
-# Namespaced sessions are stored in separate directories.
-#
-# Usage: awm_namespace "agent-name"
-# Example: awm_namespace "code-reviewer"
 awm_namespace() {
-    local ns="$1"
-
+    local ns="${1:-}"
     if [[ -z "$ns" ]]; then
         _AWM_NAMESPACE=""
-        _awm_log debug "awm_namespace: cleared namespace"
     else
-        # Sanitize namespace name
-        ns="${ns//[^a-zA-Z0-9_-]/_}"
-        _AWM_NAMESPACE="$ns"
-        _awm_log debug "awm_namespace: set to $ns"
+        _AWM_NAMESPACE="$(_awm_sanitize_name "$ns")"
     fi
 }
 
-# @pre: none (auto-detects from Agent Teams config)
-# @post: _AWM_NAMESPACE set to "team-{name}" if in a team, unchanged otherwise
-# @returns: 0 if namespace set, 1 if not in a team
-#
-# Auto-detect Agent Teams team name and set AWM namespace for team isolation.
-# Reads team name from CLAUDE_AGENT_TEAM_NAME env var or ~/.claude/teams/.
-#
-# Usage: awm_team_namespace
-# Example: awm_team_namespace && awm_init "shared-task"
 awm_team_namespace() {
     local team_name="${CLAUDE_AGENT_TEAM_NAME:-}"
+    local team_dir
 
-    # Fallback: find team from config directory
     if [[ -z "$team_name" && -d "${HOME}/.claude/teams" ]]; then
-        local team_dir
         for team_dir in "${HOME}/.claude/teams"/*/; do
             [[ -d "$team_dir" ]] || continue
             team_name="${team_dir%/}"
@@ -445,11 +1048,7 @@ awm_team_namespace() {
         done
     fi
 
-    if [[ -z "$team_name" ]]; then
-        _awm_log debug "awm_team_namespace: no team detected"
-        return 1
-    fi
-
+    [[ -n "$team_name" ]] || return 1
     awm_namespace "team-${team_name}"
     return 0
 }
@@ -458,833 +1057,1020 @@ awm_team_namespace() {
 # CORE WRITE FUNCTIONS
 # =============================================================================
 
-# @pre: active session
-# @post: key-value pair stored atomically
-# @idempotent: yes - overwrites existing key
-# @returns: 0 on success, 1 on failure
-#
-# Save a key-value pair to persistent memory.
-# Keys are stored as individual files for atomic access.
-#
-# Usage: awm_checkpoint "key" "value"
-# Example: awm_checkpoint "current_step" "3"
-# Example: awm_checkpoint "api_response" "$json_response"
 awm_checkpoint() {
     if [[ $# -eq 2 ]] && _awm_session_exists "$1"; then
-        _awm_checkpoint_snapshot "$1" "$2"
+        _awm_snapshot_checkpoint "$1" "$2"
         return $?
     fi
-
-    local key="$1"
-    local value="$2"
 
     if [[ -z "$_AWM_SESSION_ID" ]]; then
         _awm_log error "awm_checkpoint: no active session"
         return 1
     fi
 
-    if [[ -z "$key" ]]; then
+    local parsed key value importance tags ttl safe_key dir file
+    parsed=$(_awm_parse_checkpoint_options "$@")
+    key="${parsed%%$'\t'*}"
+    parsed="${parsed#*$'\t'}"
+    value="${parsed%%$'\t'*}"
+    parsed="${parsed#*$'\t'}"
+    importance="${parsed%%$'\t'*}"
+    parsed="${parsed#*$'\t'}"
+    tags="${parsed%%$'\t'*}"
+    ttl="${parsed##*$'\t'}"
+
+    [[ -n "$key" ]] || {
         _awm_log error "awm_checkpoint: key required"
         return 1
-    fi
+    }
 
-    # Sanitize key for filename
-    local safe_key="${key//[^a-zA-Z0-9_.-]/_}"
-
-    local dir
+    safe_key=$(_awm_sanitize_key "$key")
     dir=$(_awm_session_dir)
-    local file="${dir}/data/${safe_key}"
+    file="${dir}/data/${safe_key}"
 
-    _awm_atomic_write "$file" "$value"
-
-    # Also log the checkpoint event
-    local ts
-    ts=$(_awm_timestamp)
-    local escaped_key escaped_val
-    escaped_key=$(_awm_json_escape "$key")
-    escaped_val=$(_awm_json_escape "${value:0:256}")  # Truncate for log
-
-    local entry
-    entry=$(printf '{"ts":%s,"key":"%s","preview":"%s"}' "$ts" "$escaped_key" "$escaped_val")
-    _awm_locked_append "${dir}/logs/checkpoints.jsonl" "$entry"
-
-    _awm_log debug "awm_checkpoint: saved $key"
+    _awm_locked_atomic_write "$file" "$value" || return 1
+    _awm_record_checkpoint_meta "$_AWM_SESSION_ID" "$key" "$value" "$importance" "$tags" "$ttl" || return 1
+    _awm_update_manifest "$_AWM_SESSION_ID" "active" >/dev/null 2>&1 || true
+    return 0
 }
 
-# @pre: active session
-# @post: message appended to category log
-# @idempotent: no - appends each time
-# @returns: 0 on success, 1 on failure
-#
-# Append a structured message to a categorized log.
-# Categories enable selective retrieval of related entries.
-#
-# Usage: awm_log "category" "message"
-# Example: awm_log "errors" "Failed to connect to API"
-# Example: awm_log "decisions" "Chose PostgreSQL over MySQL for transactions"
 awm_log() {
-    local category="$1"
-    local message="$2"
-
     if [[ -z "$_AWM_SESSION_ID" ]]; then
         _awm_log error "awm_log: no active session"
         return 1
     fi
 
-    if [[ -z "$category" || -z "$message" ]]; then
+    local parsed category message importance tags safe_category log_file count
+    parsed=$(_awm_parse_log_options "normal" "$@")
+    category="${parsed%%$'\t'*}"
+    parsed="${parsed#*$'\t'}"
+    message="${parsed%%$'\t'*}"
+    parsed="${parsed#*$'\t'}"
+    importance="${parsed%%$'\t'*}"
+    tags="${parsed##*$'\t'}"
+
+    [[ -n "$category" && -n "$message" ]] || {
         _awm_log error "awm_log: category and message required"
         return 1
-    fi
+    }
 
-    # Sanitize category
-    local safe_cat="${category//[^a-zA-Z0-9_-]/_}"
+    safe_category=$(_awm_sanitize_name "$category")
+    _awm_record_log_entry "$_AWM_SESSION_ID" "$safe_category" "$message" "$importance" "$tags" || return 1
 
-    local dir
-    dir=$(_awm_session_dir)
-    local log_file="${dir}/logs/${safe_cat}.jsonl"
-
-    local ts iso
-    ts=$(_awm_timestamp)
-    iso=$(_awm_iso_timestamp)
-    local escaped_msg
-    escaped_msg=$(_awm_json_escape "$message")
-
-    local entry
-    entry=$(printf '{"ts":%s,"iso":"%s","msg":"%s"}' "$ts" "$iso" "$escaped_msg")
-    _awm_locked_append "$log_file" "$entry"
-
-    # Update category index
-    _awm_update_category_index "$safe_cat"
-
-    # Check if compression needed
-    local count
+    log_file="$(_awm_session_dir)/logs/${safe_category}.jsonl"
     count=$(_awm_line_count "$log_file")
-    if [[ $count -gt $AWM_MAX_LOG_ENTRIES ]]; then
-        _awm_compress_log "$safe_cat"
+    if [[ "$safe_category" != "progress" && "$safe_category" != "discoveries" && $count -gt $AWM_MAX_LOG_ENTRIES ]]; then
+        _awm_compress_log "$safe_category" "$_AWM_SESSION_ID"
     fi
-
-    _awm_log debug "awm_log: [$category] $message"
+    return 0
 }
 
-# Internal: update category index
-_awm_update_category_index() {
-    local category="$1"
-    local dir
-    dir=$(_awm_session_dir)
-    local index="${dir}/logs/index.json"
-
-    if [[ -f "$index" ]]; then
-        local content
-        content=$(<"$index")
-        if [[ "$content" != *"\"$category\""* ]]; then
-            # Add category to index
-            content="${content/\"categories\":\[/\"categories\":[\"$category\",}"
-            content="${content/\[\",/[}"  # Fix if first entry
-            _awm_atomic_write "$index" "$content"
-        fi
-    fi
-}
-
-# @pre: active session
-# @post: progress entry recorded
-# @idempotent: no - appends each time
-# @returns: 0
-#
-# Track task progress with a structured format.
-# Progress entries include current/total for progress bar calculation.
-#
-# Usage: awm_progress "task_id" "current/total" ["status_message"]
-# Example: awm_progress "file-processing" "47/200" "Processing batch 47"
 awm_progress() {
     local task_id="$1"
     local progress="$2"
     local status_msg="${3:-}"
+    local current total entry progress_file latest_file
 
     if [[ -z "$_AWM_SESSION_ID" ]]; then
         _awm_log error "awm_progress: no active session"
         return 1
     fi
 
-    local current total
+    [[ -n "$task_id" && -n "$progress" ]] || {
+        _awm_log error "awm_progress: task and progress required"
+        return 1
+    }
+
     current="${progress%/*}"
     total="${progress#*/}"
+    [[ "$current" =~ ^[0-9]+$ ]] || current=0
+    [[ "$total" =~ ^[0-9]+$ ]] || total=0
 
-    local dir
-    dir=$(_awm_session_dir)
+    entry=$(printf '{"timestamp":"%s","ts":%s,"kind":"progress","task":"%s","importance":"high","tags":[],"source_agent":"%s","session_id":"%s","current":%s,"total":%s,"status":"%s"}' \
+        "$(_awm_iso_timestamp)" \
+        "$(_awm_timestamp)" \
+        "$(_awm_json_escape "$task_id")" \
+        "$(_awm_json_escape "$(_awm_current_agent)")" \
+        "$_AWM_SESSION_ID" \
+        "$current" \
+        "$total" \
+        "$(_awm_json_escape "$status_msg")")
 
-    local ts
-    ts=$(_awm_timestamp)
-    local escaped_task escaped_status
-    escaped_task=$(_awm_json_escape "$task_id")
-    escaped_status=$(_awm_json_escape "$status_msg")
+    progress_file="$(_awm_session_dir)/logs/progress.jsonl"
+    latest_file=$(_awm_progress_index_file "$_AWM_SESSION_ID" "$task_id")
 
-    local entry
-    entry=$(printf '{"ts":%s,"task":"%s","current":%s,"total":%s,"status":"%s"}' \
-        "$ts" "$escaped_task" "${current:-0}" "${total:-0}" "$escaped_status")
-
-    _awm_locked_append "${dir}/logs/progress.jsonl" "$entry"
-
-    # Also update latest progress as checkpoint for quick access
-    awm_checkpoint "progress:${task_id}" "$progress"
+    _awm_locked_append "$progress_file" "$entry" || return 1
+    _awm_locked_atomic_write "$latest_file" "$entry" || return 1
+    _awm_update_category_index "$_AWM_SESSION_ID" "progress"
+    _awm_journal_write "$_AWM_SESSION_ID" "progress" "$entry"
+    awm_checkpoint "progress:${task_id}" "${current}/${total}" --importance high >/dev/null
+    return 0
 }
 
-# @pre: active session
-# @post: discovery recorded in special high-priority log
-# @idempotent: no - appends each time
-# @returns: 0
-#
-# Record a key insight or discovery that should be preserved.
-# Discoveries are prioritized during inheritance and summarization.
-#
-# Usage: awm_discovery "insight text"
-# Example: awm_discovery "User prefers PostgreSQL for all new projects"
-# Example: awm_discovery "API rate limit is 100 req/min, not 1000"
 awm_discovery() {
     local insight="$1"
+    shift || true
 
     if [[ -z "$_AWM_SESSION_ID" ]]; then
         _awm_log error "awm_discovery: no active session"
         return 1
     fi
 
-    if [[ -z "$insight" ]]; then
+    [[ -n "$insight" ]] || {
         _awm_log error "awm_discovery: insight text required"
         return 1
-    fi
+    }
 
-    local dir
-    dir=$(_awm_session_dir)
+    local importance="high"
+    local tags=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --importance)
+                importance="${2:-high}"
+                shift 2
+                ;;
+            --tags)
+                tags="${2:-}"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
 
-    local ts iso
-    ts=$(_awm_timestamp)
-    iso=$(_awm_iso_timestamp)
-    local escaped
-    escaped=$(_awm_json_escape "$insight")
-
-    local entry
-    entry=$(printf '{"ts":%s,"iso":"%s","discovery":"%s","importance":"high"}' \
-        "$ts" "$iso" "$escaped")
-
-    _awm_locked_append "${dir}/logs/discoveries.jsonl" "$entry"
-
-    _awm_log info "awm_discovery: $insight"
+    _awm_record_discovery_entry "$_AWM_SESSION_ID" "$insight" "$importance" "$tags" || return 1
+    _awm_update_manifest "$_AWM_SESSION_ID" "active" >/dev/null 2>&1 || true
+    return 0
 }
 
 # =============================================================================
 # CORE READ FUNCTIONS
 # =============================================================================
 
-# @pre: active session, key exists
-# @post: none (read-only)
-# @returns: 0 if found, 1 if not found
-#
-# Retrieve a checkpointed value by key.
-#
-# Usage: value=$(awm_get "key")
-# Example: step=$(awm_get "current_step")
 awm_get() {
     local sid=""
+    local key default safe_key dir file result
+
     if [[ $# -ge 2 ]] && _awm_session_exists "$1"; then
         sid="$1"
         shift
     fi
 
-    local key="$1"
-    local default="${2:-}"
-    local previous_sid="$_AWM_SESSION_ID"
-    [[ -n "$sid" ]] && _AWM_SESSION_ID="$sid"
+    key="${1:-}"
+    default="${2:-}"
 
-    if [[ -z "$_AWM_SESSION_ID" ]]; then
+    if [[ -n "$sid" ]]; then
+        dir=$(_awm_session_dir "$sid")
+    elif [[ -n "$_AWM_SESSION_ID" ]]; then
+        dir=$(_awm_session_dir)
+    else
         printf '%s' "$default"
-        [[ -n "$sid" ]] && _AWM_SESSION_ID="$previous_sid"
         return 1
     fi
 
-    # Sanitize key for filename
-    local safe_key="${key//[^a-zA-Z0-9_.-]/_}"
-
-    local dir
-    dir=$(_awm_session_dir)
-    local file="${dir}/data/${safe_key}"
+    safe_key=$(_awm_sanitize_key "$key")
+    file="${dir}/data/${safe_key}"
 
     if [[ -f "$file" ]]; then
-        cat "$file"
-        [[ -n "$sid" ]] && _AWM_SESSION_ID="$previous_sid"
+        result=$(<"$file")
+        printf '%s' "$result"
         return 0
     fi
 
     printf '%s' "$default"
-    [[ -n "$sid" ]] && _AWM_SESSION_ID="$previous_sid"
     return 1
 }
 
-# @pre: active session, category exists
-# @post: none (read-only)
-# @returns: last N entries as JSON array
-#
-# Retrieve the last N entries from a category log.
-# Returns newest entries first (reverse chronological).
-#
-# Usage: entries=$(awm_recent "category" [count])
-# Example: errors=$(awm_recent "errors" 10)
 awm_recent() {
     local category="$1"
     local count="${2:-10}"
+    local sid="${3:-$_AWM_SESSION_ID}"
+    local safe_cat log_file lines
 
-    if [[ -z "$_AWM_SESSION_ID" ]]; then
+    [[ -n "$sid" ]] || {
         printf '[]'
         return 1
+    }
+
+    safe_cat=$(_awm_sanitize_name "$category")
+    if [[ "$safe_cat" == "discoveries" ]]; then
+        log_file=$(_awm_discoveries_file "$sid")
+    else
+        log_file="$(_awm_session_dir "$sid")/logs/${safe_cat}.jsonl"
     fi
 
-    # Sanitize category
-    local safe_cat="${category//[^a-zA-Z0-9_-]/_}"
-
-    local dir
-    dir=$(_awm_session_dir)
-    local log_file="${dir}/logs/${safe_cat}.jsonl"
-
-    if [[ ! -f "$log_file" ]]; then
+    [[ -f "$log_file" ]] || {
         printf '[]'
         return 0
-    fi
+    }
 
-    # Get last N lines and format as JSON array
+    mapfile -t lines < <(_awm_read_recent_lines "$log_file" "$count")
     printf '['
-    local first=true
-    while IFS= read -r line; do
-        [[ -z "$line" ]] && continue
-        $first || printf ','
-        first=false
-        printf '%s' "$line"
-    done < <(tail -n "$count" "$log_file" | tac 2>/dev/null || tail -r -n "$count" "$log_file" 2>/dev/null || tail -n "$count" "$log_file")
+    local first=1
+    local idx
+    for ((idx=${#lines[@]}-1; idx>=0; idx--)); do
+        [[ -n "${lines[$idx]}" ]] || continue
+        [[ $first -eq 1 ]] || printf ','
+        first=0
+        printf '%s' "${lines[$idx]}"
+    done
     printf ']'
 }
 
-# @pre: active session
-# @post: none (read-only)
-# @returns: compressed summary as JSON
-#
-# Generate a compressed summary of the session for context injection.
-# Includes: discoveries, recent progress, key checkpoints.
-#
-# Usage: summary=$(awm_summary)
-# Example: context=$(awm_summary)
 awm_summary() {
-    if [[ -z "$_AWM_SESSION_ID" ]]; then
+    local max_tokens=0
+    local sid="$_AWM_SESSION_ID"
+    local dir discoveries progress checkpoints categories token_estimate
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --tokens)
+                max_tokens="${2:-0}"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    [[ -n "$sid" ]] || {
         printf '{"error":"no active session"}'
         return 1
-    fi
+    }
 
-    local dir
     dir=$(_awm_session_dir)
+    discoveries=$(awm_recent "discoveries" "$AWM_CONTEXT_DISCOVERY_LIMIT")
+    progress=$(_awm_progress_summary_json "$sid")
 
-    # Collect discoveries
-    local discoveries="[]"
-    if [[ -f "${dir}/logs/discoveries.jsonl" ]]; then
-        discoveries="["
-        local first=true
-        while IFS= read -r line; do
-            [[ -z "$line" ]] && continue
-            $first || discoveries+=","
-            first=false
-            discoveries+="$line"
-        done < "${dir}/logs/discoveries.jsonl"
-        discoveries+="]"
-    fi
-
-    # Get latest progress entries (one per task)
-    local progress="{}"
-    if [[ -f "${dir}/logs/progress.jsonl" ]]; then
-        # Extract unique tasks with latest progress
-        progress="{"
-        local first=true
-        local -A seen_tasks=()
-        while IFS= read -r line; do
-            [[ -z "$line" ]] && continue
-            # Extract task name from JSON
-            if [[ "$line" =~ \"task\":\"([^\"]+)\" ]]; then
-                local task="${BASH_REMATCH[1]}"
-                if [[ -z "${seen_tasks[$task]:-}" ]]; then
-                    $first || progress+=","
-                    first=false
-                    # Extract current/total
-                    local current=0 total=0
-                    [[ "$line" =~ \"current\":([0-9]+) ]] && current="${BASH_REMATCH[1]}"
-                    [[ "$line" =~ \"total\":([0-9]+) ]] && total="${BASH_REMATCH[1]}"
-                    progress+="\"$task\":\"$current/$total\""
-                    seen_tasks[$task]=1
-                fi
-            fi
-        done < <(tac "${dir}/logs/progress.jsonl" 2>/dev/null || tail -r "${dir}/logs/progress.jsonl" 2>/dev/null || cat "${dir}/logs/progress.jsonl")
-        progress+="}"
-    fi
-
-    # Get key checkpoints (files in data/)
-    local checkpoints="{"
-    local first=true
-    if [[ -d "${dir}/data" ]]; then
-        for file in "${dir}/data"/*; do
-            [[ -f "$file" ]] || continue
-            local key="${file##*/}"
-            local value
-            value=$(head -c 256 "$file")  # Truncate large values
-            local escaped_key escaped_val
-            escaped_key=$(_awm_json_escape "$key")
-            escaped_val=$(_awm_json_escape "$value")
-            $first || checkpoints+=","
-            first=false
-            checkpoints+="\"${escaped_key}\":\"${escaped_val}\""
-        done
-    fi
+    checkpoints="{"
+    local first=1 file key value escaped_key escaped_val
+    for file in "${dir}/data"/*; do
+        [[ -f "$file" ]] || continue
+        key="${file##*/}"
+        value=$(head -c 256 "$file")
+        [[ $first -eq 1 ]] || checkpoints+=","
+        first=0
+        escaped_key=$(_awm_json_escape "$key")
+        escaped_val=$(_awm_json_escape "$value")
+        checkpoints+="\"${escaped_key}\":\"${escaped_val}\""
+    done
     checkpoints+="}"
 
-    # Get list of log categories
-    local categories="[]"
-    if [[ -f "${dir}/logs/index.json" ]]; then
-        # Extract categories array
-        local index
-        index=$(<"${dir}/logs/index.json")
-        if [[ "$index" =~ \"categories\":\[([^\]]*)\] ]]; then
-            categories="[${BASH_REMATCH[1]}]"
+    categories="["
+    first=1
+    while IFS= read -r key; do
+        [[ -n "$key" ]] || continue
+        [[ $first -eq 1 ]] || categories+=","
+        first=0
+        categories+="\"$(_awm_json_escape "$key")\""
+    done < <(_awm_list_log_categories "$sid")
+    categories+="]"
+
+    token_estimate=$(awm_token_estimate 2>/dev/null || printf '0')
+
+    printf '{"session_id":"%s","schema_version":%s,"status":"%s","namespace":"%s","backend":"%s","token_estimate":%s,"discoveries":%s,"progress":%s,"checkpoints":%s,"categories":%s,"max_tokens":%s}' \
+        "$sid" \
+        "${AWM_SCHEMA_VERSION}" \
+        "$(_awm_json_escape "$(_awm_manifest_field "$sid" status)")" \
+        "$(_awm_json_escape "${_AWM_NAMESPACE:-$(_awm_manifest_field "$sid" namespace)}")" \
+        "$(_awm_json_escape "${_AWM_ACTIVE_BACKEND:-$(_awm_manifest_field "$sid" backend)}")" \
+        "$token_estimate" \
+        "$discoveries" \
+        "$progress" \
+        "$checkpoints" \
+        "$categories" \
+        "${max_tokens:-0}"
+}
+
+awm_find() {
+    local query=""
+    local kind="mixed"
+    local limit="$AWM_FIND_DEFAULT_LIMIT"
+    local sid="$_AWM_SESSION_ID"
+    local tmpfile reranked_file dir disc_file log_file file category content score payload preview key value
+
+    query="${1:-}"
+    shift || true
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --kind)
+                kind="${2:-mixed}"
+                shift 2
+                ;;
+            --limit)
+                limit="${2:-$AWM_FIND_DEFAULT_LIMIT}"
+                shift 2
+                ;;
+            --session)
+                sid="${2:-$sid}"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    [[ -n "$sid" ]] || {
+        printf '[]'
+        return 1
+    }
+
+    dir=$(_awm_session_dir "$sid")
+    tmpfile="$(mktemp "${TMPDIR:-/tmp}/awm-find.XXXXXX")"
+
+    if [[ "$kind" == "mixed" || "$kind" == "discovery" ]]; then
+        disc_file=$(_awm_discoveries_file "$sid")
+        if [[ -f "$disc_file" ]]; then
+            while IFS= read -r content; do
+                [[ -n "$content" ]] || continue
+                score=$(_awm_search_score "$query" "$content")
+                [[ "$content" == *'"importance":"critical"'* ]] && score=$((score + 20))
+                if [[ $score -gt 0 ]]; then
+                    preview=$(sed -n 's/.*"discovery":"\([^"]*\)".*/\1/p' <<<"$content" | head -n 1)
+                    payload=$(printf '{"kind":"discovery","score":%s,"title":"discovery","preview":"%s","source":"discoveries","session_id":"%s","entry":%s}' \
+                        "$score" \
+                        "$(_awm_json_escape "$preview")" \
+                        "$sid" \
+                        "$content")
+                    printf '%s\t%s\n' "$score" "$payload" >> "$tmpfile"
+                fi
+            done < "$disc_file"
         fi
     fi
 
-    # Build summary
-    printf '{"session_id":"%s","discoveries":%s,"progress":%s,"checkpoints":%s,"categories":%s}' \
-        "$_AWM_SESSION_ID" "$discoveries" "$progress" "$checkpoints" "$categories"
-}
-
-# @pre: active session
-# @post: none (read-only)
-# @returns: context optimized for sub-agent
-#
-# Generate a context package for spawning a sub-agent.
-# Includes essential state without full history.
-#
-# Usage: ctx=$(awm_context_for "subtask_name")
-# Example: ctx=$(awm_context_for "validate-config")
-awm_context_for() {
-    local subtask="${1:-subtask}"
-
-    if [[ -z "$_AWM_SESSION_ID" ]]; then
-        printf '{"error":"no active session"}'
-        return 1
-    fi
-
-    local dir
-    dir=$(_awm_session_dir)
-
-    # Include: discoveries, relevant checkpoints, parent session info
-    local discoveries="[]"
-    if [[ -f "${dir}/logs/discoveries.jsonl" ]]; then
-        discoveries=$(awm_recent "discoveries" 20)
-    fi
-
-    # Include inherited discoveries if present
-    local inherited="[]"
-    if [[ -f "${dir}/logs/inherited_discoveries.jsonl" ]]; then
-        inherited="["
-        local first=true
-        while IFS= read -r line; do
-            [[ -z "$line" ]] && continue
-            $first || inherited+=","
-            first=false
-            inherited+="$line"
-        done < "${dir}/logs/inherited_discoveries.jsonl"
-        inherited+="]"
-    fi
-
-    # Key checkpoints only
-    local checkpoints="{}"
-    if [[ -d "${dir}/data" ]]; then
-        checkpoints="{"
-        local first=true
+    if [[ "$kind" == "mixed" || "$kind" == "checkpoint" ]]; then
         for file in "${dir}/data"/*; do
             [[ -f "$file" ]] || continue
-            local key="${file##*/}"
-            # Skip progress keys and large files
-            [[ "$key" == progress:* ]] && continue
-            local size
-            size=$(_awm_file_size "$file")
-            [[ $size -gt 1024 ]] && continue
-
-            local value
-            value=$(<"$file")
-            local escaped_key escaped_val
-            escaped_key=$(_awm_json_escape "$key")
-            escaped_val=$(_awm_json_escape "$value")
-            $first || checkpoints+=","
-            first=false
-            checkpoints+="\"${escaped_key}\":\"${escaped_val}\""
+            key="${file##*/}"
+            value=$(head -c 512 "$file")
+            content="${key} ${value}"
+            score=$(_awm_search_score "$query" "$content")
+            if [[ $score -gt 0 ]]; then
+                payload=$(printf '{"kind":"checkpoint","score":%s,"title":"%s","preview":"%s","source":"data/%s","session_id":"%s","key":"%s"}' \
+                    "$score" \
+                    "$(_awm_json_escape "$key")" \
+                    "$(_awm_json_escape "$value")" \
+                    "$(_awm_json_escape "$key")" \
+                    "$sid" \
+                    "$(_awm_json_escape "$key")")
+                printf '%s\t%s\n' "$score" "$payload" >> "$tmpfile"
+            fi
         done
-        checkpoints+="}"
     fi
 
-    local escaped_subtask
-    escaped_subtask=$(_awm_json_escape "$subtask")
-
-    printf '{"parent_session":"%s","subtask":"%s","discoveries":%s,"inherited":%s,"checkpoints":%s}' \
-        "$_AWM_SESSION_ID" "$escaped_subtask" "$discoveries" "$inherited" "$checkpoints"
-}
-
-# =============================================================================
-# MEMORY MANAGEMENT
-# =============================================================================
-
-# @pre: none (can be called without active session to compress all)
-# @post: old entries archived, logs compressed
-# @returns: 0
-#
-# Compress old memory entries to reduce storage and context cost.
-# Entries older than AWM_COMPRESS_AGE are summarized and archived.
-#
-# Usage: awm_compress
-awm_compress() {
-    local session_id="${1:-$_AWM_SESSION_ID}"
-
-    if [[ -z "$session_id" ]]; then
-        _awm_log error "awm_compress: no session specified"
-        return 1
+    if [[ "$kind" == "mixed" || "$kind" == "log" ]]; then
+        for log_file in "${dir}/logs/"*.jsonl; do
+            [[ -f "$log_file" ]] || continue
+            category=$(basename "$log_file" .jsonl)
+            [[ "$category" == "discoveries" ]] && continue
+            while IFS= read -r content; do
+                [[ -n "$content" ]] || continue
+                score=$(_awm_search_score "$query" "${category} ${content}")
+                [[ "$content" == *'"importance":"critical"'* ]] && score=$((score + 10))
+                if [[ $score -gt 0 ]]; then
+                    preview=$(sed -n 's/.*"msg":"\([^"]*\)".*/\1/p' <<<"$content" | head -n 1)
+                    [[ -n "$preview" ]] || preview="$content"
+                    payload=$(printf '{"kind":"log","score":%s,"title":"%s","preview":"%s","source":"logs/%s.jsonl","session_id":"%s","category":"%s","entry":%s}' \
+                        "$score" \
+                        "$(_awm_json_escape "$category")" \
+                        "$(_awm_json_escape "${preview:0:256}")" \
+                        "$(_awm_json_escape "$category")" \
+                        "$sid" \
+                        "$(_awm_json_escape "$category")" \
+                        "$content")
+                    printf '%s\t%s\n' "$score" "$payload" >> "$tmpfile"
+                fi
+            done < "$log_file"
+        done
     fi
 
-    local dir
-    dir=$(_awm_session_dir "$session_id")
-
-    if [[ ! -d "${dir}/logs" ]]; then
+    if [[ ! -s "$tmpfile" ]]; then
+        rm -f "$tmpfile" 2>/dev/null
+        printf '[]'
         return 0
     fi
 
-    local now
-    now=$(_awm_epoch)
-    local cutoff=$((now - AWM_COMPRESS_AGE))
-
-    # Compress each log file
-    for log_file in "${dir}/logs"/*.jsonl; do
-        [[ -f "$log_file" ]] || continue
-        [[ "$log_file" == *discoveries.jsonl ]] && continue  # Never compress discoveries
-
-        local category="${log_file##*/}"
-        category="${category%.jsonl}"
-
-        _awm_compress_log "$category" "$session_id"
-    done
-
-    _awm_log info "awm_compress: compressed session $session_id"
+    _awm_select_top_results "$tmpfile" "$limit" "$query"
+    rm -f "$tmpfile" 2>/dev/null
 }
 
-# Internal: compress a single log category
+awm_context_for() {
+    local task="${1:-subtask}"
+    shift || true
+    local max_tokens=0
+    local format="json"
+    local include="discoveries,progress,checkpoints,logs"
+    local discoveries='[]'
+    local progress='{}'
+    local checkpoints='[]'
+    local logs='[]'
+    local related='[]'
+    local summary='{}'
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --tokens)
+                max_tokens="${2:-0}"
+                shift 2
+                ;;
+            --format)
+                format="${2:-json}"
+                shift 2
+                ;;
+            --include)
+                include="${2:-$include}"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    [[ -n "$_AWM_SESSION_ID" ]] || {
+        printf '{"error":"no active session"}'
+        return 1
+    }
+
+    if [[ "$max_tokens" -eq 0 ]]; then
+        if declare -F awm_budget_remaining >/dev/null 2>&1; then
+            max_tokens=$(awm_budget_remaining 2>/dev/null || printf '%s' "$AWM_CONTEXT_DEFAULT_TOKENS")
+        else
+            max_tokens="$AWM_CONTEXT_DEFAULT_TOKENS"
+        fi
+    fi
+
+    if [[ "$include" == *discoveries* ]]; then
+        discoveries=$(awm_recent "discoveries" "$AWM_CONTEXT_DISCOVERY_LIMIT")
+    fi
+    if [[ "$include" == *progress* ]]; then
+        progress=$(_awm_progress_summary_json "$_AWM_SESSION_ID")
+    fi
+    if [[ "$include" == *checkpoints* ]]; then
+        checkpoints=$(awm_find "$task" --kind checkpoint --limit 6)
+    fi
+    if [[ "$include" == *logs* ]]; then
+        logs=$(awm_find "$task" --kind log --limit "$AWM_CONTEXT_LOG_LIMIT")
+    fi
+    related=$(awm_find "$task" --kind mixed --limit 6)
+    summary=$(awm_summary --tokens "$max_tokens")
+
+    if [[ "$format" == "prompt" ]]; then
+        _awm_build_prompt_context "$task" "$discoveries" "$progress" "$checkpoints" "$logs" "$related" "$summary"
+        return 0
+    fi
+
+    printf '{"task":"%s","session_id":"%s","max_tokens":%s,"discoveries":%s,"progress":%s,"checkpoints":%s,"logs":%s,"related":%s,"summary":%s}' \
+        "$(_awm_json_escape "$task")" \
+        "$_AWM_SESSION_ID" \
+        "$max_tokens" \
+        "$discoveries" \
+        "$progress" \
+        "$checkpoints" \
+        "$logs" \
+        "$related" \
+        "$summary"
+}
+
+# =============================================================================
+# MANAGEMENT AND INSPECTION
+# =============================================================================
+
+awm_status() {
+    local sid="${1:-$_AWM_SESSION_ID}"
+    local dir discoveries_count handoff_count checkpoint_count log_count token_estimate manifest status namespace backend schema_version
+
+    [[ -n "$sid" ]] || {
+        printf '{"error":"no active session"}'
+        return 1
+    }
+
+    dir=$(_awm_session_dir "$sid")
+    manifest=$(_awm_manifest_path "$sid")
+    status=$(_awm_manifest_field "$sid" status)
+    namespace=$(_awm_manifest_field "$sid" namespace)
+    backend=$(_awm_manifest_field "$sid" backend)
+    schema_version=$(_awm_manifest_number_field "$sid" schema_version)
+    [[ -z "$schema_version" ]] && schema_version=1
+
+    discoveries_count=$(_awm_line_count "$(_awm_discoveries_file "$sid")")
+    handoff_count=$(find "${dir}/handoffs" -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
+    checkpoint_count=$(find "${dir}/data" -type f 2>/dev/null | wc -l | tr -d ' ')
+    log_count=$(find "${dir}/logs" -type f -name '*.jsonl' 2>/dev/null | wc -l | tr -d ' ')
+    token_estimate=$(if [[ "$sid" == "$_AWM_SESSION_ID" ]]; then awm_token_estimate 2>/dev/null; else _awm_with_session "$sid" awm_token_estimate 2>/dev/null; fi)
+
+    printf '{"session_id":"%s","schema_version":%s,"status":"%s","namespace":"%s","backend":"%s","manifest":"%s","discoveries":%s,"checkpoints":%s,"handoffs":%s,"logs":%s,"token_estimate":%s}' \
+        "$sid" \
+        "$schema_version" \
+        "$(_awm_json_escape "$status")" \
+        "$(_awm_json_escape "$namespace")" \
+        "$(_awm_json_escape "${backend:-file}")" \
+        "$(_awm_json_escape "$manifest")" \
+        "$discoveries_count" \
+        "${checkpoint_count:-0}" \
+        "${handoff_count:-0}" \
+        "${log_count:-0}" \
+        "${token_estimate:-0}"
+}
+
+awm_doctor() {
+    local sid="${1:-$_AWM_SESSION_ID}"
+    local dir manifest issues="[" first=1 schema_version layout_ok=1
+
+    [[ -n "$sid" ]] || {
+        printf '{"error":"no active session"}'
+        return 1
+    }
+
+    dir=$(_awm_session_dir "$sid")
+    manifest=$(_awm_manifest_path "$sid")
+    schema_version=$(_awm_manifest_number_field "$sid" schema_version)
+    [[ -z "$schema_version" ]] && schema_version=1
+
+    for required in "$manifest" "${dir}/data" "${dir}/logs" "${dir}/checkpoints" "${dir}/handoffs" "${dir}/index" "${dir}/journal"; do
+        if [[ ! -e "$required" ]]; then
+            layout_ok=0
+            [[ $first -eq 1 ]] || issues+=","
+            first=0
+            issues+="\"missing:${required}\""
+        fi
+    done
+    if [[ "$schema_version" -lt "$AWM_SCHEMA_VERSION" ]]; then
+        [[ $first -eq 1 ]] || issues+=","
+        first=0
+        issues+="\"schema_outdated:${schema_version}\""
+    fi
+    issues+="]"
+
+    printf '{"session_id":"%s","schema_version":%s,"expected_schema":%s,"layout_ok":%s,"lock_strategy":"%s","backend":"%s","issues":%s}' \
+        "$sid" \
+        "$schema_version" \
+        "$AWM_SCHEMA_VERSION" \
+        "$([[ $layout_ok -eq 1 ]] && echo true || echo false)" \
+        "$(_awm_lock_strategy)" \
+        "$(_awm_json_escape "${_AWM_ACTIVE_BACKEND:-$(_awm_manifest_field "$sid" backend)}")" \
+        "$issues"
+}
+
+awm_migrate() {
+    local target="${1:-$_AWM_SESSION_ID}"
+    local sid count=0
+
+    if [[ "$target" == "--all" ]]; then
+        while IFS= read -r sid; do
+            [[ -n "$sid" ]] || continue
+            awm_migrate "$sid" >/dev/null || return 1
+            count=$((count + 1))
+        done < <(awm_list_sessions)
+        printf '%s' "$count"
+        return 0
+    fi
+
+    [[ -n "$target" ]] || {
+        _awm_log error "awm_migrate: session_id or --all required"
+        return 1
+    }
+
+    local dir manifest name parent status namespace model backend created_at created_epoch discoveries_old discoveries_new
+    dir=$(_awm_find_session_dir "$target") || {
+        _awm_log error "awm_migrate: session not found: $target"
+        return 1
+    }
+    _AWM_SESSION_DIR="$dir"
+
+    _awm_ensure_session_layout "$target" || return 1
+    manifest="${dir}/manifest.json"
+    name=$(_awm_manifest_field "$target" name)
+    parent=$(_awm_manifest_field "$target" parent_session)
+    status=$(_awm_manifest_field "$target" status)
+    namespace=$(_awm_manifest_field "$target" namespace)
+    model=$(_awm_manifest_field "$target" model)
+    backend=$(_awm_manifest_field "$target" backend)
+    created_at=$(_awm_manifest_field "$target" created_at)
+    created_epoch=$(_awm_manifest_number_field "$target" created_epoch)
+    [[ -n "$status" ]] || status="active"
+    [[ -n "$backend" ]] || backend="file"
+
+    discoveries_old="${dir}/logs/discoveries.jsonl"
+    discoveries_new="${dir}/discoveries.jsonl"
+    if [[ ! -s "$discoveries_new" && -f "$discoveries_old" ]]; then
+        cp -f "$discoveries_old" "$discoveries_new" 2>/dev/null || true
+    elif [[ ! -s "$discoveries_old" && -f "$discoveries_new" ]]; then
+        cp -f "$discoveries_new" "$discoveries_old" 2>/dev/null || true
+    fi
+
+    _awm_update_manifest "$target" "$status" "$created_at" "$created_epoch" "$name" "$parent" "$namespace" "$model" "$backend" || return 1
+    _awm_journal_write "$target" "migrate" "{\"schema_version\":${AWM_SCHEMA_VERSION}}"
+    printf '%s' "$target"
+}
+
+awm_compress() {
+    local session_id="${1:-$_AWM_SESSION_ID}"
+    local dir log_file category
+
+    [[ -n "$session_id" ]] || {
+        _awm_log error "awm_compress: no session specified"
+        return 1
+    }
+
+    dir=$(_awm_session_dir "$session_id")
+    for log_file in "${dir}/logs/"*.jsonl; do
+        [[ -f "$log_file" ]] || continue
+        category=$(basename "$log_file" .jsonl)
+        [[ "$category" == "discoveries" ]] && continue
+        _awm_compress_log "$category" "$session_id"
+    done
+    return 0
+}
+
 _awm_compress_log() {
     local category="$1"
     local session_id="${2:-$_AWM_SESSION_ID}"
+    local dir log_file line_count archive_count keep tmpfile archive_file
 
-    local dir
     dir=$(_awm_session_dir "$session_id")
-    local log_file="${dir}/logs/${category}.jsonl"
-
+    log_file="${dir}/logs/${category}.jsonl"
     [[ -f "$log_file" ]] || return 0
 
-    local line_count
     line_count=$(_awm_line_count "$log_file")
-
     if [[ $line_count -le $AWM_MAX_LOG_ENTRIES ]]; then
         return 0
     fi
 
-    local keep=$((AWM_MAX_LOG_ENTRIES / 2))
-    local archive_count=$((line_count - keep))
+    keep="${AWM_LOG_KEEP_RECENT:-50}"
+    [[ $keep -gt $line_count ]] && keep="$line_count"
+    archive_count=$((line_count - keep))
+    archive_file="${dir}/logs/${category}.archive.jsonl"
+    tmpfile="${log_file}.tmp.$$"
 
-    # Archive old entries
-    local archive_file="${dir}/logs/${category}.archive.jsonl"
     head -n "$archive_count" "$log_file" >> "$archive_file"
-
-    # Keep only recent entries
-    local tmpfile="${log_file}.tmp.$$"
     tail -n "$keep" "$log_file" > "$tmpfile"
     mv -f "$tmpfile" "$log_file"
-
-    _awm_log debug "_awm_compress_log: archived $archive_count entries from $category"
+    _awm_journal_write "$session_id" "compress" "{\"category\":\"$(_awm_json_escape "$category")\",\"archived\":${archive_count}}"
 }
 
-# @pre: active session
-# @post: memory exported to markdown file
-# @returns: 0, prints file path
-#
-# Export session memory to a human-readable markdown file.
-# Useful for handoff to humans or documentation.
-#
-# Usage: awm_export "/path/to/output.md"
-# Example: awm_export "session-report.md"
 awm_export() {
     local output_file="${1:-}"
+    local dir disc_file file key value
 
-    if [[ -z "$_AWM_SESSION_ID" ]]; then
+    [[ -n "$_AWM_SESSION_ID" ]] || {
         _awm_log error "awm_export: no active session"
         return 1
-    fi
+    }
 
-    local dir
     dir=$(_awm_session_dir)
-
-    if [[ -z "$output_file" ]]; then
-        output_file="${dir}/export.md"
-    fi
+    [[ -n "$output_file" ]] || output_file="${dir}/export.md"
+    disc_file=$(_awm_discoveries_file)
 
     {
         printf '# AWM Session Export\n\n'
-        printf '**Session ID:** %s\n' "$_AWM_SESSION_ID"
-        printf '**Exported:** %s\n\n' "$(_awm_iso_timestamp)"
+        printf '- Session ID: `%s`\n' "$_AWM_SESSION_ID"
+        printf '- Exported: `%s`\n' "$(_awm_iso_timestamp)"
+        printf '- Schema Version: `%s`\n\n' "$AWM_SCHEMA_VERSION"
 
-        # Manifest info
-        if [[ -f "${dir}/manifest.json" ]]; then
-            printf '## Session Info\n\n'
-            printf '```json\n'
-            cat "${dir}/manifest.json"
-            printf '\n```\n\n'
-        fi
+        printf '## Status\n\n'
+        awm_status
+        printf '\n\n'
 
-        # Discoveries
-        if [[ -f "${dir}/logs/discoveries.jsonl" ]]; then
-            printf '## Discoveries\n\n'
+        printf '## Discoveries\n\n'
+        if [[ -f "$disc_file" ]]; then
             while IFS= read -r line; do
-                [[ -z "$line" ]] && continue
-                # Extract discovery text
+                [[ -n "$line" ]] || continue
                 if [[ "$line" =~ \"discovery\":\"([^\"]+)\" ]]; then
-                    printf '%s\n' "- ${BASH_REMATCH[1]}"
+                    printf '- %s\n' "${BASH_REMATCH[1]}"
                 fi
-            done < "${dir}/logs/discoveries.jsonl"
-            printf '\n'
+            done < "$disc_file"
         fi
+        printf '\n'
 
-        # Checkpoints
-        if [[ -d "${dir}/data" ]]; then
-            printf '## Checkpoints\n\n'
-            printf '| Key | Value |\n'
-            printf '|-----|-------|\n'
-            for file in "${dir}/data"/*; do
-                [[ -f "$file" ]] || continue
-                local key="${file##*/}"
-                local value
-                value=$(head -c 100 "$file" | tr '\n' ' ')
-                printf '| %s | %s |\n' "$key" "$value"
-            done
-            printf '\n'
-        fi
-
-        # Log summaries
-        printf '## Logs\n\n'
-        for log_file in "${dir}/logs"/*.jsonl; do
-            [[ -f "$log_file" ]] || continue
-            local category="${log_file##*/}"
-            category="${category%.jsonl}"
-            local count
-            count=$(_awm_line_count "$log_file")
-            printf '%s\n' "- **${category}**: ${count} entries"
+        printf '## Checkpoints\n\n'
+        printf '| Key | Value |\n|---|---|\n'
+        for file in "${dir}/data"/*; do
+            [[ -f "$file" ]] || continue
+            key="${file##*/}"
+            value=$(head -c 120 "$file" | tr '\n' ' ')
+            printf '| %s | %s |\n' "$key" "$value"
         done
+        printf '\n'
 
+        printf '## Summary\n\n'
+        awm_summary
+        printf '\n'
     } > "$output_file"
 
     printf '%s' "$output_file"
 }
 
-# @pre: parent_session exists
-# @post: child session created with inherited state
-# @returns: child session ID
-#
-# Create a sub-agent session that inherits from a parent.
-# Equivalent to awm_init with parent parameter.
-#
-# Usage: child_id=$(awm_inherit "parent_session_id")
-# Example: sub_id=$(awm_inherit "$main_session")
 awm_inherit() {
     local parent_session="$1"
     local name="${2:-child}"
-
-    awm_init "$name" "$parent_session"
+    awm_init "$name" --parent "$parent_session"
 }
 
-# =============================================================================
-# TOKEN BUDGET ESTIMATION
-# =============================================================================
-
-# @pre: active session
-# @post: none (read-only)
-# @returns: estimated token count for full memory read
-#
-# Estimate the token cost of reading back all memory.
-# Helps agents decide when to compress or summarize.
-#
-# Usage: tokens=$(awm_token_estimate)
 awm_token_estimate() {
-    if [[ -z "$_AWM_SESSION_ID" ]]; then
+    local sid="${1:-$_AWM_SESSION_ID}"
+    local dir total_bytes=0 file
+
+    [[ -n "$sid" ]] || {
         printf '0'
         return 1
-    fi
+    }
 
-    local dir
-    dir=$(_awm_session_dir)
-    local total_bytes=0
+    dir=$(_awm_session_dir "$sid")
 
-    # Count all data files
-    if [[ -d "${dir}/data" ]]; then
-        for file in "${dir}/data"/*; do
-            [[ -f "$file" ]] || continue
-            local size
-            size=$(_awm_file_size "$file")
-            total_bytes=$((total_bytes + size))
-        done
-    fi
+    for file in "${dir}/data/"* "${dir}/logs/"*.jsonl "${dir}/discoveries.jsonl"; do
+        [[ -f "$file" ]] || continue
+        total_bytes=$((total_bytes + $(_awm_file_size "$file")))
+    done
 
-    # Count all log files
-    if [[ -d "${dir}/logs" ]]; then
-        for file in "${dir}/logs"/*.jsonl; do
-            [[ -f "$file" ]] || continue
-            local size
-            size=$(_awm_file_size "$file")
-            total_bytes=$((total_bytes + size))
-        done
-    fi
-
-    # Estimate tokens (chars / chars_per_token)
-    local tokens=$((total_bytes / AWM_CHARS_PER_TOKEN))
-    printf '%d' "$tokens"
+    printf '%d' "$((total_bytes / AWM_CHARS_PER_TOKEN))"
 }
 
-# @pre: active session
-# @post: none (read-only)
-# @returns: token estimate for specific read operation
-#
-# Estimate tokens for a specific memory read.
-#
-# Usage: tokens=$(awm_estimate_read "summary")
-# Usage: tokens=$(awm_estimate_read "recent" "errors" 10)
 awm_estimate_read() {
     local operation="$1"
-    shift
+    shift || true
+    local bytes=0 dir file category count key
 
-    local bytes=0
-    local dir
+    [[ -n "$_AWM_SESSION_ID" ]] || {
+        printf '0'
+        return 1
+    }
+
     dir=$(_awm_session_dir)
 
     case "$operation" in
         summary)
-            # Estimate summary size based on discoveries + checkpoints
-            if [[ -f "${dir}/logs/discoveries.jsonl" ]]; then
-                bytes=$(_awm_file_size "${dir}/logs/discoveries.jsonl")
-            fi
-            if [[ -d "${dir}/data" ]]; then
-                for file in "${dir}/data"/*; do
-                    [[ -f "$file" ]] || continue
-                    local size
-                    size=$(_awm_file_size "$file")
-                    [[ $size -gt 256 ]] && size=256  # Truncated
-                    bytes=$((bytes + size + 50))  # +50 for JSON overhead
-                done
-            fi
+            bytes=$(_awm_file_size "$(_awm_discoveries_file)")
+            for file in "${dir}/data/"*; do
+                [[ -f "$file" ]] || continue
+                bytes=$((bytes + $(head -c 256 "$file" | wc -c | tr -d ' ')))
+            done
             ;;
         recent)
-            local category="$1"
-            local count="${2:-10}"
-            local safe_cat="${category//[^a-zA-Z0-9_-]/_}"
-            local log_file="${dir}/logs/${safe_cat}.jsonl"
-            if [[ -f "$log_file" ]]; then
-                # Estimate: avg line length * count
+            category="${1:-log}"
+            count="${2:-10}"
+            file="${dir}/logs/$(_awm_sanitize_name "$category").jsonl"
+            if [[ "$category" == "discoveries" ]]; then
+                file="$(_awm_discoveries_file)"
+            fi
+            if [[ -f "$file" ]]; then
                 local total_size line_count avg_line
-                total_size=$(_awm_file_size "$log_file")
-                line_count=$(_awm_line_count "$log_file")
+                total_size=$(_awm_file_size "$file")
+                line_count=$(_awm_line_count "$file")
                 [[ $line_count -eq 0 ]] && line_count=1
                 avg_line=$((total_size / line_count))
-                bytes=$((avg_line * count + 20))  # +20 for array brackets
+                bytes=$((avg_line * count))
             fi
             ;;
         get)
-            local key="$1"
-            local safe_key="${key//[^a-zA-Z0-9_.-]/_}"
-            local file="${dir}/data/${safe_key}"
-            if [[ -f "$file" ]]; then
-                bytes=$(_awm_file_size "$file")
-            fi
+            key="$(_awm_sanitize_key "${1:-}")"
+            file="${dir}/data/${key}"
+            bytes=$(_awm_file_size "$file")
             ;;
         context_for)
-            # Similar to summary but includes inherited
-            bytes=500  # Base overhead
-            if [[ -f "${dir}/logs/discoveries.jsonl" ]]; then
-                bytes=$((bytes + $(_awm_file_size "${dir}/logs/discoveries.jsonl")))
-            fi
-            if [[ -f "${dir}/logs/inherited_discoveries.jsonl" ]]; then
-                bytes=$((bytes + $(_awm_file_size "${dir}/logs/inherited_discoveries.jsonl")))
-            fi
+            bytes=$((AWM_CONTEXT_DEFAULT_TOKENS * AWM_CHARS_PER_TOKEN))
             ;;
     esac
 
-    local tokens=$((bytes / AWM_CHARS_PER_TOKEN))
-    printf '%d' "$tokens"
+    printf '%d' "$((bytes / AWM_CHARS_PER_TOKEN))"
 }
 
-# =============================================================================
-# SESSION LISTING & CLEANUP
-# =============================================================================
-
-# @pre: none
-# @post: none (read-only)
-# @returns: list of sessions (tab-separated: id, name, status, created_at)
-#
-# List all AWM sessions, optionally filtered by status.
-#
-# Usage: awm_list [--status active|completed]
 awm_list() {
     local filter_status=""
+    local as_json=0
+    local session_dir manifest id content name status created_at namespace first=1
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --status) filter_status="$2"; shift 2 ;;
-            *) shift ;;
+            --status)
+                filter_status="${2:-}"
+                shift 2
+                ;;
+            --active)
+                filter_status="active"
+                shift
+                ;;
+            --completed)
+                filter_status="completed"
+                shift
+                ;;
+            --json)
+                as_json=1
+                shift
+                ;;
+            *)
+                shift
+                ;;
         esac
     done
 
-    local sessions_dir="${AWM_ROOT}/sessions"
-    [[ -d "$sessions_dir" ]] || return 0
+    if [[ $as_json -eq 1 ]]; then
+        printf '['
+    fi
 
-    # Check both root and namespace directories
-    local dirs=("$sessions_dir")
-    for ns_dir in "$sessions_dir"/*/; do
-        [[ -d "$ns_dir" ]] && dirs+=("$ns_dir")
-    done
+    for session_dir in "${AWM_ROOT}/sessions/"* "${AWM_ROOT}/sessions/"*/*; do
+        [[ -d "$session_dir" ]] || continue
+        manifest="${session_dir}/manifest.json"
+        [[ -f "$manifest" ]] || continue
 
-    for base_dir in "${dirs[@]}"; do
-        for session_dir in "$base_dir"/*/; do
-            [[ -d "$session_dir" ]] || continue
-            local manifest="${session_dir}manifest.json"
-            [[ -f "$manifest" ]] || continue
+        id="${session_dir##*/}"
+        content=$(<"$manifest")
+        name=$(sed -n 's/.*"name":"\([^"]*\)".*/\1/p' <<<"$content" | head -n 1)
+        status=$(sed -n 's/.*"status":"\([^"]*\)".*/\1/p' <<<"$content" | head -n 1)
+        created_at=$(sed -n 's/.*"created_at":"\([^"]*\)".*/\1/p' <<<"$content" | head -n 1)
+        namespace=$(sed -n 's/.*"namespace":"\([^"]*\)".*/\1/p' <<<"$content" | head -n 1)
 
-            local id="${session_dir%/}"
-            id="${id##*/}"
+        if [[ -n "$filter_status" && "$status" != "$filter_status" ]]; then
+            continue
+        fi
 
-            # Skip namespace directories
-            [[ -d "${session_dir}sessions" ]] && continue
-
-            local content
-            content=$(<"$manifest")
-
-            local name status created_at
-            [[ "$content" =~ \"name\":\"([^\"]+)\" ]] && name="${BASH_REMATCH[1]}" || name=""
-            [[ "$content" =~ \"status\":\"([^\"]+)\" ]] && status="${BASH_REMATCH[1]}" || status="unknown"
-            [[ "$content" =~ \"created_at\":\"([^\"]+)\" ]] && created_at="${BASH_REMATCH[1]}" || created_at=""
-
-            # Apply filter
-            if [[ -n "$filter_status" && "$status" != "$filter_status" ]]; then
-                continue
-            fi
-
+        if [[ $as_json -eq 1 ]]; then
+            [[ $first -eq 1 ]] || printf ','
+            first=0
+            printf '{"session_id":"%s","name":"%s","status":"%s","created_at":"%s","namespace":"%s"}' \
+                "$id" \
+                "$(_awm_json_escape "$name")" \
+                "$(_awm_json_escape "$status")" \
+                "$(_awm_json_escape "$created_at")" \
+                "$(_awm_json_escape "$namespace")"
+        else
             printf '%s\t%s\t%s\t%s\n' "$id" "$name" "$status" "$created_at"
-        done
+        fi
     done
+
+    [[ $as_json -eq 1 ]] && printf ']'
+    return 0
+}
+
+awm_list_sessions() {
+    awm_list | while IFS=$'\t' read -r sid _; do
+        [[ -n "$sid" ]] && printf '%s\n' "$sid"
+    done
+}
+
+awm_cleanup() {
+    local max_days="7"
+    local now max_seconds cleaned=0 session_dir manifest content created_epoch age
+
+    if [[ $# -gt 0 ]]; then
+        case "$1" in
+            --older-than)
+                max_days="${2:-7}"
+                ;;
+            *)
+                max_days="$1"
+                ;;
+        esac
+    fi
+
+    now=$(_awm_epoch)
+    max_seconds=$((max_days * 86400))
+
+    for session_dir in "${AWM_ROOT}/sessions/"* "${AWM_ROOT}/sessions/"*/*; do
+        [[ -d "$session_dir" ]] || continue
+        manifest="${session_dir}/manifest.json"
+        [[ -f "$manifest" ]] || continue
+        content=$(<"$manifest")
+        [[ "$content" == *'"status":"completed"'* ]] || continue
+        created_epoch=$(sed -n 's/.*"created_epoch":\([0-9][0-9]*\).*/\1/p' <<<"$content" | head -n 1)
+        [[ -n "$created_epoch" ]] || continue
+        age=$((now - created_epoch))
+        if [[ $age -gt $max_seconds ]]; then
+            rm -rf "$session_dir"
+            cleaned=$((cleaned + 1))
+        fi
+    done
+
+    printf '%d' "$cleaned"
+}
+
+awm_check_limits() {
+    local sid="${1:-$_AWM_SESSION_ID}"
+    local dir total_size=0 max_size tokens max_tokens file
+
+    [[ -n "$sid" ]] || return 0
+    dir=$(_awm_session_dir "$sid")
+
+    for file in "${dir}/data/"* "${dir}/logs/"*.jsonl "${dir}/discoveries.jsonl"; do
+        [[ -f "$file" ]] || continue
+        total_size=$((total_size + $(_awm_file_size "$file")))
+    done
+
+    max_size=$((10 * 1024 * 1024))
+    tokens=$(if [[ "$sid" == "$_AWM_SESSION_ID" ]]; then awm_token_estimate; else _awm_with_session "$sid" awm_token_estimate; fi)
+    max_tokens=50000
+
+    [[ $total_size -le $max_size && ${tokens:-0} -le $max_tokens ]]
+}
+
+# =============================================================================
+# HANDOFFS
+# =============================================================================
+
+awm_handoff_prepare() {
+    local target="$1"
+    shift || true
+    local max_tokens=0
+    local format="json"
+    local context open_questions handoff_id handoff_file package budget_remaining status_json
+
+    [[ -n "$_AWM_SESSION_ID" ]] || {
+        _awm_log error "awm_handoff_prepare: no active session"
+        return 1
+    }
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --tokens)
+                max_tokens="${2:-0}"
+                shift 2
+                ;;
+            --format)
+                format="${2:-json}"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    if [[ "$max_tokens" -eq 0 ]]; then
+        if declare -F awm_budget_remaining >/dev/null 2>&1; then
+            max_tokens=$(awm_budget_remaining 2>/dev/null || printf '%s' "$AWM_CONTEXT_DEFAULT_TOKENS")
+        else
+            max_tokens="$AWM_CONTEXT_DEFAULT_TOKENS"
+        fi
+    fi
+
+    context=$(awm_context_for "$target" --tokens "$max_tokens" --format json)
+    open_questions=$(awm_recent "questions" 10)
+    budget_remaining=$(if declare -F awm_budget_remaining >/dev/null 2>&1; then awm_budget_remaining 2>/dev/null; else printf '%s' "$max_tokens"; fi)
+    status_json=$(awm_status)
+    handoff_id="handoff_$(_awm_epoch)_$(_awm_sanitize_name "$target")"
+    handoff_file="$(_awm_handoff_dir)/${handoff_id}.json"
+
+    package=$(printf '{"type":"handoff","handoff_id":"%s","created_at":"%s","parent_session":"%s","parent_agent":"%s","target_agent":"%s","budget_remaining":%s,"provenance":{"schema_version":%s,"namespace":"%s","backend":"%s"},"status":%s,"open_questions":%s,"context":%s}' \
+        "$(_awm_json_escape "$handoff_id")" \
+        "$(_awm_iso_timestamp)" \
+        "$_AWM_SESSION_ID" \
+        "$(_awm_json_escape "$(_awm_current_agent)")" \
+        "$(_awm_json_escape "$target")" \
+        "${budget_remaining:-0}" \
+        "$AWM_SCHEMA_VERSION" \
+        "$(_awm_json_escape "${_AWM_NAMESPACE:-}")" \
+        "$(_awm_json_escape "${_AWM_ACTIVE_BACKEND:-file}")" \
+        "$status_json" \
+        "$open_questions" \
+        "$context")
+
+    _awm_locked_atomic_write "$handoff_file" "$package" || return 1
+    _awm_journal_write "$_AWM_SESSION_ID" "handoff" "$package"
+
+    if [[ "$format" == "prompt" ]]; then
+        printf 'Handoff to %s\n\n%s\n' "$target" "$package"
+    else
+        printf '%s' "$package"
+    fi
+}
+
+awm_handoff_accept() {
+    local handoff_json="$1"
+    local parent_session target_agent namespace session_name
+
+    [[ -n "$handoff_json" ]] || {
+        _awm_log error "awm_handoff_accept: handoff package required"
+        return 1
+    }
+
+    parent_session=$(sed -n 's/.*"parent_session":"\([^"]*\)".*/\1/p' <<<"$handoff_json" | head -n 1)
+    target_agent=$(sed -n 's/.*"target_agent":"\([^"]*\)".*/\1/p' <<<"$handoff_json" | head -n 1)
+    namespace=$(sed -n 's/.*"namespace":"\([^"]*\)".*/\1/p' <<<"$handoff_json" | head -n 1)
+    session_name="${target_agent:-handoff}"
+
+    if [[ -z "$_AWM_SESSION_ID" ]]; then
+        if [[ -n "$namespace" ]]; then
+            awm_namespace "$namespace"
+        fi
+        awm_init "$session_name" --parent "$parent_session" >/dev/null
+    fi
+
+    awm_checkpoint "handoff_parent_session" "$parent_session" --importance high >/dev/null
+    awm_checkpoint "handoff_target_agent" "${target_agent:-}" --importance high >/dev/null
+    awm_checkpoint "handoff_context" "$handoff_json" --importance critical >/dev/null
+    awm_log "handoff" "accepted handoff from ${parent_session:-unknown}" --importance high >/dev/null
+    _awm_journal_write "$_AWM_SESSION_ID" "handoff_accept" "{\"parent_session\":\"$(_awm_json_escape "$parent_session")\"}"
+    printf '%s' "$_AWM_SESSION_ID"
 }
 
 # =============================================================================
 # COMPATIBILITY WRAPPERS
 # =============================================================================
 
-# Session-scoped key/value setter retained for older integration tests.
 awm_set() {
     local sid="$1"
     local key="$2"
@@ -1292,57 +2078,30 @@ awm_set() {
     _awm_with_session "$sid" awm_checkpoint "$key" "$value"
 }
 
-# Append plain text to a named session field.
 awm_append() {
     local sid="$1"
     local key="$2"
     local value="$3"
-    local previous_sid="$_AWM_SESSION_ID"
+    local file
 
-    _AWM_SESSION_ID="$sid"
-    if [[ -z "$_AWM_SESSION_ID" ]]; then
-        _AWM_SESSION_ID="$previous_sid"
-        return 1
-    fi
-
-    local safe_key="${key//[^a-zA-Z0-9_.-]/_}"
-    local dir file
-    dir=$(_awm_session_dir)
-    file="${dir}/data/${safe_key}"
+    file="$(_awm_session_dir "$sid")/data/$(_awm_sanitize_key "$key")"
     _awm_locked_append "$file" "$value"
-    local rc=$?
-    _AWM_SESSION_ID="$previous_sid"
-    return $rc
 }
 
-# Remove a stored key from a session.
 awm_unset() {
     local sid="$1"
     local key="$2"
-    local previous_sid="$_AWM_SESSION_ID"
-    _AWM_SESSION_ID="$sid"
-
-    local safe_key="${key//[^a-zA-Z0-9_.-]/_}"
-    local dir file
-    dir=$(_awm_session_dir)
-    file="${dir}/data/${safe_key}"
-    rm -f "$file"
-    local rc=$?
-    _AWM_SESSION_ID="$previous_sid"
-    return $rc
+    rm -f "$(_awm_session_dir "$sid")/data/$(_awm_sanitize_key "$key")"
 }
 
-# Return snapshot metadata for a named checkpoint.
 awm_get_checkpoint() {
     local sid="$1"
     local checkpoint_name="$2"
-    local file
-    file="$(_awm_session_dir "$sid")/checkpoints/${checkpoint_name}/snapshot.json"
+    local file="$(_awm_session_dir "$sid")/checkpoints/${checkpoint_name}/snapshot.json"
     [[ -f "$file" ]] || return 1
     cat "$file"
 }
 
-# Destroy a session directory entirely.
 awm_destroy() {
     local sid="$1"
     local dir
@@ -1350,104 +2109,136 @@ awm_destroy() {
     rm -rf "$dir" || return 1
     if [[ "$_AWM_SESSION_ID" == "$sid" ]]; then
         _AWM_SESSION_ID=""
+        _AWM_SESSION_DIR=""
     fi
     return 0
 }
 
-# Return only session IDs, one per line.
-awm_list_sessions() {
-    awm_list | while IFS=$'\t' read -r sid _; do
-        [[ -n "$sid" ]] && printf '%s\n' "$sid"
-    done
-}
+# =============================================================================
+# V2 INTEGRATION LAYER
+# =============================================================================
 
-# @pre: none
-# @post: old completed sessions deleted
-# @returns: count of deleted sessions
-#
-# Clean up old completed sessions (default: older than 7 days).
-#
-# Usage: awm_cleanup [days]
-awm_cleanup() {
-    local max_days="${1:-7}"
-    local now
-    now=$(_awm_epoch)
-    local max_seconds=$((max_days * 86400))
-    local cleaned=0
+awm_v2_init() {
+    local model="${1:-auto}"
+    local lib_dir="${BASH_SOURCE%/*}"
 
-    local sessions_dir="${AWM_ROOT}/sessions"
-    [[ -d "$sessions_dir" ]] || { printf '0'; return 0; }
+    [[ $_AWM_V2_INITIALIZED -eq 1 ]] && return 0
 
-    for session_dir in "$sessions_dir"/*/; do
-        [[ -d "$session_dir" ]] || continue
-        local manifest="${session_dir}manifest.json"
-        [[ -f "$manifest" ]] || continue
+    if [[ -z "${_AWM_STORAGE_LOADED:-}" && -f "${lib_dir}/awm_storage.sh" ]]; then
+        # shellcheck source=./awm_storage.sh
+        source "${lib_dir}/awm_storage.sh" 2>/dev/null || _awm_log warn "awm_v2_init: failed to load awm_storage.sh"
+    fi
+    if [[ -z "${_AWM_STREAM_LOADED:-}" && -f "${lib_dir}/awm_stream.sh" ]]; then
+        # shellcheck source=./awm_stream.sh
+        source "${lib_dir}/awm_stream.sh" 2>/dev/null || _awm_log warn "awm_v2_init: failed to load awm_stream.sh"
+    fi
+    if [[ -z "${_AWM_TIERS_LOADED:-}" && -f "${lib_dir}/awm_tiers.sh" ]]; then
+        # shellcheck source=./awm_tiers.sh
+        source "${lib_dir}/awm_tiers.sh" 2>/dev/null || _awm_log warn "awm_v2_init: failed to load awm_tiers.sh"
+    fi
 
-        local content
-        content=$(<"$manifest")
-
-        # Only clean completed sessions
-        [[ "$content" =~ \"status\":\"completed\" ]] || continue
-
-        # Check age
-        local created_epoch=0
-        [[ "$content" =~ \"created_epoch\":([0-9]+) ]] && created_epoch="${BASH_REMATCH[1]}"
-
-        local age=$((now - created_epoch))
-        if [[ $age -gt $max_seconds ]]; then
-            rm -rf "$session_dir"
-            ((cleaned++))
+    if declare -F awm_storage_init >/dev/null 2>&1; then
+        if [[ "${_AWM_ACTIVE_BACKEND:-file}" == "auto" ]]; then
+            awm_storage_init >/dev/null 2>&1 || true
+        else
+            MAINFRAME_STORAGE="${_AWM_ACTIVE_BACKEND:-file}" awm_storage_init >/dev/null 2>&1 || true
         fi
-    done
+    fi
+    declare -F awm_tier_init >/dev/null 2>&1 && awm_tier_init >/dev/null 2>&1 || true
+    declare -F awm_budget_init >/dev/null 2>&1 && awm_budget_init "$model" >/dev/null 2>&1 || true
 
-    printf '%d' "$cleaned"
+    _AWM_V2_INITIALIZED=1
+    return 0
 }
 
-# =============================================================================
-# SAFETY FEATURES
-# =============================================================================
+awm_v2_status() {
+    _awm_deprecate "awm_v2_status" "awm_status"
+    [[ $_AWM_V2_INITIALIZED -eq 0 ]] && awm_v2_init
 
-# @pre: active session
-# @post: none (read-only)
-# @returns: 0 if within limits, 1 if at risk
-#
-# Check if memory usage is approaching configured limits.
-#
-# Usage: awm_check_limits && echo "OK" || echo "At limit"
-awm_check_limits() {
-    if [[ -z "$_AWM_SESSION_ID" ]]; then
-        return 0
+    local storage_status='{}'
+    local tier_stats='{}'
+    local budget_summary='{}'
+
+    declare -F awm_storage_status >/dev/null 2>&1 && storage_status=$(awm_storage_status 2>/dev/null || printf '{}')
+    declare -F awm_tier_stats >/dev/null 2>&1 && tier_stats=$(awm_tier_stats 2>/dev/null || printf '{}')
+    declare -F awm_budget_summary >/dev/null 2>&1 && budget_summary=$(awm_budget_summary 2>/dev/null || printf '{}')
+
+    printf '{"status":%s,"storage":%s,"tiers":%s,"budget":%s}' \
+        "$(awm_status 2>/dev/null || printf '{}')" \
+        "$storage_status" \
+        "$tier_stats" \
+        "$budget_summary"
+}
+
+awm_checkpoint_v2() {
+    local key="$1"
+    local value="$2"
+    local importance="${3:-normal}"
+    _awm_deprecate "awm_checkpoint_v2" "awm_checkpoint"
+    [[ $_AWM_V2_INITIALIZED -eq 0 ]] && awm_v2_init
+
+    if declare -F awm_tier_write >/dev/null 2>&1; then
+        awm_tier_write "$key" "$value" "$importance" >/dev/null 2>&1 || true
     fi
 
-    local dir
-    dir=$(_awm_session_dir)
+    awm_checkpoint "$key" "$value" --importance "$importance"
+}
 
-    # Check total size
-    local total_size=0
-    for file in "${dir}"/{data,logs}/*; do
-        [[ -f "$file" ]] || continue
-        local size
-        size=$(_awm_file_size "$file")
-        total_size=$((total_size + size))
-    done
+awm_get_v2() {
+    local key="$1"
+    local default="${2:-}"
+    local promote="${3:-true}"
+    local result
+    _awm_deprecate "awm_get_v2" "awm_get"
+    [[ $_AWM_V2_INITIALIZED -eq 0 ]] && awm_v2_init
 
-    # Max session size: 10MB
-    local max_size=$((10 * 1024 * 1024))
-    if [[ $total_size -gt $max_size ]]; then
-        _awm_log warn "awm_check_limits: session exceeds 10MB ($total_size bytes)"
-        return 1
+    if declare -F awm_tier_read >/dev/null 2>&1; then
+        result=$(awm_tier_read "$key" "" "$promote" 2>/dev/null || true)
+        if [[ -n "$result" ]]; then
+            if [[ "$result" == ptr://awm/* ]] && declare -F awm_pointer_resolve >/dev/null 2>&1; then
+                awm_pointer_resolve "$result"
+            else
+                printf '%s' "$result"
+            fi
+            return 0
+        fi
     fi
 
-    # Check token estimate
-    local tokens
-    tokens=$(awm_token_estimate)
-    local max_tokens=50000
-    if [[ $tokens -gt $max_tokens ]]; then
-        _awm_log warn "awm_check_limits: estimated tokens exceed 50K ($tokens)"
-        return 1
-    fi
+    awm_get "$key" "$default"
+}
 
-    return 0
+awm_context_v2() {
+    local max_tokens="${1:-0}"
+    local include_cold="${2:-false}"
+    _awm_deprecate "awm_context_v2" "awm_context_for"
+    [[ $_AWM_V2_INITIALIZED -eq 0 ]] && awm_v2_init
+
+    if [[ "$include_cold" == "true" ]]; then
+        awm_context_for "continuation" --tokens "${max_tokens:-0}" --include discoveries,progress,checkpoints,logs
+    else
+        awm_context_for "continuation" --tokens "${max_tokens:-0}" --include discoveries,progress,checkpoints
+    fi
+}
+
+awm_recovery_checkpoint() {
+    _awm_deprecate "awm_recovery_checkpoint" "awm_checkpoint"
+    [[ $_AWM_V2_INITIALIZED -eq 0 ]] && awm_v2_init
+    if declare -F awm_tier_checkpoint >/dev/null 2>&1 && [[ -n "$_AWM_SESSION_ID" ]]; then
+        awm_tier_checkpoint "$_AWM_SESSION_ID" >/dev/null 2>&1 || true
+    fi
+    [[ -n "$_AWM_SESSION_ID" ]] && _awm_snapshot_checkpoint "$_AWM_SESSION_ID" "recovery_$(date +%s)"
+}
+
+awm_recovery_restore() {
+    local session_id="$1"
+    _awm_deprecate "awm_recovery_restore" "awm_resume"
+    [[ $_AWM_V2_INITIALIZED -eq 0 ]] && awm_v2_init
+    awm_resume "$session_id" >/dev/null || return 1
+    if declare -F awm_tier_recover >/dev/null 2>&1; then
+        awm_tier_recover "$session_id"
+    else
+        printf '0'
+    fi
 }
 
 # =============================================================================
@@ -1455,367 +2246,44 @@ awm_check_limits() {
 # =============================================================================
 
 MAINFRAME_AWM_EXPORTS=(
-    # Session Lifecycle
     awm_init
     awm_resume
     awm_close
     awm_namespace
-    # Core Write
+    awm_team_namespace
     awm_checkpoint
     awm_log
     awm_progress
     awm_discovery
-    # Core Read
     awm_get
     awm_recent
     awm_summary
     awm_context_for
-    # Memory Management
+    awm_find
+    awm_handoff_prepare
+    awm_handoff_accept
+    awm_status
+    awm_doctor
+    awm_migrate
     awm_compress
     awm_export
     awm_inherit
-    # Token Estimation
     awm_token_estimate
     awm_estimate_read
-    # Session Management
     awm_list
     awm_cleanup
-    # Safety
     awm_check_limits
-    # AWM v2 API (if loaded)
+    awm_set
+    awm_append
+    awm_unset
+    awm_get_checkpoint
+    awm_destroy
+    awm_list_sessions
     awm_v2_init
     awm_v2_status
+    awm_checkpoint_v2
+    awm_get_v2
+    awm_context_v2
+    awm_recovery_checkpoint
+    awm_recovery_restore
 )
-
-# =============================================================================
-# AWM v2 INTEGRATION LAYER
-# =============================================================================
-# Provides unified access to tiered memory (hot/warm/cold) and multi-backend
-# storage while maintaining backward compatibility with AWM v1 API.
-# =============================================================================
-
-# Flag to track v2 initialization
-_AWM_V2_INITIALIZED=0
-
-# @pre: none
-# @post: AWM v2 subsystems initialized
-# @returns: 0 on success, 1 on failure
-#
-# Initialize AWM v2 components (storage, tiers, streaming).
-# This is called automatically on first v2 operation if not explicitly called.
-#
-# Usage: awm_v2_init [model]
-# Example: awm_v2_init "claude-opus-4"
-awm_v2_init() {
-    local model="${1:-auto}"
-
-    # Prevent double initialization
-    [[ $_AWM_V2_INITIALIZED -eq 1 ]] && return 0
-
-    local lib_dir="${BASH_SOURCE%/*}"
-
-    # Load v2 components (if not already loaded)
-    # shellcheck source=./awm_storage.sh
-    if [[ -z "${_AWM_STORAGE_LOADED:-}" ]]; then
-        source "${lib_dir}/awm_storage.sh" 2>/dev/null || {
-            _awm_log warn "awm_v2_init: failed to load awm_storage.sh"
-        }
-    fi
-
-    # shellcheck source=./awm_stream.sh
-    if [[ -z "${_AWM_STREAM_LOADED:-}" ]]; then
-        source "${lib_dir}/awm_stream.sh" 2>/dev/null || {
-            _awm_log warn "awm_v2_init: failed to load awm_stream.sh"
-        }
-    fi
-
-    # shellcheck source=./awm_tiers.sh
-    if [[ -z "${_AWM_TIERS_LOADED:-}" ]]; then
-        source "${lib_dir}/awm_tiers.sh" 2>/dev/null || {
-            _awm_log warn "awm_v2_init: failed to load awm_tiers.sh"
-        }
-    fi
-
-    # Initialize storage backend (auto-detect best available)
-    if declare -F awm_storage_init &>/dev/null; then
-        awm_storage_init
-    fi
-
-    # Initialize tier system
-    if declare -F awm_tier_init &>/dev/null; then
-        awm_tier_init
-    fi
-
-    # Initialize token budget for model
-    if declare -F awm_budget_init &>/dev/null; then
-        awm_budget_init "$model" >/dev/null
-    fi
-
-    _AWM_V2_INITIALIZED=1
-    _awm_log info "AWM v2 initialized (storage: $(awm_storage_backend 2>/dev/null || echo 'file'))"
-
-    return 0
-}
-
-# @pre: awm_v2_init called (auto-called if needed)
-# @post: none (read-only)
-# @returns: JSON status object with all subsystem states
-#
-# Get comprehensive AWM v2 status including storage, tiers, and budget.
-#
-# Usage: awm_v2_status
-awm_v2_status() {
-    [[ $_AWM_V2_INITIALIZED -eq 0 ]] && awm_v2_init
-
-    local storage_status='{}'
-    local tier_stats='{}'
-    local budget_summary='{}'
-    local session_info='{}'
-
-    # Get storage status
-    if declare -F awm_storage_status &>/dev/null; then
-        storage_status=$(awm_storage_status)
-    fi
-
-    # Get tier statistics
-    if declare -F awm_tier_stats &>/dev/null; then
-        tier_stats=$(awm_tier_stats)
-    fi
-
-    # Get budget summary
-    if declare -F awm_budget_summary &>/dev/null; then
-        budget_summary=$(awm_budget_summary)
-    fi
-
-    # Get current session info
-    if [[ -n "$_AWM_SESSION_ID" ]]; then
-        local tokens
-        tokens=$(awm_token_estimate 2>/dev/null || echo 0)
-        session_info=$(printf '{"session_id":"%s","namespace":"%s","tokens":%d}' \
-            "$_AWM_SESSION_ID" "${_AWM_NAMESPACE:-}" "$tokens")
-    fi
-
-    printf '{"v2_initialized":%s,"storage":%s,"tiers":%s,"budget":%s,"session":%s}' \
-        "$([[ $_AWM_V2_INITIALIZED -eq 1 ]] && echo 'true' || echo 'false')" \
-        "$storage_status" \
-        "$tier_stats" \
-        "$budget_summary" \
-        "$session_info"
-}
-
-# =============================================================================
-# V2 ENHANCED OPERATIONS (Wrappers)
-# =============================================================================
-
-# @pre: active session
-# @post: value stored in appropriate tier based on size/importance
-# @idempotent: yes
-# @returns: 0 on success
-#
-# Enhanced checkpoint with automatic tiering.
-# Small/critical items go to hot tier, large items to cold with pointer.
-#
-# Usage: awm_checkpoint_v2 "key" "value" [importance]
-# Example: awm_checkpoint_v2 "api_response" "$large_json" "high"
-awm_checkpoint_v2() {
-    local key="$1"
-    local value="$2"
-    local importance="${3:-normal}"
-
-    [[ $_AWM_V2_INITIALIZED -eq 0 ]] && awm_v2_init
-
-    # Use tiered storage if available
-    if declare -F awm_tier_write &>/dev/null; then
-        awm_tier_write "$key" "$value" "$importance"
-
-        # Also record in v1 session for compatibility (with pointer if large)
-        if [[ -n "$_AWM_SESSION_ID" ]]; then
-            local tokens
-            tokens=$(awm_estimate_tokens "$value" 2>/dev/null || echo 0)
-            if [[ $tokens -gt 2000 ]]; then
-                # Store pointer in v1 checkpoint
-                local ptr
-                ptr=$(awm_pointer_create "$value" "auto" "{\"importance\":\"$importance\"}" 2>/dev/null)
-                awm_checkpoint "$key" "${ptr:-[LARGE_VALUE]}"
-            else
-                awm_checkpoint "$key" "$value"
-            fi
-        fi
-    else
-        # Fall back to v1
-        awm_checkpoint "$key" "$value"
-    fi
-
-    return 0
-}
-
-# @pre: key exists in some tier or session
-# @post: none (read-only)
-# @returns: value from highest available tier
-#
-# Enhanced get with tier traversal and automatic promotion.
-#
-# Usage: awm_get_v2 "key" [default] [promote]
-# Example: value=$(awm_get_v2 "api_response" "" "true")
-awm_get_v2() {
-    local key="$1"
-    local default="${2:-}"
-    local promote="${3:-true}"
-
-    [[ $_AWM_V2_INITIALIZED -eq 0 ]] && awm_v2_init
-
-    # Try tiered storage first
-    if declare -F awm_tier_read &>/dev/null; then
-        local value
-        value=$(awm_tier_read "$key" "" "$promote")
-        if [[ -n "$value" ]]; then
-            echo "$value"
-            return 0
-        fi
-    fi
-
-    # Fall back to v1 session storage
-    local result
-    result=$(awm_get "$key" "$default")
-
-    # Check if it's a pointer and resolve
-    if [[ "$result" == ptr://awm/* ]] && declare -F awm_pointer_resolve &>/dev/null; then
-        awm_pointer_resolve "$result"
-    else
-        echo "$result"
-    fi
-}
-
-# @pre: active session
-# @post: context generated with budget awareness
-# @returns: JSON context package
-#
-# Enhanced context generation with token budget enforcement.
-#
-# Usage: awm_context_v2 [max_tokens] [include_cold]
-# Example: ctx=$(awm_context_v2 10000 "false")
-awm_context_v2() {
-    local max_tokens="${1:-0}"
-    local include_cold="${2:-false}"
-
-    [[ $_AWM_V2_INITIALIZED -eq 0 ]] && awm_v2_init
-
-    # Get budget if not specified
-    if [[ $max_tokens -eq 0 ]] && declare -F awm_budget_remaining &>/dev/null; then
-        max_tokens=$(awm_budget_remaining)
-    fi
-    [[ $max_tokens -eq 0 ]] && max_tokens=50000
-
-    local context='{'
-    local used_tokens=0
-
-    # 1. Include hot tier (always)
-    context+='"hot":{'
-    local hot_first=true
-    if declare -F awm_hot_keys &>/dev/null; then
-        for key in $(awm_hot_keys 2>/dev/null); do
-            local value
-            value=$(awm_hot_get "$key" 2>/dev/null)
-            local tokens
-            tokens=$(awm_estimate_tokens "$value" 2>/dev/null || echo "${#value}")
-
-            if [[ $((used_tokens + tokens)) -le $max_tokens ]]; then
-                $hot_first || context+=','
-                hot_first=false
-                local escaped_val
-                escaped_val=$(_awm_json_escape "$value")
-                context+="\"$key\":\"$escaped_val\""
-                ((used_tokens += tokens))
-            fi
-        done
-    fi
-    context+='}'
-
-    # 2. Include v1 session discoveries (high priority)
-    local discoveries="[]"
-    if [[ -n "$_AWM_SESSION_ID" ]]; then
-        discoveries=$(awm_recent "discoveries" 20 2>/dev/null || echo "[]")
-    fi
-    context+=",\"discoveries\":$discoveries"
-
-    # 3. Include recent checkpoints from v1
-    local checkpoints='{}'
-    if [[ -n "$_AWM_SESSION_ID" ]]; then
-        local dir
-        dir=$(_awm_session_dir)
-        if [[ -d "${dir}/data" ]]; then
-            checkpoints='{'
-            local cp_first=true
-            for file in "${dir}/data"/*; do
-                [[ -f "$file" ]] || continue
-                local key="${file##*/}"
-                local value
-                value=$(head -c 256 "$file")
-                local tokens
-                tokens=$(awm_estimate_tokens "$value" 2>/dev/null || echo "${#value}")
-
-                if [[ $((used_tokens + tokens)) -le $((max_tokens - 1000)) ]]; then
-                    $cp_first || checkpoints+=','
-                    cp_first=false
-                    local escaped_key escaped_val
-                    escaped_key=$(_awm_json_escape "$key")
-                    escaped_val=$(_awm_json_escape "$value")
-                    checkpoints+="\"${escaped_key}\":\"${escaped_val}\""
-                    ((used_tokens += tokens))
-                fi
-            done
-            checkpoints+='}'
-        fi
-    fi
-    context+=",\"checkpoints\":$checkpoints"
-
-    # 4. Include cold tier pointers if requested
-    if [[ "$include_cold" == "true" ]] && declare -F awm_cold_search &>/dev/null; then
-        context+=",\"cold_available\":true"
-    else
-        context+=",\"cold_available\":false"
-    fi
-
-    # 5. Add metadata
-    context+=",\"_meta\":{\"tokens_used\":$used_tokens,\"tokens_max\":$max_tokens}"
-
-    context+='}'
-
-    echo "$context"
-}
-
-# @pre: active session
-# @post: checkpoint created for crash recovery
-# @returns: 0 on success
-#
-# Create a recovery checkpoint (hot tier + session state).
-#
-# Usage: awm_recovery_checkpoint
-awm_recovery_checkpoint() {
-    [[ $_AWM_V2_INITIALIZED -eq 0 ]] && awm_v2_init
-
-    if declare -F awm_tier_checkpoint &>/dev/null && [[ -n "$_AWM_SESSION_ID" ]]; then
-        awm_tier_checkpoint "$_AWM_SESSION_ID"
-    fi
-
-    return 0
-}
-
-# @pre: session_id exists
-# @post: hot tier restored from checkpoint
-# @returns: number of items recovered
-#
-# Recover from crash using checkpoint.
-#
-# Usage: awm_recovery_restore session_id
-awm_recovery_restore() {
-    local session_id="$1"
-
-    [[ $_AWM_V2_INITIALIZED -eq 0 ]] && awm_v2_init
-
-    if declare -F awm_tier_recover &>/dev/null; then
-        awm_tier_recover "$session_id"
-    else
-        echo 0
-    fi
-}
