@@ -290,19 +290,40 @@ _sandbox_exec_with_limits_and_report() {
 
     # Prepare report file
     local report_file
-    report_file=$(mktemp /tmp/sandbox_report.XXXXXX)
+    report_file=$(mktemp "${TMPDIR:-/tmp}/sandbox_report.XXXXXX")
 
     # Use time command for detailed metrics
     local time_format='{"real":%e,"user":%U,"sys":%S,"maxrss":%M,"exit":%x}'
+    local lib_path
+    lib_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+    local shell_bin="${BASH:-bash}"
+    local -a runner_cmd=(
+        "$shell_bin" -lc
+        'source "$1"; shift; _sandbox_exec_with_limits "$@"'
+        sandbox_exec_report
+        "$lib_path"
+        "$cmd"
+        "${args[@]}"
+    )
+    local -a env_cmd=(
+        env
+        "SANDBOX_MAX_CPU_SECONDS=$SANDBOX_MAX_CPU_SECONDS"
+        "SANDBOX_MAX_MEMORY_MB=$SANDBOX_MAX_MEMORY_MB"
+        "SANDBOX_MAX_FILE_SIZE_MB=$SANDBOX_MAX_FILE_SIZE_MB"
+        "SANDBOX_MAX_PROCESSES=$SANDBOX_MAX_PROCESSES"
+        "SANDBOX_TIMEOUT_SECONDS=$SANDBOX_TIMEOUT_SECONDS"
+        "SANDBOX_MAX_OPEN_FILES=$SANDBOX_MAX_OPEN_FILES"
+        "SANDBOX_STACK_SIZE_MB=$SANDBOX_STACK_SIZE_MB"
+    )
 
     if command -v gtime &>/dev/null; then
         # GNU time on macOS (brew install gnu-time)
         gtime -f "$time_format" -o "$report_file" -- \
-            _sandbox_exec_with_limits "$cmd" "${args[@]}" 2>&1
+            "${env_cmd[@]}" "${runner_cmd[@]}"
     elif /usr/bin/time --version &>/dev/null 2>&1; then
         # GNU time
         /usr/bin/time -f "$time_format" -o "$report_file" -- \
-            _sandbox_exec_with_limits "$cmd" "${args[@]}" 2>&1
+            "${env_cmd[@]}" "${runner_cmd[@]}"
     else
         # Fallback - no detailed metrics available
         _sandbox_exec_with_limits "$cmd" "${args[@]}"

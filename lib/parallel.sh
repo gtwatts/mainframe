@@ -951,29 +951,30 @@ parallel_timeout() {
     # Ensure state directory
     mkdir -p "$PARALLEL_STATE_DIR"
 
-    local tmpfile
-    tmpfile=$(mktemp "$PARALLEL_STATE_DIR/parallel_timeout_XXXXXX")
+    local output_file
+    output_file=$(mktemp "$PARALLEL_STATE_DIR/parallel_timeout_output_XXXXXX")
+    local shell_bin="${BASH:-bash}"
+    local cmd_pid
+    local kill_target
 
-    # Start command in background
-    (
-        local task_start
-        task_start=$(_parallel_now_ms)
-        local output status
-        output=$(eval "$command" 2>&1)
-        status=$?
-        local task_end
-        task_end=$(_parallel_now_ms)
-        local task_duration=$((task_end - task_start))
-        printf '%d\n%d\n%s' "$status" "$task_duration" "$output" > "$tmpfile"
-    ) &
-    local cmd_pid=$!
+    # Run the timed command in its own child shell so watchdog kills cannot
+    # interfere with the caller's shell or the Bats test process.
+    if command -v setsid &>/dev/null; then
+        setsid "$shell_bin" -lc "$command" >"$output_file" 2>&1 &
+        cmd_pid=$!
+        kill_target="-$cmd_pid"
+    else
+        "$shell_bin" -lc "$command" >"$output_file" 2>&1 &
+        cmd_pid=$!
+        kill_target="$cmd_pid"
+    fi
 
     # Start watchdog
     (
         sleep "$seconds"
-        kill -TERM "$cmd_pid" 2>/dev/null
+        kill -TERM -- "$kill_target" 2>/dev/null
         sleep 1
-        kill -KILL "$cmd_pid" 2>/dev/null
+        kill -KILL -- "$kill_target" 2>/dev/null
     ) &
     local watchdog_pid=$!
 
@@ -986,22 +987,13 @@ parallel_timeout() {
     wait "$watchdog_pid" 2>/dev/null
 
     # Read result
-    local status=1
-    local duration=0
+    local status="$wait_status"
     local output=""
     local timed_out=false
 
-    if [[ -f "$tmpfile" ]]; then
-        local content
-        content=$(<"$tmpfile")
-        rm -f "$tmpfile"
-
-        status=$(echo "$content" | head -1)
-        duration=$(echo "$content" | sed -n '2p')
-        output=$(echo "$content" | tail -n +3)
-    else
-        # File doesn't exist = killed before writing
-        timed_out=true
+    if [[ -f "$output_file" ]]; then
+        output=$(<"$output_file")
+        rm -f "$output_file"
     fi
 
     # Check for timeout (SIGTERM=143, SIGKILL=137)
@@ -1014,8 +1006,10 @@ parallel_timeout() {
     local total_duration=$((end_ms - start_ms))
 
     if [[ "$timed_out" == "true" ]]; then
-        printf '{"ok":false,"data":{"results":[{"index":0,"status":"timeout","result":"","duration_ms":%d,"error":"timed out after %ds"}],"total_duration_ms":%d,"succeeded":0,"failed":1},"hint":"Command exceeded timeout of %ds"}' \
-            "$total_duration" "$seconds" "$total_duration" "$seconds"
+        local results_json="["
+        results_json+=$(_parallel_build_entry 0 "timeout" "$output" "$total_duration" "timed out after ${seconds}s")
+        results_json+="]"
+        _parallel_build_result "false" "$results_json" "$total_duration" 0 1 "Command exceeded timeout of ${seconds}s"
         return 124
     fi
 
@@ -1034,7 +1028,7 @@ parallel_timeout() {
     fi
 
     local results_json="["
-    results_json+=$(_parallel_build_entry 0 "$entry_status" "$output" "${duration:-0}" "$error")
+    results_json+=$(_parallel_build_entry 0 "$entry_status" "$output" "$total_duration" "$error")
     results_json+="]"
 
     _parallel_build_result "$ok" "$results_json" "$total_duration" "$succeeded" "$failed"
