@@ -208,6 +208,7 @@ _sandbox_exec_with_limits() {
 
     local timeout_cmd=""
     local use_prlimit=false
+    local set_nproc_limit=true
 
     # Determine available tools
     if command -v prlimit &>/dev/null; then
@@ -216,6 +217,13 @@ _sandbox_exec_with_limits() {
 
     if command -v timeout &>/dev/null; then
         timeout_cmd="timeout --signal=KILL ${SANDBOX_TIMEOUT_SECONDS}s"
+    fi
+
+    # On macOS without prlimit, RLIMIT_NPROC is enforced against the user's
+    # existing process count. Lowering it before invoking an external timeout
+    # wrapper can prevent even trivial commands from spawning on shared runners.
+    if [[ "$use_prlimit" != true && "$(uname -s)" == "Darwin" ]]; then
+        set_nproc_limit=false
     fi
 
     # Record start time for metrics
@@ -252,7 +260,9 @@ _sandbox_exec_with_limits() {
             ulimit -t "$SANDBOX_MAX_CPU_SECONDS" 2>/dev/null || true
             ulimit -v "$((SANDBOX_MAX_MEMORY_MB * 1024))" 2>/dev/null || true
             ulimit -f "$((SANDBOX_MAX_FILE_SIZE_MB * 1024))" 2>/dev/null || true
-            ulimit -u "$SANDBOX_MAX_PROCESSES" 2>/dev/null || true
+            if [[ "$set_nproc_limit" == true ]]; then
+                ulimit -u "$SANDBOX_MAX_PROCESSES" 2>/dev/null || true
+            fi
             ulimit -n "$SANDBOX_MAX_OPEN_FILES" 2>/dev/null || true
             ulimit -s "$((SANDBOX_STACK_SIZE_MB * 1024))" 2>/dev/null || true
 

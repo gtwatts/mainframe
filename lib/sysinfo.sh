@@ -201,12 +201,21 @@ sysinfo_mem_human() {
 
 sysinfo_interfaces() {
     if _sysinfo_is_linux; then
+        local iface
+        local found=1
         for iface in /sys/class/net/*/; do
             iface="${iface%/}"; iface="${iface##*/}"
-            [[ "$iface" != "lo" ]] && echo "$iface"
+            if [[ "$iface" != "lo" ]]; then
+                echo "$iface"
+                found=0
+            fi
         done
+        return "$found"
     elif _sysinfo_is_macos; then
-        ifconfig -l 2>/dev/null | tr ' ' '\n' | grep -v '^lo'
+        local interfaces
+        interfaces=$(ifconfig -l 2>/dev/null | tr ' ' '\n' | grep -v '^lo' || true)
+        [[ -n "$interfaces" ]] || return 1
+        printf '%s\n' "$interfaces"
     else
         echo ""; return 1
     fi
