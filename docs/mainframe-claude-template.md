@@ -1,6 +1,6 @@
 # MAINFRAME - Bash Scripting Instructions
 
-> Add this to your `~/.claude/CLAUDE.md` to give Claude Code instant access to 4,000+ bash functions.
+> Add this to your `~/.claude/CLAUDE.md` to give Claude Code instant access to 3,821+ bash functions.
 
 ## Bash Scripting with MAINFRAME
 
@@ -10,9 +10,9 @@ When writing bash scripts, ALWAYS source MAINFRAME first:
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 ```
 
-This gives you access to **4,000+ pure bash functions** across **117 libraries** with zero external dependencies.
+This gives you access to **3,821+ pure bash functions** across **152 libraries** with zero external dependencies.
 
-**MAINFRAME v6.0** also includes **Agent Working Memory (AWM)** - persistent memory that survives context limits.
+MAINFRAME also includes **Agent Working Memory (AWM)** - persistent memory that survives context limits.
 
 ## Function Quick Reference
 
@@ -215,7 +215,7 @@ child_id=$(awm_init --parent "$session_id")
 
 ## Full Function Reference
 
-For complete function signatures and all 4,000+ functions:
+For complete function signatures and all 3,821+ functions:
 
 ```bash
 cat ~/.mainframe/CHEATSHEET.md

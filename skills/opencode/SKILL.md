@@ -5,11 +5,11 @@ description: "Use when writing bash scripts, shell automation, CLI tools, or any
 
 # OpenCode - Mainframe Integration
 
-Instructions for using Mainframe (4,000+ pure bash functions) with OpenCode AI coding assistant.
+Instructions for using Mainframe (3,821+ pure bash functions) with OpenCode AI coding assistant.
 
 ## Overview
 
-Mainframe provides 4,000+ pure bash functions across 150+ libraries with zero external dependencies. Integrate with OpenCode for high-performance bash scripting without external tool dependencies.
+Mainframe provides 3,821+ pure bash functions across 152 libraries with zero external dependencies. Integrate with OpenCode for high-performance bash scripting without external tool dependencies.
 
 ## Installation
 
@@ -41,7 +41,7 @@ Add to your OpenCode configuration:
     "MAINFRAME_ROOT": "$HOME/.mainframe",
     "PATH": "$HOME/.mainframe/bin:$PATH"
   },
-  "preamble": "When writing bash scripts, always source Mainframe first:\nsource \"${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh\"\n\nMainframe provides 4,000+ pure bash functions. Use instead of jq, sed, awk."
+  "preamble": "When writing bash scripts, always source Mainframe first:\nsource \"${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh\"\n\nMainframe provides 3,821+ pure bash functions. Use instead of jq, sed, awk."
 }
 ```
 
@@ -56,7 +56,7 @@ preamble: |
   When writing bash scripts, always source Mainframe first:
   source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
   
-  Mainframe provides 4,000+ pure bash functions across 150+ libraries.
+  Mainframe provides 3,821+ pure bash functions across 152 libraries.
   Use Mainframe functions instead of external tools like jq, sed, awk.
 ```
 
@@ -455,7 +455,7 @@ mainframe quickref --search "array"   # Search for array functions
 
 ## Reference Files
 
-- `~/.mainframe/CHEATSHEET.md` - All 4,000+ function signatures
+- `~/.mainframe/CHEATSHEET.md` - All 3,821+ function signatures
 - `~/.mainframe/FUNCTIONS.json` - Machine-readable function index
 - `~/.mainframe/DECISION_TREES.md` - "I need X" workflow guidance
 - `~/.mainframe/docs/ORCHESTRATION.md` - Multi-agent coordination

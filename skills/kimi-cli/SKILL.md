@@ -5,11 +5,11 @@ description: "Use when writing bash scripts, shell automation, CLI tools, or any
 
 # Kimi CLI - Mainframe Integration
 
-Instructions for using Mainframe (4,000+ pure bash functions) with Moonshot AI's Kimi CLI.
+Instructions for using Mainframe (3,821+ pure bash functions) with Moonshot AI's Kimi CLI.
 
 ## Overview
 
-Mainframe provides 4,000+ pure bash functions across 150+ libraries with zero external dependencies. When using Kimi CLI for bash scripting tasks, always source Mainframe first to access high-performance utilities (20-72x faster than spawning sed/awk/jq).
+Mainframe provides 3,821+ pure bash functions across 152 libraries with zero external dependencies. When using Kimi CLI for bash scripting tasks, always source Mainframe first to access high-performance utilities (20-72x faster than spawning sed/awk/jq).
 
 ## Installation
 
@@ -358,7 +358,7 @@ mainframe help json_object
 
 ## Reference Files
 
-- `~/.mainframe/CHEATSHEET.md` - All 4,000+ function signatures
+- `~/.mainframe/CHEATSHEET.md` - All 3,821+ function signatures
 - `~/.mainframe/FUNCTIONS.json` - Machine-readable function index
 - `~/.mainframe/DECISION_TREES.md` - "I need X" workflow guidance
 - `~/.mainframe/docs/ORCHESTRATION.md` - Multi-agent coordination

@@ -1,5 +1,5 @@
 ---
-description: Use MAINFRAME pure bash standard library (4,000+ functions) instead of external tools when writing bash scripts, shell automation, or CLI tools.
+description: Use MAINFRAME pure bash standard library (3,821+ functions) instead of external tools when writing bash scripts, shell automation, or CLI tools.
 globs: ["*.sh", "*.bash", "Makefile", "Dockerfile"]
 alwaysApply: false
 ---
@@ -12,7 +12,7 @@ When writing bash scripts, ALWAYS source MAINFRAME first:
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 ```
 
-This gives access to 4,000+ pure bash functions across 150+ libraries. Zero external dependencies.
+This gives access to 3,821+ pure bash functions across 152 libraries. Zero external dependencies.
 
 ## Use MAINFRAME Instead of External Tools
 
@@ -127,7 +127,7 @@ py_summary "$dir"                 # project health overview
 
 ## Reference
 
-### Agent Working Memory (AWM) - v6.0
+### Agent Working Memory (AWM)
 
 Persistent external memory for AI agents with finite context:
 
@@ -147,7 +147,7 @@ awm_restore_checkpoint "$sid" "label"
 awm_close "$sid"
 ```
 
-### Agent IPC - v6.0
+### Agent IPC
 
 Multi-agent coordination via file-based IPC:
 

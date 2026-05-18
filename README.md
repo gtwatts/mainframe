@@ -301,12 +301,17 @@ MAINFRAME works with all AI coding assistants that can execute bash.
 
 | Platform | Integration | Setup |
 |----------|-------------|-------|
+| **Pi** | Tool-aware skill + MAINFRAME wrappers | Load `skills/pi/SKILL.md`; use `mainframe_status`, `mainframe_search`, `mainframe_help`, `mainframe_exec`, and `mainframe_awm` when available |
 | **Claude Code** | Full skill integration | `ln -s ~/.mainframe/skills/claude-code ~/.claude/skills/mainframe-bash` |
-| **Clawdbot** | Config + source | Add to `~/.clawdbot/clawdbot.json` preamble |
+| **OpenAI Codex / Codex CLI** | `AGENTS.md` instructions | Copy or merge `skills/codex/AGENTS.md` into project `AGENTS.md` |
+| **Clawdbot** | Config + source | Add `skills/clawdbot/preamble.md` to `~/.clawdbot/clawdbot.json` preamble |
 | **Cursor** | .mdc rules | `cp ~/.mainframe/skills/cursor/mainframe.mdc .cursor/rules/` |
-| **Aider** | CONVENTIONS.md | Add `read: CONVENTIONS.md` to `.aider.conf.yml` |
-| **OpenCode** | CLAUDE.md | Point at this repo's CLAUDE.md |
+| **Aider** | CONVENTIONS.md | Add `read: ~/.mainframe/skills/aider/CONVENTIONS.md` to `.aider.conf.yml` |
+| **OpenCode** | Project instructions | Load `skills/opencode/SKILL.md` |
+| **Kimi / Google AI CLI** | Project instructions | Load `skills/kimi-cli/SKILL.md` or `skills/google-cli/SKILL.md` |
 | **Custom Agents** | System prompt | Load `skills/vercel-ai-sdk/system-prompt.md` |
+
+See [MAINFRAME for AI CLI and Coding Agents](docs/AI_CLI_INTEGRATIONS.md) for Claude, Codex, Pi, Cursor, Aider, OpenCode, Kimi, Google AI CLI, and custom-agent setup.
 
 ### Token Savings
 

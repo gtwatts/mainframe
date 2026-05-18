@@ -5,7 +5,7 @@ description: "Use when writing bash scripts, shell automation, CLI tools, or any
 
 # MAINFRAME - Pure Bash Standard Library
 
-4,000+ pure bash functions across 117 libraries. Zero external dependencies. 20-72x faster than spawning sed/awk/jq.
+3,821+ pure bash functions across 152 libraries. Zero external dependencies. 20-72x faster than spawning sed/awk/jq.
 
 ## When to Use This Skill
 
@@ -238,7 +238,7 @@ query_string "a=1" "b=2"         # "a=1&b=2"
 
 **Note**: Pure bash HTTP for port 80. HTTPS requires openssl on the system.
 
-### Agent Working Memory (AWM) - NEW in v6.0
+### Agent Working Memory (AWM)
 
 Persistent external memory for AI agents with finite context. Enables agents to write state/discoveries OUTSIDE their context, read back relevant portions, support sub-agent inheritance, and resume sessions after interruption.
 
@@ -271,7 +271,7 @@ awm_export "report.md"            # Export to markdown
 awm_cleanup 7                     # Delete completed sessions >7 days old
 ```
 
-### Multi-Agent IPC - NEW in v6.0
+### Multi-Agent IPC
 
 File-based inter-process communication for multi-agent coordination.
 
