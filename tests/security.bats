@@ -328,7 +328,7 @@ line2")
 @test "sec_scan_dir finds vulnerabilities across multiple files" {
     local result total
     result=$(sec_scan_dir "$FIXTURE_DIR")
-    total=$(printf '%s\n' "$result" | sed -nE 's/.*"total_findings":([0-9]+).*/\1/p' | head -1)
+    total=$(printf '%s\n' "$result" | sed -nE 's/.*"files_scanned":[0-9]+,"total_findings":([0-9]+),"files".*/\1/p' | head -1)
     [[ $total -gt 0 ]]
 }
 
