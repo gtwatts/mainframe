@@ -1025,6 +1025,9 @@ pool_info() {
     local pool_dir
     pool_dir="$(_pool_dir "$name")"
 
+    # Refresh statuses for any workers that exited just before inspection.
+    _pool_cleanup_finished "$name"
+
     local max_workers running pending completed failed
     max_workers=$(cat "$pool_dir/max_workers" 2>/dev/null || echo 0)
     running=$(_pool_running_count "$name")

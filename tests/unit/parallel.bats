@@ -340,7 +340,7 @@ EOF
 }
 
 @test "parallel_timeout: captures output before timeout" {
-    run parallel_timeout 2 "echo partial; sleep 2"
+    run parallel_timeout 2 "echo partial; sleep 5"
     [[ "$status" -eq 124 ]]
     # Should timeout but may have captured partial output
     [[ "$output" == *'timeout'* ]] || [[ "$output" == *'partial'* ]]
