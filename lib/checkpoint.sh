@@ -16,6 +16,21 @@
 [[ -n "${_MAINFRAME_CHECKPOINT_LOADED:-}" ]] && return 0
 readonly _MAINFRAME_CHECKPOINT_LOADED=1
 
+# Portable SHA-256 digest (sha256sum -> shasum -> openssl fallback chain).
+# Shared micro-shim: the declare -F guard means it is defined once per
+# process no matter how many MAINFRAME libraries are sourced.
+if ! declare -F _mainframe_sha256 &>/dev/null; then
+_mainframe_sha256() {
+    if command -v sha256sum &>/dev/null; then
+        sha256sum "$@"
+    elif command -v shasum &>/dev/null; then
+        shasum -a 256 "$@"
+    else
+        openssl dgst -sha256 "$@" | sed 's/^.* //'
+    fi
+}
+fi
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -167,7 +182,7 @@ _checkpoint_hash_file() {
     fi
 
     if type -p sha256sum &>/dev/null; then
-        sha256sum "$file" | cut -d' ' -f1
+        _mainframe_sha256 "$file" | cut -d' ' -f1
     elif type -p shasum &>/dev/null; then
         shasum -a 256 "$file" | cut -d' ' -f1
     elif type -p openssl &>/dev/null; then

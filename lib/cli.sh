@@ -196,7 +196,7 @@ cli::parse() {
         if $found_double_dash; then
             # After --, everything is positional
             _cli_add_positional "$pos_idx" "$arg" && ((pos_idx++)) || true
-            ((i++))
+            ((++i))
             continue
         fi
         
@@ -211,7 +211,7 @@ cli::parse() {
                 ;;
             --)
                 found_double_dash=true
-                ((i++))
+                ((++i))
                 continue
                 ;;
             --*=*)
@@ -240,8 +240,11 @@ cli::parse() {
                 if _cli_is_flag "$opt"; then
                     _CLI_VALUES["$opt"]=true
                 elif _cli_is_option "$opt"; then
-                    if [[ $((i + 1)) -lt ${#args[@]} && "${args[$((i + 1))]}" != -* ]]; then
-                        ((i++))
+                    # Value options consume the next argument unconditionally
+                    # (getopt_long semantics) - required for negative values
+                    # like --count -5
+                    if [[ $((i + 1)) -lt ${#args[@]} ]]; then
+                        ((++i))
                         _cli_set_option "$opt" "${args[$i]}"
                     else
                         cli::error "Option --$opt requires a value"
@@ -266,14 +269,14 @@ cli::parse() {
                     
                     if _cli_is_flag "$long"; then
                         _CLI_VALUES["$long"]=true
-                        ((j++))
+                        ((++j))
                     elif _cli_is_option "$long"; then
                         # Check if value is rest of string or next arg
                         if [[ $((j + 1)) -lt ${#opts} ]]; then
                             _cli_set_option "$long" "${opts:$((j + 1))}"
                             break
                         elif [[ $((i + 1)) -lt ${#args[@]} ]]; then
-                            ((i++))
+                            ((++i))
                             _cli_set_option "$long" "${args[$i]}"
                         else
                             cli::error "Option -$short requires a value"
@@ -287,7 +290,9 @@ cli::parse() {
                 _cli_add_positional "$pos_idx" "$arg" && ((pos_idx++)) || true
                 ;;
         esac
-        ((i++))
+        # Pre-increment: ((i++)) returns status 1 when i==0, which aborts
+        # under errexit (bats, set -e scripts) mid-function
+        ((++i))
     done
     
     # Export CLI_* variables to caller's scope
@@ -1248,7 +1253,7 @@ cli::complete_zsh() {
         else
             printf "    '%d::%s:_files' \\\\\n" "$pos_idx" "$desc"
         fi
-        ((pos_idx++))
+        ((++pos_idx))
     done
 
     # Subcommands

@@ -41,19 +41,19 @@ RESILIENCE_BULKHEAD_MAX="${RESILIENCE_BULKHEAD_MAX:-10}"
 # =============================================================================
 
 # Circuit breaker state: name -> "state:failures:successes:last_failure_time"
-declare -A _RESILIENCE_CB_STATE=()
-declare -A _RESILIENCE_CB_CONFIG=()
+declare -gA _RESILIENCE_CB_STATE=()
+declare -gA _RESILIENCE_CB_CONFIG=()
 
 # Bulkhead state: name -> "current:max"
-declare -A _RESILIENCE_BULKHEAD_STATE=()
-declare -A _RESILIENCE_BULKHEAD_WAITERS=()
+declare -gA _RESILIENCE_BULKHEAD_STATE=()
+declare -gA _RESILIENCE_BULKHEAD_WAITERS=()
 
 # Rate limiter state: name -> "count:window_start"
-declare -A _RESILIENCE_RATE_STATE=()
-declare -A _RESILIENCE_RATE_CONFIG=()
+declare -gA _RESILIENCE_RATE_STATE=()
+declare -gA _RESILIENCE_RATE_CONFIG=()
 
 # Health check registry: name -> "function:interval:last_check:last_status"
-declare -A _RESILIENCE_HEALTH_CHECKS=()
+declare -gA _RESILIENCE_HEALTH_CHECKS=()
 
 # =============================================================================
 # INTERNAL HELPERS
@@ -1362,7 +1362,7 @@ fallback_default() {
 }
 
 # Cache for fallback_cache
-declare -A _RESILIENCE_FALLBACK_CACHE=()
+declare -gA _RESILIENCE_FALLBACK_CACHE=()
 
 # @pre: command is non-empty
 # @post: command output returned or cached value on failure

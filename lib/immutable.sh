@@ -27,12 +27,12 @@ MAINFRAME_IMMUTABLE_STRICT="${MAINFRAME_IMMUTABLE_STRICT:-1}"
 MAINFRAME_IMMUTABLE_JSON="${MAINFRAME_IMMUTABLE_JSON:-1}"
 
 # Namespace for structure identifiers
-declare -A _MAINFRAME_IMAP_DATA 2>/dev/null || true
-declare -A _MAINFRAME_IMAP_META 2>/dev/null || true
-declare -A _MAINFRAME_ILIST_DATA 2>/dev/null || true
-declare -A _MAINFRAME_ILIST_META 2>/dev/null || true
-declare -A _MAINFRAME_ISET_DATA 2>/dev/null || true
-declare -A _MAINFRAME_ISET_META 2>/dev/null || true
+declare -gA _MAINFRAME_IMAP_DATA 2>/dev/null || true
+declare -gA _MAINFRAME_IMAP_META 2>/dev/null || true
+declare -gA _MAINFRAME_ILIST_DATA 2>/dev/null || true
+declare -gA _MAINFRAME_ILIST_META 2>/dev/null || true
+declare -gA _MAINFRAME_ISET_DATA 2>/dev/null || true
+declare -gA _MAINFRAME_ISET_META 2>/dev/null || true
 
 # Counter for unique structure IDs
 _MAINFRAME_IMMUT_COUNTER=0
@@ -45,8 +45,17 @@ _MAINFRAME_IMMUT_COUNTER=0
 # @returns: unique ID string
 _immut_gen_id() {
     local prefix="${1:-immut}"
-    ((_MAINFRAME_IMMUT_COUNTER++))
-    printf '%s_%d_%d' "$prefix" "$$" "$_MAINFRAME_IMMUT_COUNTER"
+    # IDs are generated inside command-substitution subshells, so a shell
+    # counter can never propagate back (every call would return the same
+    # id). Use a time-based uniqueness component instead.
+    local uniq
+    if [[ -n "${EPOCHREALTIME:-}" ]]; then
+        uniq="${EPOCHREALTIME//[^0-9]/}"          # microseconds, bash >= 5
+    else
+        uniq=$(date +%s%N 2>/dev/null)             # GNU nanoseconds
+        [[ "$uniq" =~ ^[0-9]+$ ]] || uniq="$(date +%s)$RANDOM$$"
+    fi
+    printf '%s_%d_%s' "$prefix" "$$" "$uniq"
 }
 
 # Log message (respects quiet mode)

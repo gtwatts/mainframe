@@ -1529,7 +1529,7 @@ phonetic_distance() {
 # =============================================================================
 
 # QWERTY keyboard layout for distance calculations
-declare -A _QWERTY_POS
+declare -gA _QWERTY_POS
 _QWERTY_POS=(
     [q]="0,0" [w]="1,0" [e]="2,0" [r]="3,0" [t]="4,0" [y]="5,0" [u]="6,0" [i]="7,0" [o]="8,0" [p]="9,0"
     [a]="0,1" [s]="1,1" [d]="2,1" [f]="3,1" [g]="4,1" [h]="5,1" [j]="6,1" [k]="7,1" [l]="8,1"

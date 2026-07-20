@@ -41,6 +41,22 @@
 [[ -n "${_MAINFRAME_RAG_LOADED:-}" ]] && return 0
 readonly _MAINFRAME_RAG_LOADED=1
 
+
+# Portable SHA-256 digest (sha256sum -> shasum -> openssl fallback chain).
+# Shared micro-shim: the declare -F guard means it is defined once per
+# process no matter how many MAINFRAME libraries are sourced.
+if ! declare -F _mainframe_sha256 &>/dev/null; then
+_mainframe_sha256() {
+    if command -v sha256sum &>/dev/null; then
+        sha256sum "$@"
+    elif command -v shasum &>/dev/null; then
+        shasum -a 256 "$@"
+    else
+        openssl dgst -sha256 "$@" | sed 's/^.* //'
+    fi
+}
+fi
+
 # =============================================================================
 # DEPENDENCIES
 # =============================================================================
@@ -132,7 +148,7 @@ _rag_generate_id() {
     local hash_input="${source}:${chunk_idx}:${content:0:100}"
 
     if command -v sha256sum &>/dev/null; then
-        printf '%s' "$hash_input" | sha256sum | cut -c1-16
+        printf '%s' "$hash_input" | _mainframe_sha256 | cut -c1-16
     elif command -v shasum &>/dev/null; then
         printf '%s' "$hash_input" | shasum -a 256 | cut -c1-16
     elif command -v openssl &>/dev/null; then

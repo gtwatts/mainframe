@@ -17,7 +17,7 @@ readonly _MAINFRAME_ASYNC_LOADED=1
 # =============================================================================
 
 # Array to track background jobs
-declare -a _MAINFRAME_ASYNC_JOBS=()
+declare -ga _MAINFRAME_ASYNC_JOBS=()
 
 # Register a job
 _async_register_job() {
@@ -370,7 +370,7 @@ coproc_stop() {
 
 # Debounce: execute only after delay without new calls
 # Usage: debounce "my_func" 2  (wait 2 seconds)
-declare -A _MAINFRAME_DEBOUNCE_PIDS=()
+declare -gA _MAINFRAME_DEBOUNCE_PIDS=()
 
 debounce() {
     local func="$1"
@@ -393,7 +393,7 @@ debounce() {
 
 # Throttle: execute at most once per interval
 # Usage: throttle "my_func" 2
-declare -A _MAINFRAME_THROTTLE_LAST=()
+declare -gA _MAINFRAME_THROTTLE_LAST=()
 
 throttle() {
     local func="$1"
