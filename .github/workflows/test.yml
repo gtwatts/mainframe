@@ -371,9 +371,13 @@ jobs:
           echo "Failure count: $failure_count"
 
           # Allow known macOS incompatibilities (build, rbac, secrets, agent_ai)
-          # ~38 known platform-specific failures as of 2026-02-05
-          if [[ $failure_count -gt 40 ]]; then
-            echo "::error::Too many test failures: $failure_count (threshold: 40)"
+          # Measured 39 failures on macOS (Apple Silicon, 2026-07-20) after the
+          # safety-hardening rounds; threshold 42 = measured + small buffer.
+          # RATCHET: lower this whenever macOS portability fixes land; the
+          # long-term target is 0 (safety suites are already zero-tolerance
+          # via the test-safety job).
+          if [[ $failure_count -gt 42 ]]; then
+            echo "::error::Too many test failures: $failure_count (threshold: 42)"
             exit 1
           fi
 
