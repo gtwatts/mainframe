@@ -41,7 +41,7 @@ teardown() {
 
 @test "agent_loop_start creates agent with goal" {
     local result
-    result=$(agent_loop_start "test_basic" --goal "Test goal")
+    result=$(agent_loop_start "test_basic" --goal "Test goal") || true
     
     [[ "$result" == *'"success":true'* ]]
     [[ "$result" == *'"name":"test_basic"'* ]]
@@ -51,7 +51,7 @@ teardown() {
 
 @test "agent_loop_start validates goal requirement" {
     local result
-    result=$(agent_loop_start "test_no_goal")
+    result=$(agent_loop_start "test_no_goal") || true
     
     [[ "$result" == *'"success":false'* ]]
     [[ "$result" == *'error'* ]]
@@ -59,7 +59,7 @@ teardown() {
 
 @test "agent_loop_start validates agent name" {
     local result
-    result=$(agent_loop_start "invalid/name" --goal "Test")
+    result=$(agent_loop_start "invalid/name" --goal "Test") || true
     
     [[ "$result" == *'"success":false'* ]]
 }
@@ -68,7 +68,7 @@ teardown() {
     agent_loop_start "test_status" --goal "Test status" --priority high
     
     local result
-    result=$(agent_loop_status "test_status")
+    result=$(agent_loop_status "test_status") || true
     
     [[ "$result" == *'"name":"test_status"'* ]]
     [[ "$result" == *'"state"'* ]]
@@ -76,7 +76,7 @@ teardown() {
 
 @test "agent_loop_status returns error for non-existent agent" {
     local result
-    result=$(agent_loop_status "nonexistent_agent_xyz")
+    result=$(agent_loop_status "nonexistent_agent_xyz") || true
     
     [[ "$result" == *'"success":false'* ]]
 }
@@ -86,7 +86,7 @@ teardown() {
     agent_loop_start "test_list_2" --goal "Goal 2"
     
     local result
-    result=$(agent_loop_list)
+    result=$(agent_loop_list) || true
     
     [[ "$result" == *'test_list_1'* ]]
     [[ "$result" == *'test_list_2'* ]]
@@ -96,7 +96,7 @@ teardown() {
     agent_loop_start "test_json_list" --goal "JSON test"
     
     local result
-    result=$(agent_loop_list --json)
+    result=$(agent_loop_list --json) || true
     
     [[ "$result" == '['* ]]
     [[ "$result" == *']' ]]
@@ -107,7 +107,7 @@ teardown() {
     sleep 1
     
     local result
-    result=$(agent_loop_stop "test_stop")
+    result=$(agent_loop_stop "test_stop") || true
     
     [[ "$result" == *'"success":true'* ]]
     [[ "$result" == *'"status":"stopped"'* ]]
@@ -115,7 +115,7 @@ teardown() {
 
 @test "agent_loop_stop handles non-existent agent" {
     local result
-    result=$(agent_loop_stop "nonexistent_xyz")
+    result=$(agent_loop_stop "nonexistent_xyz") || true
     
     [[ "$result" == *'"success":false'* ]]
 }
@@ -129,7 +129,7 @@ teardown() {
     sleep 1
     
     local result
-    result=$(agent_loop_pause "test_pause")
+    result=$(agent_loop_pause "test_pause") || true
     
     [[ "$result" == *'"success":true'* ]]
     [[ "$result" == *'"status":"paused"'* ]]
@@ -137,7 +137,7 @@ teardown() {
 
 @test "agent_loop_pause fails for non-running agent" {
     local result
-    result=$(agent_loop_pause "nonexistent_pause")
+    result=$(agent_loop_pause "nonexistent_pause") || true
     
     [[ "$result" == *'"success":false'* ]]
 }
@@ -148,7 +148,7 @@ teardown() {
     agent_loop_pause "test_resume" >/dev/null
     
     local result
-    result=$(agent_loop_resume "test_resume" --context "Test context")
+    result=$(agent_loop_resume "test_resume" --context "Test context") || true
     
     [[ "$result" == *'"success":true'* ]]
     [[ "$result" == *'"status":"running"'* ]]
@@ -160,7 +160,7 @@ teardown() {
     agent_loop_pause "test_resume_ctx" >/dev/null
     
     local result
-    result=$(agent_loop_resume "test_resume_ctx" --context "New focus")
+    result=$(agent_loop_resume "test_resume_ctx" --context "New focus") || true
     
     [[ "$result" == *'"context":"New focus"'* ]]
 }
@@ -182,7 +182,7 @@ teardown() {
     echo "$checkpoint_data" > "$checkpoint_dir/checkpoint.json"
     
     local result
-    result=$(agent_loop_restore "test_restore")
+    result=$(agent_loop_restore "test_restore") || true
     
     [[ "$result" == *'"success":true'* ]]
 }
@@ -191,7 +191,7 @@ teardown() {
     agent_loop_start "test_no_checkpoint" --goal "Test no checkpoint"
     
     local result
-    result=$(agent_loop_restore "test_no_checkpoint")
+    result=$(agent_loop_restore "test_no_checkpoint") || true
     
     [[ "$result" == *'"success":false'* ]]
     [[ "$result" == *'No checkpoint found'* ]]
@@ -209,7 +209,7 @@ teardown() {
     result=$(agent_loop_spawn \
         --parent "test_parent" \
         --child "test_child" \
-        --goal "Child goal")
+        --goal "Child goal") || true
     
     [[ "$result" == *'"success":true'* ]] || [[ "$result" == *'already running'* ]] || [[ "$result" == *'not running'* ]]
 }
@@ -219,7 +219,7 @@ teardown() {
     result=$(agent_loop_spawn \
         --parent "nonexistent_parent" \
         --child "test_child2" \
-        --goal "Child goal")
+        --goal "Child goal") || true
     
     [[ "$result" == *'"success":false'* ]]
 }
@@ -233,7 +233,7 @@ teardown() {
     (sleep 2; agent_loop_stop "test_join_target") &
     
     local result
-    result=$(agent_loop_join "test_join_waiter" --wait_for "test_join_target" --timeout 5)
+    result=$(agent_loop_join "test_join_waiter" --wait_for "test_join_target" --timeout 5) || true
     
     [[ "$result" == *'"joined":"test_join_target"'* ]] || [[ "$result" == *'Timeout'* ]]
 }
@@ -247,7 +247,7 @@ teardown() {
     sleep 1
     
     local result
-    result=$(agent_loop_request_input "test_input" --prompt "Enter value:")
+    result=$(agent_loop_request_input "test_input" --prompt "Enter value:") || true
     
     [[ "$result" == *'"success":true'* ]] || [[ "$result" == *'not running'* ]]
 }
@@ -257,7 +257,7 @@ teardown() {
     sleep 1
     
     local result
-    result=$(agent_loop_notify "test_notify" --message "Test message" --level info)
+    result=$(agent_loop_notify "test_notify" --message "Test message" --level info) || true
     
     [[ "$result" == *'"success":true'* ]]
     [[ "$result" == *'"message":"Test message"'* ]]
@@ -265,7 +265,7 @@ teardown() {
 
 @test "agent_loop_notify validates message requirement" {
     local result
-    result=$(agent_loop_notify "test_notify2")
+    result=$(agent_loop_notify "test_notify2") || true
     
     [[ "$result" == *'"success":false'* ]]
 }
@@ -317,10 +317,10 @@ teardown() {
 @test "agent_loop_start accepts different priorities" {
     local result
     
-    result=$(agent_loop_start "test_priority_low" --goal "Low" --priority low)
+    result=$(agent_loop_start "test_priority_low" --goal "Low" --priority low) || true
     [[ "$result" == *'"success":true'* ]]
     
-    result=$(agent_loop_start "test_priority_high" --goal "High" --priority high)
+    result=$(agent_loop_start "test_priority_high" --goal "High" --priority high) || true
     [[ "$result" == *'"success":true'* ]]
 }
 
@@ -333,7 +333,7 @@ teardown() {
     sleep 1
     
     local result
-    result=$(agent_loop_start "test_duplicate" --goal "Second")
+    result=$(agent_loop_start "test_duplicate" --goal "Second") || true
     
     [[ "$result" == *'"success":false'* ]] || [[ "$result" == *'already running'* ]]
 }
@@ -342,7 +342,7 @@ teardown() {
     mkdir -p "$AGENT_LOOP_DIR/missing_state"
     
     local result
-    result=$(agent_loop_status "missing_state")
+    result=$(agent_loop_status "missing_state") || true
     
     [[ "$result" == *'"success":false'* ]]
 }

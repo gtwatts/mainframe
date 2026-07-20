@@ -39,7 +39,8 @@ fi
 # =============================================================================
 
 # Base directory for agent loop state
-AGENT_LOOP_DIR="${MAINFRAME_AGENT_LOOP_DIR:-${HOME}/.mainframe/agent_loops}"
+# Honor a pre-set AGENT_LOOP_DIR (tests, embedders) before falling back
+AGENT_LOOP_DIR="${MAINFRAME_AGENT_LOOP_DIR:-${AGENT_LOOP_DIR:-${HOME}/.mainframe/agent_loops}}"
 
 # Default checkpoint interval (seconds)
 AGENT_LOOP_CHECKPOINT_INTERVAL="${AGENT_LOOP_CHECKPOINT_INTERVAL:-60}"
@@ -408,8 +409,22 @@ agent_loop_start() {
         return 1
     }
     
-    # Start the agent process with nohup-style persistence
+    # Start the agent process with nohup-style persistence.
+    # CRITICAL: detach from inherited traps (DEBUG/ERR/EXIT) and errexit -
+    # when spawned from environments that install error traps (bats test
+    # bodies, set -e scripts, CI runners), the child would otherwise inherit
+    # the trap machinery and die on its first benign non-zero command.
     (
+        trap - DEBUG ERR EXIT RETURN 2>/dev/null || true
+        set +e
+        # Close every inherited fd beyond stdio: the spawn inherits whatever
+        # the caller had open (bats output pipes, CI capture fds), and a
+        # long-running agent holding those write ends hangs the caller's
+        # reader waiting for EOF.
+        local _fd
+        for _fd in {3..255}; do
+            eval "exec ${_fd}>&-" 2>/dev/null || true
+        done
         # Close stdin, redirect stdout/stderr to log
         exec 0<&- 1>>"$AGENT_LOOP_DIR/$name/output.log" 2>&1
         # Run agent process

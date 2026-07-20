@@ -170,7 +170,7 @@ teardown() {
     info=$(checkpoint_info "$checkpoint_id")
 
     echo "$info" | grep -q '"checkpoint_id"'
-    echo "$info" | grep -q '"name":"info1"'
+    echo "$info" | grep -Eq '"name":[[:space:]]*"info1"'
     echo "$info" | grep -q '"archive_hash"'
 }
 
@@ -207,8 +207,12 @@ teardown() {
 
     checkpoint_delete "$checkpoint_id"
 
-    checkpoint_exists "$checkpoint_id"
-    [ $? -ne 0 ]
+    # Guard the expected failure: bats runs test bodies under errexit, so an
+    # unguarded non-zero command aborts before the assertion runs
+    if checkpoint_exists "$checkpoint_id"; then
+        echo "checkpoint should not exist after delete" >&2
+        return 1
+    fi
 }
 
 # =============================================================================
@@ -223,7 +227,7 @@ teardown() {
     # Manually backdate the metadata
     local metadata="${MAINFRAME_CHECKPOINT_DIR}/${checkpoint_id}/metadata.json"
     local old_epoch=$(($(date +%s) - 100000))
-    sed -i "s/\"created_epoch\":[[:space:]]*[0-9]*/\"created_epoch\": ${old_epoch}/" "$metadata"
+    sed -i.bak "s/\"created_epoch\":[[:space:]]*[0-9]*/\"created_epoch\": ${old_epoch}/" "$metadata" && rm -f "$metadata.bak"
 
     # Prune with short max age
     local result
@@ -258,7 +262,7 @@ teardown() {
     # Backdate
     local metadata="${MAINFRAME_CHECKPOINT_DIR}/${checkpoint_id}/metadata.json"
     local old_epoch=$(($(date +%s) - 100000))
-    sed -i "s/\"created_epoch\":[[:space:]]*[0-9]*/\"created_epoch\": ${old_epoch}/" "$metadata"
+    sed -i.bak "s/\"created_epoch\":[[:space:]]*[0-9]*/\"created_epoch\": ${old_epoch}/" "$metadata" && rm -f "$metadata.bak"
 
     # Dry run prune
     checkpoint_prune --max-age 1000 --dry-run > /dev/null
@@ -351,10 +355,10 @@ teardown() {
 }
 
 @test "checkpoint_create rejects name with null byte" {
-    # This tests that embedded null bytes are rejected
-    local bad_name=$'test\x00bad'
-    run checkpoint_create "$bad_name" "${TEST_DIR}/source/file1.txt"
-    [ "$status" -eq 1 ]
+    # Null bytes cannot survive bash argument passing (they are stripped
+    # before the function ever sees them), so this property is untestable
+    # at the shell boundary
+    skip "null bytes cannot be passed through bash arguments"
 }
 
 # =============================================================================
@@ -396,7 +400,7 @@ teardown() {
 
     # Corrupt the archive hash in metadata (not the actual archive)
     local metadata="${MAINFRAME_CHECKPOINT_DIR}/${checkpoint_id}/metadata.json"
-    sed -i 's/"archive_hash":"[^"]*"/"archive_hash":"badhash"/' "$metadata"
+    sed -i.bak -E 's/"archive_hash":[[:space:]]*"[^"]*"/"archive_hash": "badhash"/' "$metadata" && rm -f "$metadata.bak"
 
     # Rollback with --force should work (but we've corrupted the hash, not the archive)
     run checkpoint_rollback "$checkpoint_id" --force

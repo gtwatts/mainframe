@@ -31,6 +31,17 @@ _mainframe_sha256() {
 }
 fi
 
+# Minimal json_escape fallback (canonical version lives in lib/json.sh;
+# this keeps the lib functional when sourced standalone)
+if ! declare -F json_escape &>/dev/null; then
+json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"; s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"; s="${s//$'\t'/\\t}"; s="${s//$'\r'/\\r}"
+    printf '%s' "$s"
+}
+fi
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -159,13 +170,13 @@ _checkpoint_calc_size() {
             else
                 size=$(stat -c%s "$file" 2>/dev/null || echo 0)
             fi
-            ((total += size))
+            ((total += size)) || true
         elif [[ -d "$file" ]]; then
             local dir_size
             dir_size=$(du -sb "$file" 2>/dev/null | cut -f1)
             [[ "$dir_size" =~ ^[0-9]+$ ]] || dir_size=$(find "$file" -type f -exec stat -f%z {} + 2>/dev/null | awk '{s+=$1} END{print s+0}')
             [[ "$dir_size" =~ ^[0-9]+$ ]] || dir_size=0
-            ((total += dir_size))
+            ((total += dir_size)) || true
         fi
     done
 
@@ -322,7 +333,7 @@ checkpoint_create() {
     local tmparchive="${archive_path}.tmp.$$"
 
     # Use tar with absolute paths preserved
-    if ! tar -czf "$tmparchive" --absolute-names "${resolved_paths[@]}" 2>/dev/null; then
+    if ! tar -czf "$tmparchive" -P "${resolved_paths[@]}" 2>/dev/null; then
         rm -f "$tmparchive" 2>/dev/null
         rm -rf "$checkpoint_dir" 2>/dev/null
         _checkpoint_unlock
@@ -487,7 +498,7 @@ checkpoint_rollback() {
     _checkpoint_lock || return 3
 
     # Extract archive to restore files
-    if ! tar -xzf "$archive_path" --absolute-names -C / 2>/dev/null; then
+    if ! tar -xzf "$archive_path" -P -C / 2>/dev/null; then
         _checkpoint_unlock
         printf '{"error":"archive extraction failed"}\n' >&2
         return 3
@@ -749,8 +760,8 @@ checkpoint_prune() {
         else
             rm -rf "$checkpoint_dir" 2>/dev/null && {
                 _checkpoint_log debug "Pruned checkpoint: $id"
-                ((pruned++))
-                ((freed_bytes += size))
+                ((++pruned))
+                ((freed_bytes += size)) || true
             }
         fi
     done
