@@ -688,6 +688,10 @@ _mainframe_limit_cleanup() {
 
 # Register cleanup trap only if not already registered
 if [[ -z "${_MAINFRAME_LIMIT_TRAP_SET:-}" ]]; then
-    trap _mainframe_limit_cleanup EXIT
+    if declare -F _mainframe_add_exit_trap >/dev/null 2>&1; then
+        _mainframe_add_exit_trap "_mainframe_limit_cleanup"
+    else
+        trap _mainframe_limit_cleanup EXIT
+    fi
     _MAINFRAME_LIMIT_TRAP_SET=1
 fi

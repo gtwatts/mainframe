@@ -232,7 +232,7 @@ go_mod_name() {
     local data
     json_object_v data \
         "module=$module_name" \
-        "go_version=$go_ver"
+        "go_version:string=$go_ver"
 
     json_object \
         "ok:bool=true" \

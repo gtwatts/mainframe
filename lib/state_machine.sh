@@ -33,7 +33,7 @@ fi
 # =============================================================================
 
 # Base directory for state machine storage
-STATE_MACHINE_DIR="${MAINFRAME_STATE_MACHINE_DIR:-${HOME}/.mainframe/state_machines}"
+STATE_MACHINE_DIR="${MAINFRAME_STATE_MACHINE_DIR:-${STATE_MACHINE_DIR:-${HOME}/.mainframe/state_machines}}"
 
 # Default timeout for state transitions (seconds)
 STATE_MACHINE_DEFAULT_TIMEOUT="${STATE_MACHINE_DEFAULT_TIMEOUT:-300}"
@@ -46,10 +46,14 @@ STATE_MACHINE_DEFAULT_RETRIES="${STATE_MACHINE_DEFAULT_RETRIES:-3}"
 # =============================================================================
 
 # Associative array for machine definitions
-declare -gA _STATE_MACHINE_DEFINITIONS=()
-declare -gA _STATE_MACHINE_STATES=()
-declare -gA _STATE_MACHINE_TRANSITIONS=()
-declare -gA _STATE_MACHINE_CALLBACKS=()
+declare -gA _STATE_MACHINE_DEFINITIONS 2>/dev/null || declare -A _STATE_MACHINE_DEFINITIONS
+declare -gA _STATE_MACHINE_STATES 2>/dev/null || declare -A _STATE_MACHINE_STATES
+declare -gA _STATE_MACHINE_TRANSITIONS 2>/dev/null || declare -A _STATE_MACHINE_TRANSITIONS
+declare -gA _STATE_MACHINE_CALLBACKS 2>/dev/null || declare -A _STATE_MACHINE_CALLBACKS
+_STATE_MACHINE_DEFINITIONS=()
+_STATE_MACHINE_STATES=()
+_STATE_MACHINE_TRANSITIONS=()
+_STATE_MACHINE_CALLBACKS=()
 
 # =============================================================================
 # INTERNAL HELPERS
@@ -122,6 +126,52 @@ _state_machine_atomic_write() {
     printf '%s' "$content" > "$tmp" && mv "$tmp" "$file"
 }
 
+_state_machine_persist_definition() {
+    local name="$1"
+    local definition="${_STATE_MACHINE_DEFINITIONS[$name]:-}"
+
+    [[ -n "$definition" ]] || return 1
+
+    _state_machine_ensure_dirs "$name" || return 1
+    _state_machine_atomic_write "$(_state_machine_def_file "$name")" "$definition"
+}
+
+_state_machine_refresh_definition() {
+    local name="$1"
+    local current_def="${_STATE_MACHINE_DEFINITIONS[$name]:-}"
+    local created=""
+    local initial=""
+    local state
+    local -a state_names=()
+    local -a final_states=()
+    local states_json
+    local final_states_json
+
+    [[ -z "$current_def" ]] && return 1
+
+    created=$(json_get "$current_def" "created" 2>/dev/null || echo "")
+    initial=$(json_get "$current_def" "initial" 2>/dev/null || echo "")
+
+    for state in ${_STATE_MACHINE_STATES[$name]:-}; do
+        state_names+=("$state")
+        if [[ "${_STATE_MACHINE_TRANSITIONS["$name:$state"]:-{}}" == *'"final":true'* ]]; then
+            final_states+=("$state")
+        fi
+    done
+
+    states_json=$(json_array "${state_names[@]}")
+    final_states_json=$(json_array "${final_states[@]}")
+
+    _STATE_MACHINE_DEFINITIONS[$name]=$(json_object \
+        "name=$name" \
+        "created=$created" \
+        "states:raw=$states_json" \
+        "initial=$initial" \
+        "final_states:raw=$final_states_json")
+
+    _state_machine_persist_definition "$name"
+}
+
 # Generate timestamp
 _state_machine_timestamp() {
     date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date +%s
@@ -172,6 +222,7 @@ state_machine_define() {
     _STATE_MACHINE_STATES[$name]=""
     _STATE_MACHINE_TRANSITIONS[$name]=""
     _STATE_MACHINE_CALLBACKS[$name]=""
+    _state_machine_persist_definition "$name"
     
     _state_machine_log info "Defined state machine: $name"
     
@@ -198,6 +249,7 @@ state_machine_add_state() {
     local on_enter=""
     local on_exit=""
     local transitions="{}"
+    local stored_transitions="{}"
     local is_final="false"
     local timeout=$STATE_MACHINE_DEFAULT_TIMEOUT
     local retries=$STATE_MACHINE_DEFAULT_RETRIES
@@ -246,12 +298,22 @@ state_machine_add_state() {
     fi
     
     # Build state definition
+    stored_transitions="$transitions"
+    if [[ "$is_final" == "true" && "$stored_transitions" != *'"final":true'* ]]; then
+        if [[ "$stored_transitions" == "{}" ]]; then
+            stored_transitions='{"final":true}'
+        else
+            stored_transitions="${stored_transitions%\}}"
+            stored_transitions="${stored_transitions},\"final\":true}"
+        fi
+    fi
+
     local state_def
     state_def=$(json_object \
         "name=$state_name" \
         "on_enter=$on_enter" \
         "on_exit=$on_exit" \
-        "transitions:raw=$transitions" \
+        "transitions:raw=$stored_transitions" \
         "final:bool=$is_final" \
         "timeout:number=$timeout" \
         "retries:number=$retries")
@@ -264,7 +326,7 @@ state_machine_add_state() {
         current_states="$state_name"
     fi
     _STATE_MACHINE_STATES[$machine]="$current_states"
-    _STATE_MACHINE_TRANSITIONS["$machine:$state_name"]="$transitions"
+    _STATE_MACHINE_TRANSITIONS["$machine:$state_name"]="$stored_transitions"
     
     # Store callbacks
     if [[ -n "$on_enter" || -n "$on_exit" ]]; then
@@ -274,6 +336,7 @@ state_machine_add_state() {
             "on_exit=$on_exit")
         _STATE_MACHINE_CALLBACKS["$machine:$state_name"]="$callbacks"
     fi
+    _state_machine_refresh_definition "$machine" >/dev/null 2>&1 || true
     
     _state_machine_log debug "Added state '$state_name' to machine '$machine'"
     
@@ -310,6 +373,7 @@ state_machine_set_initial() {
         def=$(echo "$def" | sed "s/\"initial\":\s*null/\"initial\":\"$state_name\"/")
         _STATE_MACHINE_DEFINITIONS[$machine]="$def"
     fi
+    _state_machine_refresh_definition "$machine" >/dev/null 2>&1 || true
     
     json_object \
         "success:bool=true" \
@@ -535,8 +599,12 @@ state_machine_run() {
             # Update history
             local history
             history=$(json_get "$updated_state" "state_history" 2>/dev/null || echo "[]")
-            history="${history%]}, \"$current_state\"]"
-            [[ "$history" == "[]" ]] && history="[\"$current_state\"]"
+            if [[ "$history" == "[]" || -z "$history" ]]; then
+                history="[\"$current_state\"]"
+            else
+                history="${history%]}"
+                history="${history}, \"$current_state\"]"
+            fi
             updated_state=$(echo "$updated_state" | sed "s/\"state_history\":\[[^]]*\]/\"state_history\":$history/")
             
             # Update event count
@@ -773,7 +841,10 @@ state_machine_resume_from_checkpoint() {
     
     local saved_state
     saved_state=$(json_get "$checkpoint" "state" 2>/dev/null || echo "")
-    
+    if [[ -z "$saved_state" ]]; then
+        saved_state=$(printf '%s\n' "$checkpoint" | sed -nE 's/^.*"state":(\{.*\})[[:space:]]*}$/\1/p')
+    fi
+
     if [[ -z "$saved_state" ]]; then
         json_object \
             "success:bool=false" \
@@ -854,7 +925,8 @@ state_machine_replay() {
         "success:bool=true" \
         "machine=$name" \
         "run_id=$run_id" \
-        "starting_state=$initial"
+        "starting_state=$initial" \
+        "replayed:bool=true"
 }
 
 # =============================================================================
@@ -1106,7 +1178,8 @@ state_machine_destroy() {
 # MODULE EXPORTS
 # =============================================================================
 
-declare -ga _STATE_MACHINE_EXPORTS=(
+declare -ga _STATE_MACHINE_EXPORTS 2>/dev/null || declare -a _STATE_MACHINE_EXPORTS
+_STATE_MACHINE_EXPORTS=(
     state_machine_define
     state_machine_add_state
     state_machine_set_initial

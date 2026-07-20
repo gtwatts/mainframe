@@ -157,7 +157,10 @@ _progress_redact() {
     local pattern
 
     for pattern in "${_PROGRESS_REDACT_PATTERNS[@]}"; do
-        message=$(printf '%s' "$message" | sed -E "s/${pattern}/[REDACTED]/gi" 2>/dev/null) || true
+        local redacted
+        if redacted=$(printf '%s' "$message" | sed -E "s#${pattern}#[REDACTED]#g" 2>/dev/null); then
+            message="$redacted"
+        fi
     done
 
     printf '%s' "$message"
@@ -200,6 +203,102 @@ _progress_init_dir() {
     return 0
 }
 
+_progress_tracker_file() {
+    local id="$1"
+    printf '%s/%s.progress' "$MAINFRAME_PROGRESS_DIR" "$id"
+}
+
+_progress_oldest_progress_files() {
+    local dir="$1"
+    local -a files=("$dir"/*.progress)
+    [[ -e "${files[0]}" ]] || return 0
+    ls -1tr "${files[@]}" 2>/dev/null || true
+}
+
+_progress_snapshot_json() {
+    local id="$1"
+    local current="${_PROGRESS_CURRENT[$id]:-0}"
+    local total="${_PROGRESS_TOTAL[$id]:-0}"
+    local name="${_PROGRESS_NAME[$id]:-unknown}"
+    local message="${_PROGRESS_MESSAGE[$id]:-}"
+    local status="${_PROGRESS_STATUS[$id]:-active}"
+    local started="${_PROGRESS_STARTED[$id]:-0}"
+    local unit="${_PROGRESS_UNIT[$id]:-items}"
+
+    local now percent
+    now=$(_progress_now_epoch)
+    percent=0
+    if [[ "$total" -gt 0 ]]; then
+        percent=$(( current * 100 / total ))
+    fi
+
+    local safe_name safe_message
+    safe_name=$(_progress_redact "$name")
+    safe_message=$(_progress_redact "$message")
+
+    local escaped_name escaped_message escaped_status escaped_unit
+    escaped_name=$(_progress_escape_json "$safe_name")
+    escaped_message=$(_progress_escape_json "$safe_message")
+    escaped_status=$(_progress_escape_json "$status")
+    escaped_unit=$(_progress_escape_json "$unit")
+
+    printf '{"id":"%s","name":"%s","current":%d,"total":%d,"percent":%d,"message":"%s","status":"%s","unit":"%s","started":%d,"updated":%d}' \
+        "$id" \
+        "$escaped_name" \
+        "$current" \
+        "$total" \
+        "$percent" \
+        "$escaped_message" \
+        "$escaped_status" \
+        "$escaped_unit" \
+        "$started" \
+        "$now"
+}
+
+_progress_write_state() {
+    local id="$1"
+    local filepath="${2:-$(_progress_tracker_file "$id")}"
+
+    _progress_init_dir || return 1
+
+    local content
+    content=$(_progress_snapshot_json "$id")
+
+    local tmpfile="${filepath}.tmp.$$"
+    if printf '%s\n' "$content" > "$tmpfile" 2>/dev/null; then
+        mv -f "$tmpfile" "$filepath" 2>/dev/null || {
+            rm -f "$tmpfile" 2>/dev/null
+            return 1
+        }
+        return 0
+    fi
+
+    rm -f "$tmpfile" 2>/dev/null
+    return 1
+}
+
+_progress_load_state() {
+    local id="$1"
+    local filepath="${2:-$(_progress_tracker_file "$id")}"
+    local content
+
+    [[ -f "$filepath" && ! -L "$filepath" ]] || return 1
+    content=$(<"$filepath") || return 1
+
+    if declare -F json_get &>/dev/null; then
+        _PROGRESS_NAME["$id"]="$(json_get "$content" "name")"
+        _PROGRESS_CURRENT["$id"]="$(json_get "$content" "current")"
+        _PROGRESS_TOTAL["$id"]="$(json_get "$content" "total")"
+        _PROGRESS_MESSAGE["$id"]="$(json_get "$content" "message")"
+        _PROGRESS_STATUS["$id"]="$(json_get "$content" "status")"
+        _PROGRESS_STARTED["$id"]="$(json_get "$content" "started")"
+        _PROGRESS_UNIT["$id"]="$(json_get "$content" "unit")"
+        return 0
+    fi
+
+    return 1
+}
+
 # Enforce quota to prevent disk exhaustion
 _progress_enforce_quota() {
     local dir="$MAINFRAME_PROGRESS_DIR"
@@ -211,9 +310,8 @@ _progress_enforce_quota() {
 
     if (( count > PROGRESS_MAX_FILES )); then
         # Remove oldest files
-        find "$dir" -maxdepth 1 -name "*.progress" -printf '%T@ %p\n' 2>/dev/null | \
-            sort -n | head -n "$((count - PROGRESS_MAX_FILES + 10))" | \
-            cut -d' ' -f2- | xargs rm -f 2>/dev/null || true
+        _progress_oldest_progress_files "$dir" | head -n "$((count - PROGRESS_MAX_FILES + 10))" | \
+            xargs rm -f 2>/dev/null || true
     fi
 
     # Check total size
@@ -224,8 +322,7 @@ _progress_enforce_quota() {
         # Remove oldest until under limit
         while (( $(du -sk "$dir" 2>/dev/null | cut -f1 || echo 0) > PROGRESS_MAX_SIZE_KB / 2 )); do
             local oldest
-            oldest=$(find "$dir" -maxdepth 1 -name "*.progress" -printf '%T@ %p\n' 2>/dev/null | \
-                     sort -n | head -1 | cut -d' ' -f2-)
+            oldest=$(_progress_oldest_progress_files "$dir" | head -1)
             [[ -n "$oldest" ]] && rm -f "$oldest" 2>/dev/null
             [[ -z "$oldest" ]] && break
         done
@@ -338,6 +435,8 @@ progress_init() {
     _PROGRESS_UNIT["$id"]="$unit"
     _PROGRESS_STATUS["$id"]="active"
 
+    _progress_write_state "$id" || return 1
+
     # Redact name for output
     local safe_name
     safe_name=$(_progress_redact "$name")
@@ -347,8 +446,22 @@ progress_init() {
         local escaped_name escaped_unit
         escaped_name=$(_progress_escape_json "$safe_name")
         escaped_unit=$(_progress_escape_json "$unit")
+        local progress_json
+        progress_json="{\"event\":\"progress_start\",\"id\":\"$id\",\"name\":\"$escaped_name\",\"total\":$total,\"unit\":\"$escaped_unit\",\"timestamp\":$now}"
 
-        _progress_emit "{\"event\":\"progress_start\",\"id\":\"$id\",\"name\":\"$escaped_name\",\"total\":$total,\"unit\":\"$escaped_unit\",\"timestamp\":$now}"
+        # progress_init returns the tracker ID on stdout, so emit start
+        # notifications to stderr/file targets only.
+        local original_target="$MAINFRAME_BROADCAST_TARGET"
+        case ",$MAINFRAME_BROADCAST_TARGET," in
+            *,all,*)
+                MAINFRAME_BROADCAST_TARGET="stderr,file"
+                ;;
+            *,stdout,*)
+                MAINFRAME_BROADCAST_TARGET="stderr"
+                ;;
+        esac
+        _progress_emit "$progress_json"
+        MAINFRAME_BROADCAST_TARGET="$original_target"
     fi
 
     printf '%s' "$id"
@@ -373,6 +486,9 @@ progress_update() {
 
     # Validate ID exists
     if [[ -z "${_PROGRESS_TOTAL[$id]:-}" ]]; then
+        _progress_load_state "$id" >/dev/null 2>&1 || true
+    fi
+    if [[ -z "${_PROGRESS_TOTAL[$id]:-}" ]]; then
         if [[ "$MAINFRAME_BROADCAST_FORMAT" == "json" ]]; then
             printf '{"ok":false,"error":{"code":"E_NOT_FOUND","msg":"Progress tracker not found"}}'
         fi
@@ -389,6 +505,8 @@ progress_update() {
     if [[ -n "$message" ]]; then
         _PROGRESS_MESSAGE["$id"]="$message"
     fi
+
+    _progress_write_state "$id" || return 1
 
     # Calculate percentage
     local total="${_PROGRESS_TOTAL[$id]}"
@@ -437,6 +555,9 @@ progress_increment() {
 
     # Validate ID exists
     if [[ -z "${_PROGRESS_CURRENT[$id]:-}" ]]; then
+        _progress_load_state "$id" >/dev/null 2>&1 || true
+    fi
+    if [[ -z "${_PROGRESS_CURRENT[$id]:-}" ]]; then
         return 1
     fi
 
@@ -468,6 +589,10 @@ progress_complete() {
     local id="$1"
     local message="${2:-}"
 
+    if [[ -z "${_PROGRESS_STATUS[$id]:-}" ]]; then
+        _progress_load_state "$id" >/dev/null 2>&1 || true
+    fi
+
     # Check if already complete
     if [[ "${_PROGRESS_STATUS[$id]:-}" != "active" ]]; then
         return 0
@@ -481,12 +606,15 @@ progress_complete() {
 
     # Mark as complete
     _PROGRESS_STATUS["$id"]="complete"
+    _PROGRESS_MESSAGE["$id"]="$message"
 
     # Set current to total if total > 0
     local total="${_PROGRESS_TOTAL[$id]:-0}"
     if [[ "$total" -gt 0 ]]; then
         _PROGRESS_CURRENT["$id"]="$total"
     fi
+
+    _progress_write_state "$id" || return 1
 
     # Redact message
     local safe_message
@@ -519,6 +647,10 @@ progress_fail() {
     local id="$1"
     local error_message="${2:-Unknown error}"
 
+    if [[ -z "${_PROGRESS_STATUS[$id]:-}" ]]; then
+        _progress_load_state "$id" >/dev/null 2>&1 || true
+    fi
+
     # Check if already terminal state
     if [[ "${_PROGRESS_STATUS[$id]:-}" != "active" ]]; then
         return 0
@@ -532,6 +664,8 @@ progress_fail() {
 
     # Mark as failed
     _PROGRESS_STATUS["$id"]="failed"
+    _PROGRESS_MESSAGE["$id"]="$error_message"
+    _progress_write_state "$id" || return 1
 
     # Redact error message
     local safe_error
@@ -673,7 +807,7 @@ progress_stream_to() {
 
     # Determine file path
     if [[ -z "$filepath" ]]; then
-        filepath="${MAINFRAME_PROGRESS_DIR}/${id}.progress"
+        filepath="$(_progress_tracker_file "$id")"
     fi
 
     # Ensure filepath is not a symlink (security)
@@ -681,62 +815,11 @@ progress_stream_to() {
         return 1
     fi
 
-    # Build progress data
-    local current="${_PROGRESS_CURRENT[$id]:-0}"
-    local total="${_PROGRESS_TOTAL[$id]:-0}"
-    local name="${_PROGRESS_NAME[$id]:-unknown}"
-    local message="${_PROGRESS_MESSAGE[$id]:-}"
-    local status="${_PROGRESS_STATUS[$id]:-active}"
-    local started="${_PROGRESS_STARTED[$id]:-0}"
-    local unit="${_PROGRESS_UNIT[$id]:-items}"
-
-    local now percent
-    now=$(_progress_now_epoch)
-    percent=0
-    if [[ "$total" -gt 0 ]]; then
-        percent=$(( current * 100 / total ))
+    if [[ -z "${_PROGRESS_TOTAL[$id]:-}" ]]; then
+        _progress_load_state "$id" >/dev/null 2>&1 || true
     fi
 
-    # Redact sensitive info
-    local safe_name safe_message
-    safe_name=$(_progress_redact "$name")
-    safe_message=$(_progress_redact "$message")
-
-    # Escape for JSON
-    local escaped_name escaped_message escaped_status escaped_unit
-    escaped_name=$(_progress_escape_json "$safe_name")
-    escaped_message=$(_progress_escape_json "$safe_message")
-    escaped_status=$(_progress_escape_json "$status")
-    escaped_unit=$(_progress_escape_json "$unit")
-
-    # Build JSON content
-    local content
-    content=$(printf '{"id":"%s","name":"%s","current":%d,"total":%d,"percent":%d,"message":"%s","status":"%s","unit":"%s","started":%d,"updated":%d}' \
-        "$id" \
-        "$escaped_name" \
-        "$current" \
-        "$total" \
-        "$percent" \
-        "$escaped_message" \
-        "$escaped_status" \
-        "$escaped_unit" \
-        "$started" \
-        "$now")
-
-    # Write atomically (write to temp, then rename)
-    local tmpfile
-    tmpfile="${filepath}.tmp.$$"
-
-    if printf '%s\n' "$content" > "$tmpfile" 2>/dev/null; then
-        mv -f "$tmpfile" "$filepath" 2>/dev/null || {
-            rm -f "$tmpfile" 2>/dev/null
-            return 1
-        }
-        return 0
-    else
-        rm -f "$tmpfile" 2>/dev/null
-        return 1
-    fi
+    _progress_write_state "$id" "$filepath"
 }
 
 # =============================================================================
@@ -778,6 +861,10 @@ progress_status() {
     local id="$1"
 
     if [[ -z "${_PROGRESS_TOTAL[$id]:-}" ]]; then
+        _progress_load_state "$id" >/dev/null 2>&1 || true
+    fi
+
+    if [[ -z "${_PROGRESS_TOTAL[$id]:-}" ]]; then
         if [[ "$MAINFRAME_BROADCAST_FORMAT" == "json" ]]; then
             printf '{"ok":false,"error":{"code":"E_NOT_FOUND","msg":"Progress tracker not found"}}'
         fi
@@ -786,31 +873,12 @@ progress_status() {
 
     local current="${_PROGRESS_CURRENT[$id]:-0}"
     local total="${_PROGRESS_TOTAL[$id]:-0}"
-    local name="${_PROGRESS_NAME[$id]:-}"
-    local status="${_PROGRESS_STATUS[$id]:-active}"
     local started="${_PROGRESS_STARTED[$id]:-0}"
-
-    local now percent duration
-    now=$(_progress_now_epoch)
-    percent=0
-    if [[ "$total" -gt 0 ]]; then
-        percent=$(( current * 100 / total ))
-    fi
-    duration=$((now - started))
-
-    # Redact and escape
-    local safe_name escaped_name
-    safe_name=$(_progress_redact "$name")
-    escaped_name=$(_progress_escape_json "$safe_name")
-
-    printf '{"id":"%s","name":"%s","current":%d,"total":%d,"percent":%d,"status":"%s","duration_s":%d}' \
-        "$id" \
-        "$escaped_name" \
-        "$current" \
-        "$total" \
-        "$percent" \
-        "$status" \
-        "$duration"
+    local duration=$(( $(_progress_now_epoch) - started ))
+    local snapshot
+    snapshot=$(_progress_snapshot_json "$id")
+    printf '%s' "${snapshot%\}}"
+    printf ',"duration_s":%d}' "$duration"
 }
 
 # Clean up old progress files

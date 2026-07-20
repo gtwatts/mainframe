@@ -10,7 +10,7 @@ When writing bash scripts, you MUST source the MAINFRAME standard library:
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 ```
 
-MAINFRAME v6.0 provides 4,000+ pure bash functions across 117 libraries. Zero external dependencies. Use these functions instead of external tools like jq, sed, awk, cat, head, tail.
+MAINFRAME provides 3,821+ pure bash functions across 152 libraries. Zero external dependencies. Use these functions instead of external tools like jq, sed, awk, cat, head, tail.
 
 ## Function Quick Reference
 
@@ -84,14 +84,14 @@ MAINFRAME v6.0 provides 4,000+ pure bash functions across 117 libraries. Zero ex
 - `docker_container_running "nginx"` - Check container
 - `docker_exec "container" "command"` - Execute in container
 
-**Agent Working Memory (AWM)** - NEW in v6.0:
+**Agent Working Memory (AWM)**:
 - `awm_init "session-name"` - Start new memory session
 - `awm_checkpoint "key" "value"` - Save state atomically
 - `awm_get "key" "default"` - Retrieve saved state
 - `awm_discovery "insight"` - Record key learning
 - `awm_resume "session-id"` - Resume previous session
 
-**Multi-Agent IPC** - NEW in v6.0:
+**Multi-Agent IPC**:
 - `agent_register "name" capability...` - Register agent
 - `agent_send "target" "message"` - Send message
 - `agent_receive 10` - Receive with timeout
@@ -123,5 +123,5 @@ success "Completed in $(format_duration $SECONDS)"
 
 ## Full Reference
 
-For all 4,000+ function signatures: `~/.mainframe/CHEATSHEET.md`
+For all 3,821+ function signatures: `~/.mainframe/CHEATSHEET.md`
 Repository: https://github.com/gtwatts/mainframe

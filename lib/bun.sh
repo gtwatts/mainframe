@@ -61,6 +61,24 @@ _bun_truncate() {
     fi
 }
 
+_bun_epoch_ms() {
+    if [[ -n "${EPOCHREALTIME:-}" ]]; then
+        local seconds="${EPOCHREALTIME%.*}"
+        local micros="${EPOCHREALTIME#*.}"
+        micros="${micros}000"
+        printf '%s%03d' "$seconds" "$((10#${micros:0:3}))"
+        return 0
+    fi
+
+    local ts
+    ts=$(date +%s%3N 2>/dev/null)
+    if [[ "$ts" =~ ^[0-9]+$ ]]; then
+        printf '%s' "$ts"
+    else
+        printf '%s000' "$(date +%s)"
+    fi
+}
+
 # Execute bun command and capture output
 # Usage: _bun_exec result_var exit_code_var command [args...]
 _bun_exec() {
@@ -252,28 +270,31 @@ bun_install() {
     fi
 
     local start_ms end_ms duration_ms
-    start_ms=$(date +%s%3N 2>/dev/null || echo "0")
+    start_ms=$(_bun_epoch_ms)
 
-    local output exit_code
+    local output exit_code stdout_file stderr_file
+    stdout_file=$(mktemp "${TMPDIR:-/tmp}/bun_install_out.XXXXXX")
+    stderr_file=$(mktemp "${TMPDIR:-/tmp}/bun_install_err.XXXXXX")
     (
         cd "$dir" || exit 1
         if [[ -n "$package" ]]; then
-            bun add "$package" 2>&1
+            bun add "$package"
         else
-            bun install 2>&1
+            bun install
         fi
-    )
+    ) >"$stdout_file" 2>"$stderr_file"
     exit_code=$?
-    output=$(_bun_truncate "$(
-        cd "$dir" || exit 1
-        if [[ -n "$package" ]]; then
-            bun add "$package" 2>&1
-        else
-            bun install 2>&1
-        fi
-    )")
 
-    end_ms=$(date +%s%3N 2>/dev/null || echo "0")
+    output=$(<"$stdout_file")
+    if [[ -s "$stderr_file" ]]; then
+        [[ -n "$output" ]] && output+=$'\n'
+        output+=$(<"$stderr_file")
+    fi
+    output=$(_bun_truncate "$output")
+
+    rm -f "$stdout_file" "$stderr_file"
+
+    end_ms=$(_bun_epoch_ms)
     duration_ms=$((end_ms - start_ms))
     [[ $duration_ms -lt 0 ]] && duration_ms=0
 

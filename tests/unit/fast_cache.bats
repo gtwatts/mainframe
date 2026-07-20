@@ -30,8 +30,7 @@ setup() {
     fast_cache_set --key "key1" --value "val1"
     fast_cache_set --key "key2" --value "val2"
     
-    run fast_cache_clear --name "test"
-    assert_success
+    fast_cache_clear --name "test"
     
     run fast_cache_has --key "key1"
     assert_failure

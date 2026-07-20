@@ -672,7 +672,11 @@ _slog_cleanup() {
 
 # Register cleanup if trap mechanism available
 if [[ -z "${_SLOG_TRAP_SET:-}" ]]; then
-    trap _slog_cleanup EXIT
+    if declare -F _mainframe_add_exit_trap >/dev/null 2>&1; then
+        _mainframe_add_exit_trap "_slog_cleanup"
+    else
+        trap _slog_cleanup EXIT
+    fi
     readonly _SLOG_TRAP_SET=1
 fi
 

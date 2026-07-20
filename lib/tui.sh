@@ -88,6 +88,7 @@ _TUI_THEME=(
 
 # Internal state
 declare -g _TUI_SPINNER_PID=""
+declare -g _TUI_CURSOR_HIDDEN=0
 declare -g _TUI_PROGRESS_CURRENT=0
 declare -g _TUI_PROGRESS_TOTAL=100
 declare -g _TUI_PROGRESS_LABEL=""
@@ -624,7 +625,7 @@ tui_panel() {
 # Usage: tui_divider "=" 40
 # Usage: tui_divider "-" 60
 tui_divider() {
-    local char="${1:-}"
+    local char="${1:-─}"
     local width="${2:-$(tui_term_width)}"
 
     local line=""
@@ -748,6 +749,7 @@ tui_spinner() {
     # Hide cursor
     if tui_supports_color; then
         ansi_hide_cursor
+        _TUI_CURSOR_HIDDEN=1
     fi
 
     # Start spinner in background
@@ -787,6 +789,7 @@ tui_spinner_stop() {
 
     if tui_supports_color; then
         ansi_show_cursor
+        _TUI_CURSOR_HIDDEN=0
     fi
 
     if [[ -n "$message" ]]; then
@@ -850,6 +853,7 @@ tui_countdown() {
 
     if tui_supports_color; then
         ansi_hide_cursor
+        _TUI_CURSOR_HIDDEN=1
     fi
 
     while (( seconds > 0 )); do
@@ -871,6 +875,7 @@ tui_countdown() {
     if tui_supports_color; then
         tui_color "${_TUI_THEME[success]}" "00 - Done!"
         ansi_show_cursor
+        _TUI_CURSOR_HIDDEN=0
     else
         printf '00 - Done!'
     fi
@@ -1347,13 +1352,18 @@ _tui_cleanup() {
     if [[ -n "$_TUI_SPINNER_PID" ]] && kill -0 "$_TUI_SPINNER_PID" 2>/dev/null; then
         kill "$_TUI_SPINNER_PID" 2>/dev/null
     fi
-    if tui_supports_color; then
+    if [[ "$_TUI_CURSOR_HIDDEN" == "1" ]] && tui_supports_color; then
         ansi_show_cursor
+        _TUI_CURSOR_HIDDEN=0
     fi
 }
 
 # Register cleanup
-trap _tui_cleanup EXIT
+if declare -F _mainframe_add_exit_trap >/dev/null 2>&1; then
+    _mainframe_add_exit_trap "_tui_cleanup"
+else
+    trap _tui_cleanup EXIT
+fi
 
 # =============================================================================
 # MODULE EXPORTS

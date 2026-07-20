@@ -547,7 +547,6 @@ _awm_file_len() {
 
     [[ ! -f "$file" ]] && echo 0 && return 0
 
-    # wc -l pads with leading spaces on BSD/macOS; trim for a clean integer
     wc -l < "$file" | tr -d '[:space:]'
 }
 
@@ -851,7 +850,6 @@ awm_storage_stats() {
             list_count=$(find "$_AWM_STORAGE_DIR/lists" -type f 2>/dev/null | wc -l)
             index_count=$(find "$_AWM_STORAGE_DIR/index" -type f 2>/dev/null | wc -l)
             total_size=$(du -sb "$_AWM_STORAGE_DIR" 2>/dev/null | cut -f1)
-            [[ "$total_size" =~ ^[0-9]+$ ]] || total_size=$(find "$_AWM_STORAGE_DIR" -type f -exec stat -f%z {} + 2>/dev/null | awk '{s+=$1} END{print s+0}')
             ;;
     esac
 

@@ -39,6 +39,51 @@ _rust_escape_json() {
     echo "$s"
 }
 
+# _rust_kv_value RECORD KEY
+# Extract a value from a comma-separated key=value record
+_rust_kv_value() {
+    local record="$1"
+    local key="$2"
+    local value
+
+    value="${record#*"${key}="}"
+    [[ "$value" != "$record" ]] || return 1
+    value="${value%%,*}"
+    printf '%s\n' "$value"
+}
+
+# _rust_grep_count PATTERN FILE
+# Count regex matches while remaining safe under set -e and BSD grep
+_rust_grep_count() {
+    local pattern="$1"
+    local file="$2"
+    local count
+
+    count=$(grep -cE "$pattern" "$file" 2>/dev/null || true)
+    printf '%s\n' "${count:-0}"
+}
+
+# _rust_non_comment_count FILE PATTERN
+# Count matches after stripping single-line comments
+_rust_non_comment_count() {
+    local file="$1"
+    local pattern="$2"
+    local count
+
+    count=$(sed 's|//.*||' "$file" 2>/dev/null | grep -cE "$pattern" || true)
+    printf '%s\n' "${count:-0}"
+}
+
+# _rust_loc_count FILE
+# Count non-blank, non-comment lines in a Rust file
+_rust_loc_count() {
+    local file="$1"
+    local count
+
+    count=$(sed '/\/\*/,/\*\//d' "$file" 2>/dev/null | grep -cvE '^\s*$|^\s*//' || true)
+    printf '%s\n' "${count:-0}"
+}
+
 # _rust_find_files DIR
 # Find all .rs source files excluding target/ and hidden directories
 _rust_find_files() {
@@ -158,9 +203,9 @@ rust_dep_count() {
         # Count dependency entries (lines starting with alphanumeric)
         if [[ -n "$current_section" && "$line" =~ ^[a-zA-Z0-9_-]+[[:space:]]*= ]]; then
             case "$current_section" in
-                reg)   ((regular++)) ;;
-                dev)   ((dev++)) ;;
-                build) ((build++)) ;;
+                reg)   regular=$((regular + 1)) ;;
+                dev)   dev=$((dev + 1)) ;;
+                build) build=$((build + 1)) ;;
             esac
         fi
     done < "$manifest"
@@ -264,13 +309,13 @@ rust_unsafe_count() {
 
     while IFS= read -r file; do
         local b f i
-        b=$(sed 's|//.*||' "$file" 2>/dev/null | grep -cE 'unsafe\s*\{' || echo 0)
-        f=$(sed 's|//.*||' "$file" 2>/dev/null | grep -cE 'unsafe\s+fn\s' || echo 0)
-        i=$(sed 's|//.*||' "$file" 2>/dev/null | grep -cE 'unsafe\s+impl\s' || echo 0)
+        b=$(_rust_non_comment_count "$file" 'unsafe\s*\{')
+        f=$(_rust_non_comment_count "$file" 'unsafe\s+fn\s')
+        i=$(_rust_non_comment_count "$file" 'unsafe\s+impl\s')
 
-        ((blocks += b))
-        ((funcs += f))
-        ((impls += i))
+        blocks=$((blocks + b))
+        funcs=$((funcs + f))
+        impls=$((impls + i))
     done < <(_rust_find_files "$dir")
 
     echo "blocks=${blocks},functions=${funcs},impls=${impls}"
@@ -284,8 +329,8 @@ rust_function_count() {
 
     while IFS= read -r file; do
         local c
-        c=$(grep -cE '^\s*(pub(\s*\(.*\))?\s+)?(async\s+)?fn\s+\w+' "$file" 2>/dev/null || echo 0)
-        ((count += c))
+        c=$(_rust_grep_count '^\s*(pub(\s*\(.*\))?\s+)?(async\s+)?fn\s+\w+' "$file")
+        count=$((count + c))
     done < <(_rust_find_files "$dir")
 
     echo "$count"
@@ -299,8 +344,8 @@ rust_trait_count() {
 
     while IFS= read -r file; do
         local c
-        c=$(grep -cE '^\s*(pub(\s*\(.*\))?\s+)?trait\s+\w+' "$file" 2>/dev/null || echo 0)
-        ((count += c))
+        c=$(_rust_grep_count '^\s*(pub(\s*\(.*\))?\s+)?trait\s+\w+' "$file")
+        count=$((count + c))
     done < <(_rust_find_files "$dir")
 
     echo "$count"
@@ -314,8 +359,8 @@ rust_struct_count() {
 
     while IFS= read -r file; do
         local c
-        c=$(grep -cE '^\s*(pub(\s*\(.*\))?\s+)?struct\s+\w+' "$file" 2>/dev/null || echo 0)
-        ((count += c))
+        c=$(_rust_grep_count '^\s*(pub(\s*\(.*\))?\s+)?struct\s+\w+' "$file")
+        count=$((count + c))
     done < <(_rust_find_files "$dir")
 
     echo "$count"
@@ -329,8 +374,8 @@ rust_impl_count() {
 
     while IFS= read -r file; do
         local c
-        c=$(grep -cE '^\s*impl(<.*>)?\s+(\w+::)*\w+' "$file" 2>/dev/null || echo 0)
-        ((count += c))
+        c=$(_rust_grep_count '^\s*impl(<.*>)?\s+(\w+::)*\w+' "$file")
+        count=$((count + c))
     done < <(_rust_find_files "$dir")
 
     echo "$count"
@@ -344,8 +389,8 @@ rust_enum_count() {
 
     while IFS= read -r file; do
         local c
-        c=$(grep -cE '^\s*(pub(\s*\(.*\))?\s+)?enum\s+\w+' "$file" 2>/dev/null || echo 0)
-        ((count += c))
+        c=$(_rust_grep_count '^\s*(pub(\s*\(.*\))?\s+)?enum\s+\w+' "$file")
+        count=$((count + c))
     done < <(_rust_find_files "$dir")
 
     echo "$count"
@@ -359,8 +404,8 @@ rust_loc() {
 
     while IFS= read -r file; do
         local c
-        c=$(sed '/\/\*/,/\*\//d' "$file" 2>/dev/null | grep -cvE '^\s*$|^\s*//' || echo 0)
-        ((count += c))
+        c=$(_rust_loc_count "$file")
+        count=$((count + c))
     done < <(_rust_find_files "$dir")
 
     echo "$count"
@@ -375,10 +420,10 @@ rust_test_coverage() {
 
     while IFS= read -r file; do
         local f m
-        f=$(grep -cE '^\s*#\[test\]' "$file" 2>/dev/null || echo 0)
-        m=$(grep -cE '^\s*#\[cfg\(test\)\]' "$file" 2>/dev/null || echo 0)
-        ((test_funcs += f))
-        ((test_mods += m))
+        f=$(_rust_grep_count '^\s*#\[test\]' "$file")
+        m=$(_rust_grep_count '^\s*#\[cfg\(test\)\]' "$file")
+        test_funcs=$((test_funcs + f))
+        test_mods=$((test_mods + m))
     done < <(_rust_find_files "$dir")
 
     echo "test_functions=${test_funcs},test_modules=${test_mods}"
@@ -414,23 +459,23 @@ rust_summary() {
     unsafe_info=$(rust_unsafe_count "$dir")
 
     local name version edition
-    name=$(echo "$cargo" | grep -oP 'name=\K[^,]+')
-    version=$(echo "$cargo" | grep -oP 'version=\K[^,]+')
-    edition=$(echo "$cargo" | grep -oP 'edition=\K[^,]+')
+    name=$(_rust_kv_value "$cargo" "name")
+    version=$(_rust_kv_value "$cargo" "version")
+    edition=$(_rust_kv_value "$cargo" "edition")
 
     local regular dev build
-    regular=$(echo "$deps" | grep -oP 'regular=\K[0-9]+')
-    dev=$(echo "$deps" | grep -oP 'dev=\K[0-9]+')
-    build=$(echo "$deps" | grep -oP 'build=\K[0-9]+')
+    regular=$(_rust_kv_value "$deps" "regular")
+    dev=$(_rust_kv_value "$deps" "dev")
+    build=$(_rust_kv_value "$deps" "build")
 
     local test_funcs test_mods
-    test_funcs=$(echo "$tests" | grep -oP 'test_functions=\K[0-9]+')
-    test_mods=$(echo "$tests" | grep -oP 'test_modules=\K[0-9]+')
+    test_funcs=$(_rust_kv_value "$tests" "test_functions")
+    test_mods=$(_rust_kv_value "$tests" "test_modules")
 
     local unsafe_blocks unsafe_fns unsafe_impls
-    unsafe_blocks=$(echo "$unsafe_info" | grep -oP 'blocks=\K[0-9]+')
-    unsafe_fns=$(echo "$unsafe_info" | grep -oP 'functions=\K[0-9]+')
-    unsafe_impls=$(echo "$unsafe_info" | grep -oP 'impls=\K[0-9]+')
+    unsafe_blocks=$(_rust_kv_value "$unsafe_info" "blocks")
+    unsafe_fns=$(_rust_kv_value "$unsafe_info" "functions")
+    unsafe_impls=$(_rust_kv_value "$unsafe_info" "impls")
 
     local file_count
     file_count=$(_rust_find_files "$dir" | wc -l)

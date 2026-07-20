@@ -21,7 +21,7 @@
 
 # Prevent double-sourcing
 [[ -n "${_MAINFRAME_OUTPUT_LOADED:-}" ]] && return 0
-readonly _MAINFRAME_OUTPUT_LOADED=1
+declare -g _MAINFRAME_OUTPUT_LOADED=1
 
 # =============================================================================
 # CONFIGURATION
@@ -707,6 +707,10 @@ output_json_string_kv() {
     printf '"%s":"%s"' "$(_output_escape "$key")" "$(_output_escape "$value")"
 }
 
+output_json_string() {
+    output_json_string_kv "$@"
+}
+
 # Emit a JSON key-value pair with number value
 # Usage: output_json_number "key" 42
 # Output: "key":42
@@ -776,9 +780,37 @@ output_list() {
 # Usage: output_object "key1=val1" "key2=val2" "key3:number=42"
 output_object() {
     local first=true
+    local -a pairs=()
+    local arg
+
+    # Backward-compatibility: also accept alternating key value pairs.
+    if [[ $# -gt 0 && $(( $# % 2 )) -eq 0 ]]; then
+        local alternating=true
+        for arg in "$@"; do
+            if [[ "$arg" == *=* ]]; then
+                alternating=false
+                break
+            fi
+        done
+
+        if [[ "$alternating" == "true" ]]; then
+            local i=1 next key value
+            while [[ $i -le $# ]]; do
+                next=$(( i + 1 ))
+                key="${!i}"
+                value="${!next}"
+                pairs+=("${key}=${value}")
+                i=$(( i + 2 ))
+            done
+        fi
+    fi
+
+    if [[ ${#pairs[@]} -eq 0 ]]; then
+        pairs=("$@")
+    fi
 
     printf '{"status":"success","data":{'
-    for pair in "$@"; do
+    for pair in "${pairs[@]}"; do
         local key type value
 
         if [[ "$pair" =~ ^([^:=]+):([^=]+)=(.*)$ ]]; then
@@ -1248,6 +1280,69 @@ usop_write_file() {
             return 1
         fi
     fi
+}
+
+# Delete a file and return a USOP envelope describing the result.
+#
+# Usage: usop_delete_file PATH
+# Example: result=$(usop_delete_file /tmp/test.txt)
+usop_delete_file() {
+    local path="$1"
+
+    if [[ -z "$path" ]]; then
+        json_object \
+            "success:bool=false" \
+            "error=path required" \
+            "path=" \
+            "suggestion=Provide a file path as the first argument"
+        return 1
+    fi
+
+    if [[ ! -e "$path" ]]; then
+        json_object \
+            "success:bool=false" \
+            "error=file not found" \
+            "path=$path" \
+            "suggestion=Verify the path exists before deleting it"
+        return 1
+    fi
+
+    if [[ ! -f "$path" ]]; then
+        json_object \
+            "success:bool=false" \
+            "error=not a regular file" \
+            "path=$path" \
+            "suggestion=Use a file path, not a directory or special file"
+        return 1
+    fi
+
+    if rm -f -- "$path"; then
+        json_object \
+            "success:bool=true" \
+            "path=$path" \
+            "action=deleted"
+        return 0
+    fi
+
+    json_object \
+        "success:bool=false" \
+        "error=delete failed" \
+        "path=$path" \
+        "suggestion=Check file permissions and whether the file is locked"
+    return 1
+}
+
+# Compatibility wrappers for older USOP file helper names.
+usop_file_read() {
+    usop_read_file "$@"
+}
+
+usop_file_write() {
+    usop_write_file "$@"
+}
+
+usop_file_delete() {
+    usop_delete_file "$@"
 }
 
 # List directory contents and return USOP envelope
@@ -1867,6 +1962,7 @@ _OUTPUT_EXPORTS=(
     output_structured_error
     output_try
     output_json_escape
+    output_json_string
     output_json_array_from_lines
     # USOP Command Execution
     usop_exec
@@ -1877,6 +1973,10 @@ _OUTPUT_EXPORTS=(
     # USOP File Operations
     usop_read_file
     usop_write_file
+    usop_delete_file
+    usop_file_read
+    usop_file_write
+    usop_file_delete
     usop_list_dir
     # USOP Process Operations
     usop_run_background

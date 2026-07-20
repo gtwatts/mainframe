@@ -53,8 +53,10 @@ teardown() {
 }
 
 @test "circuit_breaker_call auto-creates breaker if not exists" {
+    local result_file="$TEST_DIR/auto_cb.out"
     local result
-    result=$(circuit_breaker_call "auto_cb" "echo auto")
+    circuit_breaker_call "auto_cb" "echo auto" >"$result_file"
+    result=$(<"$result_file")
     [ "$result" = "auto" ]
     local state
     state=$(circuit_breaker_state "auto_cb")
@@ -377,10 +379,11 @@ teardown() {
 }
 
 @test "retry_with_jitter returns modified delay" {
-    local delay
-    delay=$(retry_with_jitter 10 0.5)
+    run retry_with_jitter 10 0.5
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ ^[0-9]+$ ]]
     # Should be between 5 and 15 (10 +/- 50%)
-    [ "$delay" -ge 1 ] && [ "$delay" -le 20 ]
+    [ "$output" -ge 1 ] && [ "$output" -le 20 ]
 }
 
 @test "retry_until_success with exponential backoff" {

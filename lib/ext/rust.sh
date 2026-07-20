@@ -349,7 +349,7 @@ rust_crate_name() {
     json_object_v data \
         "name=$name" \
         "version=$version" \
-        "edition=$edition" \
+        "edition:string=$edition" \
         "authors=$authors" \
         "description=$description" \
         "license=$license"
@@ -843,4 +843,3 @@ _RUST_EXPORTS=(
     # AI Agent Helpers
     rust_project_summary
 )
-

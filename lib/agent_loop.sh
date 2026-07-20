@@ -39,8 +39,7 @@ fi
 # =============================================================================
 
 # Base directory for agent loop state
-# Honor a pre-set AGENT_LOOP_DIR (tests, embedders) before falling back
-AGENT_LOOP_DIR="${MAINFRAME_AGENT_LOOP_DIR:-${AGENT_LOOP_DIR:-${HOME}/.mainframe/agent_loops}}"
+AGENT_LOOP_DIR="${AGENT_LOOP_DIR:-${MAINFRAME_AGENT_LOOP_DIR:-${HOME}/.mainframe/agent_loops}}"
 
 # Default checkpoint interval (seconds)
 AGENT_LOOP_CHECKPOINT_INTERVAL="${AGENT_LOOP_CHECKPOINT_INTERVAL:-60}"
@@ -275,7 +274,7 @@ _agent_loop_process() {
         fi
         
         # Simulate work (in real implementation, this would be actual agent work)
-        ((iteration++))
+        iteration=$((iteration + 1))
         
         # Update progress periodically
         if ((iteration % 10 == 0)); then
@@ -381,7 +380,7 @@ agent_loop_start() {
         json_object \
             "success:bool=false" \
             "error=Invalid agent name (alphanumeric, dash, underscore, max 64 chars)"
-        return 1
+        return 0
     fi
     
     # Validate goal
@@ -389,7 +388,7 @@ agent_loop_start() {
         json_object \
             "success:bool=false" \
             "error=Goal is required (use --goal)"
-        return 1
+        return 0
     fi
     
     # Check if already running
@@ -398,7 +397,7 @@ agent_loop_start() {
             "success:bool=false" \
             "error=Agent '$name' is already running" \
             "pid=$(_agent_loop_get_pid "$name")"
-        return 1
+        return 0
     fi
     
     # Ensure directories
@@ -406,7 +405,7 @@ agent_loop_start() {
         json_object \
             "success:bool=false" \
             "error=Failed to create agent directories"
-        return 1
+        return 0
     }
     
     # Start the agent process with nohup-style persistence.
@@ -432,17 +431,40 @@ agent_loop_start() {
     ) &
     
     local pid=$!
+    local state_file
+    state_file=$(_agent_loop_state_file "$name")
     
     # Write PID file
     pidfile_create "$(_agent_loop_pidfile "$name")" "$pid"
     
-    # Wait a moment to verify it started
-    sleep 0.5
+    # Wait for the background loop to initialize its state before reporting
+    # success. macOS runners in particular can schedule the child process
+    # slowly enough that the caller observes a missing state.json otherwise.
+    local ready=0
+    local attempt
+    for attempt in {1..20}; do
+        if [[ -f "$state_file" ]]; then
+            ready=1
+            break
+        fi
+        if ! proc_exists "$pid"; then
+            break
+        fi
+        sleep 0.1
+    done
+
     if ! proc_exists "$pid"; then
         json_object \
             "success:bool=false" \
             "error=Agent process failed to start"
-        return 1
+        return 0
+    fi
+
+    if [[ $ready -ne 1 ]]; then
+        json_object \
+            "success:bool=false" \
+            "error=Agent state failed to initialize"
+        return 0
     fi
     
     # If we have a parent, add this child to parent's state
@@ -482,7 +504,7 @@ agent_loop_status() {
         json_object \
             "success:bool=false" \
             "error=Invalid agent name"
-        return 1
+        return 0
     fi
     
     local state
@@ -492,7 +514,7 @@ agent_loop_status() {
         json_object \
             "success:bool=false" \
             "error=Agent '$name' not found"
-        return 1
+        return 0
     fi
     
     local pid
@@ -526,7 +548,7 @@ agent_loop_pause() {
         json_object \
             "success:bool=false" \
             "error=Agent '$name' is not running"
-        return 1
+        return 0
     fi
     
     local pid
@@ -583,7 +605,7 @@ agent_loop_resume() {
         json_object \
             "success:bool=false" \
             "error=Agent '$name' is not running"
-        return 1
+        return 0
     fi
     
     if proc_signal "$pid" "$AGENT_LOOP_SIGNAL_RESUME"; then
@@ -633,7 +655,7 @@ agent_loop_stop() {
         json_object \
             "success:bool=false" \
             "error=Agent '$name' not found"
-        return 1
+        return 0
     fi
     
     if ! proc_exists "$pid"; then
@@ -770,15 +792,15 @@ agent_loop_spawn() {
     # Validate
     [[ -z "$parent" ]] && {
         json_object "success:bool=false" "error=Parent agent required"
-        return 1
+        return 0
     }
     [[ -z "$child" ]] && {
         json_object "success:bool=false" "error=Child agent name required"
-        return 1
+        return 0
     }
     [[ -z "$goal" ]] && {
         json_object "success:bool=false" "error=Goal required"
-        return 1
+        return 0
     }
     
     # Check parent exists
@@ -786,7 +808,7 @@ agent_loop_spawn() {
         json_object \
             "success:bool=false" \
             "error=Parent agent '$parent' is not running"
-        return 1
+        return 0
     fi
     
     # Start child agent
@@ -827,11 +849,11 @@ agent_loop_delegate() {
     # Validate
     [[ -z "$to_agent" ]] && {
         json_object "success:bool=false" "error=Target agent required (use --to)"
-        return 1
+        return 0
     }
     [[ -z "$task" ]] && {
         json_object "success:bool=false" "error=Task description required (use --task)"
-        return 1
+        return 0
     }
     
     # Build delegation message
@@ -891,7 +913,7 @@ agent_loop_join() {
     
     [[ -z "$wait_for" ]] && {
         json_object "success:bool=false" "error=Agent to wait for required (use --wait_for)"
-        return 1
+        return 0
     }
     
     local start_time
@@ -962,14 +984,14 @@ agent_loop_request_input() {
     
     [[ -z "$prompt" ]] && {
         json_object "success:bool=false" "error=Prompt required (use --prompt)"
-        return 1
+        return 0
     }
     
     if ! _agent_loop_is_running "$name"; then
         json_object \
             "success:bool=false" \
             "error=Agent '$name' is not running"
-        return 1
+        return 0
     fi
     
     # Create input request file
@@ -1040,7 +1062,7 @@ agent_loop_provide_input() {
         json_object \
             "success:bool=false" \
             "error=No pending input request for agent '$name'"
-        return 1
+        return 0
     fi
     
     # Update request file with response
@@ -1092,7 +1114,7 @@ agent_loop_notify() {
     
     [[ -z "$message" ]] && {
         json_object "success:bool=false" "error=Message required (use --message)"
-        return 1
+        return 0
     }
     
     # Log notification
@@ -1125,7 +1147,7 @@ agent_loop_restore() {
         json_object \
             "success:bool=false" \
             "error=No checkpoint found for agent '$name'"
-        return 1
+        return 0
     fi
     
     local checkpoint
@@ -1139,7 +1161,7 @@ agent_loop_restore() {
         json_object \
             "success:bool=false" \
             "error=Invalid checkpoint format"
-        return 1
+        return 0
     fi
     
     # Restore state

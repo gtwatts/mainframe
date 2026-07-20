@@ -150,6 +150,30 @@ _stream_validate_expr() {
     _streams_eval_transform "$expr" "$test_val" &>/dev/null
 }
 
+_streams_valid_var_name() {
+    [[ "$1" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]
+}
+
+_streams_assign_array() {
+    local array_name="$1"
+    shift
+
+    _streams_valid_var_name "$array_name" || return 1
+    eval "$array_name=()"
+
+    local _streams_item
+    for _streams_item in "$@"; do
+        eval "$array_name+=(\"\$_streams_item\")"
+    done
+}
+
+_streams_print_array() {
+    local array_name="$1"
+
+    _streams_valid_var_name "$array_name" || return 1
+    eval "printf '%s\n' \"\${${array_name}[@]}\""
+}
+
 # =============================================================================
 # STREAM CREATION
 # =============================================================================
@@ -166,20 +190,20 @@ _stream_validate_expr() {
 #        stream_from_array "${arr[@]}"
 # Example: local arr=(a b c); stream_from_array arr
 stream_from_array() {
-    if [[ $# -eq 1 ]] && declare -p "$1" &>/dev/null; then
-        # Nameref mode - argument is array variable name
-        local -n _arr="$1"
-        local item
-        for item in "${_arr[@]}"; do
-            printf '%s\n' "$item"
-        done
-    else
-        # Direct values mode
-        local item
-        for item in "$@"; do
-            printf '%s\n' "$item"
-        done
+    if [[ $# -eq 1 ]]; then
+        local decl=""
+        decl=$(declare -p "$1" 2>/dev/null || true)
+        if [[ "$decl" == "declare -a"* ]]; then
+            _streams_print_array "$1"
+            return $?
+        fi
     fi
+
+    # Direct values mode
+    local item
+    for item in "$@"; do
+        printf '%s\n' "$item"
+    done
 }
 
 # @pre: file exists and is readable
@@ -402,9 +426,11 @@ stream_iterate() {
 stream_map() {
     local transform="$1"
     local item
+    local mapped
 
     while IFS= read -r item || [[ -n "$item" ]]; do
-        _streams_eval_transform "$transform" "$item"
+        mapped=$(_streams_eval_transform "$transform" "$item") || return 1
+        printf '%s\n' "$mapped"
     done
 }
 
@@ -1570,13 +1596,12 @@ stream_collect() {
 
     if [[ -n "$arr_name" ]]; then
         # Validate array name (alphanumeric and underscore only)
-        if [[ ! "$arr_name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+        if ! _streams_valid_var_name "$arr_name"; then
             _stream_error 1 "invalid array name: $arr_name"
             return 1
         fi
-        # Use nameref for safe array assignment
-        local -n __sc_target="$arr_name"
-        __sc_target=("${items[@]}")
+
+        _streams_assign_array "$arr_name" "${items[@]}" || return 1
     else
         # Output as JSON array
         printf '['

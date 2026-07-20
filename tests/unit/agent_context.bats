@@ -36,8 +36,7 @@ teardown() {
 # =============================================================================
 
 @test "ctx_init: creates new session" {
-    run ctx_init "test-session-001"
-    [[ "$status" -eq 0 ]]
+    ctx_init "test-session-001"
     [[ -d "${MAINFRAME_CONTEXT_DIR}/test-session-001" ]]
 }
 
@@ -79,8 +78,7 @@ teardown() {
 }
 
 @test "ctx_init: handles special characters in session_id" {
-    run ctx_init "test_session-123"
-    [[ "$status" -eq 0 ]]
+    ctx_init "test_session-123"
     [[ -d "${MAINFRAME_CONTEXT_DIR}/test_session-123" ]]
 }
 
@@ -94,8 +92,7 @@ teardown() {
     ctx_save
     ctx_close
 
-    run ctx_load "load-test"
-    [[ "$status" -eq 0 ]]
+    ctx_load "load-test"
     local val
     val=$(ctx_get "key1")
     [[ "$val" == "value1" ]]
@@ -265,8 +262,7 @@ teardown() {
 @test "ctx_delete: removes key" {
     ctx_init "delete-test"
     ctx_set "temp" "value"
-    run ctx_delete "temp"
-    [[ "$status" -eq 0 ]]
+    ctx_delete "temp"
     run ctx_get "temp"
     [[ "$status" -eq 1 ]]
 }
@@ -310,8 +306,7 @@ teardown() {
     ctx_init "clear-test"
     ctx_set "a" "1"
     ctx_set "b" "2"
-    run ctx_clear
-    [[ "$status" -eq 0 ]]
+    ctx_clear
     run ctx_get "a"
     [[ "$status" -eq 1 ]]
     run ctx_get "b"
@@ -467,8 +462,7 @@ teardown() {
 
     # Import into new session
     ctx_init "import-target"
-    run ctx_import "${TEST_TMPDIR}/import.json"
-    [[ "$status" -eq 0 ]]
+    ctx_import "${TEST_TMPDIR}/import.json"
     [[ "$(ctx_get 'imported_key')" == "imported_value" ]]
 }
 
@@ -511,8 +505,7 @@ teardown() {
 
     ctx_init "merge-target"
     ctx_set "target_data" "target_value"
-    run ctx_merge "merge-source"
-    [[ "$status" -eq 0 ]]
+    ctx_merge "merge-source"
 
     [[ "$(ctx_get 'source_data')" == "source_value" ]]
     [[ "$(ctx_get 'target_data')" == "target_value" ]]

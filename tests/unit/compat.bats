@@ -278,20 +278,24 @@ teardown() {
 @test "preadlink_f resolves symlinks" {
     touch "$TEST_TMPDIR/original.txt"
     ln -s "$TEST_TMPDIR/original.txt" "$TEST_TMPDIR/link.txt"
+    local expected
+    expected="$(cd "$(dirname "$TEST_TMPDIR/original.txt")" && pwd -P)/original.txt"
 
     run preadlink_f "$TEST_TMPDIR/link.txt"
     [[ "$status" -eq 0 ]]
-    [[ "$output" == "$TEST_TMPDIR/original.txt" ]]
+    [[ "$output" == "$expected" ]]
 }
 
 @test "preadlink_f handles relative paths" {
     local original_dir="$PWD"
     cd "$TEST_TMPDIR"
     touch "file.txt"
+    local expected
+    expected="$(pwd -P)/file.txt"
 
     run preadlink_f "file.txt"
     [[ "$status" -eq 0 ]]
-    [[ "$output" == "$TEST_TMPDIR/file.txt" ]]
+    [[ "$output" == "$expected" ]]
 
     cd "$original_dir"
 }
@@ -905,7 +909,7 @@ teardown() {
     local mtime=$(compat_stat_mtime "$TEST_TMPDIR/combo_test.txt")
     run compat_date_format "%Y-%m-%d" "$mtime"
     [[ "$status" -eq 0 ]]
-    # Should be today's date
-    local today=$(date +%Y-%m-%d)
+    # compat_date_format uses UTC formatting
+    local today=$(TZ=UTC date +%Y-%m-%d)
     [[ "$output" == "$today" ]]
 }

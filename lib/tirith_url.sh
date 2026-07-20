@@ -22,7 +22,8 @@ readonly _MAINFRAME_TIRITH_URL_LOADED=1
 # Initialize findings state if not already present
 if ! declare -F _tirith_init_state &>/dev/null; then
     _tirith_init_state() {
-        declare -ga _TIRITH_FINDINGS=()
+        declare -ga _TIRITH_FINDINGS 2>/dev/null || declare -a _TIRITH_FINDINGS
+        _TIRITH_FINDINGS=()
         _TIRITH_FINDING_COUNT=0
     }
 fi
@@ -54,7 +55,8 @@ _tirith_init_state
 # CONFUSABLE CHARACTER MAP
 # =============================================================================
 
-declare -gA _TIRITH_CONFUSABLES=()
+declare -gA _TIRITH_CONFUSABLES 2>/dev/null || declare -A _TIRITH_CONFUSABLES
+_TIRITH_CONFUSABLES=()
 
 # Initialize confusables - visually similar characters from non-Latin scripts
 _tirith_init_confusables() {

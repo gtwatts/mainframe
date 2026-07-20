@@ -135,9 +135,7 @@ setup() {
 }
 
 @test "fzf_select: empty input returns failure" {
-    # Empty stdin means no lines read, should return 1
-    printf '' | fzf_select 2>/dev/null
-    status=$?
+    run bash -c "source '$MAINFRAME_ROOT/lib/fzf.sh'; printf '' | fzf_select 2>/dev/null"
     [[ "$status" -eq 1 ]]
 }
 
@@ -190,8 +188,7 @@ setup() {
     local test_dir
     test_dir=$(mktemp -d)
 
-    fzf_file "$test_dir" 2>/dev/null
-    status=$?
+    run fzf_file "$test_dir"
     [[ "$status" -eq 1 ]]
 
     rm -rf "$test_dir"
@@ -280,8 +277,7 @@ setup() {
     cd "$test_dir"
 
     # No git init, so git branch will fail and produce empty input
-    fzf_git_branch 2>/dev/null
-    status=$?
+    run fzf_git_branch
     [[ "$status" -eq 1 ]]
 
     cd /
@@ -314,8 +310,7 @@ setup() {
     test_dir=$(mktemp -d)
     cd "$test_dir"
 
-    fzf_git_log 2>/dev/null
-    status=$?
+    run fzf_git_log
     [[ "$status" -eq 1 ]]
 
     cd /

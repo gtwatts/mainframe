@@ -178,7 +178,7 @@ setup() {
     local result
     result=$(sec_scan_file "$FIXTURE_DIR/vulnerable.js")
     local total
-    total=$(echo "$result" | grep -oP '"total_findings":\K[0-9]+')
+    total=$(printf '%s\n' "$result" | sed -nE 's/.*"total_findings":([0-9]+).*/\1/p')
     [[ $total -gt 3 ]]
 }
 
@@ -186,8 +186,8 @@ setup() {
     local vuln_result safe_result vuln_total safe_total
     vuln_result=$(sec_scan_file "$FIXTURE_DIR/vulnerable.js")
     safe_result=$(sec_scan_file "$FIXTURE_DIR/safe.js")
-    vuln_total=$(echo "$vuln_result" | grep -oP '"total_findings":\K[0-9]+')
-    safe_total=$(echo "$safe_result" | grep -oP '"total_findings":\K[0-9]+')
+    vuln_total=$(printf '%s\n' "$vuln_result" | sed -nE 's/.*"total_findings":([0-9]+).*/\1/p')
+    safe_total=$(printf '%s\n' "$safe_result" | sed -nE 's/.*"total_findings":([0-9]+).*/\1/p')
     [[ $vuln_total -gt $safe_total ]]
 }
 
@@ -328,7 +328,7 @@ line2")
 @test "sec_scan_dir finds vulnerabilities across multiple files" {
     local result total
     result=$(sec_scan_dir "$FIXTURE_DIR")
-    total=$(echo "$result" | grep -oP '"total_findings":\K[0-9]+' | head -1)
+    total=$(printf '%s\n' "$result" | sed -nE 's/.*"files_scanned":[0-9]+,"total_findings":([0-9]+),"files".*/\1/p' | head -1)
     [[ $total -gt 0 ]]
 }
 

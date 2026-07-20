@@ -24,11 +24,12 @@ readonly _MAINFRAME_TIRITH_INJECT_LOADED=1
 # across all tirith_* libraries and use \x1f as field separator.
 _tirith_init_state() {
     if ! declare -p _TIRITH_FINDINGS &>/dev/null 2>&1; then
-        declare -ga _TIRITH_FINDINGS=()
-        declare -g _TIRITH_CRITICAL=0
-        declare -g _TIRITH_HIGH=0
-        declare -g _TIRITH_MEDIUM=0
-        declare -g _TIRITH_LOW=0
+        declare -ga _TIRITH_FINDINGS 2>/dev/null || declare -a _TIRITH_FINDINGS
+        _TIRITH_FINDINGS=()
+        _TIRITH_CRITICAL=0
+        _TIRITH_HIGH=0
+        _TIRITH_MEDIUM=0
+        _TIRITH_LOW=0
     fi
 }
 

@@ -21,36 +21,38 @@ _MAINFRAME_SAFEWRAP_LOADED=1
 # =============================================================================
 
 # Global enable/disable toggle
-declare -g _MAINFRAME_WRAP_ENABLED=0
+_MAINFRAME_WRAP_ENABLED=0
 
 # Policy level: strict, moderate, permissive
-declare -g _MAINFRAME_WRAP_POLICY="moderate"
+_MAINFRAME_WRAP_POLICY="moderate"
 
 # Policy thresholds (risk score at which action is taken)
-declare -g _MAINFRAME_WRAP_BLOCK_THRESHOLD_STRICT=4
-declare -g _MAINFRAME_WRAP_BLOCK_THRESHOLD_MODERATE=6
-declare -g _MAINFRAME_WRAP_BLOCK_THRESHOLD_PERMISSIVE=8
+_MAINFRAME_WRAP_BLOCK_THRESHOLD_STRICT=4
+_MAINFRAME_WRAP_BLOCK_THRESHOLD_MODERATE=6
+_MAINFRAME_WRAP_BLOCK_THRESHOLD_PERMISSIVE=8
 
-declare -g _MAINFRAME_WRAP_CONFIRM_THRESHOLD_STRICT=2
-declare -g _MAINFRAME_WRAP_CONFIRM_THRESHOLD_MODERATE=5
-declare -g _MAINFRAME_WRAP_CONFIRM_THRESHOLD_PERMISSIVE=7
+_MAINFRAME_WRAP_CONFIRM_THRESHOLD_STRICT=2
+_MAINFRAME_WRAP_CONFIRM_THRESHOLD_MODERATE=5
+_MAINFRAME_WRAP_CONFIRM_THRESHOLD_PERMISSIVE=7
 
 # =============================================================================
 # INTERNAL STATE
 # =============================================================================
 
 # Registered custom wrappers: associative array of CMD -> FUNCTION_NAME
-declare -gA _MAINFRAME_WRAP_REGISTRY=()
+declare -gA _MAINFRAME_WRAP_REGISTRY 2>/dev/null || declare -A _MAINFRAME_WRAP_REGISTRY
+_MAINFRAME_WRAP_REGISTRY=()
 
 # Execution log: indexed array of JSON entries
-declare -ga _MAINFRAME_WRAP_LOG=()
+declare -ga _MAINFRAME_WRAP_LOG 2>/dev/null || declare -a _MAINFRAME_WRAP_LOG
+_MAINFRAME_WRAP_LOG=()
 
 # Statistics counters
-declare -g _MAINFRAME_WRAP_STATS_TOTAL=0
-declare -g _MAINFRAME_WRAP_STATS_EXECUTED=0
-declare -g _MAINFRAME_WRAP_STATS_BLOCKED=0
-declare -g _MAINFRAME_WRAP_STATS_BYPASSED=0
-declare -g _MAINFRAME_WRAP_STATS_CONFIRMED=0
+_MAINFRAME_WRAP_STATS_TOTAL=0
+_MAINFRAME_WRAP_STATS_EXECUTED=0
+_MAINFRAME_WRAP_STATS_BLOCKED=0
+_MAINFRAME_WRAP_STATS_BYPASSED=0
+_MAINFRAME_WRAP_STATS_CONFIRMED=0
 
 # =============================================================================
 # INTERNAL HELPERS
@@ -203,7 +205,7 @@ _wrap_stage_scope() {
 
 # Stage 2: Risk scoring
 # Sets _WRAP_CURRENT_RISK_SCORE global
-declare -g _WRAP_CURRENT_RISK_SCORE=0
+_WRAP_CURRENT_RISK_SCORE=0
 
 _wrap_stage_risk() {
     local cmd="$1"

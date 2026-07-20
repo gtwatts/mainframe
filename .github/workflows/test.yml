@@ -164,8 +164,8 @@ jobs:
             tests/unit/awm.bats \
             tests/unit/awm_v2.bats
 
-  test-unit:
-    name: Unit Tests
+  test-linux:
+    name: Linux Bats Matrix
     runs-on: ubuntu-latest
     needs: lint
     steps:
@@ -180,7 +180,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq csvkit xmlstarlet parallel
+          sudo apt-get install -y jq csvkit xmlstarlet parallel curl
 
       - name: Install BATS
         run: |
@@ -189,112 +189,21 @@ jobs:
           git clone https://github.com/bats-core/bats-assert.git tests/bats-assert
           git clone https://github.com/bats-core/bats-file.git tests/bats-file
 
-      - name: Run unit tests
-        timeout-minutes: 25
+      - name: Run full Bats matrix
+        timeout-minutes: 90
         run: |
-          # Run core + extended tests - exclude slow/network/timeout-heavy tests
-          # Excluded: bun, burl, device, docker, embeddings,
-          #           futures, fzf, http, llm_stream, parallel,
-          #           python_runtime, rag, vectordb
-          ./tests/bats/bin/bats --formatter tap \
-            --print-output-on-failure \
-            tests/unit/agent_context.bats \
-            tests/unit/agent_exec.bats \
-            tests/unit/atomic.bats \
-            tests/unit/audit.bats \
-            tests/unit/awm.bats \
-            tests/unit/awm_v2.bats \
-            tests/unit/benchmark.bats \
-            tests/unit/build.bats \
-            tests/unit/capability.bats \
-            tests/unit/common.bats \
-            tests/unit/compat.bats \
-            tests/unit/csv.bats \
-            tests/unit/datetime.bats \
-            tests/unit/forensics.bats \
-            tests/unit/git.bats \
-            tests/unit/idempotent_write.bats \
-            tests/unit/json.bats \
-            tests/unit/jsonpath.bats \
-            tests/unit/lazy_loading.bats \
-            tests/unit/llm_functions.bats \
-            tests/unit/llm_tokens.bats \
-            tests/unit/mainframe-new.bats \
-            tests/unit/metrics.bats \
-            tests/unit/otel.bats \
-            tests/unit/output.bats \
-            tests/unit/output_errors.bats \
-            tests/unit/policy.bats \
-            tests/unit/proptest.bats \
-            tests/unit/rbac.bats \
-            tests/unit/registry.bats \
-            tests/unit/registry_schema.bats \
-            tests/unit/retry.bats \
-            tests/unit/sandbox.bats \
-            tests/unit/schema.bats \
-            tests/unit/secrets.bats \
-            tests/unit/security_eval.bats \
-            tests/unit/service.bats \
-            tests/unit/structured_log.bats \
-            tests/unit/symbols.bats \
-            tests/unit/sysinfo.bats \
-            tests/unit/telemetry.bats \
-            tests/unit/test_agent_ai.bats \
-            tests/unit/test_ci.bats \
-            tests/unit/test_env.bats \
-            tests/unit/test_path.bats \
-            tests/unit/test_pipe.bats \
-            tests/unit/test_validation.bats \
-            tests/unit/workpool.bats \
-            tests/lib/agent_ai.bats \
-            tests/lib/agent_context.bats \
-            tests/lib/taskstate.bats \
-            tests/lib/workpool.bats \
-            2>&1 | tee results.tap
+          set -o pipefail
+          ./tests/run_bats_suite.sh --scope all --formatter tap 2>&1 | tee results.tap
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results
+          name: linux-bats-results
           path: results.tap
 
-  test-integration:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    needs: test-unit
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq csvkit xmlstarlet curl
-
-      - name: Install BATS
-        run: |
-          git clone https://github.com/bats-core/bats-core.git tests/bats
-          git clone https://github.com/bats-core/bats-support.git tests/bats-support
-          git clone https://github.com/bats-core/bats-assert.git tests/bats-assert
-          git clone https://github.com/bats-core/bats-file.git tests/bats-file
-
-      - name: Run integration tests
-        timeout-minutes: 10
-        run: |
-          ./tests/bats/bin/bats --formatter tap tests/integration/ | tee integration-results.tap
-
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: integration-results
-          path: integration-results.tap
-
   test-macos:
-    name: macOS Compatibility
+    name: macOS Bats Matrix
     runs-on: macos-latest
     needs: lint
     steps:
@@ -305,7 +214,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install jq bash coreutils parallel
+          brew install jq bash coreutils parallel csvkit xmlstarlet
 
       - name: Install BATS
         run: |
@@ -314,82 +223,24 @@ jobs:
           git clone https://github.com/bats-core/bats-assert.git tests/bats-assert
           git clone https://github.com/bats-core/bats-file.git tests/bats-file
 
-      - name: Run tests
-        timeout-minutes: 35
+      - name: Run full Bats matrix
+        timeout-minutes: 90
         run: |
-          # Run core tests for macOS compatibility verification
-          # Note: macOS runners are slower, trimmed to essential tests
-          output=$(./tests/bats/bin/bats --print-output-on-failure \
-            tests/unit/agent_context.bats \
-            tests/unit/agent_exec.bats \
-            tests/unit/atomic.bats \
-            tests/unit/audit.bats \
-            tests/unit/awm.bats \
-            tests/unit/awm_v2.bats \
-            tests/unit/build.bats \
-            tests/unit/capability.bats \
-            tests/unit/common.bats \
-            tests/unit/compat.bats \
-            tests/unit/csv.bats \
-            tests/unit/datetime.bats \
-            tests/unit/git.bats \
-            tests/unit/idempotent_write.bats \
-            tests/unit/json.bats \
-            tests/unit/jsonpath.bats \
-            tests/unit/lazy_loading.bats \
-            tests/unit/metrics.bats \
-            tests/unit/output.bats \
-            tests/unit/output_errors.bats \
-            tests/unit/policy.bats \
-            tests/unit/proptest.bats \
-            tests/unit/rbac.bats \
-            tests/unit/registry.bats \
-            tests/unit/registry_schema.bats \
-            tests/unit/retry.bats \
-            tests/unit/sandbox.bats \
-            tests/unit/schema.bats \
-            tests/unit/secrets.bats \
-            tests/unit/service.bats \
-            tests/unit/structured_log.bats \
-            tests/unit/symbols.bats \
-            tests/unit/sysinfo.bats \
-            tests/unit/telemetry.bats \
-            tests/unit/test_agent_ai.bats \
-            tests/unit/test_env.bats \
-            tests/unit/test_path.bats \
-            tests/unit/test_pipe.bats \
-            tests/unit/test_validation.bats \
-            tests/lib/agent_ai.bats \
-            tests/lib/agent_context.bats \
-            tests/lib/taskstate.bats \
-            tests/lib/workpool.bats \
-            2>&1) || true
-          echo "$output"
+          set -o pipefail
+          export BATS_TEST_SHELL="$(brew --prefix bash)/bin/bash"
+          ./tests/run_bats_suite.sh --scope all --formatter tap 2>&1 | tee macos-results.tap
 
-          # Count actual failures
-          failure_count=$(echo "$output" | grep -c "^not ok" || true)
-          echo "Failure count: $failure_count"
-
-          # Allow known macOS incompatibilities (build, rbac, secrets, agent_ai)
-          # Measured 39 failures on macOS (Apple Silicon, 2026-07-20) after the
-          # safety-hardening rounds; threshold 42 = measured + small buffer.
-          # RATCHET: lower this whenever macOS portability fixes land; the
-          # long-term target is 0 (safety suites are already zero-tolerance
-          # via the test-safety job).
-          if [[ $failure_count -gt 42 ]]; then
-            echo "::error::Too many test failures: $failure_count (threshold: 42)"
-            exit 1
-          fi
-
-          if [[ $failure_count -gt 0 ]]; then
-            echo "::warning::$failure_count tests failed (within acceptable threshold for macOS)"
-          fi
-          echo "Core tests passed (some platform-specific tests skipped)"
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-bats-results
+          path: macos-results.tap
 
   release:
     name: Release
     runs-on: ubuntu-latest
-    needs: [test-safety, test-unit, test-integration]
+    needs: [test-safety, test-linux, test-macos]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Checkout

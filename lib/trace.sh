@@ -52,6 +52,7 @@ _TRACE_RECORDING_ACTIVE=0
 
 # Original DEBUG trap (if any)
 _TRACE_ORIGINAL_DEBUG_TRAP=""
+_TRACE_DEBUG_TRAP_INSTALLED=0
 
 # =============================================================================
 # INTERNAL HELPERS
@@ -108,13 +109,32 @@ _trace_escape() {
     printf '%s' "$str"
 }
 
+_trace_array_len() {
+    local array_name="$1"
+    local count=0
+    local restore_nounset=0
+
+    if [[ $- == *u* ]]; then
+        restore_nounset=1
+        set +u
+    fi
+
+    builtin eval "count=\${#${array_name}[@]}"
+
+    if (( restore_nounset )); then
+        set -u
+    fi
+
+    printf '%s' "$count"
+}
+
 # Emit a JSON trace entry to output
 _trace_emit() {
     [[ "$MAINFRAME_TRACE_ENABLED" != "1" ]] && return 0
     local json="$1"
 
     # Add to memory buffer
-    if (( ${#_TRACE_ENTRIES[@]} >= MAINFRAME_TRACE_MAX_ENTRIES )); then
+    if (( $(_trace_array_len _TRACE_ENTRIES) >= MAINFRAME_TRACE_MAX_ENTRIES )); then
         # Remove oldest entry
         _TRACE_ENTRIES=("${_TRACE_ENTRIES[@]:1}")
     fi
@@ -358,7 +378,7 @@ trace_unwatch() {
     unset "_TRACE_VAR_VALUES[$var_name]"
 
     # If no more watched vars, remove DEBUG trap
-    if [[ ${#_TRACE_WATCHED_VARS[@]} -eq 0 ]]; then
+    if [[ $(_trace_array_len _TRACE_WATCHED_VARS) -eq 0 ]]; then
         _trace_remove_debug_trap
     fi
 
@@ -367,25 +387,36 @@ trace_unwatch() {
 
 # Install DEBUG trap for variable watching
 _trace_install_debug_trap() {
-    # Store original trap if not already stored
-    if [[ -z "$_TRACE_ORIGINAL_DEBUG_TRAP" ]]; then
-        _TRACE_ORIGINAL_DEBUG_TRAP=$(trap -p DEBUG)
+    (( _TRACE_DEBUG_TRAP_INSTALLED )) && return 0
+
+    _TRACE_ORIGINAL_DEBUG_TRAP=$(trap -p DEBUG 2>/dev/null || true)
+
+    if [[ -n "$_TRACE_ORIGINAL_DEBUG_TRAP" ]]; then
+        local original_cmd="${_TRACE_ORIGINAL_DEBUG_TRAP#trap -- }"
+        original_cmd="${original_cmd% DEBUG}"
+        original_cmd="${original_cmd#\'}"
+        original_cmd="${original_cmd%\'}"
+        trap "${original_cmd}; _trace_debug_handler" DEBUG
+    else
+        trap '_trace_debug_handler' DEBUG
     fi
 
-    # Set our DEBUG trap
-    trap '_trace_debug_handler' DEBUG
+    _TRACE_DEBUG_TRAP_INSTALLED=1
 }
 
 # Remove DEBUG trap
 _trace_remove_debug_trap() {
+    (( _TRACE_DEBUG_TRAP_INSTALLED )) || return 0
+
     # Restore original trap or clear it
     if [[ -n "$_TRACE_ORIGINAL_DEBUG_TRAP" ]]; then
-        # shellcheck disable=SC2064
-        trap "${_TRACE_ORIGINAL_DEBUG_TRAP#trap -- }" DEBUG 2>/dev/null || trap - DEBUG
+        eval "$_TRACE_ORIGINAL_DEBUG_TRAP" 2>/dev/null || trap - DEBUG
         _TRACE_ORIGINAL_DEBUG_TRAP=""
     else
         trap - DEBUG
     fi
+
+    _TRACE_DEBUG_TRAP_INSTALLED=0
 }
 
 # DEBUG trap handler - check watched variables
@@ -898,11 +929,16 @@ trace_status() {
     local enabled="false"
     [[ "$MAINFRAME_TRACE_ENABLED" == "1" ]] && enabled="true"
 
-    local entry_count="${#_TRACE_ENTRIES[@]}"
-    local timer_count="${#_TRACE_TIMERS[@]}"
-    local watched_count="${#_TRACE_WATCHED_VARS[@]}"
-    local func_count="${#_TRACE_FUNC_WRAPPERS[@]}"
-    local snapshot_count="${#_TRACE_SNAPSHOTS[@]}"
+    local entry_count
+    local timer_count
+    local watched_count
+    local func_count
+    local snapshot_count
+    entry_count=$(_trace_array_len _TRACE_ENTRIES)
+    timer_count=$(_trace_array_len _TRACE_TIMERS)
+    watched_count=$(_trace_array_len _TRACE_WATCHED_VARS)
+    func_count=$(_trace_array_len _TRACE_FUNC_WRAPPERS)
+    snapshot_count=$(_trace_array_len _TRACE_SNAPSHOTS)
 
     local recording="false"
     [[ "$_TRACE_RECORDING_ACTIVE" == "1" ]] && recording="true"
@@ -917,16 +953,22 @@ trace_status() {
 
 # Clean up trace state on exit
 _trace_cleanup() {
+    local state_dir="${MAINFRAME_TRACE_STATE_DIR:-}"
+
     # Remove DEBUG trap if installed
-    if [[ ${#_TRACE_WATCHED_VARS[@]} -gt 0 ]]; then
+    if [[ $(_trace_array_len _TRACE_WATCHED_VARS) -gt 0 ]]; then
         _trace_remove_debug_trap
     fi
 
     # Clean up state directory (use :? to prevent accidental rm -rf /)
-    [[ -d "$MAINFRAME_TRACE_STATE_DIR" ]] && rm -rf "${MAINFRAME_TRACE_STATE_DIR:?}"
+    [[ -n "$state_dir" && -d "$state_dir" ]] && rm -rf "${state_dir:?}"
 }
 
 # Register cleanup (only if not in sourced-only mode)
 if [[ -z "${_MAINFRAME_TRACE_NO_CLEANUP:-}" ]]; then
-    trap _trace_cleanup EXIT
+    if declare -F _mainframe_add_exit_trap >/dev/null 2>&1; then
+        _mainframe_add_exit_trap "_trace_cleanup"
+    else
+        trap _trace_cleanup EXIT
+    fi
 fi

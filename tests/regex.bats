@@ -315,7 +315,7 @@ setup() {
 # =============================================================================
 
 @test "regex_replace_callback applies function to matches" {
-    my_upper() { echo "${1^^}"; }
+    my_upper() { printf '%s\n' "$1" | tr '[:lower:]' '[:upper:]'; }
     export -f my_upper
 
     result=$(regex_replace_callback "hello world" "[a-z]+" my_upper)
@@ -820,12 +820,12 @@ setup() {
 }
 
 @test "handles newlines in string" {
-    result=$(printf "line1\nline2" | regex_split $'\n')
+    result=$(regex_split $'line1\nline2' $'\n')
     [ "$(echo "$result" | head -1)" = "line1" ]
 }
 
 @test "handles tabs in string" {
-    result=$(printf "a\tb\tc" | regex_split $'\t')
+    result=$(regex_split $'a\tb\tc' $'\t')
     [ "$(echo "$result" | head -1)" = "a" ]
 }
 

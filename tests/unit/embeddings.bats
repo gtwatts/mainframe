@@ -240,7 +240,8 @@ EOF
     [[ "$result" =~ ^\[.*\]$ ]]
 
     # Count commas to verify dimensions (dims-1 commas for dims values)
-    local comma_count=$(printf '%s' "$result" | tr -cd ',' | wc -c)
+    local comma_count
+    comma_count=$(printf '%s' "$result" | tr -cd ',' | wc -c | tr -d '[:space:]')
     [[ "$comma_count" == "9" ]]  # 10 dimensions = 9 commas
 }
 
@@ -415,7 +416,7 @@ EOF
 
     # Should have 384 dimensions (default for local)
     local comma_count
-    comma_count=$(printf '%s' "$result" | tr -cd ',' | wc -c)
+    comma_count=$(printf '%s' "$result" | tr -cd ',' | wc -c | tr -d '[:space:]')
     [[ "$comma_count" == "383" ]]
 }
 

@@ -164,9 +164,14 @@ fzf_dir() {
 
 # Select a process, output PID
 fzf_process() {
-    ps aux 2>/dev/null \
-        | fzf_select --prompt "Process: " --header "USER PID %CPU %MEM COMMAND" \
-        | awk '{print $2}'
+    local selection
+    selection=$(
+        ps aux 2>/dev/null \
+            | tail -n +2 \
+            | fzf_select --prompt "Process: " --header "USER PID %CPU %MEM COMMAND"
+    ) || return 1
+
+    awk '{print $2}' <<< "$selection"
 }
 
 # Select a git branch, output clean branch name
@@ -177,9 +182,13 @@ fzf_git_branch() {
 
 # Select a git commit, output commit hash
 fzf_git_log() {
-    git log --oneline -50 2>/dev/null \
-        | fzf_select --prompt "Commit: " --preview "git show --stat {1}" \
-        | awk '{print $1}'
+    local selection
+    selection=$(
+        git log --oneline -50 2>/dev/null \
+            | fzf_select --prompt "Commit: " --preview "git show --stat {1}"
+    ) || return 1
+
+    awk '{print $1}' <<< "$selection"
 }
 
 # Select a tracked git file, output file path
@@ -206,12 +215,15 @@ fzf_port() {
         return 1
     fi \
         | fzf_select --prompt "Port: " \
-        | grep -oP ':\K[0-9]+' | head -1
+        | grep -oE ':[0-9]+' | tr -d ':' | head -1
 }
 
 # Select an environment variable, output VAR=value
 fzf_env() {
-    env | sort | fzf_select --prompt "Env: "
+    env \
+        | awk -F= '$0 ~ /^[A-Za-z_][A-Za-z0-9_]*=/' \
+        | sort \
+        | fzf_select --prompt "Env: "
 }
 
 # Select from shell history, output the command

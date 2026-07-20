@@ -17,7 +17,7 @@ readonly _MAINFRAME_INTENT_LOADED=1
 # CONSTANTS
 # =============================================================================
 
-# Risk levels (returned by intent_classify)
+# Risk levels used by intent classification
 readonly INTENT_RISK_SAFE=0        # Read-only, reversible
 readonly INTENT_RISK_LOW=1         # Minor side effects, easily reversible
 readonly INTENT_RISK_MEDIUM=2      # Moderate side effects, recoverable
@@ -239,7 +239,7 @@ declare -ga _INTENT_OBFUSCATION_PATTERNS=(
     # Eval/exec wrappers
     'eval[[:space:]]+'
     'exec[[:space:]]+'
-    '\$(' '\`'
+    '[$][(]' '\`'
 )
 
 # Common command completions for intent_complete
@@ -1137,35 +1137,27 @@ intent_complete() {
 # ORIGINAL INTENT VERIFICATION FUNCTIONS (PRESERVED)
 # =============================================================================
 
-# intent_classify - Classify a command by risk level
-# @description Analyze command string and determine risk level (0-4)
-# @pre        None
-# @post       None (static analysis only, no execution)
-# @idempotent Yes
+# _intent_classify_analysis - Analyze a command and populate risk metadata
+# @description Internal helper for command classification
 # @param      $1 command - Full command string to classify
-# @param      --json - Output as JSON object
-# @stdout     Risk level and classification details
-# @return     Risk level (0-4)
-#
-# Usage: risk=$(intent_classify "rm -rf /tmp/cache")
-# Usage: intent_classify "chmod 777 /etc/passwd" --json
-intent_classify() {
+# @param      $2 risk_ref - Nameref for numeric risk output
+# @param      $3 reasons_ref - Nameref for reasons array output
+# @param      $4 suggestions_ref - Nameref for suggestions array output
+# @param      $5 matched_pattern_ref - Nameref for matched pattern output
+# @return     0 on valid input, 1 on empty command
+_intent_classify_analysis() {
     local command="$1"
-    local json_output=0
-    [[ "$2" == "--json" ]] && json_output=1
+    local -n risk_ref="$2"
+    local -n reasons_ref="$3"
+    local -n suggestions_ref="$4"
+    local -n matched_pattern_ref="$5"
 
-    local risk=$INTENT_RISK_LOW
-    local -a reasons=()
-    local -a suggestions=()
-    local matched_pattern=""
+    risk_ref=$INTENT_RISK_LOW
+    reasons_ref=()
+    suggestions_ref=()
+    matched_pattern_ref=""
 
-    # Empty command check
-    if [[ -z "$command" ]]; then
-        if [[ $json_output -eq 1 ]]; then
-            printf '{"error":"empty command","risk":%d,"risk_label":"low"}\n' "$INTENT_RISK_LOW"
-        fi
-        return "$INTENT_RISK_LOW"
-    fi
+    [[ -z "$command" ]] && return 1
 
     # Check against blocked commands first
     if [[ -n "$MAINFRAME_INTENT_BLOCKED" ]]; then
@@ -1176,51 +1168,106 @@ intent_classify() {
             blocked="${blocked%"${blocked##*[![:space:]]}"}"
             [[ -z "$blocked" ]] && continue
             if [[ "$command" =~ $blocked ]]; then
-                risk=$INTENT_RISK_CRITICAL
-                reasons+=("matches blocked command pattern")
+                risk_ref=$INTENT_RISK_CRITICAL
+                reasons_ref+=("matches blocked command pattern")
             fi
         done
     fi
 
     # Check for obfuscation attempts
-    if matched_pattern=$(_intent_matches_patterns "$command" _INTENT_OBFUSCATION_PATTERNS); then
-        risk=$INTENT_RISK_CRITICAL
-        reasons+=("contains obfuscation pattern: $matched_pattern")
-        suggestions+=("review command manually for hidden intent")
+    if matched_pattern_ref=$(_intent_matches_patterns "$command" _INTENT_OBFUSCATION_PATTERNS); then
+        risk_ref=$INTENT_RISK_CRITICAL
+        reasons_ref+=("contains obfuscation pattern: $matched_pattern_ref")
+        suggestions_ref+=("review command manually for hidden intent")
     fi
 
     # Check critical patterns
-    if [[ $risk -lt $INTENT_RISK_CRITICAL ]]; then
-        if matched_pattern=$(_intent_matches_patterns "$command" _INTENT_CRITICAL_PATTERNS); then
-            risk=$INTENT_RISK_CRITICAL
-            reasons+=("matches critical pattern: $matched_pattern")
-            suggestions+=("this command could cause irreversible damage")
+    if [[ $risk_ref -lt $INTENT_RISK_CRITICAL ]]; then
+        if matched_pattern_ref=$(_intent_matches_patterns "$command" _INTENT_CRITICAL_PATTERNS); then
+            risk_ref=$INTENT_RISK_CRITICAL
+            reasons_ref+=("matches critical pattern: $matched_pattern_ref")
+            suggestions_ref+=("this command could cause irreversible damage")
         fi
     fi
 
     # Check high patterns (only if not already critical)
-    if [[ $risk -lt $INTENT_RISK_HIGH ]]; then
-        if matched_pattern=$(_intent_matches_patterns "$command" _INTENT_HIGH_PATTERNS); then
-            risk=$INTENT_RISK_HIGH
-            reasons+=("matches high-risk pattern: $matched_pattern")
-            suggestions+=("consider using safer alternatives")
+    if [[ $risk_ref -lt $INTENT_RISK_HIGH ]]; then
+        if matched_pattern_ref=$(_intent_matches_patterns "$command" _INTENT_HIGH_PATTERNS); then
+            risk_ref=$INTENT_RISK_HIGH
+            reasons_ref+=("matches high-risk pattern: $matched_pattern_ref")
+            suggestions_ref+=("consider using safer alternatives")
         fi
     fi
 
     # Check medium patterns
-    if [[ $risk -lt $INTENT_RISK_MEDIUM ]]; then
-        if matched_pattern=$(_intent_matches_patterns "$command" _INTENT_MEDIUM_PATTERNS); then
-            risk=$INTENT_RISK_MEDIUM
-            reasons+=("matches medium-risk pattern: $matched_pattern")
+    if [[ $risk_ref -lt $INTENT_RISK_MEDIUM ]]; then
+        if matched_pattern_ref=$(_intent_matches_patterns "$command" _INTENT_MEDIUM_PATTERNS); then
+            risk_ref=$INTENT_RISK_MEDIUM
+            reasons_ref+=("matches medium-risk pattern: $matched_pattern_ref")
         fi
     fi
 
-    # Check safe patterns (can override to SAFE level)
-    if [[ $risk -le $INTENT_RISK_LOW ]]; then
-        if _intent_matches_patterns "$command" _INTENT_SAFE_PATTERNS >/dev/null; then
-            risk=$INTENT_RISK_SAFE
-            reasons=("read-only operation")
+    # Prefer a direct command-prefix check for known read-only commands so the
+    # safe classification does not depend solely on regex-engine quirks.
+    if [[ $risk_ref -le $INTENT_RISK_LOW ]]; then
+        local base_cmd="${command%%[[:space:]]*}"
+        case "$base_cmd" in
+            cat|ls|head|tail|grep|find|echo|printf|pwd|whoami|date|file)
+                risk_ref=$INTENT_RISK_SAFE
+                reasons_ref=("read-only operation")
+                ;;
+        esac
+
+        if [[ $risk_ref -le $INTENT_RISK_LOW ]] && _intent_matches_patterns "$command" _INTENT_SAFE_PATTERNS >/dev/null; then
+            risk_ref=$INTENT_RISK_SAFE
+            reasons_ref=("read-only operation")
         fi
+    fi
+
+    return 0
+}
+
+# _intent_classify_risk - Return numeric risk without using shell exit status
+# @description Internal helper for callers that need the numeric risk value
+# @param      $1 command - Full command string to classify
+# @stdout     Numeric risk level (0-4)
+# @return     0 always
+_intent_classify_risk() {
+    local risk matched_pattern
+    local -a reasons=()
+    local -a suggestions=()
+
+    _intent_classify_analysis "$1" risk reasons suggestions matched_pattern || true
+    printf '%s\n' "$risk"
+    return 0
+}
+
+# intent_classify - Classify a command by risk level
+# @description Analyze command string and determine risk level (0-4)
+# @pre        None
+# @post       None (static analysis only, no execution)
+# @idempotent Yes
+# @param      $1 command - Full command string to classify
+# @param      --json - Output as JSON object
+# @stdout     Risk level and classification details
+# @return     0 on successful classification, 1 on invalid input
+#
+# Usage: risk=$(intent_classify "rm -rf /tmp/cache")
+# Usage: intent_classify "chmod 777 /etc/passwd" --json
+intent_classify() {
+    local command="$1"
+    local json_output=0
+    [[ "$2" == "--json" ]] && json_output=1
+
+    local risk matched_pattern
+    local -a reasons=()
+    local -a suggestions=()
+
+    if ! _intent_classify_analysis "$command" risk reasons suggestions matched_pattern; then
+        if [[ $json_output -eq 1 ]]; then
+            printf '{"error":"empty command","risk":%d,"risk_label":"low"}\n' "$INTENT_RISK_LOW"
+        fi
+        return 1
     fi
 
     # Output result
@@ -1236,7 +1283,7 @@ intent_classify() {
         printf '%s\n' "${_INTENT_RISK_LABELS[$risk]}"
     fi
 
-    return "$risk"
+    return 0
 }
 
 # intent_verify - Verify command safety with declared intent and path constraints
@@ -1349,8 +1396,7 @@ intent_verify() {
 
     # Classify risk
     local risk
-    intent_classify "$command" >/dev/null
-    risk=$?
+    risk=$(_intent_classify_risk "$command")
 
     if [[ $risk -ge $INTENT_RISK_HIGH ]]; then
         warnings+=("command has high risk level: ${_INTENT_RISK_LABELS[$risk]}")
@@ -1397,8 +1443,7 @@ intent_sandbox_recommend() {
     [[ "$2" == "--json" ]] && json_output=1
 
     local risk
-    intent_classify "$command" >/dev/null
-    risk=$?
+    risk=$(_intent_classify_risk "$command")
 
     local dry_run="false"
     local network="true"
@@ -1496,8 +1541,7 @@ intent_dry_run() {
     local -a would_affect=()
     local -a operations=()
     local risk
-    intent_classify "$command" >/dev/null
-    risk=$?
+    risk=$(_intent_classify_risk "$command")
 
     # Parse command to identify operations (static analysis only)
     local base_cmd="${command%% *}"
@@ -1664,8 +1708,7 @@ intent_suggest_safer() {
     [[ "$2" == "--json" ]] && json_output=1
 
     local risk
-    intent_classify "$command" >/dev/null
-    risk=$?
+    risk=$(_intent_classify_risk "$command")
 
     # Already safe
     if [[ $risk -eq $INTENT_RISK_SAFE ]]; then
@@ -1797,8 +1840,7 @@ intent_batch_verify() {
 
     for cmd in "${commands[@]}"; do
         local risk
-        intent_classify "$cmd" >/dev/null
-        risk=$?
+        risk=$(_intent_classify_risk "$cmd")
 
         (( risk > max_risk )) && max_risk=$risk
 

@@ -506,10 +506,10 @@ teardown() {
     echo "old" > "$TEST_TMPDIR/old.txt"
     file_checkpoint "$TEST_TMPDIR/old.txt" "old-cp"
 
-    # Touch checkpoint to make it old (2 seconds ago)
+    # Age the checkpoint naturally so the test stays portable across BSD/GNU.
     local checkpoint
     checkpoint=$(ls "$MAINFRAME_CHECKPOINT_DIR"/*__old-cp 2>/dev/null | head -1)
-    touch -d "2 seconds ago" "$checkpoint"
+    sleep 2
 
     run file_checkpoint_cleanup 1
     [[ "$status" -eq 0 ]]

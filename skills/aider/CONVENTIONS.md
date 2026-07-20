@@ -7,7 +7,7 @@
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 ```
 
-This gives access to 4,000+ pure bash functions across 117 libraries. Zero external dependencies required.
+This gives access to 3,821+ pure bash functions across 152 libraries. Zero external dependencies required.
 
 ## Preferred Functions Over External Tools
 
@@ -68,7 +68,7 @@ log_info "Starting at $(now_iso)"
 success "Done in $(format_duration $SECONDS)"
 ```
 
-## Agent Working Memory (AWM) - NEW in v6.0
+## Agent Working Memory (AWM)
 
 For AI agents that need persistent state across sessions:
 
@@ -89,7 +89,7 @@ awm_discovery "API rate limit is 100/min"
 summary=$(awm_summary)
 ```
 
-## Multi-Agent IPC - NEW in v6.0
+## Multi-Agent IPC
 
 For coordinating multiple agent instances:
 
@@ -132,4 +132,4 @@ agent_signal "ready"        # Signal event
 
 ## Reference
 
-Full function signatures: `~/.mainframe/CHEATSHEET.md` (4,000+ entries with examples)
+Full function signatures: `~/.mainframe/CHEATSHEET.md` (3,821+ entries with examples)

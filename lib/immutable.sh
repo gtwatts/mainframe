@@ -14,7 +14,7 @@
 
 # Prevent double-sourcing
 [[ -n "${_MAINFRAME_IMMUTABLE_LOADED:-}" ]] && return 0
-readonly _MAINFRAME_IMMUTABLE_LOADED=1
+declare -gr _MAINFRAME_IMMUTABLE_LOADED=1
 
 # =============================================================================
 # CONFIGURATION
@@ -26,6 +26,10 @@ MAINFRAME_IMMUTABLE_STRICT="${MAINFRAME_IMMUTABLE_STRICT:-1}"
 # Enable USOP JSON output for structured results
 MAINFRAME_IMMUTABLE_JSON="${MAINFRAME_IMMUTABLE_JSON:-1}"
 
+# File-backed state keeps immutable structures alive across command substitutions.
+MAINFRAME_IMMUTABLE_DB="${MAINFRAME_IMMUTABLE_DB:-${TMPDIR:-/tmp}/mainframe-immutable-$$.state}"
+declare -gr _MAINFRAME_IMMUT_SEP=$'\x1f'
+
 # Namespace for structure identifiers
 declare -gA _MAINFRAME_IMAP_DATA 2>/dev/null || true
 declare -gA _MAINFRAME_IMAP_META 2>/dev/null || true
@@ -35,7 +39,7 @@ declare -gA _MAINFRAME_ISET_DATA 2>/dev/null || true
 declare -gA _MAINFRAME_ISET_META 2>/dev/null || true
 
 # Counter for unique structure IDs
-_MAINFRAME_IMMUT_COUNTER=0
+declare -gi _MAINFRAME_IMMUT_COUNTER=0
 
 # =============================================================================
 # INTERNAL HELPERS
@@ -45,17 +49,8 @@ _MAINFRAME_IMMUT_COUNTER=0
 # @returns: unique ID string
 _immut_gen_id() {
     local prefix="${1:-immut}"
-    # IDs are generated inside command-substitution subshells, so a shell
-    # counter can never propagate back (every call would return the same
-    # id). Use a time-based uniqueness component instead.
-    local uniq
-    if [[ -n "${EPOCHREALTIME:-}" ]]; then
-        uniq="${EPOCHREALTIME//[^0-9]/}"          # microseconds, bash >= 5
-    else
-        uniq=$(date +%s%N 2>/dev/null)             # GNU nanoseconds
-        [[ "$uniq" =~ ^[0-9]+$ ]] || uniq="$(date +%s)$RANDOM$$"
-    fi
-    printf '%s_%d_%s' "$prefix" "$$" "$uniq"
+    _MAINFRAME_IMMUT_COUNTER=$((_MAINFRAME_IMMUT_COUNTER + 1))
+    printf -v REPLY '%s_%d_%d' "$prefix" "$$" "$_MAINFRAME_IMMUT_COUNTER"
 }
 
 # Log message (respects quiet mode)
@@ -142,13 +137,74 @@ _immut_hash_string() {
     printf '%d' "$hash"
 }
 
+# Load persisted immutable state for the current shell invocation.
+_immut_load_state() {
+    [[ -f "$MAINFRAME_IMMUTABLE_DB" ]] || return 0
+    # shellcheck source=/dev/null
+    source "$MAINFRAME_IMMUTABLE_DB"
+}
+
+# Quote a string as an ANSI-C shell literal for safe associative-array subscripts.
+_immut_quote_ansi() {
+    local value="$1"
+    value="${value//\\/\\\\}"
+    value="${value//\'/\\\'}"
+    value="${value//$'\n'/\\n}"
+    value="${value//$'\t'/\\t}"
+    value="${value//$'\r'/\\r}"
+    printf "\$'%s'" "$value"
+}
+
+# Serialize an associative array as quoted shell assignments.
+_immut_write_assoc() {
+    local array_name="$1"
+    local output_file="$2"
+    local key quoted_key
+    declare -n array_ref="$array_name"
+
+    printf 'declare -gA %s\n' "$array_name" >> "$output_file"
+    for key in "${!array_ref[@]}"; do
+        quoted_key=$(_immut_quote_ansi "$key")
+        printf '%s[%s]=%q\n' "$array_name" "$quoted_key" "${array_ref[$key]}" >> "$output_file"
+    done
+}
+
+# Persist the full immutable state so subshell callers see the latest snapshot.
+_immut_save_state() {
+    local db_dir tmpfile
+
+    db_dir="${MAINFRAME_IMMUTABLE_DB%/*}"
+    if [[ "$db_dir" != "$MAINFRAME_IMMUTABLE_DB" ]]; then
+        mkdir -p "$db_dir" || return 1
+    fi
+
+    tmpfile=$(mktemp "${MAINFRAME_IMMUTABLE_DB}.XXXXXX") || return 1
+    {
+        _immut_write_assoc _MAINFRAME_IMAP_DATA "$tmpfile"
+        _immut_write_assoc _MAINFRAME_IMAP_META "$tmpfile"
+        _immut_write_assoc _MAINFRAME_ILIST_DATA "$tmpfile"
+        _immut_write_assoc _MAINFRAME_ILIST_META "$tmpfile"
+        _immut_write_assoc _MAINFRAME_ISET_DATA "$tmpfile"
+        _immut_write_assoc _MAINFRAME_ISET_META "$tmpfile"
+        printf '_MAINFRAME_IMMUT_COUNTER=%q\n' "$_MAINFRAME_IMMUT_COUNTER"
+    } >> "$tmpfile" || {
+        rm -f "$tmpfile"
+        return 1
+    }
+
+    mv -f "$tmpfile" "$MAINFRAME_IMMUTABLE_DB" || {
+        rm -f "$tmpfile"
+        return 1
+    }
+}
+
 # =============================================================================
 # IMMUTABLE MAP (Persistent Hash Map)
 # =============================================================================
 # Maps are stored as: _MAINFRAME_IMAP_DATA["id:key"] = value
 #                     _MAINFRAME_IMAP_META["id:size"] = count
 #                     _MAINFRAME_IMAP_META["id:frozen"] = 0|1
-#                     _MAINFRAME_IMAP_META["id:keys"] = "key1\x00key2\x00..."
+#                     _MAINFRAME_IMAP_META["id:keys"] = "key1\x1fkey2\x1f..."
 # =============================================================================
 
 # @pre: none
@@ -161,11 +217,14 @@ _immut_hash_string() {
 # Usage: map_id=$(imap_create)
 imap_create() {
     local id
-    id=$(_immut_gen_id "imap")
+    _immut_load_state
+    _immut_gen_id "imap"
+    id="$REPLY"
 
     _MAINFRAME_IMAP_META["$id:size"]=0
     _MAINFRAME_IMAP_META["$id:frozen"]=0
     _MAINFRAME_IMAP_META["$id:keys"]=""
+    _immut_save_state || return 1
 
     _immut_result "$id" "string"
 }
@@ -181,7 +240,9 @@ imap_create() {
 # Usage: map_id=$(imap_from_pairs "name=John" "age:number=30")
 imap_from_pairs() {
     local id
-    id=$(_immut_gen_id "imap")
+    _immut_load_state
+    _immut_gen_id "imap"
+    id="$REPLY"
 
     _MAINFRAME_IMAP_META["$id:size"]=0
     _MAINFRAME_IMAP_META["$id:frozen"]=0
@@ -194,7 +255,7 @@ imap_from_pairs() {
         local key value
 
         # Parse key:type=value or key=value
-        if [[ "$pair" =~ ^([^:=]+)(:[^=]+)?=(.*)$ ]]; then
+        if [[ "$pair" =~ ^([^:=]*)(:[^=]+)?=(.*)$ ]]; then
             key="${BASH_REMATCH[1]}"
             value="${BASH_REMATCH[3]}"
         else
@@ -205,15 +266,16 @@ imap_from_pairs() {
         _MAINFRAME_IMAP_DATA["$id:$key"]="$value"
 
         # Add to keys list if not already present
-        if [[ "$keys" != *$'\x00'"$key"$'\x00'* ]] && [[ "$keys" != "$key"$'\x00'* ]] && [[ "$keys" != *$'\x00'"$key" ]] && [[ "$keys" != "$key" ]]; then
-            [[ -n "$keys" ]] && keys+=$'\x00'
+        if [[ "$keys" != *"$_MAINFRAME_IMMUT_SEP$key$_MAINFRAME_IMMUT_SEP"* ]] && [[ "$keys" != "$key$_MAINFRAME_IMMUT_SEP"* ]] && [[ "$keys" != *"$_MAINFRAME_IMMUT_SEP$key" ]] && [[ "$keys" != "$key" ]]; then
+            [[ -n "$keys" ]] && keys+=$_MAINFRAME_IMMUT_SEP
             keys+="$key"
-            ((count++))
+            count=$((count + 1))
         fi
     done
 
     _MAINFRAME_IMAP_META["$id:size"]=$count
     _MAINFRAME_IMAP_META["$id:keys"]="$keys"
+    _immut_save_state || return 1
 
     _immut_result "$id" "string"
 }
@@ -231,13 +293,14 @@ imap_set() {
     local map_id="${1:-}"
     local key="${2:-}"
     local value="${3:-}"
+    _immut_load_state
 
     # Validate inputs
     if [[ -z "$map_id" ]]; then
         _immut_error 1 "map_id required"
         return 1
     fi
-    if [[ -z "$key" ]]; then
+    if [[ $# -lt 2 ]] || [[ -z "$key" ]]; then
         _immut_error 1 "key required"
         return 1
     fi
@@ -251,7 +314,8 @@ imap_set() {
 
     # Create new map (copy-on-write)
     local new_id
-    new_id=$(_immut_gen_id "imap")
+    _immut_gen_id "imap"
+    new_id="$REPLY"
 
     # Copy all existing entries
     local old_keys="${_MAINFRAME_IMAP_META["$map_id:keys"]:-}"
@@ -260,31 +324,32 @@ imap_set() {
     local key_exists=0
 
     if [[ -n "$old_keys" ]]; then
-        while IFS= read -r -d $'\x00' old_key || [[ -n "$old_key" ]]; do
+        while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" old_key || [[ -n "$old_key" ]]; do
             if [[ -n "$old_key" ]]; then
                 if [[ "$old_key" == "$key" ]]; then
                     key_exists=1
                 fi
                 _MAINFRAME_IMAP_DATA["$new_id:$old_key"]="${_MAINFRAME_IMAP_DATA["$map_id:$old_key"]}"
-                [[ -n "$new_keys" ]] && new_keys+=$'\x00'
+                [[ -n "$new_keys" ]] && new_keys+=$_MAINFRAME_IMMUT_SEP
                 new_keys+="$old_key"
-                ((new_size++))
+                new_size=$((new_size + 1))
             fi
-        done <<< "$old_keys"
+        done < <(printf '%s' "$old_keys")
     fi
 
     # Set the new/updated key
     _MAINFRAME_IMAP_DATA["$new_id:$key"]="$value"
 
     if [[ "$key_exists" == "0" ]]; then
-        [[ -n "$new_keys" ]] && new_keys+=$'\x00'
+        [[ -n "$new_keys" ]] && new_keys+=$_MAINFRAME_IMMUT_SEP
         new_keys+="$key"
-        ((new_size++))
+        new_size=$((new_size + 1))
     fi
 
     _MAINFRAME_IMAP_META["$new_id:size"]=$new_size
     _MAINFRAME_IMAP_META["$new_id:keys"]="$new_keys"
     _MAINFRAME_IMAP_META["$new_id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$new_id" "string"
 }
@@ -301,8 +366,9 @@ imap_set() {
 imap_get() {
     local map_id="${1:-}"
     local key="${2:-}"
+    _immut_load_state
 
-    if [[ -z "$map_id" ]] || [[ -z "$key" ]]; then
+    if [[ -z "$map_id" ]] || [[ $# -lt 2 ]]; then
         printf ''
         return 1
     fi
@@ -322,8 +388,9 @@ imap_get() {
 imap_has() {
     local map_id="${1:-}"
     local key="${2:-}"
+    _immut_load_state
 
-    if [[ -z "$map_id" ]] || [[ -z "$key" ]]; then
+    if [[ -z "$map_id" ]] || [[ $# -lt 2 ]]; then
         return 1
     fi
 
@@ -342,12 +409,13 @@ imap_has() {
 imap_delete() {
     local map_id="${1:-}"
     local key="${2:-}"
+    _immut_load_state
 
     if [[ -z "$map_id" ]]; then
         _immut_error 1 "map_id required"
         return 1
     fi
-    if [[ -z "$key" ]]; then
+    if [[ $# -lt 2 ]]; then
         _immut_error 1 "key required"
         return 1
     fi
@@ -361,26 +429,28 @@ imap_delete() {
 
     # Create new map without the key
     local new_id
-    new_id=$(_immut_gen_id "imap")
+    _immut_gen_id "imap"
+    new_id="$REPLY"
 
     local old_keys="${_MAINFRAME_IMAP_META["$map_id:keys"]:-}"
     local new_keys=""
     local new_size=0
 
     if [[ -n "$old_keys" ]]; then
-        while IFS= read -r -d $'\x00' old_key || [[ -n "$old_key" ]]; do
+        while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" old_key || [[ -n "$old_key" ]]; do
             if [[ -n "$old_key" ]] && [[ "$old_key" != "$key" ]]; then
                 _MAINFRAME_IMAP_DATA["$new_id:$old_key"]="${_MAINFRAME_IMAP_DATA["$map_id:$old_key"]}"
-                [[ -n "$new_keys" ]] && new_keys+=$'\x00'
+                [[ -n "$new_keys" ]] && new_keys+=$_MAINFRAME_IMMUT_SEP
                 new_keys+="$old_key"
-                ((new_size++))
+                new_size=$((new_size + 1))
             fi
-        done <<< "$old_keys"
+        done < <(printf '%s' "$old_keys")
     fi
 
     _MAINFRAME_IMAP_META["$new_id:size"]=$new_size
     _MAINFRAME_IMAP_META["$new_id:keys"]="$new_keys"
     _MAINFRAME_IMAP_META["$new_id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$new_id" "string"
 }
@@ -395,6 +465,7 @@ imap_delete() {
 # Usage: imap_keys "$map_id"
 imap_keys() {
     local map_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$map_id" ]]; then
         return 1
@@ -402,7 +473,7 @@ imap_keys() {
 
     local keys="${_MAINFRAME_IMAP_META["$map_id:keys"]:-}"
     if [[ -n "$keys" ]]; then
-        printf '%s\n' "${keys//$'\x00'/$'\n'}"
+        printf '%s\n' "${keys//$_MAINFRAME_IMMUT_SEP/$'\n'}"
     fi
 }
 
@@ -416,6 +487,7 @@ imap_keys() {
 # Usage: imap_values "$map_id"
 imap_values() {
     local map_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$map_id" ]]; then
         return 1
@@ -423,11 +495,11 @@ imap_values() {
 
     local keys="${_MAINFRAME_IMAP_META["$map_id:keys"]:-}"
     if [[ -n "$keys" ]]; then
-        while IFS= read -r -d $'\x00' key || [[ -n "$key" ]]; do
+        while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" key || [[ -n "$key" ]]; do
             if [[ -n "$key" ]]; then
                 printf '%s\n' "${_MAINFRAME_IMAP_DATA["$map_id:$key"]}"
             fi
-        done <<< "$keys"
+        done < <(printf '%s' "$keys")
     fi
 }
 
@@ -441,6 +513,7 @@ imap_values() {
 # Usage: imap_entries "$map_id"
 imap_entries() {
     local map_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$map_id" ]]; then
         return 1
@@ -448,11 +521,11 @@ imap_entries() {
 
     local keys="${_MAINFRAME_IMAP_META["$map_id:keys"]:-}"
     if [[ -n "$keys" ]]; then
-        while IFS= read -r -d $'\x00' key || [[ -n "$key" ]]; do
+        while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" key || [[ -n "$key" ]]; do
             if [[ -n "$key" ]]; then
                 printf '%s=%s\n' "$key" "${_MAINFRAME_IMAP_DATA["$map_id:$key"]}"
             fi
-        done <<< "$keys"
+        done < <(printf '%s' "$keys")
     fi
 }
 
@@ -466,6 +539,7 @@ imap_entries() {
 # Usage: size=$(imap_size "$map_id")
 imap_size() {
     local map_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$map_id" ]]; then
         printf '0'
@@ -485,6 +559,7 @@ imap_size() {
 # Usage: imap_is_empty "$map_id" && echo "empty"
 imap_is_empty() {
     local map_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$map_id" ]]; then
         return 0
@@ -504,6 +579,7 @@ imap_is_empty() {
 imap_merge() {
     local map1="${1:-}"
     local map2="${2:-}"
+    _immut_load_state
 
     if [[ -z "$map1" ]] || [[ -z "$map2" ]]; then
         _immut_error 1 "two map IDs required"
@@ -511,7 +587,8 @@ imap_merge() {
     fi
 
     local new_id
-    new_id=$(_immut_gen_id "imap")
+    _immut_gen_id "imap"
+    new_id="$REPLY"
 
     local new_keys=""
     local new_size=0
@@ -520,36 +597,37 @@ imap_merge() {
     # Copy from map1
     local keys1="${_MAINFRAME_IMAP_META["$map1:keys"]:-}"
     if [[ -n "$keys1" ]]; then
-        while IFS= read -r -d $'\x00' key || [[ -n "$key" ]]; do
+        while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" key || [[ -n "$key" ]]; do
             if [[ -n "$key" ]] && [[ ! -v seen_keys["$key"] ]]; then
                 _MAINFRAME_IMAP_DATA["$new_id:$key"]="${_MAINFRAME_IMAP_DATA["$map1:$key"]}"
-                [[ -n "$new_keys" ]] && new_keys+=$'\x00'
+                [[ -n "$new_keys" ]] && new_keys+=$_MAINFRAME_IMMUT_SEP
                 new_keys+="$key"
                 seen_keys["$key"]=1
-                ((new_size++))
+                new_size=$((new_size + 1))
             fi
-        done <<< "$keys1"
+        done < <(printf '%s' "$keys1")
     fi
 
     # Copy/override from map2
     local keys2="${_MAINFRAME_IMAP_META["$map2:keys"]:-}"
     if [[ -n "$keys2" ]]; then
-        while IFS= read -r -d $'\x00' key || [[ -n "$key" ]]; do
+        while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" key || [[ -n "$key" ]]; do
             if [[ -n "$key" ]]; then
                 _MAINFRAME_IMAP_DATA["$new_id:$key"]="${_MAINFRAME_IMAP_DATA["$map2:$key"]}"
                 if [[ ! -v seen_keys["$key"] ]]; then
-                    [[ -n "$new_keys" ]] && new_keys+=$'\x00'
+                    [[ -n "$new_keys" ]] && new_keys+=$_MAINFRAME_IMMUT_SEP
                     new_keys+="$key"
                     seen_keys["$key"]=1
-                    ((new_size++))
+                    new_size=$((new_size + 1))
                 fi
             fi
-        done <<< "$keys2"
+        done < <(printf '%s' "$keys2")
     fi
 
     _MAINFRAME_IMAP_META["$new_id:size"]=$new_size
     _MAINFRAME_IMAP_META["$new_id:keys"]="$new_keys"
     _MAINFRAME_IMAP_META["$new_id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$new_id" "string"
 }
@@ -567,6 +645,7 @@ imap_merge() {
 imap_map_values() {
     local map_id="${1:-}"
     local func="${2:-}"
+    _immut_load_state
 
     if [[ -z "$map_id" ]] || [[ -z "$func" ]]; then
         _immut_error 1 "map_id and function required"
@@ -579,29 +658,31 @@ imap_map_values() {
     fi
 
     local new_id
-    new_id=$(_immut_gen_id "imap")
+    _immut_gen_id "imap"
+    new_id="$REPLY"
 
     local keys="${_MAINFRAME_IMAP_META["$map_id:keys"]:-}"
     local new_keys=""
     local new_size=0
 
     if [[ -n "$keys" ]]; then
-        while IFS= read -r -d $'\x00' key || [[ -n "$key" ]]; do
+        while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" key || [[ -n "$key" ]]; do
             if [[ -n "$key" ]]; then
                 local old_value="${_MAINFRAME_IMAP_DATA["$map_id:$key"]}"
                 local new_value
                 new_value=$("$func" "$key" "$old_value")
                 _MAINFRAME_IMAP_DATA["$new_id:$key"]="$new_value"
-                [[ -n "$new_keys" ]] && new_keys+=$'\x00'
+                [[ -n "$new_keys" ]] && new_keys+=$_MAINFRAME_IMMUT_SEP
                 new_keys+="$key"
-                ((new_size++))
+                new_size=$((new_size + 1))
             fi
-        done <<< "$keys"
+        done < <(printf '%s' "$keys")
     fi
 
     _MAINFRAME_IMAP_META["$new_id:size"]=$new_size
     _MAINFRAME_IMAP_META["$new_id:keys"]="$new_keys"
     _MAINFRAME_IMAP_META["$new_id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$new_id" "string"
 }
@@ -619,6 +700,7 @@ imap_map_values() {
 imap_filter() {
     local map_id="${1:-}"
     local predicate="${2:-}"
+    _immut_load_state
 
     if [[ -z "$map_id" ]] || [[ -z "$predicate" ]]; then
         _immut_error 1 "map_id and predicate required"
@@ -631,29 +713,31 @@ imap_filter() {
     fi
 
     local new_id
-    new_id=$(_immut_gen_id "imap")
+    _immut_gen_id "imap"
+    new_id="$REPLY"
 
     local keys="${_MAINFRAME_IMAP_META["$map_id:keys"]:-}"
     local new_keys=""
     local new_size=0
 
     if [[ -n "$keys" ]]; then
-        while IFS= read -r -d $'\x00' key || [[ -n "$key" ]]; do
+        while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" key || [[ -n "$key" ]]; do
             if [[ -n "$key" ]]; then
                 local value="${_MAINFRAME_IMAP_DATA["$map_id:$key"]}"
                 if "$predicate" "$key" "$value"; then
                     _MAINFRAME_IMAP_DATA["$new_id:$key"]="$value"
-                    [[ -n "$new_keys" ]] && new_keys+=$'\x00'
+                    [[ -n "$new_keys" ]] && new_keys+=$_MAINFRAME_IMMUT_SEP
                     new_keys+="$key"
-                    ((new_size++))
+                    new_size=$((new_size + 1))
                 fi
             fi
-        done <<< "$keys"
+        done < <(printf '%s' "$keys")
     fi
 
     _MAINFRAME_IMAP_META["$new_id:size"]=$new_size
     _MAINFRAME_IMAP_META["$new_id:keys"]="$new_keys"
     _MAINFRAME_IMAP_META["$new_id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$new_id" "string"
 }
@@ -668,6 +752,7 @@ imap_filter() {
 # Usage: json=$(imap_to_json "$map_id")
 imap_to_json() {
     local map_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$map_id" ]]; then
         printf '{}'
@@ -679,14 +764,14 @@ imap_to_json() {
 
     printf '{'
     if [[ -n "$keys" ]]; then
-        while IFS= read -r -d $'\x00' key || [[ -n "$key" ]]; do
+        while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" key || [[ -n "$key" ]]; do
             if [[ -n "$key" ]]; then
                 $first || printf ','
                 first=false
                 local value="${_MAINFRAME_IMAP_DATA["$map_id:$key"]}"
                 printf '"%s":"%s"' "$(_immut_escape "$key")" "$(_immut_escape "$value")"
             fi
-        done <<< "$keys"
+        done < <(printf '%s' "$keys")
     fi
     printf '}'
 }
@@ -702,6 +787,7 @@ imap_to_json() {
 # Usage: map_id=$(imap_from_json '{"name":"John","age":"30"}')
 imap_from_json() {
     local json="${1:-}"
+    _immut_load_state
 
     if [[ -z "$json" ]] || [[ "$json" == "{}" ]]; then
         imap_create
@@ -709,7 +795,8 @@ imap_from_json() {
     fi
 
     local id
-    id=$(_immut_gen_id "imap")
+    _immut_gen_id "imap"
+    id="$REPLY"
 
     _MAINFRAME_IMAP_META["$id:size"]=0
     _MAINFRAME_IMAP_META["$id:frozen"]=0
@@ -740,9 +827,9 @@ imap_from_json() {
             value="${value//\\\\/\\}"
 
             _MAINFRAME_IMAP_DATA["$id:$key"]="$value"
-            [[ -n "$keys" ]] && keys+=$'\x00'
+            [[ -n "$keys" ]] && keys+=$_MAINFRAME_IMMUT_SEP
             keys+="$key"
-            ((count++))
+            count=$((count + 1))
 
             # Remove leading comma
             remaining="${remaining#,}"
@@ -753,6 +840,7 @@ imap_from_json() {
 
     _MAINFRAME_IMAP_META["$id:size"]=$count
     _MAINFRAME_IMAP_META["$id:keys"]="$keys"
+    _immut_save_state || return 1
 
     _immut_result "$id" "string"
 }
@@ -775,10 +863,13 @@ imap_from_json() {
 # Usage: list_id=$(ilist_create)
 ilist_create() {
     local id
-    id=$(_immut_gen_id "ilist")
+    _immut_load_state
+    _immut_gen_id "ilist"
+    id="$REPLY"
 
     _MAINFRAME_ILIST_META["$id:size"]=0
     _MAINFRAME_ILIST_META["$id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$id" "string"
 }
@@ -793,16 +884,19 @@ ilist_create() {
 # Usage: list_id=$(ilist_from_array "a" "b" "c")
 ilist_from_array() {
     local id
-    id=$(_immut_gen_id "ilist")
+    _immut_load_state
+    _immut_gen_id "ilist"
+    id="$REPLY"
 
     local index=0
     for value in "$@"; do
         _MAINFRAME_ILIST_DATA["$id:$index"]="$value"
-        ((index++))
+        index=$((index + 1))
     done
 
     _MAINFRAME_ILIST_META["$id:size"]=$index
     _MAINFRAME_ILIST_META["$id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$id" "string"
 }
@@ -819,6 +913,7 @@ ilist_from_array() {
 ilist_append() {
     local list_id="${1:-}"
     local value="${2:-}"
+    _immut_load_state
 
     if [[ -z "$list_id" ]]; then
         _immut_error 1 "list_id required"
@@ -833,7 +928,8 @@ ilist_append() {
     fi
 
     local new_id
-    new_id=$(_immut_gen_id "ilist")
+    _immut_gen_id "ilist"
+    new_id="$REPLY"
 
     # Copy existing elements
     local old_size="${_MAINFRAME_ILIST_META["$list_id:size"]:-0}"
@@ -845,6 +941,7 @@ ilist_append() {
     _MAINFRAME_ILIST_DATA["$new_id:$old_size"]="$value"
     _MAINFRAME_ILIST_META["$new_id:size"]=$((old_size + 1))
     _MAINFRAME_ILIST_META["$new_id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$new_id" "string"
 }
@@ -861,6 +958,7 @@ ilist_append() {
 ilist_prepend() {
     local list_id="${1:-}"
     local value="${2:-}"
+    _immut_load_state
 
     if [[ -z "$list_id" ]]; then
         _immut_error 1 "list_id required"
@@ -875,7 +973,8 @@ ilist_prepend() {
     fi
 
     local new_id
-    new_id=$(_immut_gen_id "ilist")
+    _immut_gen_id "ilist"
+    new_id="$REPLY"
 
     # Insert new value at index 0
     _MAINFRAME_ILIST_DATA["$new_id:0"]="$value"
@@ -888,6 +987,7 @@ ilist_prepend() {
 
     _MAINFRAME_ILIST_META["$new_id:size"]=$((old_size + 1))
     _MAINFRAME_ILIST_META["$new_id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$new_id" "string"
 }
@@ -904,6 +1004,7 @@ ilist_prepend() {
 ilist_get() {
     local list_id="${1:-}"
     local index="${2:-}"
+    _immut_load_state
 
     if [[ -z "$list_id" ]] || [[ -z "$index" ]]; then
         printf ''
@@ -925,7 +1026,7 @@ ilist_get() {
 
     if [[ "$index" -lt 0 ]] || [[ "$index" -ge "$size" ]]; then
         printf ''
-        return 1
+        return 0
     fi
 
     printf '%s' "${_MAINFRAME_ILIST_DATA["$list_id:$index"]:-}"
@@ -944,6 +1045,7 @@ ilist_set() {
     local list_id="${1:-}"
     local index="${2:-}"
     local value="${3:-}"
+    _immut_load_state
 
     if [[ -z "$list_id" ]]; then
         _immut_error 1 "list_id required"
@@ -974,7 +1076,8 @@ ilist_set() {
     fi
 
     local new_id
-    new_id=$(_immut_gen_id "ilist")
+    _immut_gen_id "ilist"
+    new_id="$REPLY"
 
     # Copy all elements, replacing the one at index
     for ((i=0; i<size; i++)); do
@@ -987,6 +1090,7 @@ ilist_set() {
 
     _MAINFRAME_ILIST_META["$new_id:size"]=$size
     _MAINFRAME_ILIST_META["$new_id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$new_id" "string"
 }
@@ -1003,6 +1107,7 @@ ilist_set() {
 ilist_remove() {
     local list_id="${1:-}"
     local index="${2:-}"
+    _immut_load_state
 
     if [[ -z "$list_id" ]]; then
         _immut_error 1 "list_id required"
@@ -1033,19 +1138,21 @@ ilist_remove() {
     fi
 
     local new_id
-    new_id=$(_immut_gen_id "ilist")
+    _immut_gen_id "ilist"
+    new_id="$REPLY"
 
     # Copy all elements except the one at index
     local new_index=0
     for ((i=0; i<size; i++)); do
         if [[ "$i" -ne "$index" ]]; then
             _MAINFRAME_ILIST_DATA["$new_id:$new_index"]="${_MAINFRAME_ILIST_DATA["$list_id:$i"]}"
-            ((new_index++))
+            new_index=$((new_index + 1))
         fi
     done
 
     _MAINFRAME_ILIST_META["$new_id:size"]=$((size - 1))
     _MAINFRAME_ILIST_META["$new_id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$new_id" "string"
 }
@@ -1063,6 +1170,7 @@ ilist_slice() {
     local list_id="${1:-}"
     local start="${2:-0}"
     local end="${3:-}"
+    _immut_load_state
 
     if [[ -z "$list_id" ]]; then
         _immut_error 1 "list_id required"
@@ -1084,16 +1192,18 @@ ilist_slice() {
     [[ "$start" -gt "$end" ]] && start=$end
 
     local new_id
-    new_id=$(_immut_gen_id "ilist")
+    _immut_gen_id "ilist"
+    new_id="$REPLY"
 
     local new_index=0
     for ((i=start; i<end; i++)); do
         _MAINFRAME_ILIST_DATA["$new_id:$new_index"]="${_MAINFRAME_ILIST_DATA["$list_id:$i"]}"
-        ((new_index++))
+        new_index=$((new_index + 1))
     done
 
     _MAINFRAME_ILIST_META["$new_id:size"]=$new_index
     _MAINFRAME_ILIST_META["$new_id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$new_id" "string"
 }
@@ -1109,6 +1219,7 @@ ilist_slice() {
 ilist_concat() {
     local list1="${1:-}"
     local list2="${2:-}"
+    _immut_load_state
 
     if [[ -z "$list1" ]] || [[ -z "$list2" ]]; then
         _immut_error 1 "two list IDs required"
@@ -1116,7 +1227,8 @@ ilist_concat() {
     fi
 
     local new_id
-    new_id=$(_immut_gen_id "ilist")
+    _immut_gen_id "ilist"
+    new_id="$REPLY"
 
     local size1="${_MAINFRAME_ILIST_META["$list1:size"]:-0}"
     local size2="${_MAINFRAME_ILIST_META["$list2:size"]:-0}"
@@ -1126,17 +1238,18 @@ ilist_concat() {
     # Copy from list1
     for ((i=0; i<size1; i++)); do
         _MAINFRAME_ILIST_DATA["$new_id:$new_index"]="${_MAINFRAME_ILIST_DATA["$list1:$i"]}"
-        ((new_index++))
+        new_index=$((new_index + 1))
     done
 
     # Copy from list2
     for ((i=0; i<size2; i++)); do
         _MAINFRAME_ILIST_DATA["$new_id:$new_index"]="${_MAINFRAME_ILIST_DATA["$list2:$i"]}"
-        ((new_index++))
+        new_index=$((new_index + 1))
     done
 
     _MAINFRAME_ILIST_META["$new_id:size"]=$new_index
     _MAINFRAME_ILIST_META["$new_id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$new_id" "string"
 }
@@ -1151,6 +1264,7 @@ ilist_concat() {
 # Usage: size=$(ilist_size "$list_id")
 ilist_size() {
     local list_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$list_id" ]]; then
         printf '0'
@@ -1170,6 +1284,7 @@ ilist_size() {
 # Usage: ilist_is_empty "$list_id" && echo "empty"
 ilist_is_empty() {
     local list_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$list_id" ]]; then
         return 0
@@ -1190,6 +1305,7 @@ ilist_is_empty() {
 ilist_map() {
     local list_id="${1:-}"
     local func="${2:-}"
+    _immut_load_state
 
     if [[ -z "$list_id" ]] || [[ -z "$func" ]]; then
         _immut_error 1 "list_id and function required"
@@ -1202,7 +1318,8 @@ ilist_map() {
     fi
 
     local new_id
-    new_id=$(_immut_gen_id "ilist")
+    _immut_gen_id "ilist"
+    new_id="$REPLY"
 
     local size="${_MAINFRAME_ILIST_META["$list_id:size"]:-0}"
 
@@ -1215,6 +1332,7 @@ ilist_map() {
 
     _MAINFRAME_ILIST_META["$new_id:size"]=$size
     _MAINFRAME_ILIST_META["$new_id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$new_id" "string"
 }
@@ -1231,6 +1349,7 @@ ilist_map() {
 ilist_filter() {
     local list_id="${1:-}"
     local predicate="${2:-}"
+    _immut_load_state
 
     if [[ -z "$list_id" ]] || [[ -z "$predicate" ]]; then
         _immut_error 1 "list_id and predicate required"
@@ -1243,7 +1362,8 @@ ilist_filter() {
     fi
 
     local new_id
-    new_id=$(_immut_gen_id "ilist")
+    _immut_gen_id "ilist"
+    new_id="$REPLY"
 
     local size="${_MAINFRAME_ILIST_META["$list_id:size"]:-0}"
     local new_size=0
@@ -1252,12 +1372,13 @@ ilist_filter() {
         local value="${_MAINFRAME_ILIST_DATA["$list_id:$i"]}"
         if "$predicate" "$i" "$value"; then
             _MAINFRAME_ILIST_DATA["$new_id:$new_size"]="$value"
-            ((new_size++))
+            new_size=$((new_size + 1))
         fi
     done
 
     _MAINFRAME_ILIST_META["$new_id:size"]=$new_size
     _MAINFRAME_ILIST_META["$new_id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$new_id" "string"
 }
@@ -1275,6 +1396,7 @@ ilist_reduce() {
     local list_id="${1:-}"
     local func="${2:-}"
     local initial="${3:-}"
+    _immut_load_state
 
     if [[ -z "$list_id" ]] || [[ -z "$func" ]]; then
         _immut_error 1 "list_id and function required"
@@ -1307,6 +1429,7 @@ ilist_reduce() {
 # Usage: json=$(ilist_to_json "$list_id")
 ilist_to_json() {
     local list_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$list_id" ]]; then
         printf '[]'
@@ -1337,6 +1460,7 @@ ilist_to_json() {
 # Usage: list_id=$(ilist_from_json '["a","b","c"]')
 ilist_from_json() {
     local json="${1:-}"
+    _immut_load_state
 
     if [[ -z "$json" ]] || [[ "$json" == "[]" ]]; then
         ilist_create
@@ -1344,7 +1468,8 @@ ilist_from_json() {
     fi
 
     local id
-    id=$(_immut_gen_id "ilist")
+    _immut_gen_id "ilist"
+    id="$REPLY"
 
     _MAINFRAME_ILIST_META["$id:frozen"]=0
 
@@ -1369,7 +1494,7 @@ ilist_from_json() {
             value="${value//\\\\/\\}"
 
             _MAINFRAME_ILIST_DATA["$id:$index"]="$value"
-            ((index++))
+            index=$((index + 1))
 
             # Remove leading comma
             remaining="${remaining#,}"
@@ -1379,6 +1504,7 @@ ilist_from_json() {
     done
 
     _MAINFRAME_ILIST_META["$id:size"]=$index
+    _immut_save_state || return 1
 
     _immut_result "$id" "string"
 }
@@ -1389,7 +1515,7 @@ ilist_from_json() {
 # Sets are stored as: _MAINFRAME_ISET_DATA["id:value"] = 1
 #                     _MAINFRAME_ISET_META["id:size"] = count
 #                     _MAINFRAME_ISET_META["id:frozen"] = 0|1
-#                     _MAINFRAME_ISET_META["id:values"] = "val1\x00val2\x00..."
+#                     _MAINFRAME_ISET_META["id:values"] = "val1\x1fval2\x1f..."
 # =============================================================================
 
 # @pre: none
@@ -1402,11 +1528,14 @@ ilist_from_json() {
 # Usage: set_id=$(iset_create)
 iset_create() {
     local id
-    id=$(_immut_gen_id "iset")
+    _immut_load_state
+    _immut_gen_id "iset"
+    id="$REPLY"
 
     _MAINFRAME_ISET_META["$id:size"]=0
     _MAINFRAME_ISET_META["$id:frozen"]=0
     _MAINFRAME_ISET_META["$id:values"]=""
+    _immut_save_state || return 1
 
     _immut_result "$id" "string"
 }
@@ -1422,7 +1551,9 @@ iset_create() {
 # Usage: set_id=$(iset_from_array "a" "b" "c")
 iset_from_array() {
     local id
-    id=$(_immut_gen_id "iset")
+    _immut_load_state
+    _immut_gen_id "iset"
+    id="$REPLY"
 
     _MAINFRAME_ISET_META["$id:frozen"]=0
 
@@ -1433,14 +1564,15 @@ iset_from_array() {
         # Check if already present
         if [[ ! -v _MAINFRAME_ISET_DATA["$id:$value"] ]]; then
             _MAINFRAME_ISET_DATA["$id:$value"]=1
-            [[ -n "$values" ]] && values+=$'\x00'
+            [[ -n "$values" ]] && values+=$_MAINFRAME_IMMUT_SEP
             values+="$value"
-            ((count++))
+            count=$((count + 1))
         fi
     done
 
     _MAINFRAME_ISET_META["$id:size"]=$count
     _MAINFRAME_ISET_META["$id:values"]="$values"
+    _immut_save_state || return 1
 
     _immut_result "$id" "string"
 }
@@ -1457,6 +1589,7 @@ iset_from_array() {
 iset_add() {
     local set_id="${1:-}"
     local value="${2:-}"
+    _immut_load_state
 
     if [[ -z "$set_id" ]]; then
         _immut_error 1 "set_id required"
@@ -1471,7 +1604,8 @@ iset_add() {
     fi
 
     local new_id
-    new_id=$(_immut_gen_id "iset")
+    _immut_gen_id "iset"
+    new_id="$REPLY"
 
     # Copy existing values
     local old_values="${_MAINFRAME_ISET_META["$set_id:values"]:-}"
@@ -1480,30 +1614,31 @@ iset_add() {
     local value_exists=0
 
     if [[ -n "$old_values" ]]; then
-        while IFS= read -r -d $'\x00' old_val || [[ -n "$old_val" ]]; do
+        while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" old_val || [[ -n "$old_val" ]]; do
             if [[ -n "$old_val" ]]; then
                 if [[ "$old_val" == "$value" ]]; then
                     value_exists=1
                 fi
                 _MAINFRAME_ISET_DATA["$new_id:$old_val"]=1
-                [[ -n "$new_values" ]] && new_values+=$'\x00'
+                [[ -n "$new_values" ]] && new_values+=$_MAINFRAME_IMMUT_SEP
                 new_values+="$old_val"
-                ((new_size++))
+                new_size=$((new_size + 1))
             fi
-        done <<< "$old_values"
+        done < <(printf '%s' "$old_values")
     fi
 
     # Add new value if not exists
     if [[ "$value_exists" == "0" ]]; then
         _MAINFRAME_ISET_DATA["$new_id:$value"]=1
-        [[ -n "$new_values" ]] && new_values+=$'\x00'
+        [[ -n "$new_values" ]] && new_values+=$_MAINFRAME_IMMUT_SEP
         new_values+="$value"
-        ((new_size++))
+        new_size=$((new_size + 1))
     fi
 
     _MAINFRAME_ISET_META["$new_id:size"]=$new_size
     _MAINFRAME_ISET_META["$new_id:values"]="$new_values"
     _MAINFRAME_ISET_META["$new_id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$new_id" "string"
 }
@@ -1520,6 +1655,7 @@ iset_add() {
 iset_remove() {
     local set_id="${1:-}"
     local value="${2:-}"
+    _immut_load_state
 
     if [[ -z "$set_id" ]]; then
         _immut_error 1 "set_id required"
@@ -1534,26 +1670,28 @@ iset_remove() {
     fi
 
     local new_id
-    new_id=$(_immut_gen_id "iset")
+    _immut_gen_id "iset"
+    new_id="$REPLY"
 
     local old_values="${_MAINFRAME_ISET_META["$set_id:values"]:-}"
     local new_values=""
     local new_size=0
 
     if [[ -n "$old_values" ]]; then
-        while IFS= read -r -d $'\x00' old_val || [[ -n "$old_val" ]]; do
+        while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" old_val || [[ -n "$old_val" ]]; do
             if [[ -n "$old_val" ]] && [[ "$old_val" != "$value" ]]; then
                 _MAINFRAME_ISET_DATA["$new_id:$old_val"]=1
-                [[ -n "$new_values" ]] && new_values+=$'\x00'
+                [[ -n "$new_values" ]] && new_values+=$_MAINFRAME_IMMUT_SEP
                 new_values+="$old_val"
-                ((new_size++))
+                new_size=$((new_size + 1))
             fi
-        done <<< "$old_values"
+        done < <(printf '%s' "$old_values")
     fi
 
     _MAINFRAME_ISET_META["$new_id:size"]=$new_size
     _MAINFRAME_ISET_META["$new_id:values"]="$new_values"
     _MAINFRAME_ISET_META["$new_id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$new_id" "string"
 }
@@ -1569,6 +1707,7 @@ iset_remove() {
 iset_has() {
     local set_id="${1:-}"
     local value="${2:-}"
+    _immut_load_state
 
     if [[ -z "$set_id" ]]; then
         return 1
@@ -1587,6 +1726,7 @@ iset_has() {
 # Usage: size=$(iset_size "$set_id")
 iset_size() {
     local set_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$set_id" ]]; then
         printf '0'
@@ -1606,6 +1746,7 @@ iset_size() {
 # Usage: iset_is_empty "$set_id" && echo "empty"
 iset_is_empty() {
     local set_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$set_id" ]]; then
         return 0
@@ -1625,6 +1766,7 @@ iset_is_empty() {
 iset_union() {
     local set1="${1:-}"
     local set2="${2:-}"
+    _immut_load_state
 
     if [[ -z "$set1" ]] || [[ -z "$set2" ]]; then
         _immut_error 1 "two set IDs required"
@@ -1632,7 +1774,8 @@ iset_union() {
     fi
 
     local new_id
-    new_id=$(_immut_gen_id "iset")
+    _immut_gen_id "iset"
+    new_id="$REPLY"
 
     local new_values=""
     local new_size=0
@@ -1641,34 +1784,35 @@ iset_union() {
     # Copy from set1
     local vals1="${_MAINFRAME_ISET_META["$set1:values"]:-}"
     if [[ -n "$vals1" ]]; then
-        while IFS= read -r -d $'\x00' val || [[ -n "$val" ]]; do
+        while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" val || [[ -n "$val" ]]; do
             if [[ -n "$val" ]] && [[ ! -v seen_vals["$val"] ]]; then
                 _MAINFRAME_ISET_DATA["$new_id:$val"]=1
-                [[ -n "$new_values" ]] && new_values+=$'\x00'
+                [[ -n "$new_values" ]] && new_values+=$_MAINFRAME_IMMUT_SEP
                 new_values+="$val"
                 seen_vals["$val"]=1
-                ((new_size++))
+                new_size=$((new_size + 1))
             fi
-        done <<< "$vals1"
+        done < <(printf '%s' "$vals1")
     fi
 
     # Add from set2 (duplicates auto-excluded)
     local vals2="${_MAINFRAME_ISET_META["$set2:values"]:-}"
     if [[ -n "$vals2" ]]; then
-        while IFS= read -r -d $'\x00' val || [[ -n "$val" ]]; do
+        while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" val || [[ -n "$val" ]]; do
             if [[ -n "$val" ]] && [[ ! -v seen_vals["$val"] ]]; then
                 _MAINFRAME_ISET_DATA["$new_id:$val"]=1
-                [[ -n "$new_values" ]] && new_values+=$'\x00'
+                [[ -n "$new_values" ]] && new_values+=$_MAINFRAME_IMMUT_SEP
                 new_values+="$val"
                 seen_vals["$val"]=1
-                ((new_size++))
+                new_size=$((new_size + 1))
             fi
-        done <<< "$vals2"
+        done < <(printf '%s' "$vals2")
     fi
 
     _MAINFRAME_ISET_META["$new_id:size"]=$new_size
     _MAINFRAME_ISET_META["$new_id:values"]="$new_values"
     _MAINFRAME_ISET_META["$new_id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$new_id" "string"
 }
@@ -1684,6 +1828,7 @@ iset_union() {
 iset_intersect() {
     local set1="${1:-}"
     local set2="${2:-}"
+    _immut_load_state
 
     if [[ -z "$set1" ]] || [[ -z "$set2" ]]; then
         _immut_error 1 "two set IDs required"
@@ -1691,7 +1836,8 @@ iset_intersect() {
     fi
 
     local new_id
-    new_id=$(_immut_gen_id "iset")
+    _immut_gen_id "iset"
+    new_id="$REPLY"
 
     local new_values=""
     local new_size=0
@@ -1699,19 +1845,20 @@ iset_intersect() {
     # Only include values that are in both sets
     local vals1="${_MAINFRAME_ISET_META["$set1:values"]:-}"
     if [[ -n "$vals1" ]]; then
-        while IFS= read -r -d $'\x00' val || [[ -n "$val" ]]; do
+        while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" val || [[ -n "$val" ]]; do
             if [[ -n "$val" ]] && [[ -v _MAINFRAME_ISET_DATA["$set2:$val"] ]]; then
                 _MAINFRAME_ISET_DATA["$new_id:$val"]=1
-                [[ -n "$new_values" ]] && new_values+=$'\x00'
+                [[ -n "$new_values" ]] && new_values+=$_MAINFRAME_IMMUT_SEP
                 new_values+="$val"
-                ((new_size++))
+                new_size=$((new_size + 1))
             fi
-        done <<< "$vals1"
+        done < <(printf '%s' "$vals1")
     fi
 
     _MAINFRAME_ISET_META["$new_id:size"]=$new_size
     _MAINFRAME_ISET_META["$new_id:values"]="$new_values"
     _MAINFRAME_ISET_META["$new_id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$new_id" "string"
 }
@@ -1727,6 +1874,7 @@ iset_intersect() {
 iset_difference() {
     local set1="${1:-}"
     local set2="${2:-}"
+    _immut_load_state
 
     if [[ -z "$set1" ]] || [[ -z "$set2" ]]; then
         _immut_error 1 "two set IDs required"
@@ -1734,7 +1882,8 @@ iset_difference() {
     fi
 
     local new_id
-    new_id=$(_immut_gen_id "iset")
+    _immut_gen_id "iset"
+    new_id="$REPLY"
 
     local new_values=""
     local new_size=0
@@ -1742,19 +1891,20 @@ iset_difference() {
     # Only include values that are in set1 but not set2
     local vals1="${_MAINFRAME_ISET_META["$set1:values"]:-}"
     if [[ -n "$vals1" ]]; then
-        while IFS= read -r -d $'\x00' val || [[ -n "$val" ]]; do
+        while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" val || [[ -n "$val" ]]; do
             if [[ -n "$val" ]] && [[ ! -v _MAINFRAME_ISET_DATA["$set2:$val"] ]]; then
                 _MAINFRAME_ISET_DATA["$new_id:$val"]=1
-                [[ -n "$new_values" ]] && new_values+=$'\x00'
+                [[ -n "$new_values" ]] && new_values+=$_MAINFRAME_IMMUT_SEP
                 new_values+="$val"
-                ((new_size++))
+                new_size=$((new_size + 1))
             fi
-        done <<< "$vals1"
+        done < <(printf '%s' "$vals1")
     fi
 
     _MAINFRAME_ISET_META["$new_id:size"]=$new_size
     _MAINFRAME_ISET_META["$new_id:values"]="$new_values"
     _MAINFRAME_ISET_META["$new_id:frozen"]=0
+    _immut_save_state || return 1
 
     _immut_result "$new_id" "string"
 }
@@ -1770,6 +1920,7 @@ iset_difference() {
 iset_is_subset() {
     local set1="${1:-}"
     local set2="${2:-}"
+    _immut_load_state
 
     if [[ -z "$set1" ]] || [[ -z "$set2" ]]; then
         return 1
@@ -1780,11 +1931,11 @@ iset_is_subset() {
     # Empty set is subset of any set
     [[ -z "$vals1" ]] && return 0
 
-    while IFS= read -r -d $'\x00' val || [[ -n "$val" ]]; do
+    while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" val || [[ -n "$val" ]]; do
         if [[ -n "$val" ]] && [[ ! -v _MAINFRAME_ISET_DATA["$set2:$val"] ]]; then
             return 1
         fi
-    done <<< "$vals1"
+    done < <(printf '%s' "$vals1")
 
     return 0
 }
@@ -1799,6 +1950,7 @@ iset_is_subset() {
 # Usage: iset_values "$set_id"
 iset_values() {
     local set_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$set_id" ]]; then
         return 1
@@ -1806,7 +1958,7 @@ iset_values() {
 
     local values="${_MAINFRAME_ISET_META["$set_id:values"]:-}"
     if [[ -n "$values" ]]; then
-        printf '%s\n' "${values//$'\x00'/$'\n'}"
+        printf '%s\n' "${values//$_MAINFRAME_IMMUT_SEP/$'\n'}"
     fi
 }
 
@@ -1820,6 +1972,7 @@ iset_values() {
 # Usage: json=$(iset_to_json "$set_id")
 iset_to_json() {
     local set_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$set_id" ]]; then
         printf '[]'
@@ -1831,13 +1984,13 @@ iset_to_json() {
 
     printf '['
     if [[ -n "$values" ]]; then
-        while IFS= read -r -d $'\x00' val || [[ -n "$val" ]]; do
+        while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" val || [[ -n "$val" ]]; do
             if [[ -n "$val" ]]; then
                 $first || printf ','
                 first=false
                 printf '"%s"' "$(_immut_escape "$val")"
             fi
-        done <<< "$values"
+        done < <(printf '%s' "$values")
     fi
     printf ']'
 }
@@ -1857,6 +2010,7 @@ iset_to_json() {
 # Usage: frozen_map=$(immut_freeze "$map_id")
 immut_freeze() {
     local struct_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$struct_id" ]]; then
         _immut_error 1 "structure ID required"
@@ -1874,6 +2028,7 @@ immut_freeze() {
         _immut_error 1 "unknown structure: $struct_id"
         return 1
     fi
+    _immut_save_state || return 1
 
     _immut_result "$struct_id" "string"
 }
@@ -1888,6 +2043,7 @@ immut_freeze() {
 # Usage: immut_is_frozen "$map_id" && echo "frozen"
 immut_is_frozen() {
     local struct_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$struct_id" ]]; then
         return 1
@@ -1916,6 +2072,7 @@ immut_is_frozen() {
 # Usage: mutable_map=$(immut_thaw "$frozen_map")
 immut_thaw() {
     local struct_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$struct_id" ]]; then
         _immut_error 1 "structure ID required"
@@ -1926,33 +2083,36 @@ immut_thaw() {
     if [[ -v _MAINFRAME_IMAP_META["$struct_id:size"] ]]; then
         # Create new map with same data
         local new_id
-        new_id=$(_immut_gen_id "imap")
+        _immut_gen_id "imap"
+        new_id="$REPLY"
 
         local keys="${_MAINFRAME_IMAP_META["$struct_id:keys"]:-}"
         local new_keys=""
         local new_size=0
 
         if [[ -n "$keys" ]]; then
-            while IFS= read -r -d $'\x00' key || [[ -n "$key" ]]; do
+            while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" key || [[ -n "$key" ]]; do
                 if [[ -n "$key" ]]; then
                     _MAINFRAME_IMAP_DATA["$new_id:$key"]="${_MAINFRAME_IMAP_DATA["$struct_id:$key"]}"
-                    [[ -n "$new_keys" ]] && new_keys+=$'\x00'
+                    [[ -n "$new_keys" ]] && new_keys+=$_MAINFRAME_IMMUT_SEP
                     new_keys+="$key"
-                    ((new_size++))
+                    new_size=$((new_size + 1))
                 fi
-            done <<< "$keys"
+            done < <(printf '%s' "$keys")
         fi
 
         _MAINFRAME_IMAP_META["$new_id:size"]=$new_size
         _MAINFRAME_IMAP_META["$new_id:keys"]="$new_keys"
         _MAINFRAME_IMAP_META["$new_id:frozen"]=0
+        _immut_save_state || return 1
 
         _immut_result "$new_id" "string"
 
     elif [[ -v _MAINFRAME_ILIST_META["$struct_id:size"] ]]; then
         # Create new list with same data
         local new_id
-        new_id=$(_immut_gen_id "ilist")
+        _immut_gen_id "ilist"
+        new_id="$REPLY"
 
         local size="${_MAINFRAME_ILIST_META["$struct_id:size"]:-0}"
         for ((i=0; i<size; i++)); do
@@ -1961,32 +2121,35 @@ immut_thaw() {
 
         _MAINFRAME_ILIST_META["$new_id:size"]=$size
         _MAINFRAME_ILIST_META["$new_id:frozen"]=0
+        _immut_save_state || return 1
 
         _immut_result "$new_id" "string"
 
     elif [[ -v _MAINFRAME_ISET_META["$struct_id:size"] ]]; then
         # Create new set with same data
         local new_id
-        new_id=$(_immut_gen_id "iset")
+        _immut_gen_id "iset"
+        new_id="$REPLY"
 
         local values="${_MAINFRAME_ISET_META["$struct_id:values"]:-}"
         local new_values=""
         local new_size=0
 
         if [[ -n "$values" ]]; then
-            while IFS= read -r -d $'\x00' val || [[ -n "$val" ]]; do
+            while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" val || [[ -n "$val" ]]; do
                 if [[ -n "$val" ]]; then
                     _MAINFRAME_ISET_DATA["$new_id:$val"]=1
-                    [[ -n "$new_values" ]] && new_values+=$'\x00'
+                    [[ -n "$new_values" ]] && new_values+=$_MAINFRAME_IMMUT_SEP
                     new_values+="$val"
-                    ((new_size++))
+                    new_size=$((new_size + 1))
                 fi
-            done <<< "$values"
+            done < <(printf '%s' "$values")
         fi
 
         _MAINFRAME_ISET_META["$new_id:size"]=$new_size
         _MAINFRAME_ISET_META["$new_id:values"]="$new_values"
         _MAINFRAME_ISET_META["$new_id:frozen"]=0
+        _immut_save_state || return 1
 
         _immut_result "$new_id" "string"
 
@@ -2007,6 +2170,7 @@ immut_thaw() {
 immut_equals() {
     local struct1="${1:-}"
     local struct2="${2:-}"
+    _immut_load_state
 
     if [[ -z "$struct1" ]] || [[ -z "$struct2" ]]; then
         return 1
@@ -2026,12 +2190,12 @@ immut_equals() {
 
         local keys1="${_MAINFRAME_IMAP_META["$struct1:keys"]:-}"
         if [[ -n "$keys1" ]]; then
-            while IFS= read -r -d $'\x00' key || [[ -n "$key" ]]; do
+            while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" key || [[ -n "$key" ]]; do
                 if [[ -n "$key" ]]; then
                     [[ ! -v _MAINFRAME_IMAP_DATA["$struct2:$key"] ]] && return 1
                     [[ "${_MAINFRAME_IMAP_DATA["$struct1:$key"]}" != "${_MAINFRAME_IMAP_DATA["$struct2:$key"]}" ]] && return 1
                 fi
-            done <<< "$keys1"
+            done < <(printf '%s' "$keys1")
         fi
         return 0
 
@@ -2058,11 +2222,11 @@ immut_equals() {
 
         local vals1="${_MAINFRAME_ISET_META["$struct1:values"]:-}"
         if [[ -n "$vals1" ]]; then
-            while IFS= read -r -d $'\x00' val || [[ -n "$val" ]]; do
+            while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" val || [[ -n "$val" ]]; do
                 if [[ -n "$val" ]] && [[ ! -v _MAINFRAME_ISET_DATA["$struct2:$val"] ]]; then
                     return 1
                 fi
-            done <<< "$vals1"
+            done < <(printf '%s' "$vals1")
         fi
         return 0
     fi
@@ -2082,6 +2246,7 @@ immut_equals() {
 # Usage: hash=$(immut_hash "$map_id")
 immut_hash() {
     local struct_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$struct_id" ]]; then
         printf '0'
@@ -2096,12 +2261,12 @@ immut_hash() {
         # Sort keys for consistent hash
         if [[ -n "$keys" ]]; then
             local sorted_keys
-            sorted_keys=$(printf '%s\n' "${keys//$'\x00'/$'\n'}" | sort)
-            while IFS= read -r key; do
+            sorted_keys=$(printf '%s\n' "${keys//$_MAINFRAME_IMMUT_SEP/$'\n'}" | sort)
+            while IFS= read -r key || [[ -n "$key" ]]; do
                 if [[ -n "$key" ]]; then
                     content+="$key=${_MAINFRAME_IMAP_DATA["$struct_id:$key"]};"
                 fi
-            done <<< "$sorted_keys"
+            done < <(printf '%s' "$sorted_keys")
         fi
 
     elif [[ -v _MAINFRAME_ILIST_META["$struct_id:size"] ]]; then
@@ -2117,12 +2282,12 @@ immut_hash() {
         # Sort values for consistent hash
         if [[ -n "$values" ]]; then
             local sorted_vals
-            sorted_vals=$(printf '%s\n' "${values//$'\x00'/$'\n'}" | sort)
-            while IFS= read -r val; do
+            sorted_vals=$(printf '%s\n' "${values//$_MAINFRAME_IMMUT_SEP/$'\n'}" | sort)
+            while IFS= read -r val || [[ -n "$val" ]]; do
                 if [[ -n "$val" ]]; then
                     content+="$val;"
                 fi
-            done <<< "$sorted_vals"
+            done < <(printf '%s' "$sorted_vals")
         fi
     fi
 
@@ -2143,6 +2308,7 @@ immut_hash() {
 # Usage: ilist_each "$list_id" | while read -r item; do echo "$item"; done
 ilist_each() {
     local list_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$list_id" ]]; then
         return 1
@@ -2192,10 +2358,11 @@ iset_each() {
 # Usage: type=$(immut_type "$struct_id")
 immut_type() {
     local struct_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$struct_id" ]]; then
         printf 'unknown'
-        return 1
+        return 0
     fi
 
     if [[ -v _MAINFRAME_IMAP_META["$struct_id:size"] ]]; then
@@ -2206,7 +2373,7 @@ immut_type() {
         printf 'set'
     else
         printf 'unknown'
-        return 1
+        return 0
     fi
 }
 
@@ -2220,6 +2387,7 @@ immut_type() {
 # Usage: size=$(immut_size "$struct_id")
 immut_size() {
     local struct_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$struct_id" ]]; then
         printf '0'
@@ -2248,6 +2416,7 @@ immut_size() {
 # Usage: immut_is_empty "$struct_id" && echo "empty"
 immut_is_empty() {
     local struct_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$struct_id" ]]; then
         return 0
@@ -2273,6 +2442,7 @@ immut_is_empty() {
 # Usage: immut_free "$map_id"
 immut_free() {
     local struct_id="${1:-}"
+    _immut_load_state
 
     if [[ -z "$struct_id" ]]; then
         return 0
@@ -2281,9 +2451,9 @@ immut_free() {
     if [[ -v _MAINFRAME_IMAP_META["$struct_id:size"] ]]; then
         local keys="${_MAINFRAME_IMAP_META["$struct_id:keys"]:-}"
         if [[ -n "$keys" ]]; then
-            while IFS= read -r -d $'\x00' key || [[ -n "$key" ]]; do
+            while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" key || [[ -n "$key" ]]; do
                 [[ -n "$key" ]] && unset "_MAINFRAME_IMAP_DATA[$struct_id:$key]"
-            done <<< "$keys"
+            done < <(printf '%s' "$keys")
         fi
         unset "_MAINFRAME_IMAP_META[$struct_id:size]"
         unset "_MAINFRAME_IMAP_META[$struct_id:frozen]"
@@ -2300,14 +2470,15 @@ immut_free() {
     elif [[ -v _MAINFRAME_ISET_META["$struct_id:size"] ]]; then
         local values="${_MAINFRAME_ISET_META["$struct_id:values"]:-}"
         if [[ -n "$values" ]]; then
-            while IFS= read -r -d $'\x00' val || [[ -n "$val" ]]; do
+            while IFS= read -r -d "$_MAINFRAME_IMMUT_SEP" val || [[ -n "$val" ]]; do
                 [[ -n "$val" ]] && unset "_MAINFRAME_ISET_DATA[$struct_id:$val]"
-            done <<< "$values"
+            done < <(printf '%s' "$values")
         fi
         unset "_MAINFRAME_ISET_META[$struct_id:size]"
         unset "_MAINFRAME_ISET_META[$struct_id:frozen]"
         unset "_MAINFRAME_ISET_META[$struct_id:values]"
     fi
+    _immut_save_state || return 1
 
     return 0
 }

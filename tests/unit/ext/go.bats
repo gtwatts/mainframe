@@ -14,6 +14,7 @@
 setup() {
     BATS_TEST_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
     MAINFRAME_ROOT="${BATS_TEST_DIR}/../../.."
+    ORIGINAL_PATH="$PATH"
 
     # Create temp directory for test artifacts
     TEST_TMPDIR="$(mktemp -d)"
@@ -31,17 +32,18 @@ setup() {
 
 # Teardown: Clean up test artifacts
 teardown() {
-    rm -rf "$TEST_TMPDIR"
+    PATH="$ORIGINAL_PATH"
+    /bin/rm -rf "$TEST_TMPDIR"
 }
 
 # Helper: Create mock go command
 create_mock_go() {
     local behavior="$1"
-    cat > "$MOCK_BIN/go" << EOF
+    /bin/cat > "$MOCK_BIN/go" << EOF
 #!/bin/bash
 $behavior
 EOF
-    chmod +x "$MOCK_BIN/go"
+    /bin/chmod +x "$MOCK_BIN/go"
     export PATH="$MOCK_BIN:$PATH"
 }
 
@@ -49,11 +51,11 @@ EOF
 create_mock_linter() {
     local name="$1"
     local behavior="$2"
-    cat > "$MOCK_BIN/$name" << EOF
+    /bin/cat > "$MOCK_BIN/$name" << EOF
 #!/bin/bash
 $behavior
 EOF
-    chmod +x "$MOCK_BIN/$name"
+    /bin/chmod +x "$MOCK_BIN/$name"
     export PATH="$MOCK_BIN:$PATH"
 }
 
@@ -789,14 +791,14 @@ EOF
 @test "go_dependencies: returns valid JSON arrays" {
     create_go_project "$TEST_TMPDIR/project"
     result=$(go_dependencies "$TEST_TMPDIR/project")
-    [[ "$result" =~ '"direct":\[' ]]
-    [[ "$result" =~ '"indirect":\[' ]]
+    [[ "$result" == *'"direct":['* ]]
+    [[ "$result" == *'"indirect":['* ]]
 }
 
 @test "go_imports: returns valid JSON arrays" {
     create_go_project "$TEST_TMPDIR/project"
     result=$(go_imports "$TEST_TMPDIR/project/main.go")
-    [[ "$result" =~ '"imports":\[' ]]
-    [[ "$result" =~ '"std_lib":\[' ]]
-    [[ "$result" =~ '"external":\[' ]]
+    [[ "$result" == *'"imports":['* ]]
+    [[ "$result" == *'"std_lib":['* ]]
+    [[ "$result" == *'"external":['* ]]
 }

@@ -191,9 +191,10 @@ EOF
 }
 
 @test "parallel_race: handles no commands" {
-    result=$(parallel_race)
-    [[ "$result" == *'"ok":false'* ]]
-    [[ "$result" == *'E_NO_COMMANDS'* ]]
+    run parallel_race
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *'"ok":false'* ]]
+    [[ "$output" == *'E_NO_COMMANDS'* ]]
 }
 
 @test "parallel_race: includes winner_index hint" {
@@ -219,9 +220,10 @@ EOF
 }
 
 @test "parallel_all: handles no commands" {
-    result=$(parallel_all)
-    [[ "$result" == *'"ok":false'* ]]
-    [[ "$result" == *'E_NO_COMMANDS'* ]]
+    run parallel_all
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *'"ok":false'* ]]
+    [[ "$output" == *'E_NO_COMMANDS'* ]]
 }
 
 @test "parallel_all: captures all outputs" {
@@ -246,9 +248,10 @@ EOF
 }
 
 @test "parallel_any: handles no commands" {
-    result=$(parallel_any)
-    [[ "$result" == *'"ok":false'* ]]
-    [[ "$result" == *'E_NO_COMMANDS'* ]]
+    run parallel_any
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *'"ok":false'* ]]
+    [[ "$output" == *'E_NO_COMMANDS'* ]]
 }
 
 @test "parallel_any: reports correct success/fail counts" {
@@ -274,9 +277,10 @@ EOF
 }
 
 @test "parallel_sequence: handles no commands" {
-    result=$(parallel_sequence)
-    [[ "$result" == *'"ok":false'* ]]
-    [[ "$result" == *'E_NO_COMMANDS'* ]]
+    run parallel_sequence
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *'"ok":false'* ]]
+    [[ "$output" == *'E_NO_COMMANDS'* ]]
 }
 
 # =============================================================================
@@ -299,9 +303,10 @@ EOF
 }
 
 @test "parallel_batch: handles no items" {
-    result=$(parallel_batch --batch-size 2)
-    [[ "$result" == *'"ok":false'* ]]
-    [[ "$result" == *'E_NO_ITEMS'* ]]
+    run parallel_batch --batch-size 2
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *'"ok":false'* ]]
+    [[ "$output" == *'E_NO_ITEMS'* ]]
 }
 
 # =============================================================================
@@ -315,28 +320,30 @@ EOF
 }
 
 @test "parallel_timeout: kills command after timeout" {
-    result=$(parallel_timeout 1 "sleep 2; echo never")
-    status=$?
-    [[ "$result" == *'"status":"timeout"'* ]]
-    [[ $status -eq 124 ]]
+    run parallel_timeout 1 "sleep 2; echo never"
+    [[ "$status" -eq 124 ]]
+    [[ "$output" == *'"status":"timeout"'* ]]
 }
 
 @test "parallel_timeout: handles no command" {
-    result=$(parallel_timeout 5)
-    [[ "$result" == *'"ok":false'* ]]
-    [[ "$result" == *'E_NO_COMMAND'* ]]
+    run parallel_timeout 5
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *'"ok":false'* ]]
+    [[ "$output" == *'E_NO_COMMAND'* ]]
 }
 
 @test "parallel_timeout: handles invalid timeout" {
-    result=$(parallel_timeout -1 "echo test")
-    [[ "$result" == *'"ok":false'* ]]
-    [[ "$result" == *'E_INVALID_TIMEOUT'* ]]
+    run parallel_timeout -1 "echo test"
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *'"ok":false'* ]]
+    [[ "$output" == *'E_INVALID_TIMEOUT'* ]]
 }
 
 @test "parallel_timeout: captures output before timeout" {
-    result=$(parallel_timeout 2 "echo partial; sleep 2")
+    run parallel_timeout 2 "echo partial; sleep 5"
+    [[ "$status" -eq 124 ]]
     # Should timeout but may have captured partial output
-    [[ "$result" == *'timeout'* ]] || [[ "$result" == *'partial'* ]]
+    [[ "$output" == *'timeout'* ]] || [[ "$output" == *'partial'* ]]
 }
 
 # =============================================================================
@@ -379,16 +386,18 @@ EOF
 }
 
 @test "parallel_retry: fails after max attempts" {
-    result=$(parallel_retry "false" --max-attempts 2 --delay 0)
-    [[ "$result" == *'"ok":false'* ]]
-    [[ "$result" == *'"attempts":2'* ]]
-    [[ "$result" == *'failed after'* ]]
+    run parallel_retry "false" --max-attempts 2 --delay 0
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *'"ok":false'* ]]
+    [[ "$output" == *'"attempts":2'* ]]
+    [[ "$output" == *'failed after'* ]]
 }
 
 @test "parallel_retry: handles no command" {
-    result=$(parallel_retry --max-attempts 3)
-    [[ "$result" == *'"ok":false'* ]]
-    [[ "$result" == *'E_NO_COMMAND'* ]]
+    run parallel_retry --max-attempts 3
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *'"ok":false'* ]]
+    [[ "$output" == *'E_NO_COMMAND'* ]]
 }
 
 @test "parallel_retry: uses exponential backoff by default" {
@@ -425,9 +434,10 @@ EOF
 }
 
 @test "parallel_progress: handles no commands" {
-    result=$(parallel_progress 2>/dev/null)
-    [[ "$result" == *'"ok":false'* ]]
-    [[ "$result" == *'E_NO_COMMANDS'* ]]
+    run parallel_progress
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *'"ok":false'* ]]
+    [[ "$output" == *'E_NO_COMMANDS'* ]]
 }
 
 # =============================================================================
@@ -556,8 +566,9 @@ EOF
 }
 
 @test "parallel_timeout: zero timeout rejected" {
-    result=$(parallel_timeout 0 "echo test")
-    [[ "$result" == *'"ok":false'* ]]
+    run parallel_timeout 0 "echo test"
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *'"ok":false'* ]]
 }
 
 @test "parallel_retry: command with arguments" {

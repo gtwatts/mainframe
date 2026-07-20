@@ -127,6 +127,67 @@ _metrics_now() {
     fi
 }
 
+_metrics_number_valid() {
+    local value="$1"
+    [[ "$value" =~ ^-?([0-9]+([.][0-9]*)?|[.][0-9]+)$ ]]
+}
+
+_metrics_normalize_number() {
+    local value="${1:-0}"
+
+    if [[ "$value" == .* ]]; then
+        value="0${value}"
+    elif [[ "$value" == -.* ]]; then
+        value="-0${value#-}"
+    fi
+
+    if [[ "$value" == *.* ]]; then
+        while [[ "$value" == *0 ]]; do
+            value="${value%0}"
+        done
+        value="${value%.}"
+    fi
+
+    [[ -z "$value" || "$value" == "-" ]] && value="0"
+    printf '%s' "$value"
+}
+
+_metrics_add_numbers() {
+    local left
+    local right
+    left=$(_metrics_normalize_number "${1:-0}")
+    right=$(_metrics_normalize_number "${2:-0}")
+
+    if [[ "$left" == *"."* ]] || [[ "$right" == *"."* ]]; then
+        if command -v bc &>/dev/null; then
+            _metrics_normalize_number "$(echo "$left + $right" | bc)"
+        else
+            _metrics_normalize_number "$(awk -v a="$left" -v b="$right" 'BEGIN { printf "%.12f", a + b }')"
+        fi
+        return 0
+    fi
+
+    printf '%s' "$((left + right))"
+}
+
+_metrics_subtract_numbers() {
+    local left
+    local right
+    left=$(_metrics_normalize_number "${1:-0}")
+    right=$(_metrics_normalize_number "${2:-0}")
+
+    if [[ "$left" == *"."* ]] || [[ "$right" == *"."* ]]; then
+        if command -v bc &>/dev/null; then
+            _metrics_normalize_number "$(echo "$left - $right" | bc)"
+        else
+            _metrics_normalize_number "$(awk -v a="$left" -v b="$right" 'BEGIN { printf "%.12f", a - b }')"
+        fi
+        return 0
+    fi
+
+    printf '%s' "$((left - right))"
+}
+
 # Validate metric name (Prometheus format: [a-zA-Z_:][a-zA-Z0-9_:]*)
 # @pre: name is non-empty string
 # @post: returns 0 if valid, 1 if invalid
@@ -482,7 +543,7 @@ counter_add() {
     [[ "$MAINFRAME_METRICS_ENABLED" != "1" ]] && return 0
 
     # Validate value is non-negative number
-    if [[ ! "$value" =~ ^[0-9]+\.?[0-9]*$ ]]; then
+    if ! _metrics_number_valid "$value" || [[ "$value" == -* ]]; then
         printf '{"error":true,"msg":"counter value must be non-negative","value":"%s"}\n' "$value" >&2
         return 1
     fi
@@ -501,18 +562,7 @@ counter_add() {
     local current="${_METRICS_COUNTERS[$key]:-0}"
 
     # Handle float addition with bc if available
-    if [[ "$value" == *"."* ]] || [[ "$current" == *"."* ]]; then
-        if command -v bc &>/dev/null; then
-            _METRICS_COUNTERS[$key]=$(echo "$current + $value" | bc)
-        else
-            # Fallback: truncate to integer
-            local int_value="${value%%.*}"
-            local int_current="${current%%.*}"
-            _METRICS_COUNTERS[$key]=$((int_current + int_value))
-        fi
-    else
-        _METRICS_COUNTERS[$key]=$((current + value))
-    fi
+    _METRICS_COUNTERS[$key]=$(_metrics_add_numbers "$current" "$value")
 
     return 0
 }
@@ -617,7 +667,7 @@ gauge_set() {
     [[ "$MAINFRAME_METRICS_ENABLED" != "1" ]] && return 0
 
     # Validate value is a number
-    if [[ ! "$value" =~ ^-?[0-9]+\.?[0-9]*$ ]]; then
+    if ! _metrics_number_valid "$value"; then
         printf '{"error":true,"msg":"gauge value must be a number","value":"%s"}\n' "$value" >&2
         return 1
     fi
@@ -633,7 +683,7 @@ gauge_set() {
     fi
 
     local key="$(_metrics_key "$name" "$labels")"
-    _METRICS_GAUGES[$key]="$value"
+    _METRICS_GAUGES[$key]=$(_metrics_normalize_number "$value")
 
     return 0
 }
@@ -665,16 +715,7 @@ gauge_inc() {
     local key="$(_metrics_key "$name" "$labels")"
     local current="${_METRICS_GAUGES[$key]:-0}"
 
-    if [[ "$current" == *"."* ]]; then
-        if command -v bc &>/dev/null; then
-            _METRICS_GAUGES[$key]=$(echo "$current + 1" | bc)
-        else
-            local int_current="${current%%.*}"
-            _METRICS_GAUGES[$key]=$((int_current + 1))
-        fi
-    else
-        _METRICS_GAUGES[$key]=$((current + 1))
-    fi
+    _METRICS_GAUGES[$key]=$(_metrics_add_numbers "$current" "1")
 
     return 0
 }
@@ -706,16 +747,7 @@ gauge_dec() {
     local key="$(_metrics_key "$name" "$labels")"
     local current="${_METRICS_GAUGES[$key]:-0}"
 
-    if [[ "$current" == *"."* ]]; then
-        if command -v bc &>/dev/null; then
-            _METRICS_GAUGES[$key]=$(echo "$current - 1" | bc)
-        else
-            local int_current="${current%%.*}"
-            _METRICS_GAUGES[$key]=$((int_current - 1))
-        fi
-    else
-        _METRICS_GAUGES[$key]=$((current - 1))
-    fi
+    _METRICS_GAUGES[$key]=$(_metrics_subtract_numbers "$current" "1")
 
     return 0
 }
@@ -736,7 +768,7 @@ gauge_add() {
     [[ "$MAINFRAME_METRICS_ENABLED" != "1" ]] && return 0
 
     # Validate value is a number
-    if [[ ! "$value" =~ ^-?[0-9]+\.?[0-9]*$ ]]; then
+    if ! _metrics_number_valid "$value"; then
         printf '{"error":true,"msg":"gauge value must be a number","value":"%s"}\n' "$value" >&2
         return 1
     fi
@@ -754,17 +786,7 @@ gauge_add() {
     local key="$(_metrics_key "$name" "$labels")"
     local current="${_METRICS_GAUGES[$key]:-0}"
 
-    if [[ "$value" == *"."* ]] || [[ "$current" == *"."* ]]; then
-        if command -v bc &>/dev/null; then
-            _METRICS_GAUGES[$key]=$(echo "$current + $value" | bc)
-        else
-            local int_value="${value%%.*}"
-            local int_current="${current%%.*}"
-            _METRICS_GAUGES[$key]=$((int_current + int_value))
-        fi
-    else
-        _METRICS_GAUGES[$key]=$((current + value))
-    fi
+    _METRICS_GAUGES[$key]=$(_metrics_add_numbers "$current" "$value")
 
     return 0
 }
@@ -785,7 +807,7 @@ gauge_sub() {
     [[ "$MAINFRAME_METRICS_ENABLED" != "1" ]] && return 0
 
     # Validate value is a number
-    if [[ ! "$value" =~ ^-?[0-9]+\.?[0-9]*$ ]]; then
+    if ! _metrics_number_valid "$value"; then
         printf '{"error":true,"msg":"gauge value must be a number","value":"%s"}\n' "$value" >&2
         return 1
     fi
@@ -803,17 +825,7 @@ gauge_sub() {
     local key="$(_metrics_key "$name" "$labels")"
     local current="${_METRICS_GAUGES[$key]:-0}"
 
-    if [[ "$value" == *"."* ]] || [[ "$current" == *"."* ]]; then
-        if command -v bc &>/dev/null; then
-            _METRICS_GAUGES[$key]=$(echo "$current - $value" | bc)
-        else
-            local int_value="${value%%.*}"
-            local int_current="${current%%.*}"
-            _METRICS_GAUGES[$key]=$((int_current - int_value))
-        fi
-    else
-        _METRICS_GAUGES[$key]=$((current - value))
-    fi
+    _METRICS_GAUGES[$key]=$(_metrics_subtract_numbers "$current" "$value")
 
     return 0
 }
@@ -909,7 +921,7 @@ histogram_observe() {
     [[ "$MAINFRAME_METRICS_ENABLED" != "1" ]] && return 0
 
     # Validate value is a number
-    if [[ ! "$value" =~ ^-?[0-9]+\.?[0-9]*$ ]]; then
+    if ! _metrics_number_valid "$value"; then
         printf '{"error":true,"msg":"histogram value must be a number","value":"%s"}\n' "$value" >&2
         return 1
     fi
@@ -966,17 +978,7 @@ histogram_observe() {
     # Update sum
     local sum_key="$base_key"
     local current_sum="${_METRICS_HIST_SUMS[$sum_key]:-0}"
-    if [[ "$value" == *"."* ]] || [[ "$current_sum" == *"."* ]]; then
-        if command -v bc &>/dev/null; then
-            _METRICS_HIST_SUMS[$sum_key]=$(echo "$current_sum + $value" | bc)
-        else
-            local int_value="${value%%.*}"
-            local int_sum="${current_sum%%.*}"
-            _METRICS_HIST_SUMS[$sum_key]=$((int_sum + int_value))
-        fi
-    else
-        _METRICS_HIST_SUMS[$sum_key]=$((current_sum + value))
-    fi
+    _METRICS_HIST_SUMS[$sum_key]=$(_metrics_add_numbers "$current_sum" "$value")
 
     # Update count
     local count_key="$base_key"
@@ -1042,7 +1044,7 @@ histogram_get_sum() {
     local labels="${2:-}"
 
     local key="$(_metrics_key "$name" "$labels")"
-    printf '%s' "${_METRICS_HIST_SUMS[$key]:-0}"
+    _metrics_normalize_number "${_METRICS_HIST_SUMS[$key]:-0}"
 }
 
 # @pre: name is registered histogram
@@ -1212,7 +1214,7 @@ summary_observe() {
     [[ "$MAINFRAME_METRICS_ENABLED" != "1" ]] && return 0
 
     # Validate value is a number
-    if [[ ! "$value" =~ ^-?[0-9]+\.?[0-9]*$ ]]; then
+    if ! _metrics_number_valid "$value"; then
         printf '{"error":true,"msg":"summary value must be a number","value":"%s"}\n' "$value" >&2
         return 1
     fi
@@ -1241,17 +1243,7 @@ summary_observe() {
 
     # Update sum
     local current_sum="${_METRICS_SUMMARY_SUMS[$key]:-0}"
-    if [[ "$value" == *"."* ]] || [[ "$current_sum" == *"."* ]]; then
-        if command -v bc &>/dev/null; then
-            _METRICS_SUMMARY_SUMS[$key]=$(echo "$current_sum + $value" | bc)
-        else
-            local int_value="${value%%.*}"
-            local int_sum="${current_sum%%.*}"
-            _METRICS_SUMMARY_SUMS[$key]=$((int_sum + int_value))
-        fi
-    else
-        _METRICS_SUMMARY_SUMS[$key]=$((current_sum + value))
-    fi
+    _METRICS_SUMMARY_SUMS[$key]=$(_metrics_add_numbers "$current_sum" "$value")
 
     # Update count
     local current_count="${_METRICS_SUMMARY_COUNTS[$key]:-0}"
@@ -1358,7 +1350,7 @@ summary_get_quantiles() {
         local val
         val=$(echo "$sorted" | sed -n "${idx}p")
 
-        printf '"%s":%s' "$q" "${val:-0}"
+        printf '"%s":%s' "$(_metrics_normalize_number "$q")" "$(_metrics_normalize_number "${val:-0}")"
     done
 
     printf '}'
@@ -1377,7 +1369,7 @@ summary_get_sum() {
     local labels="${2:-}"
 
     local key="$(_metrics_key "$name" "$labels")"
-    printf '%s' "${_METRICS_SUMMARY_SUMS[$key]:-0}"
+    _metrics_normalize_number "${_METRICS_SUMMARY_SUMS[$key]:-0}"
 }
 
 # @pre: name is registered summary

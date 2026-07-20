@@ -66,21 +66,24 @@ setup() {
 @test "rust_dep_count counts regular dependencies" {
     local result regular
     result=$(rust_dep_count "$FIXTURE_DIR")
-    regular=$(echo "$result" | grep -oP 'regular=\K[0-9]+')
+    regular="${result#*regular=}"
+    regular="${regular%%,*}"
     [[ $regular -eq 4 ]]
 }
 
 @test "rust_dep_count counts dev dependencies" {
     local result dev
     result=$(rust_dep_count "$FIXTURE_DIR")
-    dev=$(echo "$result" | grep -oP 'dev=\K[0-9]+')
+    dev="${result#*dev=}"
+    dev="${dev%%,*}"
     [[ $dev -eq 2 ]]
 }
 
 @test "rust_dep_count counts build dependencies" {
     local result build
     result=$(rust_dep_count "$FIXTURE_DIR")
-    build=$(echo "$result" | grep -oP 'build=\K[0-9]+')
+    build="${result#*build=}"
+    build="${build%%,*}"
     [[ $build -eq 1 ]]
 }
 
@@ -149,14 +152,16 @@ setup() {
 @test "rust_unsafe_count finds unsafe functions" {
     local result funcs
     result=$(rust_unsafe_count "$FIXTURE_DIR")
-    funcs=$(echo "$result" | grep -oP 'functions=\K[0-9]+')
+    funcs="${result#*functions=}"
+    funcs="${funcs%%,*}"
     [[ $funcs -ge 1 ]]
 }
 
 @test "rust_unsafe_count finds unsafe impls" {
     local result impls
     result=$(rust_unsafe_count "$FIXTURE_DIR")
-    impls=$(echo "$result" | grep -oP 'impls=\K[0-9]+')
+    impls="${result#*impls=}"
+    impls="${impls%%,*}"
     [[ $impls -ge 1 ]]
 }
 
@@ -227,14 +232,16 @@ setup() {
 @test "rust_test_coverage finds test functions" {
     local result funcs
     result=$(rust_test_coverage "$FIXTURE_DIR")
-    funcs=$(echo "$result" | grep -oP 'test_functions=\K[0-9]+')
+    funcs="${result#*test_functions=}"
+    funcs="${funcs%%,*}"
     [[ $funcs -eq 3 ]]
 }
 
 @test "rust_test_coverage finds test modules" {
     local result mods
     result=$(rust_test_coverage "$FIXTURE_DIR")
-    mods=$(echo "$result" | grep -oP 'test_modules=\K[0-9]+')
+    mods="${result#*test_modules=}"
+    mods="${mods%%,*}"
     [[ $mods -eq 1 ]]
 }
 

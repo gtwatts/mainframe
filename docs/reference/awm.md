@@ -1,160 +1,145 @@
 # Agent Working Memory (AWM)
 
-Persistent external memory for AI agents with finite context windows.
+Canonical persistent memory API for Mainframe agents.
 
 ```bash
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 ```
 
----
+AWM gives agents a file-backed session outside the model context window. It is the recommended memory surface for agent workflows. Advanced storage, tiering, streaming, and protocol modules remain available, but the public contract is centered on `lib/awm.sh`.
 
-## Session Lifecycle
+## Golden Path
 
-| Function | Signature | Example | Output |
-|----------|-----------|---------|--------|
-| `awm_init` | `awm_init [--parent ID] [--namespace NS]` | `sid=$(awm_init)` | Session ID (uuid) |
-| `awm_resume` | `awm_resume "session_id"` | `awm_resume "$sid"` | 0=success, 1=not found |
-| `awm_close` | `awm_close [--export PATH]` | `awm_close --export report.md` | Marks session complete |
-| `awm_namespace` | `awm_namespace "name"` | `awm_namespace "security-scan"` | Sets isolation namespace |
-
----
-
-## Core Write Functions
-
-| Function | Signature | Example | Output |
-|----------|-----------|---------|--------|
-| `awm_checkpoint` | `awm_checkpoint "key" "value"` | `awm_checkpoint "api_url" "https://..."` | 0=success |
-| `awm_log` | `awm_log "category" "message"` | `awm_log "error" "Connection failed"` | 0=success |
-| `awm_progress` | `awm_progress "task" current total` | `awm_progress "files" 5 10` | 0=success |
-| `awm_discovery` | `awm_discovery "insight"` | `awm_discovery "Auth uses JWT tokens"` | 0=success (high priority) |
-
----
-
-## Core Read Functions
-
-| Function | Signature | Example | Output |
-|----------|-----------|---------|--------|
-| `awm_get` | `awm_get "key" [default]` | `awm_get "api_url" "http://localhost"` | Value or default |
-| `awm_recent` | `awm_recent "category" [n]` | `awm_recent "error" 5` | Last N log entries (JSON) |
-| `awm_summary` | `awm_summary [--tokens N]` | `awm_summary --tokens 2000` | Compressed summary JSON |
-| `awm_context_for` | `awm_context_for "task" [--tokens N]` | `awm_context_for "debug" --tokens 1000` | Task-relevant context |
-
----
-
-## Memory Management
-
-| Function | Signature | Example | Output |
-|----------|-----------|---------|--------|
-| `awm_compress` | `awm_compress [--keep N]` | `awm_compress --keep 50` | Archives old entries |
-| `awm_export` | `awm_export "path.md"` | `awm_export "session-report.md"` | Exports to Markdown |
-| `awm_inherit` | `awm_inherit "parent_id"` | `child=$(awm_init --parent "$parent")` | Creates child session |
-| `awm_check_limits` | `awm_check_limits` | `awm_check_limits && echo "OK"` | 0=OK, 1=at limits |
-
----
-
-## Token Budget Estimation
-
-| Function | Signature | Example | Output |
-|----------|-----------|---------|--------|
-| `awm_token_estimate` | `awm_token_estimate` | `tokens=$(awm_token_estimate)` | Estimated total tokens |
-| `awm_estimate_read` | `awm_estimate_read "operation" [args]` | `awm_estimate_read "recent" "error" 10` | Tokens for operation |
-
----
-
-## Session Management
-
-| Function | Signature | Example | Output |
-|----------|-----------|---------|--------|
-| `awm_list` | `awm_list [--active\|--completed\|--all]` | `awm_list --active` | JSON array of sessions |
-| `awm_cleanup` | `awm_cleanup [--older-than DAYS]` | `awm_cleanup --older-than 7` | Removes old sessions |
-
----
-
-## Quick Patterns
-
-### Initialize Session
 ```bash
-source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
-session_id=$(awm_init)
+sid=$(awm_init "security-audit" --namespace review --model gpt-4o --backend file)
+awm_resume "$sid"
+
+awm_checkpoint "current_phase" "scanning" --importance high
+awm_discovery "Auth uses JWT refresh tokens" --importance critical --tags auth,jwt
+awm_log "decisions" "Prefer PostgreSQL for transactional guarantees" --importance high
+awm_progress "scan" "12/40" "Scanning auth module"
+
+ctx=$(awm_context_for "dependency-review" --tokens 2000)
+handoff=$(awm_handoff_prepare "dependency-reviewer" --tokens 2000)
 ```
 
-### Record Discoveries
-```bash
-# Never compressed, inherited by children
-awm_discovery "Database uses PostgreSQL 15"
-awm_discovery "Auth flow: OAuth2 with JWT refresh tokens"
+## Stable Public API
+
+### Session lifecycle
+
+| Function | Signature | Notes |
+|---|---|---|
+| `awm_init` | `awm_init [NAME] [--parent ID] [--namespace NS] [--model MODEL] [--backend BACKEND]` | Creates a session and prints the session ID |
+| `awm_resume` | `awm_resume SESSION_ID` | Restores the active session |
+| `awm_close` | `awm_close [--export PATH]` | Marks the session complete and optionally exports Markdown |
+| `awm_namespace` | `awm_namespace NAME` | Sets namespace isolation for future sessions |
+
+### Writes
+
+| Function | Signature | Notes |
+|---|---|---|
+| `awm_checkpoint` | `awm_checkpoint KEY VALUE [--importance LEVEL] [--tags CSV] [--ttl SEC]` | Persistent key/value state |
+| `awm_log` | `awm_log CATEGORY MESSAGE [--importance LEVEL] [--tags CSV]` | Structured append-only log |
+| `awm_discovery` | `awm_discovery TEXT [--importance LEVEL] [--tags CSV]` | High-signal memory, never compressed away |
+| `awm_progress` | `awm_progress TASK CURRENT/TOTAL [STATUS]` | Records progress history and latest state |
+
+### Reads and retrieval
+
+| Function | Signature | Notes |
+|---|---|---|
+| `awm_get` | `awm_get KEY [DEFAULT]` | Returns checkpointed value |
+| `awm_recent` | `awm_recent CATEGORY [N]` | Returns recent entries as JSON array |
+| `awm_summary` | `awm_summary [--tokens N]` | Compact session summary JSON |
+| `awm_find` | `awm_find QUERY [--kind discovery\|checkpoint\|log\|mixed] [--limit N]` | Lexical search with optional embeddings rerank |
+| `awm_context_for` | `awm_context_for TASK [--tokens N] [--format json\|prompt] [--include LIST]` | Deterministic context package |
+
+### Handoffs and inspection
+
+| Function | Signature | Notes |
+|---|---|---|
+| `awm_handoff_prepare` | `awm_handoff_prepare TARGET [--tokens N] [--format json\|prompt]` | Builds a budgeted handoff package |
+| `awm_handoff_accept` | `awm_handoff_accept HANDOFF_JSON` | Initializes or updates a receiving session |
+| `awm_status` | `awm_status [SESSION_ID]` | JSON health and count summary |
+| `awm_doctor` | `awm_doctor [SESSION_ID]` | JSON diagnostics for layout, schema, locks, and backend |
+| `awm_export` | `awm_export [PATH]` | Markdown export of the active session |
+| `awm_migrate` | `awm_migrate SESSION_ID \| --all` | Upgrades older sessions to the current schema/layout |
+
+### Session management
+
+| Function | Signature | Notes |
+|---|---|---|
+| `awm_list` | `awm_list [--active\|--completed\|--json]` | Lists sessions |
+| `awm_cleanup` | `awm_cleanup [--older-than DAYS]` | Deletes old completed sessions |
+| `awm_check_limits` | `awm_check_limits` | Returns non-zero if size/token limits are exceeded |
+| `awm_token_estimate` | `awm_token_estimate` | Estimates full-session token cost |
+| `awm_estimate_read` | `awm_estimate_read OPERATION [...]` | Estimates a specific read |
+
+## Deterministic Context Packing
+
+`awm_context_for` packs memory in this order:
+
+1. Critical discoveries
+2. Current progress and open state
+3. Relevant checkpoints for the requested task
+4. Recent high-signal logs
+5. `awm_find` matches
+6. Final summary if budget remains
+
+Default output is JSON. `--format prompt` renders a human/model-facing prompt block.
+
+## Handoff Model
+
+`awm_handoff_prepare` stores a handoff artifact in `handoffs/` and returns a package with:
+
+- provenance: schema version, namespace, backend
+- session status snapshot
+- context package
+- open questions
+- parent and target agent metadata
+
+`awm_handoff_accept` records the handoff in the receiving session and stores the raw package for auditability.
+
+## On-Disk Layout
+
+Sessions live in `~/.mainframe/awm/sessions/<session_id>/` or `~/.mainframe/awm/sessions/<namespace>/<session_id>/`.
+
 ```
-
-### Checkpoint State
-```bash
-# Atomic writes
-awm_checkpoint "target_file" "/src/auth/login.ts"
-awm_checkpoint "error_count" "3"
-```
-
-### Log Events
-```bash
-awm_log "info" "Starting security scan"
-awm_log "error" "Failed to parse config: $error"
-awm_log "debug" "Checking file: $file"
-```
-
-### Track Progress
-```bash
-awm_progress "scan" 45 100  # 45% complete
-```
-
-### Read State
-```bash
-target=$(awm_get "target_file")
-recent_errors=$(awm_recent "error" 5)
-```
-
-### Get Summary
-```bash
-summary=$(awm_summary --tokens 2000)
-```
-
-### Spawn Sub-Agent
-```bash
-# Child inherits discoveries and checkpoints from parent
-child_id=$(awm_init --parent "$session_id" --namespace "security")
-awm_namespace "security"
-```
-
-### Export Session
-```bash
-awm_close --export "session-report.md"
-```
-
----
-
-## File Format
-
-Sessions stored in `~/.mainframe/awm/sessions/{session_id}/`:
-
-```
-{session_id}/
-|-- manifest.json       # Session metadata
-|-- logs/
-|   |-- info.jsonl      # Category-based logs
-|   |-- error.jsonl
-|   |-- debug.jsonl
+<session>/
+|-- manifest.json
+|-- discoveries.jsonl
 |-- data/
-|   |-- target_file     # Key-value checkpoint files
-|   |-- error_count
-|-- discoveries.jsonl   # High-priority insights
+|-- logs/
 |-- checkpoints/
-    |-- {name}.tar.gz   # Named snapshots
+|-- handoffs/
+|-- index/
+|-- journal/
 ```
 
----
+Compatibility notes:
 
-## Environment Variables
+- `logs/discoveries.jsonl` is still maintained for older callers.
+- Older sessions without `schema_version` are migrated in place by `awm_migrate`.
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `AWM_ROOT` | `~/.mainframe/awm` | Storage location |
-| `AWM_MAX_LOG_ENTRIES` | `100` | Auto-compress threshold |
-| `AWM_MAX_FILE_SIZE` | `1048576` (1MB) | Max file size limit |
-| `AWM_CHARS_PER_TOKEN` | `4` | Token estimation ratio |
+## Backend and Search Behavior
+
+- Default backend is `file`.
+- `--backend auto` preserves storage auto-detection for advanced setups.
+- `redis` and `chromadb` are opt-in advanced backends.
+- `awm_find` always works with file-backed lexical and metadata search.
+- If embeddings are explicitly enabled (`MAINFRAME_AWM_FIND_EMBEDDINGS=1`) and `lib/embeddings.sh` is available, results are reranked semantically.
+
+## CLI
+
+The same surface is exposed in the CLI:
+
+```bash
+mainframe awm init review-run
+mainframe awm checkpoint --session "$sid" current_step 3 --importance high
+mainframe awm find --session "$sid" postgres --kind mixed
+mainframe awm handoff prepare --session "$sid" reviewer --tokens 2000
+mainframe awm doctor --session "$sid"
+```
+
+## Compatibility
+
+`awm_v2_*` helpers remain available as compatibility wrappers during migration, but new code should use the canonical functions above.

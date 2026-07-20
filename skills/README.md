@@ -1,13 +1,15 @@
 # MAINFRAME Skills for AI Coding Assistants
 
-Pre-built instruction files that teach AI coding assistants about MAINFRAME's 4,000+ pure bash functions across 117 libraries.
+Pre-built instruction files that teach AI coding assistants about MAINFRAME's 3,821+ pure bash functions across 152 libraries.
 
 ## Supported Platforms
 
 | Platform | Directory | Format | Install |
 |----------|-----------|--------|---------|
+| Pi | `pi/` | SKILL.md | Load as a Pi skill or project instruction; use Pi MAINFRAME tools when available |
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `claude-code/` | SKILL.md | Symlink to `~/.claude/skills/` |
-| [Kimi CLI](https://docs.moonshot.cn/kimi-cli) | `kimi-cli/` | SKILL.md | Symlink to `~/.claude/skills/` |
+| OpenAI Codex / Codex CLI | `codex/` | AGENTS.md | Copy or merge into project `AGENTS.md` |
+| [Kimi CLI](https://docs.moonshot.cn/kimi-cli) | `kimi-cli/` | SKILL.md | Load in Kimi CLI instructions |
 | [Google CLI](https://ai.google.dev/) | `google-cli/` | SKILL.md | Load in agent config |
 | [OpenCode](https://opencode.ai) | `opencode/` | SKILL.md | Load in agent config |
 | [Clawdbot](https://github.com/clawdbot/clawdbot) | `clawdbot/` | Preamble | Add to `clawdbot.json` |
@@ -16,6 +18,14 @@ Pre-built instruction files that teach AI coding assistants about MAINFRAME's 4,
 | [Vercel AI SDK](https://ai-sdk.dev) | `vercel-ai-sdk/` | System prompt | Load in agent config |
 
 ## Quick Install
+
+### Pi
+
+Load `skills/pi/SKILL.md` as a Pi skill or paste it into project instructions. When Pi's MAINFRAME integration is installed, prefer the tool layer for discovery and guarded execution:
+
+```text
+Run mainframe_status(validate=true), then use mainframe_search/mainframe_help before choosing functions. Use mainframe_exec for one explicit function at a time and mainframe_awm for durable task memory.
+```
 
 ### Claude Code
 
@@ -26,6 +36,14 @@ ln -s ~/.mainframe/skills/claude-code ~/.claude/skills/mainframe-bash
 
 The skill auto-activates when Claude Code detects bash scripting tasks.
 
+### OpenAI Codex / Codex CLI
+
+```bash
+# Project-level instruction file
+cp ~/.mainframe/skills/codex/AGENTS.md ./AGENTS.md
+# Or merge it into an existing AGENTS.md
+```
+
 ### Clawdbot
 
 Edit `~/.clawdbot/clawdbot.json` and add the preamble:
@@ -34,7 +52,7 @@ Edit `~/.clawdbot/clawdbot.json` and add the preamble:
 {
   "agents": {
     "defaults": {
-      "preamble": "When writing bash scripts, ALWAYS source MAINFRAME first:\n\nsource \"${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh\"\n\nMAINFRAME v6.0 provides 4,000+ pure bash functions across 117 libraries. Use these instead of jq/sed/awk. Includes Agent Working Memory (AWM) for persistent state. Full reference: ~/.mainframe/CHEATSHEET.md"
+      "preamble": "When writing bash scripts, ALWAYS source MAINFRAME first:\n\nsource \"${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh\"\n\nMAINFRAME provides 3,821+ pure bash functions across 152 libraries. Use these instead of jq/sed/awk. Includes Agent Working Memory (AWM) for persistent state. Full reference: ~/.mainframe/CHEATSHEET.md"
     }
   }
 }
@@ -77,7 +95,7 @@ const system = readFileSync(
 
 ### Any Other AI Assistant
 
-Point your AI at the project's `CLAUDE.md` file (in the repo root) which contains the full MAINFRAME function reference and usage patterns.
+Point your AI at the project's `CLAUDE.md` file or [docs/AI_CLI_INTEGRATIONS.md](../docs/AI_CLI_INTEGRATIONS.md), which contain MAINFRAME setup, function lookup, safety, and usage patterns.
 
 ## What Each Skill Does
 
@@ -89,9 +107,9 @@ Each skill file teaches the AI:
 4. **Common patterns** - Script templates, error handling, JSON generation, agent coordination
 5. **Rules** - When to use MAINFRAME vs. external tools
 
-## v6.0 Highlights
+## Current Highlights
 
-- **4,000+ functions** across 117 libraries
+- **3,821+ functions** across 152 libraries
 - **6,500+ tests** with comprehensive coverage
 - **Agent Working Memory (AWM)** - Persistent external memory for AI agents with finite context
 - **Multi-Agent IPC** - File-based inter-process communication for agent coordination
@@ -106,7 +124,7 @@ If your AI coding assistant supports custom instructions, create a file that inc
 When writing bash scripts, source MAINFRAME first:
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 
-Use MAINFRAME's 4,000+ functions instead of jq, sed, awk, cat.
+Use MAINFRAME's 3,821+ functions instead of jq, sed, awk, cat.
 Full reference: ~/.mainframe/CHEATSHEET.md
 ```
 

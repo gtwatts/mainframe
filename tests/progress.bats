@@ -394,12 +394,10 @@ teardown() {
 # Security tests - Path validation
 # =============================================================================
 
-@test "progress_init rejects ID with null bytes" {
-    # Note: Bash may strip null bytes, but test the concept
-    run progress_init "Test" 100 --id $'test\x00bad'
+@test "progress_init rejects ID with control characters" {
+    run progress_init "Test" 100 --id $'test\nbad'
 
-    # Should fail validation or strip the bad chars
-    [[ "$status" -eq 1 ]] || [[ ! "$output" =~ $'\x00' ]]
+    [[ "$status" -eq 1 ]]
 }
 
 @test "progress rejects IDs longer than 64 chars" {
@@ -489,7 +487,7 @@ teardown() {
     # Create a file and backdate it
     local old_file="${MAINFRAME_PROGRESS_DIR}/old-test.progress"
     echo '{"test":true}' > "$old_file"
-    touch -d "2 hours ago" "$old_file"
+    touch -t "$(date -v-2H +%Y%m%d%H%M.%S 2>/dev/null || date -d '2 hours ago' +%Y%m%d%H%M.%S)" "$old_file"
 
     progress_cleanup 1  # Clean files older than 1 minute
 
@@ -536,7 +534,7 @@ teardown() {
     content=$(cat "${MAINFRAME_PROGRESS_DIR}/${pid}.progress")
 
     # Should be escaped as \n
-    [[ "$content" =~ '\\n' ]]
+    [[ "$content" != "${content//\\n/}" ]]
 }
 
 @test "multiple trackers can coexist" {

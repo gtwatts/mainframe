@@ -5,11 +5,11 @@ description: "Use when writing bash scripts, shell automation, CLI tools, or any
 
 # Google AI CLI - Mainframe Integration
 
-Instructions for using Mainframe (4,000+ pure bash functions) with Google's AI CLI tools.
+Instructions for using Mainframe (3,821+ pure bash functions) with Google's AI CLI tools.
 
 ## Overview
 
-Mainframe provides 4,000+ pure bash functions across 150+ libraries with zero external dependencies. Integrate with Google AI CLI for high-performance bash scripting (20-72x faster than spawning sed/awk/jq).
+Mainframe provides 3,821+ pure bash functions across 152 libraries with zero external dependencies. Integrate with Google AI CLI for high-performance bash scripting (20-72x faster than spawning sed/awk/jq).
 
 ## Installation
 
@@ -423,7 +423,7 @@ mainframe quickref --search     # Search functions
 
 ## Reference Files
 
-- `~/.mainframe/CHEATSHEET.md` - All 4,000+ function signatures
+- `~/.mainframe/CHEATSHEET.md` - All 3,821+ function signatures
 - `~/.mainframe/FUNCTIONS.json` - Machine-readable function index
 - `~/.mainframe/DECISION_TREES.md` - Usage guidance
 - `~/.mainframe/docs/ORCHESTRATION.md` - Multi-agent coordination

@@ -47,6 +47,7 @@ ANIM_THEME="${ANIM_THEME:-modern}"
 # Internal state
 declare -g _ANIM_SPINNER_PID=""
 declare -g _ANIM_CURRENT_STYLE=""
+declare -g _ANIM_CURSOR_HIDDEN=0
 
 # =============================================================================
 # SPINNER FRAME DEFINITIONS
@@ -309,6 +310,7 @@ spinner_preview() {
     # Hide cursor
     if _anim_supports_unicode; then
         printf '\033[?25l'
+        _ANIM_CURSOR_HIDDEN=1
     fi
 
     local i=0
@@ -322,6 +324,7 @@ spinner_preview() {
 
     # Show cursor and newline
     printf '\033[?25h\n'
+    _ANIM_CURSOR_HIDDEN=0
 }
 
 # Start a named spinner animation
@@ -379,6 +382,7 @@ spinner_start() {
     # Hide cursor
     if _anim_supports_unicode; then
         printf '\033[?25l'
+        _ANIM_CURSOR_HIDDEN=1
     fi
 
     # Start spinner in background
@@ -438,7 +442,10 @@ spinner_stop() {
     printf '\r\033[K'
 
     # Show cursor
-    printf '\033[?25h'
+    if [[ "$_ANIM_CURSOR_HIDDEN" == "1" ]]; then
+        printf '\033[?25h'
+        _ANIM_CURSOR_HIDDEN=0
+    fi
 
     # Show result message with status icon
     if [[ -n "$message" ]]; then
@@ -630,6 +637,7 @@ progress_indeterminate_start() {
 
     # Hide cursor
     printf '\033[?25l'
+    _ANIM_CURSOR_HIDDEN=1
 
     (
         local pos=0
@@ -840,10 +848,17 @@ _anim_cleanup() {
     if [[ -n "$_ANIM_SPINNER_PID" ]] && kill -0 "$_ANIM_SPINNER_PID" 2>/dev/null; then
         kill "$_ANIM_SPINNER_PID" 2>/dev/null
     fi
-    printf '\033[?25h'  # Show cursor
+    if [[ "$_ANIM_CURSOR_HIDDEN" == "1" ]]; then
+        printf '\033[?25h'
+        _ANIM_CURSOR_HIDDEN=0
+    fi
 }
 
-trap _anim_cleanup EXIT
+if declare -F _mainframe_add_exit_trap >/dev/null 2>&1; then
+    _mainframe_add_exit_trap "_anim_cleanup"
+else
+    trap _anim_cleanup EXIT
+fi
 
 # =============================================================================
 # AUTO-DETECT THEME ON LOAD

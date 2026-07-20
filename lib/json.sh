@@ -321,6 +321,23 @@ json_pretty() {
 # VALIDATION
 # =============================================================================
 
+# Parse and echo validated JSON.
+# Usage: json_parse '{"a":1}'
+json_parse() {
+    local json="$1"
+
+    if ! json_valid "$json"; then
+        return 1
+    fi
+
+    if command -v jq &>/dev/null; then
+        printf '%s' "$json" | jq -c '.'
+        return 0
+    fi
+
+    printf '%s\n' "$json"
+}
+
 # Basic JSON syntax validation (pure bash)
 # Usage: json_valid '{"a":1}' && echo "valid"
 json_valid() {
@@ -839,4 +856,3 @@ json_pretty_v() {
     done
     __jpv_out+=$'\n'
 }
-

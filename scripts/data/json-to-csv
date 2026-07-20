@@ -148,8 +148,9 @@ json_to_csv() {
         obj=$(jq -c ".[$i]" <<< "$array")
 
         local row=""
+        local col_idx=0
         for col in "${columns[@]}"; do
-            [[ -n "$row" ]] && row+="$delimiter"
+            [[ $col_idx -gt 0 ]] && row+="$delimiter"
 
             local value
             value=$(get_value "$obj" "$col" "$flatten")
@@ -160,6 +161,7 @@ json_to_csv() {
             fi
 
             row+=$(escape_csv "$value" "$delimiter")
+            col_idx=$((col_idx + 1))
         done
 
         printf '%s\n' "$row"

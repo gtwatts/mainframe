@@ -6,7 +6,7 @@
 #              registration, discovery, messaging (point-to-point and broadcast),
 #              work queues, and synchronization primitives (barriers, signals).
 # Version: 1.0.0
-# Requires: Bash 4.0+, flock (util-linux)
+# Requires: Bash 4.0+, optional flock (falls back to mkdir locks)
 # =============================================================================
 # "Mainframe can make a computer do anything short of tap dance."
 # =============================================================================
@@ -53,6 +53,7 @@ _agent_log() {
 # Priority: EPOCHREALTIME > EPOCHSECONDS > printf builtin > date
 _agent_msg_filename() {
     local ts
+    local pid="${BASHPID:-$$}"
     # Fastest: Bash 5.0+ EPOCHREALTIME (microsecond precision, remove decimal)
     if [[ -n "${EPOCHREALTIME:-}" ]]; then
         ts="${EPOCHREALTIME/./}"
@@ -68,7 +69,7 @@ _agent_msg_filename() {
     fi
     _MAINFRAME_AGENT_SEQ="${_MAINFRAME_AGENT_SEQ:-0}"
     _MAINFRAME_AGENT_SEQ=$(( _MAINFRAME_AGENT_SEQ + 1 ))
-    printf 'msg_%s_%s_%s' "$ts" "$$" "$_MAINFRAME_AGENT_SEQ"
+    printf 'msg_%s_%s_%s' "$ts" "$pid" "$_MAINFRAME_AGENT_SEQ"
 }
 
 # Get the registry directory for a named agent
@@ -128,6 +129,43 @@ _agent_epoch() {
     else
         date +%s
     fi
+}
+
+_agent_lock_acquire() {
+    local lockfile="$1"
+    local mode="${2:-blocking}"
+    local fd="${3:-200}"
+
+    if command -v flock &>/dev/null; then
+        if [[ "$mode" == "nonblocking" ]]; then
+            flock -n "$fd"
+        else
+            flock "$fd"
+        fi
+        return $?
+    fi
+
+    local lockdir="${lockfile}.d"
+    if [[ "$mode" == "nonblocking" ]]; then
+        mkdir "$lockdir" 2>/dev/null
+        return $?
+    fi
+
+    while ! mkdir "$lockdir" 2>/dev/null; do
+        sleep 0.05 2>/dev/null || sleep 1
+    done
+
+    return 0
+}
+
+_agent_lock_release() {
+    local lockfile="$1"
+
+    if ! command -v flock &>/dev/null; then
+        rmdir "${lockfile}.d" 2>/dev/null || true
+    fi
+
+    return 0
 }
 
 # =============================================================================
@@ -468,7 +506,8 @@ agent_receive() {
     while [[ $(_agent_epoch) -le $deadline ]]; do
         # Try to atomically consume the oldest message
         (
-            flock -n 200 || exit 1
+            _agent_lock_acquire "$lockfile" "nonblocking" 200 || exit 1
+            trap '_agent_lock_release "$lockfile"' EXIT
 
             # Find oldest message file (sorted lexicographically = chronological)
             local oldest=""
@@ -711,7 +750,8 @@ agent_work_pop() {
     local lockfile="$queue_dir/.lock"
 
     (
-        flock 200 || exit 1
+        _agent_lock_acquire "$lockfile" "blocking" 200 || exit 1
+        trap '_agent_lock_release "$lockfile"' EXIT
 
         local oldest=""
         local f
@@ -816,10 +856,11 @@ agent_barrier() {
     local barrier_dir="$_MAINFRAME_AGENT_BASE/_barriers/$barrier_name"
     mkdir -p "$barrier_dir"
 
-    local agent_name="${_MAINFRAME_AGENT_NAME:-$$}"
+    local participant_name
+    participant_name="${_MAINFRAME_AGENT_NAME:-anonymous}.${BASHPID:-$$}"
 
     # Register at barrier
-    printf '%s\n' "$(_agent_epoch)" > "$barrier_dir/$agent_name"
+    printf '%s\n' "$(_agent_epoch)" > "$barrier_dir/$participant_name"
 
     # Wait for enough participants
     local deadline
@@ -852,6 +893,44 @@ agent_barrier() {
     fi
     _agent_log error "agent_barrier: timeout waiting for barrier '$barrier_name' (got $_barrier_arrived/$count)"
     return 1
+}
+
+# Compatibility wrapper: pre-create a named barrier with an expected count.
+agent_barrier_create() {
+    local barrier_name="${1:-}"
+    local count="${2:-}"
+
+    if [[ -z "$barrier_name" || -z "$count" ]]; then
+        _agent_log error "agent_barrier_create: name and count required"
+        return 1
+    fi
+
+    local barrier_dir="$_MAINFRAME_AGENT_BASE/_barriers/$barrier_name"
+    mkdir -p "$barrier_dir" || return 1
+    rm -f "$barrier_dir"/* 2>/dev/null || true
+    printf '%s\n' "$count" > "$barrier_dir/.count" || return 1
+}
+
+# Compatibility wrapper: wait on a previously created barrier.
+agent_barrier_wait() {
+    local barrier_name="${1:-}"
+    local timeout="${2:-30}"
+
+    if [[ -z "$barrier_name" ]]; then
+        _agent_log error "agent_barrier_wait: barrier name required"
+        return 1
+    fi
+
+    local barrier_dir="$_MAINFRAME_AGENT_BASE/_barriers/$barrier_name"
+    local count_file="$barrier_dir/.count"
+    [[ -f "$count_file" ]] || {
+        _agent_log error "agent_barrier_wait: barrier '$barrier_name' not initialized"
+        return 1
+    }
+
+    local count
+    count=$(<"$count_file")
+    agent_barrier "$barrier_name" "$count" "$timeout"
 }
 
 # @pre: Base directory writable
@@ -1050,7 +1129,8 @@ agent_receive_async() {
     local lockfile="$inbox/.lock"
 
     (
-        flock -n 200 || exit 1
+        _agent_lock_acquire "$lockfile" "nonblocking" 200 || exit 1
+        trap '_agent_lock_release "$lockfile"' EXIT
 
         local oldest=""
         local f
@@ -1102,7 +1182,8 @@ agent_subscribe() {
     local lockfile="$topics_dir/.lock_$topic"
 
     (
-        flock 200
+        _agent_lock_acquire "$lockfile" "blocking" 200 || exit 1
+        trap '_agent_lock_release "$lockfile"' EXIT
 
         # Add to subscriber list if not already present
         if ! grep -qx "$name" "$topic_file" 2>/dev/null; then
@@ -1144,7 +1225,8 @@ agent_unsubscribe() {
     fi
 
     (
-        flock 200
+        _agent_lock_acquire "$lockfile" "blocking" 200 || exit 1
+        trap '_agent_lock_release "$lockfile"' EXIT
 
         # Remove from subscriber list
         local tmp
@@ -1224,9 +1306,15 @@ agent_lock() {
 
     local lockfile="$locks_dir/$resource.lock"
 
-    # Use flock to acquire exclusive lock
-    exec {_AGENT_LOCK_FD}>>"$lockfile"
-    flock "$_AGENT_LOCK_FD"
+    if command -v flock &>/dev/null; then
+        exec {_AGENT_LOCK_FD}>>"$lockfile"
+        flock "$_AGENT_LOCK_FD" || return 1
+        _AGENT_LOCK_BACKEND="flock"
+    else
+        _agent_lock_acquire "$lockfile" "blocking" || return 1
+        _AGENT_LOCK_BACKEND="mkdir"
+    fi
+    _AGENT_LOCK_FILE="$lockfile"
 
     # Write holder info
     printf '%s %s\n' "$name" "$(_agent_epoch)" > "$lockfile"
@@ -1254,11 +1342,18 @@ agent_unlock() {
     local locks_dir="$_MAINFRAME_AGENT_BASE/_locks"
     local lockfile="$locks_dir/$resource.lock"
 
-    if [[ -v _AGENT_LOCK_FD ]]; then
+    if [[ "${_AGENT_LOCK_FILE:-}" == "$lockfile" && "${_AGENT_LOCK_BACKEND:-}" == "flock" && -v _AGENT_LOCK_FD ]]; then
         flock -u "$_AGENT_LOCK_FD" 2>/dev/null
         exec {_AGENT_LOCK_FD}>&-
         unset _AGENT_LOCK_FD
     fi
+
+    if [[ "${_AGENT_LOCK_FILE:-}" == "$lockfile" && "${_AGENT_LOCK_BACKEND:-}" == "mkdir" ]]; then
+        _agent_lock_release "$lockfile"
+    fi
+
+    unset _AGENT_LOCK_BACKEND
+    unset _AGENT_LOCK_FILE
 
     rm -f "$lockfile" 2>/dev/null
     return 0
@@ -1286,17 +1381,30 @@ agent_trylock() {
 
     local lockfile="$locks_dir/$resource.lock"
 
-    # Use flock with -n (non-blocking)
-    exec {_AGENT_LOCK_FD}>>"$lockfile"
-    if flock -n "$_AGENT_LOCK_FD"; then
+    if command -v flock &>/dev/null; then
+        exec {_AGENT_LOCK_FD}>>"$lockfile"
+        if flock -n "$_AGENT_LOCK_FD"; then
+            _AGENT_LOCK_BACKEND="flock"
+        else
+            exec {_AGENT_LOCK_FD}>&-
+            unset _AGENT_LOCK_FD
+            return 1
+        fi
+    elif _agent_lock_acquire "$lockfile" "nonblocking"; then
+        _AGENT_LOCK_BACKEND="mkdir"
+    else
+        return 1
+    fi
+
+    _AGENT_LOCK_FILE="$lockfile"
+
+    if [[ -n "${_AGENT_LOCK_FILE:-}" ]]; then
         printf '%s %s\n' "$name" "$(_agent_epoch)" > "$lockfile"
         _agent_log info "Agent '$name' acquired lock on '$resource'"
         return 0
-    else
-        exec {_AGENT_LOCK_FD}>&-
-        unset _AGENT_LOCK_FD
-        return 1
     fi
+
+    return 1
 }
 
 # =============================================================================
@@ -1378,7 +1486,8 @@ agent_work_complete() {
     local lockfile="$queue_dir/.track_lock"
 
     (
-        flock 200
+        _agent_lock_acquire "$lockfile" "blocking" 200 || exit 1
+        trap '_agent_lock_release "$lockfile"' EXIT
 
         # Remove from in-progress
         if [[ -f "$inprogress_file" ]]; then
@@ -1419,7 +1528,8 @@ agent_work_fail() {
     local lockfile="$queue_dir/.track_lock"
 
     (
-        flock 200
+        _agent_lock_acquire "$lockfile" "blocking" 200 || exit 1
+        trap '_agent_lock_release "$lockfile"' EXIT
 
         # Remove from in-progress
         if [[ -f "$inprogress_file" ]]; then
@@ -1519,7 +1629,8 @@ agent_work_pop_tracked() {
     local inprogress_file="$queue_dir/.inprogress"
 
     (
-        flock 200 || exit 1
+        _agent_lock_acquire "$lockfile" "blocking" 200 || exit 1
+        trap '_agent_lock_release "$lockfile"' EXIT
 
         local oldest=""
         local f

@@ -1492,9 +1492,9 @@ py_config() {
         local toml="$dir/pyproject.toml"
 
         # Name and version
-        name=$(grep -m1 "^name" "$toml" 2>/dev/null | sed 's/.*=\s*"\([^"]*\)".*/\1/')
+        name=$(sed -n 's/^[[:space:]]*name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$toml" | head -1)
         [[ -z "$name" ]] && name="unknown"
-        version=$(grep -m1 "^version" "$toml" 2>/dev/null | sed 's/.*=\s*"\([^"]*\)".*/\1/')
+        version=$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$toml" | head -1)
         [[ -z "$version" ]] && version="unknown"
 
         # Dependencies
@@ -1506,7 +1506,13 @@ py_config() {
             [[ "$line" == "]" ]] && in_deps=0 && continue
             if [[ $in_deps -eq 1 ]]; then
                 local dep
-                dep=$(echo "$line" | grep -oP '^[[:space:]]*"?\K[a-zA-Z0-9_-]+' | head -1)
+                dep=""
+                if [[ "$line" =~ ^[[:space:]]*([a-zA-Z0-9._-]+)[[:space:]]*= ]]; then
+                    dep="${BASH_REMATCH[1]}"
+                elif [[ "$line" =~ ^[[:space:]]*\"([^\"]+)\" ]]; then
+                    dep="${BASH_REMATCH[1]}"
+                    dep="${dep%%[<>=!~ ]*}"
+                fi
                 if [[ -n "$dep" && "$dep" != "python" ]]; then
                     [[ -n "$deps_arr" ]] && deps_arr+=","
                     deps_arr+="\"$dep\""
@@ -1529,13 +1535,17 @@ py_config() {
 
     elif [[ -f "$dir/setup.py" ]]; then
         # Basic setup.py parsing
-        name=$(grep -m1 "name=" "$dir/setup.py" 2>/dev/null | sed "s/.*name=['\"]\\([^'\"]*\\)['\"].*/\\1/" || echo "unknown")
-        version=$(grep -m1 "version=" "$dir/setup.py" 2>/dev/null | sed "s/.*version=['\"]\\([^'\"]*\\)['\"].*/\\1/" || echo "unknown")
+        name=$(sed -n "s/.*name=['\"]\\([^'\"]*\\)['\"].*/\\1/p" "$dir/setup.py" | head -1)
+        [[ -n "$name" ]] || name="unknown"
+        version=$(sed -n "s/.*version=['\"]\\([^'\"]*\\)['\"].*/\\1/p" "$dir/setup.py" | head -1)
+        [[ -n "$version" ]] || version="unknown"
 
     elif [[ -f "$dir/setup.cfg" ]]; then
         # Basic setup.cfg parsing
-        name=$(grep -m1 "^name" "$dir/setup.cfg" 2>/dev/null | sed 's/.*=\s*//' || echo "unknown")
-        version=$(grep -m1 "^version" "$dir/setup.cfg" 2>/dev/null | sed 's/.*=\s*//' || echo "unknown")
+        name=$(sed -n 's/^[[:space:]]*name[[:space:]]*=[[:space:]]*//p' "$dir/setup.cfg" | head -1)
+        [[ -n "$name" ]] || name="unknown"
+        version=$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*//p' "$dir/setup.cfg" | head -1)
+        [[ -n "$version" ]] || version="unknown"
     else
         _py_err "No pyproject.toml, setup.py, or setup.cfg found"
         return 0

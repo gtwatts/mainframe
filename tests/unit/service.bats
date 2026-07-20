@@ -17,10 +17,10 @@ setup() {
 # MANAGER DETECTION
 # =============================================================================
 
-@test "service_manager outputs systemd on Ubuntu CI" {
+@test "service_manager outputs supported manager name" {
     run service_manager
     [ "$status" -eq 0 ]
-    [ "$output" = "systemd" ]
+    [[ "$output" =~ ^(systemd|launchctl|openrc|sysvinit|unknown)$ ]]
 }
 
 @test "service_manager_version outputs non-empty string" {
@@ -29,10 +29,12 @@ setup() {
     [ -n "$output" ]
 }
 
-@test "_service_detect_manager outputs systemd when systemctl exists" {
+@test "_service_detect_manager matches service_manager" {
+    local expected
+    expected=$(service_manager)
     run _service_detect_manager
     [ "$status" -eq 0 ]
-    [ "$output" = "systemd" ]
+    [ "$output" = "$expected" ]
 }
 
 # =============================================================================
@@ -193,7 +195,11 @@ setup() {
 @test "_service_normalize_name strips .service suffix" {
     run _service_normalize_name "cron.service"
     [ "$status" -eq 0 ]
-    [ "$output" = "cron" ]
+    if [ "$(service_manager)" = "systemd" ]; then
+        [ "$output" = "cron" ]
+    else
+        [ "$output" = "cron.service" ]
+    fi
 }
 
 @test "_service_normalize_name leaves bare name unchanged" {

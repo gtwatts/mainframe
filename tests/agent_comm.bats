@@ -11,6 +11,7 @@ load 'test_helper'
 
 setup() {
     source_lib "json"
+    export AGENT_BASE_DIR="/tmp/mainframe_agents"
     source_lib "agent_comm"
     export MAINFRAME_QUIET=1
     TEST_DIR=$(create_test_dir "agent_comm")
@@ -20,6 +21,7 @@ setup() {
 
     # Initialize a test agent for most tests
     AGENT_RESULT=$(agent_init "test_agent")
+    AGENT_ID=$(json_get "$AGENT_RESULT" "agent_id")
 }
 
 teardown() {
@@ -659,7 +661,7 @@ teardown() {
     local success_count=0
     for result_file in "$results_dir"/result_*.json; do
         if grep -q '"success":true' "$result_file"; then
-            ((success_count++))
+            success_count=$((success_count + 1))
         fi
     done
 

@@ -208,6 +208,7 @@ _sandbox_exec_with_limits() {
 
     local timeout_cmd=""
     local use_prlimit=false
+    local set_nproc_limit=true
 
     # Determine available tools
     if command -v prlimit &>/dev/null; then
@@ -216,6 +217,13 @@ _sandbox_exec_with_limits() {
 
     if command -v timeout &>/dev/null; then
         timeout_cmd="timeout --signal=KILL ${SANDBOX_TIMEOUT_SECONDS}s"
+    fi
+
+    # On macOS without prlimit, RLIMIT_NPROC is enforced against the user's
+    # existing process count. Lowering it before invoking an external timeout
+    # wrapper can prevent even trivial commands from spawning on shared runners.
+    if [[ "$use_prlimit" != true && "$(uname -s)" == "Darwin" ]]; then
+        set_nproc_limit=false
     fi
 
     # Record start time for metrics
@@ -252,7 +260,9 @@ _sandbox_exec_with_limits() {
             ulimit -t "$SANDBOX_MAX_CPU_SECONDS" 2>/dev/null || true
             ulimit -v "$((SANDBOX_MAX_MEMORY_MB * 1024))" 2>/dev/null || true
             ulimit -f "$((SANDBOX_MAX_FILE_SIZE_MB * 1024))" 2>/dev/null || true
-            ulimit -u "$SANDBOX_MAX_PROCESSES" 2>/dev/null || true
+            if [[ "$set_nproc_limit" == true ]]; then
+                ulimit -u "$SANDBOX_MAX_PROCESSES" 2>/dev/null || true
+            fi
             ulimit -n "$SANDBOX_MAX_OPEN_FILES" 2>/dev/null || true
             ulimit -s "$((SANDBOX_STACK_SIZE_MB * 1024))" 2>/dev/null || true
 
@@ -290,19 +300,40 @@ _sandbox_exec_with_limits_and_report() {
 
     # Prepare report file
     local report_file
-    report_file=$(mktemp /tmp/sandbox_report.XXXXXX)
+    report_file=$(mktemp "${TMPDIR:-/tmp}/sandbox_report.XXXXXX")
 
     # Use time command for detailed metrics
     local time_format='{"real":%e,"user":%U,"sys":%S,"maxrss":%M,"exit":%x}'
+    local lib_path
+    lib_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+    local shell_bin="${BASH:-bash}"
+    local -a runner_cmd=(
+        "$shell_bin" -lc
+        'source "$1"; shift; _sandbox_exec_with_limits "$@"'
+        sandbox_exec_report
+        "$lib_path"
+        "$cmd"
+        "${args[@]}"
+    )
+    local -a env_cmd=(
+        env
+        "SANDBOX_MAX_CPU_SECONDS=$SANDBOX_MAX_CPU_SECONDS"
+        "SANDBOX_MAX_MEMORY_MB=$SANDBOX_MAX_MEMORY_MB"
+        "SANDBOX_MAX_FILE_SIZE_MB=$SANDBOX_MAX_FILE_SIZE_MB"
+        "SANDBOX_MAX_PROCESSES=$SANDBOX_MAX_PROCESSES"
+        "SANDBOX_TIMEOUT_SECONDS=$SANDBOX_TIMEOUT_SECONDS"
+        "SANDBOX_MAX_OPEN_FILES=$SANDBOX_MAX_OPEN_FILES"
+        "SANDBOX_STACK_SIZE_MB=$SANDBOX_STACK_SIZE_MB"
+    )
 
     if command -v gtime &>/dev/null; then
         # GNU time on macOS (brew install gnu-time)
         gtime -f "$time_format" -o "$report_file" -- \
-            _sandbox_exec_with_limits "$cmd" "${args[@]}" 2>&1
+            "${env_cmd[@]}" "${runner_cmd[@]}"
     elif /usr/bin/time --version &>/dev/null 2>&1; then
         # GNU time
         /usr/bin/time -f "$time_format" -o "$report_file" -- \
-            _sandbox_exec_with_limits "$cmd" "${args[@]}" 2>&1
+            "${env_cmd[@]}" "${runner_cmd[@]}"
     else
         # Fallback - no detailed metrics available
         _sandbox_exec_with_limits "$cmd" "${args[@]}"

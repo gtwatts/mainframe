@@ -78,6 +78,16 @@ _future_write_file() {
     printf '%s' "$content" > "$tmpfile" && mv "$tmpfile" "$path"
 }
 
+_future_json_escape() {
+    local value="$1"
+    value="${value//\\/\\\\}"
+    value="${value//\"/\\\"}"
+    value="${value//$'\n'/\\n}"
+    value="${value//$'\r'/\\r}"
+    value="${value//$'\t'/\\t}"
+    printf '%s' "$value"
+}
+
 # Internal logging
 _future_log() {
     if declare -F _mainframe_log &>/dev/null; then
@@ -101,7 +111,10 @@ _future_log() {
 # Example:
 #   fid=$(future_run sleep 5)
 #   echo "Future started: $fid"
-future_run() {
+_future_start() {
+    local __future_outvar="$1"
+    shift
+
     if [[ $# -eq 0 ]]; then
         _future_log error "No command provided"
         return 1
@@ -109,10 +122,10 @@ future_run() {
 
     _future_ensure_base
 
-    local id
-    id=$(_future_gen_id)
+    local future_id
+    future_id=$(_future_gen_id)
     local dir
-    dir=$(_future_dir "$id")
+    dir=$(_future_dir "$future_id")
 
     # Create future directory structure
     mkdir -p "$dir"
@@ -124,35 +137,63 @@ future_run() {
     printf '%s' "$*" > "$dir/command"
 
     # Initial status
-    printf '%s' "$FUTURE_STATUS_RUNNING" > "$dir/status"
+    _future_write_file "$dir/status" "$FUTURE_STATUS_RUNNING"
 
-    # Execute command in background subshell
-    (
-        # Run the command, capturing stdout and stderr
-        "$@" > "$dir/stdout" 2> "$dir/stderr"
-        local exit_code=$?
+    # Launch a detached worker so command-substitution callers do not block.
+    nohup bash -c '
+        dir="$1"
+        done_status="$2"
+        failed_status="$3"
+        cancelled_status="$4"
+        shift 4
 
-        # Record exit code
-        printf '%d' "$exit_code" > "$dir/exit_code"
+        child_pid=""
 
-        # Record end time
-        printf '%s' "$(date +%s)" > "$dir/end_time"
+        on_cancel() {
+            if [[ -n "${child_pid:-}" ]] && kill -0 "$child_pid" 2>/dev/null; then
+                kill -TERM "$child_pid" 2>/dev/null || true
+                wait "$child_pid" 2>/dev/null || true
+            fi
 
-        # Update status based on exit code
+            printf "%s" "$cancelled_status" > "$dir/status"
+            printf "%d" "130" > "$dir/exit_code"
+            printf "%s" "$(date +%s)" > "$dir/end_time"
+            exit 0
+        }
+
+        trap on_cancel TERM INT
+
+        "$@" > "$dir/stdout" 2> "$dir/stderr" &
+        child_pid=$!
+        printf "%d" "$child_pid" > "$dir/pid"
+
+        wait "$child_pid"
+        exit_code=$?
+
+        printf "%d" "$exit_code" > "$dir/exit_code"
+        printf "%s" "$(date +%s)" > "$dir/end_time"
+
         if [[ $exit_code -eq 0 ]]; then
-            printf '%s' "$FUTURE_STATUS_DONE" > "$dir/status"
+            printf "%s" "$done_status" > "$dir/status"
         else
-            printf '%s' "$FUTURE_STATUS_FAILED" > "$dir/status"
+            printf "%s" "$failed_status" > "$dir/status"
         fi
-    ) &
+    ' bash "$dir" "$FUTURE_STATUS_DONE" "$FUTURE_STATUS_FAILED" "$FUTURE_STATUS_CANCELLED" "$@" \
+        </dev/null >/dev/null 2>&1 &
 
-    # Record PID
-    local pid=$!
-    printf '%d' "$pid" > "$dir/pid"
+    local worker_pid=$!
+    printf '%d' "$worker_pid" > "$dir/worker_pid"
+    printf '%d' "$worker_pid" > "$dir/pid"
 
     # Register in session tracking
-    _MAINFRAME_FUTURES_REGISTRY["$id"]="$pid"
+    _MAINFRAME_FUTURES_REGISTRY["$future_id"]="$worker_pid"
 
+    printf -v "$__future_outvar" '%s' "$future_id"
+}
+
+future_run() {
+    local id
+    _future_start id "$@" || return $?
     printf '%s' "$id"
 }
 
@@ -188,24 +229,36 @@ future_status() {
     # If status is running, verify the process is actually still alive
     if [[ "$status" == "$FUTURE_STATUS_RUNNING" ]]; then
         local pid
+        local worker_pid
         pid=$(_future_read_file "$dir/pid")
-        if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
-            # Process died unexpectedly - check if it completed
-            if [[ -f "$dir/exit_code" ]]; then
-                local exit_code
-                exit_code=$(_future_read_file "$dir/exit_code")
-                if [[ "$exit_code" == "0" ]]; then
-                    status="$FUTURE_STATUS_DONE"
-                else
-                    status="$FUTURE_STATUS_FAILED"
-                fi
-                printf '%s' "$status" > "$dir/status"
+        worker_pid=$(_future_read_file "$dir/worker_pid")
+
+        if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+            printf '%s' "$status"
+            return 0
+        fi
+
+        if [[ -n "$worker_pid" ]] && kill -0 "$worker_pid" 2>/dev/null; then
+            printf '%s' "$status"
+            return 0
+        fi
+
+        # Process died unexpectedly or completed - check recorded exit state.
+        if [[ -f "$dir/exit_code" ]]; then
+            local exit_code
+            exit_code=$(_future_read_file "$dir/exit_code")
+            if [[ "$exit_code" == "130" ]]; then
+                status="$FUTURE_STATUS_CANCELLED"
+            elif [[ "$exit_code" == "0" ]]; then
+                status="$FUTURE_STATUS_DONE"
             else
-                # No exit code means it crashed
-                printf '%s' "$FUTURE_STATUS_FAILED" > "$dir/status"
-                printf '%d' "137" > "$dir/exit_code"
                 status="$FUTURE_STATUS_FAILED"
             fi
+            _future_write_file "$dir/status" "$status"
+        else
+            _future_write_file "$dir/status" "$FUTURE_STATUS_FAILED"
+            _future_write_file "$dir/exit_code" "137"
+            status="$FUTURE_STATUS_FAILED"
         fi
     fi
 
@@ -406,31 +459,48 @@ future_cancel() {
     fi
 
     local pid
+    local worker_pid
     pid=$(_future_read_file "$dir/pid")
+    worker_pid=$(_future_read_file "$dir/worker_pid")
+
+    if [[ -n "$worker_pid" ]] && kill -0 "$worker_pid" 2>/dev/null; then
+        kill -TERM "$worker_pid" 2>/dev/null || true
+    elif [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        kill -TERM "$pid" 2>/dev/null || true
+    fi
+
+    # Brief wait for graceful shutdown
+    local i
+    for i in {1..10}; do
+        local child_alive=0
+        local worker_alive=0
+
+        if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+            child_alive=1
+        fi
+        if [[ -n "$worker_pid" ]] && kill -0 "$worker_pid" 2>/dev/null; then
+            worker_alive=1
+        fi
+
+        if [[ $child_alive -eq 0 && $worker_alive -eq 0 ]]; then
+            break
+        fi
+
+        sleep 0.1
+    done
 
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-        # Send SIGTERM, wait briefly, then SIGKILL if still running
-        kill -TERM "$pid" 2>/dev/null
+        kill -KILL "$pid" 2>/dev/null || true
+    fi
 
-        # Brief wait for graceful shutdown
-        local i
-        for i in {1..10}; do
-            if ! kill -0 "$pid" 2>/dev/null; then
-                break
-            fi
-            sleep 0.1
-        done
-
-        # Force kill if still running
-        if kill -0 "$pid" 2>/dev/null; then
-            kill -KILL "$pid" 2>/dev/null
-        fi
+    if [[ -n "$worker_pid" ]] && kill -0 "$worker_pid" 2>/dev/null; then
+        kill -KILL "$worker_pid" 2>/dev/null || true
     fi
 
     # Update status
-    printf '%s' "$FUTURE_STATUS_CANCELLED" > "$dir/status"
-    printf '%d' "130" > "$dir/exit_code"  # 130 = 128 + SIGINT
-    printf '%s' "$(date +%s)" > "$dir/end_time"
+    _future_write_file "$dir/status" "$FUTURE_STATUS_CANCELLED"
+    _future_write_file "$dir/exit_code" "130"
+    _future_write_file "$dir/end_time" "$(date +%s)"
 
     return 0
 }
@@ -460,7 +530,7 @@ future_list() {
         [[ -d "$dir" ]] || continue
 
         id="${dir##*/}"
-        status=$(_future_read_file "$dir/status")
+        status=$(future_status "$id" 2>/dev/null || _future_read_file "$dir/status")
         pid=$(_future_read_file "$dir/pid")
         start_time=$(_future_read_file "$dir/start_time")
 
@@ -513,13 +583,13 @@ future_cleanup() {
             "$FUTURE_STATUS_DONE"|"$FUTURE_STATUS_FAILED")
                 rm -rf "$dir"
                 unset "_MAINFRAME_FUTURES_REGISTRY[$id]"
-                ((cleaned++))
+                cleaned=$((cleaned + 1))
                 ;;
             "$FUTURE_STATUS_CANCELLED")
                 if $clean_all; then
                     rm -rf "$dir"
                     unset "_MAINFRAME_FUTURES_REGISTRY[$id]"
-                    ((cleaned++))
+                    cleaned=$((cleaned + 1))
                 fi
                 ;;
         esac
@@ -619,11 +689,7 @@ future_info() {
     local id="$1"
 
     if [[ -z "$id" ]]; then
-        if declare -F output_error &>/dev/null; then
-            output_error "E_INVALID_ARG" "Future ID required"
-        else
-            printf '{"ok":false,"error":{"code":"E_INVALID_ARG","msg":"Future ID required"}}'
-        fi
+        printf '{"ok":false,"error":{"code":"E_INVALID_ARG","msg":"Future ID required"}}'
         return 1
     fi
 
@@ -631,11 +697,7 @@ future_info() {
     dir=$(_future_dir "$id")
 
     if [[ ! -d "$dir" ]]; then
-        if declare -F output_error &>/dev/null; then
-            output_error "E_NOT_FOUND" "Future not found: $id"
-        else
-            printf '{"ok":false,"error":{"code":"E_NOT_FOUND","msg":"Future not found: %s"}}' "$id"
-        fi
+        printf '{"ok":false,"error":{"code":"E_NOT_FOUND","msg":"Future not found: %s"}}' "$(_future_json_escape "$id")"
         return 1
     fi
 
@@ -656,28 +718,15 @@ future_info() {
         duration_ms=0
     fi
 
-    # Build JSON response
-    if declare -F json_object &>/dev/null; then
-        local json
-        json=$(json_object \
-            "id=$id" \
-            "status=$status" \
-            "pid:number=${pid:-0}" \
-            "exit_code:number=${exit_code:--1}" \
-            "start_time:number=${start_time:-0}" \
-            "end_time:number=${end_time:-0}" \
-            "duration_ms:number=$duration_ms" \
-            "command=$command")
-
-        if declare -F output_json_object &>/dev/null; then
-            output_json_object "$json"
-        else
-            printf '{"ok":true,"data":%s}' "$json"
-        fi
-    else
-        printf '{"ok":true,"data":{"id":"%s","status":"%s","pid":%d,"exit_code":%d,"start_time":%d,"end_time":%d,"duration_ms":%d,"command":"%s"}}' \
-            "$id" "$status" "${pid:-0}" "${exit_code:--1}" "${start_time:-0}" "${end_time:-0}" "$duration_ms" "$command"
-    fi
+    printf '{"ok":true,"data":{"id":"%s","status":"%s","pid":%d,"exit_code":%d,"start_time":%d,"end_time":%d,"duration_ms":%d,"command":"%s"}}' \
+        "$(_future_json_escape "$id")" \
+        "$(_future_json_escape "$status")" \
+        "${pid:-0}" \
+        "${exit_code:--1}" \
+        "${start_time:-0}" \
+        "${end_time:-0}" \
+        "$duration_ms" \
+        "$(_future_json_escape "$command")"
 }
 
 # =============================================================================
@@ -693,7 +742,7 @@ future_info() {
 future_run_v() {
     local -n __frv_out=$1
     shift
-    __frv_out=$(future_run "$@")
+    _future_start __frv_out "$@"
 }
 
 # Get status into variable (avoids subshell)

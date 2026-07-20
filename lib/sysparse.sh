@@ -327,13 +327,16 @@ parse_df() {
         fi
 
         local fs blocks used avail percent mount
-        # shellcheck disable=SC2034
-        read -r fs blocks used avail percent mount <<< "$line"
-
-        # Mount path may contain spaces - capture rest of line
-        local rest="${line#*"$percent"}"
-        rest="${rest# }"
-        [[ -n "$rest" ]] && mount="$rest"
+        if [[ "$line" =~ ^(.*[^[:space:]])[[:space:]]+([0-9]+)[[:space:]]+([0-9]+)[[:space:]]+([0-9]+)[[:space:]]+([0-9]+%)[[:space:]]+(.+)$ ]]; then
+            fs="${BASH_REMATCH[1]}"
+            blocks="${BASH_REMATCH[2]}"
+            used="${BASH_REMATCH[3]}"
+            avail="${BASH_REMATCH[4]}"
+            percent="${BASH_REMATCH[5]}"
+            mount="${BASH_REMATCH[6]}"
+        else
+            continue
+        fi
 
         # Remove % from percent
         percent="${percent%\%}"
@@ -356,7 +359,7 @@ parse_df() {
         local fstype=""
         if [[ "$(compat::get_os_family)" == "bsd" ]]; then
             # macOS: Get type from mount output
-            fstype=$(mount 2>/dev/null | grep " on ${mount} " | sed 's/.*(\([^,]*\).*/\1/' | head -1)
+            fstype=$(mount 2>/dev/null | awk -v mp="$mount" 'index($0, " on " mp " (") { line=$0; sub(/^.*\(/, "", line); sub(/,.*/, "", line); print line; exit }')
         else
             # Linux: Use df -T or stat -f
             fstype=$(df -T "$mount" 2>/dev/null | tail -1 | awk '{print $2}')
@@ -927,7 +930,7 @@ parse_ss() {
     fi
 
     # Build ss command options
-    local ss_opts="-n"
+    local ss_opts="-Hn"
     (( listening_only )) && ss_opts+="l"
     (( tcp_only )) && ss_opts+="t"
     (( udp_only )) && ss_opts+="u"
@@ -952,10 +955,15 @@ parse_ss() {
         fi
 
         # Parse based on socket type
-        if (( unix_only )); then
+        local netid=""
+        netid="${line%%[[:space:]]*}"
+
+        if (( unix_only )) || [[ "$netid" =~ ^u_(str|seq|dgr|dgm)$ ]] || [[ "$netid" == "unix" ]]; then
             # Unix socket format: Netid State Recv-Q Send-Q Local Address:Port Peer Address:Port
-            local netid state recvq sendq local_path peer_path
-            read -r netid state recvq sendq local_path peer_path <<< "$line"
+            local state recvq sendq local_path peer_path process_info
+            read -r netid state recvq sendq local_path peer_path process_info <<< "$line"
+            [[ "$recvq" =~ ^[0-9]+$ ]] || recvq=0
+            [[ "$sendq" =~ ^[0-9]+$ ]] || sendq=0
 
             local escaped_local escaped_peer escaped_state
             escaped_local=$(_sysparse_escape_json "$local_path")
@@ -964,14 +972,23 @@ parse_ss() {
 
             results+=("{\"type\":\"unix\",\"state\":\"$escaped_state\",\"recv_q\":$recvq,\"send_q\":$sendq,\"local_path\":\"$escaped_local\",\"peer_path\":\"$escaped_peer\"}")
         else
-            # TCP/UDP format - delegate to parse_netstat logic style
+            # ss -a includes families like netlink and packet on Linux; skip
+            # unsupported rows rather than emitting malformed numeric fields.
             local proto state recvq sendq local_addr peer_addr process_info
-            if [[ "$line" =~ ^(tcp|udp) ]]; then
-                read -r proto state recvq sendq local_addr peer_addr process_info <<< "$line"
-            else
-                read -r state recvq sendq local_addr peer_addr process_info <<< "$line"
-                proto="tcp"
-            fi
+            case "$netid" in
+                tcp|tcp6)
+                    proto="tcp"
+                    ;;
+                udp|udp6)
+                    proto="udp"
+                    ;;
+                *)
+                    continue
+                    ;;
+            esac
+            read -r netid state recvq sendq local_addr peer_addr process_info <<< "$line"
+            [[ "$recvq" =~ ^[0-9]+$ ]] || recvq=0
+            [[ "$sendq" =~ ^[0-9]+$ ]] || sendq=0
 
             # Parse addresses
             local laddr lport raddr rport

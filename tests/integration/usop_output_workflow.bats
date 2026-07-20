@@ -242,7 +242,7 @@ teardown() {
 
 @test "USOP structured error creation" {
     run output_structured_error "ERR_TEST" "Test error message" "This is a suggestion"
-    [ "$status" -eq 0 ]
+    [ "$status" -eq 1 ]
     [[ "$output" == *"ERR_TEST"* ]]
     [[ "$output" == *"Test error message"* ]]
 }

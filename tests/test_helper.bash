@@ -177,16 +177,20 @@ cleanup_test_dir() {
 # Usage: mode=$(file_mode "/path")
 file_mode() {
     local path="$1"
-    if stat -c '%a' "$path" 2>/dev/null; then
-        return 0
-    fi
-    stat -f '%Lp' "$path" 2>/dev/null
+    local mode
+    mode=$(stat -c '%a' "$path" 2>/dev/null || stat -f '%Lp' "$path" 2>/dev/null) || return 1
+    printf '%s\n' "$mode"
 }
 
 # Line count without BSD wc(1) leading-space padding
 # Usage: n=$(count_lines "/path")
 count_lines() {
     wc -l < "$1" | tr -d '[:space:]'
+}
+
+# Return a trimmed line count for a file (alias of count_lines)
+line_count() {
+    count_lines "$@"
 }
 
 # Count of glob matches without BSD wc(1) padding (0 when no matches)

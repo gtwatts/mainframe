@@ -229,6 +229,12 @@ teardown() {
     [ "${_CLI_VALUES[message]}" = "hello world" ]
 }
 
+@test "cli::parse handles long option value starting with dash as next arg" {
+    cli::option "expr" "e" "Expression"
+    cli::parse --expr -n
+    [ "${_CLI_VALUES[expr]}" = "-n" ]
+}
+
 # =============================================================================
 # PARSING - POSITIONAL ARGUMENTS
 # =============================================================================

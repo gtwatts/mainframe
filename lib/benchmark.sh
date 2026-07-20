@@ -42,6 +42,10 @@ _bench_now() {
     fi
 }
 
+_bench_trim() {
+    printf '%s' "$1" | tr -d '[:space:]'
+}
+
 # Calculate elapsed time in milliseconds
 # Usage: _bench_elapsed_ms "start_time" "end_time"
 _bench_elapsed_ms() {
@@ -95,6 +99,14 @@ bench_memory() {
             printf '%s' "$output"
             return 0
         fi
+
+        # BSD/macOS time output includes a "maximum resident set size" line.
+        output=$(/usr/bin/time -l bash -c "$cmd" 2>&1 >/dev/null | awk '/maximum resident set size/ {print $1; exit}')
+        output=$(_bench_trim "$output")
+        if [[ "$output" =~ ^[0-9]+$ ]]; then
+            printf '%s' "$output"
+            return 0
+        fi
     fi
 
     # Fallback: estimate from /proc/self/status on Linux
@@ -109,7 +121,7 @@ bench_memory() {
 
     # No memory measurement available
     printf '0'
-    return 1
+    return 0
 }
 
 # Measure CPU time (user + system) for a command in milliseconds

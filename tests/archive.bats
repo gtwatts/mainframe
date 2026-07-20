@@ -69,21 +69,21 @@ teardown() {
 
 @test "tar_create fails without output path" {
     local result
-    result=$(tar_create "")
+    result=$(tar_create "" || true)
     assert_contains "$result" '"success":false'
     assert_contains "$result" '"error"'
 }
 
 @test "tar_create fails without source paths" {
     local result
-    result=$(tar_create "$TEST_DIR/empty.tar")
+    result=$(tar_create "$TEST_DIR/empty.tar" || true)
     assert_contains "$result" '"success":false'
     assert_contains "$result" 'no source paths'
 }
 
 @test "tar_create fails with nonexistent source" {
     local result
-    result=$(tar_create "$TEST_DIR/fail.tar" "$TEST_DIR/nonexistent.txt")
+    result=$(tar_create "$TEST_DIR/fail.tar" "$TEST_DIR/nonexistent.txt" || true)
     assert_contains "$result" '"success":false'
     assert_contains "$result" 'not found'
 }
@@ -138,14 +138,14 @@ teardown() {
 
 @test "tar_extract fails for nonexistent archive" {
     local result
-    result=$(tar_extract "$TEST_DIR/nonexistent.tar")
+    result=$(tar_extract "$TEST_DIR/nonexistent.tar" || true)
     assert_contains "$result" '"success":false'
     assert_contains "$result" 'not found'
 }
 
 @test "tar_extract fails for empty path" {
     local result
-    result=$(tar_extract "")
+    result=$(tar_extract "" || true)
     assert_contains "$result" '"success":false'
 }
 
@@ -181,7 +181,7 @@ teardown() {
 
 @test "tar_list fails for nonexistent archive" {
     local result
-    result=$(tar_list "$TEST_DIR/missing.tar")
+    result=$(tar_list "$TEST_DIR/missing.tar" || true)
     assert_contains "$result" '"success":false'
 }
 
@@ -205,7 +205,7 @@ teardown() {
     tar_create "$TEST_DIR/append.tar.gz" "$TEST_DIR/file1.txt" >/dev/null
 
     local result
-    result=$(tar_append "$TEST_DIR/append.tar.gz" "$TEST_DIR/file2.txt")
+    result=$(tar_append "$TEST_DIR/append.tar.gz" "$TEST_DIR/file2.txt" || true)
     assert_contains "$result" '"success":false'
     assert_contains "$result" 'uncompressed'
 }
@@ -214,7 +214,7 @@ teardown() {
     tar_create "$TEST_DIR/append.tar" "$TEST_DIR/file1.txt" >/dev/null
 
     local result
-    result=$(tar_append "$TEST_DIR/append.tar")
+    result=$(tar_append "$TEST_DIR/append.tar" || true)
     assert_contains "$result" '"success":false'
     assert_contains "$result" 'no files'
 }
@@ -239,7 +239,7 @@ teardown() {
     tar_create "$TEST_DIR/single.tar" "$TEST_DIR/file1.txt" >/dev/null
 
     local result
-    result=$(tar_extract_file "$TEST_DIR/single.tar" "nonexistent.txt")
+    result=$(tar_extract_file "$TEST_DIR/single.tar" "nonexistent.txt" || true)
     assert_contains "$result" '"success":false'
 }
 
@@ -269,7 +269,7 @@ teardown() {
 
 @test "tar_info fails for nonexistent archive" {
     local result
-    result=$(tar_info "$TEST_DIR/missing.tar")
+    result=$(tar_info "$TEST_DIR/missing.tar" || true)
     assert_contains "$result" '"success":false'
 }
 
@@ -301,13 +301,13 @@ teardown() {
 
 @test "gzip_compress fails for nonexistent file" {
     local result
-    result=$(gzip_compress "$TEST_DIR/missing.txt")
+    result=$(gzip_compress "$TEST_DIR/missing.txt" || true)
     assert_contains "$result" '"success":false'
 }
 
 @test "gzip_compress rejects invalid level" {
     local result
-    result=$(gzip_compress "$TEST_DIR/file1.txt" --level 0)
+    result=$(gzip_compress "$TEST_DIR/file1.txt" --level 0 || true)
     assert_contains "$result" '"success":false'
     assert_contains "$result" 'invalid compression level'
 }
@@ -341,7 +341,7 @@ teardown() {
 
 @test "gzip_decompress fails for nonexistent file" {
     local result
-    result=$(gzip_decompress "$TEST_DIR/missing.gz")
+    result=$(gzip_decompress "$TEST_DIR/missing.gz" || true)
     assert_contains "$result" '"success":false'
 }
 
@@ -363,7 +363,7 @@ teardown() {
 
 @test "gunzip_file fails for non-gz extension" {
     local result
-    result=$(gunzip_file "$TEST_DIR/file1.txt")
+    result=$(gunzip_file "$TEST_DIR/file1.txt" || true)
     assert_contains "$result" '"success":false'
     assert_contains "$result" '.gz extension'
 }
@@ -389,7 +389,7 @@ teardown() {
 
 @test "gzip_level rejects invalid level" {
     local result
-    result=$(gzip_level 10)
+    result=$(gzip_level 10 || true)
     assert_contains "$result" '"success":false'
 }
 
@@ -421,7 +421,7 @@ teardown() {
 
 @test "gzip_compress_string fails for empty input" {
     local result
-    result=$(gzip_compress_string "")
+    result=$(gzip_compress_string "" || true)
     assert_contains "$result" '"success":false'
 }
 
@@ -457,7 +457,7 @@ teardown() {
 
 @test "zip_create fails without sources" {
     local result
-    result=$(zip_create "$TEST_DIR/empty.zip")
+    result=$(zip_create "$TEST_DIR/empty.zip" || true)
     assert_contains "$result" '"success":false'
 }
 
@@ -492,7 +492,7 @@ teardown() {
 
 @test "zip_extract fails for nonexistent archive" {
     local result
-    result=$(zip_extract "$TEST_DIR/missing.zip")
+    result=$(zip_extract "$TEST_DIR/missing.zip" || true)
     assert_contains "$result" '"success":false'
 }
 
@@ -534,7 +534,7 @@ teardown() {
     zip_create "$TEST_DIR/add.zip" "$TEST_DIR/file1.txt" >/dev/null
 
     local result
-    result=$(zip_add "$TEST_DIR/add.zip")
+    result=$(zip_add "$TEST_DIR/add.zip" || true)
     assert_contains "$result" '"success":false'
 }
 
@@ -569,7 +569,7 @@ teardown() {
 
 @test "zip_password fails without password" {
     local result
-    result=$(zip_password "$TEST_DIR/secure.zip" "")
+    result=$(zip_password "$TEST_DIR/secure.zip" "" || true)
     assert_contains "$result" '"success":false'
 }
 
@@ -596,7 +596,7 @@ teardown() {
     echo "not a zip file" > "$TEST_DIR/corrupt.zip"
 
     local result
-    result=$(zip_test "$TEST_DIR/corrupt.zip")
+    result=$(zip_test "$TEST_DIR/corrupt.zip" || true)
     assert_contains "$result" '"success":false'
     assert_contains "$result" '"valid":false'
 }
@@ -666,7 +666,7 @@ teardown() {
 
 @test "archive_extract_auto fails for nonexistent" {
     local result
-    result=$(archive_extract_auto "$TEST_DIR/missing.tar.gz")
+    result=$(archive_extract_auto "$TEST_DIR/missing.tar.gz" || true)
     assert_contains "$result" '"success":false'
 }
 
@@ -697,7 +697,7 @@ teardown() {
 
 @test "archive_size fails for nonexistent" {
     local result
-    result=$(archive_size "$TEST_DIR/missing.tar.gz")
+    result=$(archive_size "$TEST_DIR/missing.tar.gz" || true)
     assert_contains "$result" '"success":false'
 }
 
@@ -741,7 +741,7 @@ teardown() {
     echo "not gzip data" > "$TEST_DIR/corrupt.tar.gz"
 
     local result
-    result=$(archive_verify "$TEST_DIR/corrupt.tar.gz")
+    result=$(archive_verify "$TEST_DIR/corrupt.tar.gz" || true)
     assert_contains "$result" '"success":false'
     assert_contains "$result" '"valid":false'
 }
@@ -839,7 +839,7 @@ teardown() {
     tar_create "$TEST_DIR/big.tar.gz" "$TEST_DIR/zeros.bin" >/dev/null
 
     local result
-    result=$(archive_size_limit "$TEST_DIR/big.tar.gz" 100)
+    result=$(archive_size_limit "$TEST_DIR/big.tar.gz" 100 || true)
     assert_contains "$result" '"success":false'
     assert_contains "$result" 'exceeds size limit'
 }

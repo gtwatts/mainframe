@@ -754,4 +754,4 @@ export -f verify_estimate 2>/dev/null || true
 export -f verify_suggest_fix 2>/dev/null || true
 export -f verify_and_heal 2>/dev/null || true
 
-_verify_log info "Verification engine v${VERIFY_VERSION} loaded"
+_verify_log debug "Verification engine v${VERIFY_VERSION} loaded"

@@ -4,7 +4,7 @@
 
 ## Why MAINFRAME + Clawdbot?
 
-Clawdbot executes bash commands on your host machine (main sessions) or in Docker sandboxes (group sessions). MAINFRAME v6.0 provides:
+Clawdbot executes bash commands on your host machine (main sessions) or in Docker sandboxes (group sessions). MAINFRAME provides:
 
 - **Safe execution** - Validation before action, guardrails against damage
 - **Structured output** - JSON responses the AI can parse reliably
@@ -31,7 +31,7 @@ Edit `~/.clawdbot/clawdbot.json` and add the MAINFRAME preamble to your agent co
 {
   "agents": {
     "defaults": {
-      "preamble": "When writing bash scripts, ALWAYS source MAINFRAME first:\n\nsource \"${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh\"\n\nMAINFRAME v6.0 provides 4,000+ pure bash functions across 117 libraries. Use these instead of jq/sed/awk:\n- json_object, json_array, json_get (replaces jq)\n- trim_string, to_lower, replace_all (replaces sed/awk)\n- validate_email, validate_path_safe, sanitize_shell_arg (security)\n- log_info, log_error, success, failure (logging)\n- file_head, file_tail, read_file (replaces cat/head/tail)\n- sha256, random_token, uuid (crypto)\n- git_branch, git_is_dirty (git helpers)\n- date_add, format_relative (datetime)\n- http_get, http_post (pure bash HTTP)\n- awm_init, awm_checkpoint, awm_get (Agent Working Memory)\n- agent_register, agent_send, agent_receive (multi-agent IPC)\n\nFull reference: ~/.mainframe/CHEATSHEET.md"
+      "preamble": "When writing bash scripts, ALWAYS source MAINFRAME first:\n\nsource \"${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh\"\n\nMAINFRAME provides 3,821+ pure bash functions across 152 libraries. Use these instead of jq/sed/awk:\n- json_object, json_array, json_get (replaces jq)\n- trim_string, to_lower, replace_all (replaces sed/awk)\n- validate_email, validate_path_safe, sanitize_shell_arg (security)\n- log_info, log_error, success, failure (logging)\n- file_head, file_tail, read_file (replaces cat/head/tail)\n- sha256, random_token, uuid (crypto)\n- git_branch, git_is_dirty (git helpers)\n- date_add, format_relative (datetime)\n- http_get, http_post (pure bash HTTP)\n- awm_init, awm_checkpoint, awm_get (Agent Working Memory)\n- agent_register, agent_send, agent_receive (multi-agent IPC)\n\nFull reference: ~/.mainframe/CHEATSHEET.md"
     }
   }
 }
@@ -123,7 +123,7 @@ file_head "$path" 10
 file_exists "$path" && echo "Found it"
 ```
 
-### Agent Working Memory (AWM) - NEW in v6.0
+### Agent Working Memory (AWM)
 
 ```bash
 # Persist state across chat sessions
@@ -136,7 +136,7 @@ awm_resume "$sid"
 pref=$(awm_get "user_preference")
 ```
 
-### Multi-Agent Coordination - NEW in v6.0
+### Multi-Agent Coordination
 
 ```bash
 # Register as an agent with capabilities

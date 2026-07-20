@@ -16,22 +16,6 @@
 [[ -n "${_MAINFRAME_UAP_V2_LOADED:-}" ]] && return 0
 readonly _MAINFRAME_UAP_V2_LOADED=1
 
-
-# Portable SHA-256 digest (sha256sum -> shasum -> openssl fallback chain).
-# Shared micro-shim: the declare -F guard means it is defined once per
-# process no matter how many MAINFRAME libraries are sourced.
-if ! declare -F _mainframe_sha256 &>/dev/null; then
-_mainframe_sha256() {
-    if command -v sha256sum &>/dev/null; then
-        sha256sum "$@"
-    elif command -v shasum &>/dev/null; then
-        shasum -a 256 "$@"
-    else
-        openssl dgst -sha256 "$@" | sed 's/^.* //'
-    fi
-}
-fi
-
 # =============================================================================
 # DEPENDENCY LOADING
 # =============================================================================
@@ -76,13 +60,13 @@ readonly UAP_V2_TRANSPORT_PIPE="pipe"
 readonly UAP_V2_TRANSPORT_FILE="file"
 
 # Default configuration
-readonly UAP_V2_BASE_DIR="${MAINFRAME_UAP_V2_DIR:-${HOME}/.mainframe/uap_v2}"
-readonly UAP_V2_AGENT_DIR="$UAP_V2_BASE_DIR/agents"
-readonly UAP_V2_SOCKET_DIR="$UAP_V2_BASE_DIR/sockets"
-readonly UAP_V2_PIPE_DIR="$UAP_V2_BASE_DIR/pipes"
-readonly UAP_V2_MAILBOX_DIR="$UAP_V2_BASE_DIR/mailbox"
-readonly UAP_V2_SCHEMA_DIR="$UAP_V2_BASE_DIR/schemas"
-readonly UAP_V2_LOG_DIR="$UAP_V2_BASE_DIR/logs"
+readonly UAP_V2_BASE_DIR="${MAINFRAME_UAP_V2_DIR:-${UAP_V2_BASE_DIR:-${HOME}/.mainframe/uap_v2}}"
+readonly UAP_V2_AGENT_DIR="${UAP_V2_AGENT_DIR:-$UAP_V2_BASE_DIR/agents}"
+readonly UAP_V2_SOCKET_DIR="${UAP_V2_SOCKET_DIR:-$UAP_V2_BASE_DIR/sockets}"
+readonly UAP_V2_PIPE_DIR="${UAP_V2_PIPE_DIR:-$UAP_V2_BASE_DIR/pipes}"
+readonly UAP_V2_MAILBOX_DIR="${UAP_V2_MAILBOX_DIR:-$UAP_V2_BASE_DIR/mailbox}"
+readonly UAP_V2_SCHEMA_DIR="${UAP_V2_SCHEMA_DIR:-$UAP_V2_BASE_DIR/schemas}"
+readonly UAP_V2_LOG_DIR="${UAP_V2_LOG_DIR:-$UAP_V2_BASE_DIR/logs}"
 
 # Timeouts and intervals (in seconds)
 readonly UAP_V2_DEFAULT_TIMEOUT=30
@@ -102,7 +86,8 @@ declare -ga UAP_V2_CAPABILITIES=()
 declare -gA UAP_V2_SCHEMAS=()
 declare -g UAP_V2_TOKEN=""
 declare -g UAP_V2_HEARTBEAT_PID=""
-declare -g UAP_V2_TRANSPORT=""
+declare -g UAP_V2_TRANSPORT="${UAP_V2_TRANSPORT:-}"
+declare -gA UAP_V2_LISTENER_PIDS=()
 declare -gA _UAP_V2_CALLBACKS=()
 declare -gA _UAP_V2_STREAM_HANDLERS=()
 declare -gi _UAP_V2_REQ_SEQ=0
@@ -205,7 +190,7 @@ _uap_v2_message_id() {
 _uap_v2_hash() {
     local data="$1"
     if command -v sha256sum &>/dev/null; then
-        printf '%s' "$data" | _mainframe_sha256 | cut -d' ' -f1 | cut -c1-16
+        printf '%s' "$data" | sha256sum | cut -d' ' -f1 | cut -c1-16
     elif command -v shasum &>/dev/null; then
         printf '%s' "$data" | shasum -a 256 | cut -d' ' -f1 | cut -c1-16
     else
@@ -305,7 +290,7 @@ _uap_v2_encode_message() {
     
     # Build complete message
     json_object \
-        "uap_version=$UAP_V2_VERSION" \
+        "uap_version:string=$UAP_V2_VERSION" \
         "message_id=$message_id" \
         "timestamp=$(_uap_v2_timestamp)" \
         "type=$msg_type" \
@@ -598,8 +583,8 @@ uap_v2_register() {
     # Set agent identity
     UAP_V2_AGENT_NAME="$name"
     UAP_V2_AGENT_PID=$$
-    UAP_V2_TOKEN="${token:-$(openssl rand -hex 16 2>/dev/null || date +%s%N | _mainframe_sha256 | head -c 32)}"
-    UAP_V2_TRANSPORT=$(_uap_v2_detect_transport)
+    UAP_V2_TOKEN="${token:-$(openssl rand -hex 16 2>/dev/null || date +%s%N | sha256sum | head -c 32)}"
+    UAP_V2_TRANSPORT="${UAP_V2_TRANSPORT:-$(_uap_v2_detect_transport)}"
     
     # Parse capabilities
     UAP_V2_CAPABILITIES=()
@@ -629,6 +614,10 @@ uap_v2_register() {
             socket_path=$(_uap_v2_socket_path "$name")
             # Create listener socket using netcat or socat
             if command -v nc &>/dev/null; then
+                if [[ -n "${UAP_V2_LISTENER_PIDS[$name]:-}" ]]; then
+                    kill "${UAP_V2_LISTENER_PIDS[$name]}" 2>/dev/null || true
+                    wait "${UAP_V2_LISTENER_PIDS[$name]}" 2>/dev/null || true
+                fi
                 # Background listener
                 (
                     while true; do
@@ -636,7 +625,8 @@ uap_v2_register() {
                             _uap_v2_handle_incoming "$line"
                         done
                     done
-                ) &
+                ) </dev/null >/dev/null 2>&1 &
+                UAP_V2_LISTENER_PIDS["$name"]=$!
             fi
             ;;
         "$UAP_V2_TRANSPORT_PIPE")
@@ -701,7 +691,14 @@ uap_v2_unregister() {
     # Stop heartbeat
     if [[ "$name" == "$UAP_V2_AGENT_NAME" && -n "$UAP_V2_HEARTBEAT_PID" ]]; then
         kill "$UAP_V2_HEARTBEAT_PID" 2>/dev/null || true
+        wait "$UAP_V2_HEARTBEAT_PID" 2>/dev/null || true
         UAP_V2_HEARTBEAT_PID=""
+    fi
+
+    if [[ -n "${UAP_V2_LISTENER_PIDS[$name]:-}" ]]; then
+        kill "${UAP_V2_LISTENER_PIDS[$name]}" 2>/dev/null || true
+        wait "${UAP_V2_LISTENER_PIDS[$name]}" 2>/dev/null || true
+        unset "UAP_V2_LISTENER_PIDS[$name]"
     fi
     
     # Remove registration
@@ -1619,6 +1616,7 @@ _uap_v2_start_heartbeat() {
     # Stop existing heartbeat
     if [[ -n "$UAP_V2_HEARTBEAT_PID" ]]; then
         kill "$UAP_V2_HEARTBEAT_PID" 2>/dev/null || true
+        wait "$UAP_V2_HEARTBEAT_PID" 2>/dev/null || true
     fi
     
     # Start new heartbeat in background
@@ -1627,7 +1625,7 @@ _uap_v2_start_heartbeat() {
             uap_v2_heartbeat "$UAP_V2_AGENT_NAME" 2>/dev/null || true
             sleep "$UAP_V2_HEARTBEAT_INTERVAL"
         done
-    ) &
+    ) </dev/null >/dev/null 2>&1 &
     
     UAP_V2_HEARTBEAT_PID=$!
     _uap_v2_log "debug" "Heartbeat started (PID: $UAP_V2_HEARTBEAT_PID)"
@@ -1640,12 +1638,16 @@ _uap_v2_start_heartbeat() {
 # Cleanup on exit
 _uap_v2_cleanup() {
     if [[ -n "$UAP_V2_AGENT_NAME" ]]; then
-        uap_v2_unregister "$UAP_V2_AGENT_NAME" 2>/dev/null || true
+        uap_v2_unregister "$UAP_V2_AGENT_NAME" >/dev/null 2>&1 || true
     fi
 }
 
 # Register cleanup trap
-trap '_uap_v2_cleanup' EXIT
+if declare -F _mainframe_add_exit_trap >/dev/null 2>&1; then
+    _mainframe_add_exit_trap "_uap_v2_cleanup"
+else
+    trap '_uap_v2_cleanup' EXIT
+fi
 
 # =============================================================================
 # EXPORTS

@@ -153,7 +153,7 @@ declare -gA _CODESEARCH_INTERFACE_PATTERNS=(
 
 # Constant/readonly patterns
 declare -gA _CODESEARCH_CONST_PATTERNS=(
-    [python]='^[A-Z][A-Z0-9_]*[[:space:]]*=[[:space:]]'
+    [python]='^([A-Z][A-Z0-9_]*)[[:space:]]*=[[:space:]]'
     [javascript]='^[[:space:]]*(export[[:space:]]+)?(const|let|var)[[:space:]]+([A-Z][A-Z0-9_]*)[[:space:]]*='
     [typescript]='^[[:space:]]*(export[[:space:]]+)?(const|readonly)[[:space:]]+([a-zA-Z_$][a-zA-Z0-9_$]*)[[:space:]]*[:=]'
     [go]='^const[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*='
@@ -270,6 +270,19 @@ _codesearch_log() {
         "log_${level}" "[codesearch] $*"
     elif [[ "${MAINFRAME_QUIET:-}" != "1" ]]; then
         printf '[codesearch] %s: %s\n' "${level}" "$*" >&2
+    fi
+}
+
+_codesearch_run_with_timeout() {
+    local duration="$1"
+    shift
+
+    if command -v timeout &>/dev/null; then
+        timeout "$duration" "$@"
+    elif command -v gtimeout &>/dev/null; then
+        gtimeout "$duration" "$@"
+    else
+        "$@"
     fi
 }
 
@@ -510,14 +523,15 @@ code_find_functions() {
 
         local line_num=0
         while IFS= read -r line; do
-            ((line_num++))
+            line_num=$((line_num + 1))
 
             if [[ "$line" =~ $pattern ]]; then
                 # Extract function name from match groups
                 local func_name=""
                 local i
-                for ((i=${#BASH_REMATCH[@]}-1; i>=1; i--)); do
-                    local match="${BASH_REMATCH[$i]}"
+                local -a captures=("${BASH_REMATCH[@]}")
+                for ((i=${#captures[@]}-1; i>=1; i--)); do
+                    local match="${captures[$i]}"
                     # Look for identifier-like strings
                     if [[ -n "$match" && "$match" =~ ^[a-zA-Z_$][a-zA-Z0-9_$]*$ ]]; then
                         # Skip common keywords
@@ -568,7 +582,7 @@ code_find_functions() {
                     printf '%s:%d:%s\n' "$file" "$line_num" "$func_name"
                 fi
 
-                ((count++))
+                count=$((count + 1))
                 [[ $count -ge $MAINFRAME_CODESEARCH_MAX_RESULTS ]] && break 2
             fi
         done < "$file"
@@ -650,19 +664,20 @@ code_find_classes() {
 
         local line_num=0
         while IFS= read -r line; do
-            ((line_num++))
+            line_num=$((line_num + 1))
 
             if [[ "$line" =~ $pattern ]]; then
                 local class_name=""
                 local class_type="class"
                 local i
+                local -a captures=("${BASH_REMATCH[@]}")
 
                 # Determine type (struct vs class)
                 [[ "$line" =~ struct ]] && class_type="struct"
                 [[ "$line" =~ type.*struct ]] && class_type="struct"
 
-                for ((i=${#BASH_REMATCH[@]}-1; i>=1; i--)); do
-                    local match="${BASH_REMATCH[$i]}"
+                for ((i=${#captures[@]}-1; i>=1; i--)); do
+                    local match="${captures[$i]}"
                     if [[ -n "$match" && "$match" =~ ^[a-zA-Z_$][a-zA-Z0-9_$]*$ ]]; then
                         case "$match" in
                             class|struct|type|export|public|private|abstract|final|sealed|data|open|internal) continue ;;
@@ -687,7 +702,7 @@ code_find_classes() {
                     printf '%s:%d:%s:%s\n' "$file" "$line_num" "$class_type" "$class_name"
                 fi
 
-                ((count++))
+                count=$((count + 1))
                 [[ $count -ge $MAINFRAME_CODESEARCH_MAX_RESULTS ]] && break 2
             fi
         done < "$file"
@@ -766,14 +781,15 @@ code_find_interfaces() {
 
         local line_num=0
         while IFS= read -r line; do
-            ((line_num++))
+            line_num=$((line_num + 1))
 
             if [[ "$line" =~ $pattern ]]; then
                 local iface_name=""
                 local i
+                local -a captures=("${BASH_REMATCH[@]}")
 
-                for ((i=${#BASH_REMATCH[@]}-1; i>=1; i--)); do
-                    local match="${BASH_REMATCH[$i]}"
+                for ((i=${#captures[@]}-1; i>=1; i--)); do
+                    local match="${captures[$i]}"
                     if [[ -n "$match" && "$match" =~ ^[a-zA-Z_$][a-zA-Z0-9_$]*$ ]]; then
                         case "$match" in
                             interface|trait|protocol|export|public|private|sealed|internal) continue ;;
@@ -798,7 +814,7 @@ code_find_interfaces() {
                     printf '%s:%d:%s\n' "$file" "$line_num" "$iface_name"
                 fi
 
-                ((count++))
+                count=$((count + 1))
                 [[ $count -ge $MAINFRAME_CODESEARCH_MAX_RESULTS ]] && break 2
             fi
         done < "$file"
@@ -877,14 +893,15 @@ code_find_constants() {
 
         local line_num=0
         while IFS= read -r line; do
-            ((line_num++))
+            line_num=$((line_num + 1))
 
             if [[ "$line" =~ $pattern ]]; then
                 local const_name=""
                 local i
+                local -a captures=("${BASH_REMATCH[@]}")
 
-                for ((i=${#BASH_REMATCH[@]}-1; i>=1; i--)); do
-                    local match="${BASH_REMATCH[$i]}"
+                for ((i=${#captures[@]}-1; i>=1; i--)); do
+                    local match="${captures[$i]}"
                     if [[ -n "$match" && "$match" =~ ^[A-Za-z_$][A-Za-z0-9_$]*$ ]]; then
                         case "$match" in
                             const|readonly|let|var|final|static|export|public|private|declare) continue ;;
@@ -909,7 +926,7 @@ code_find_constants() {
                     printf '%s:%d:%s\n' "$file" "$line_num" "$const_name"
                 fi
 
-                ((count++))
+                count=$((count + 1))
                 [[ $count -ge $MAINFRAME_CODESEARCH_MAX_RESULTS ]] && break 2
             fi
         done < "$file"
@@ -995,7 +1012,6 @@ code_find_callers() {
 
     while IFS= read -r match; do
         [[ -z "$match" ]] && continue
-        ((count++))
 
         # Skip function definition itself (simple heuristic)
         if [[ "$match" =~ (def|function|fn|func)[[:space:]]+${func_name} ]]; then
@@ -1021,8 +1037,9 @@ code_find_callers() {
             printf '%s\n' "$match"
         fi
 
+        count=$((count + 1))
         [[ $count -ge $MAINFRAME_CODESEARCH_MAX_RESULTS ]] && break
-    done < <(timeout "${MAINFRAME_CODESEARCH_TIMEOUT}s" grep "$grep_opts" "${grep_excludes[@]}" "${include_patterns[@]}" -E "$call_pattern" "$path" 2>/dev/null)
+    done < <(_codesearch_run_with_timeout "${MAINFRAME_CODESEARCH_TIMEOUT}s" grep "$grep_opts" "${grep_excludes[@]}" "${include_patterns[@]}" -E "$call_pattern" "$path" 2>/dev/null)
 
     [[ $count -eq 0 ]] && return 1
 
@@ -1096,62 +1113,93 @@ code_find_imports() {
         [[ -z "$pattern" ]] && continue
 
         local line_num=0
+        local in_go_import_block=0
         while IFS= read -r line; do
-            ((line_num++))
+            line_num=$((line_num + 1))
 
-            if [[ "$line" =~ $pattern ]]; then
-                # Extract module name (simplified extraction)
-                local module=""
-                case "$file_lang" in
-                    python)
+            local module=""
+            local matched_import=0
+            case "$file_lang" in
+                python)
+                    if [[ "$line" =~ $pattern ]]; then
+                        matched_import=1
                         if [[ "$line" =~ from[[:space:]]+([a-zA-Z0-9_.]+)[[:space:]]+import ]]; then
                             module="${BASH_REMATCH[1]}"
                         elif [[ "$line" =~ import[[:space:]]+([a-zA-Z0-9_.]+) ]]; then
                             module="${BASH_REMATCH[1]}"
                         fi
-                        ;;
-                    javascript|typescript)
-                        if [[ "$line" =~ from[[:space:]]+[\"\'"]([^\"\']+)[\"\'] ]]; then
-                            module="${BASH_REMATCH[1]}"
-                        elif [[ "$line" =~ require\([[:space:]]*[\"\'"]([^\"\']+)[\"\'] ]]; then
-                            module="${BASH_REMATCH[1]}"
+                    fi
+                    ;;
+                javascript|typescript)
+                    if [[ "$line" =~ $pattern ]]; then
+                        matched_import=1
+                        if [[ "$line" == *" from '"* ]]; then
+                            module="${line#* from \'}"
+                            module="${module%%\'*}"
+                        elif [[ "$line" == *' from "'* ]]; then
+                            module="${line#* from \"}"
+                            module="${module%%\"*}"
+                        elif [[ "$line" == *"require('"* ]]; then
+                            module="${line#*require(\'}"
+                            module="${module%%\'*}"
+                        elif [[ "$line" == *'require("'* ]]; then
+                            module="${line#*require(\"}"
+                            module="${module%%\"*}"
                         fi
-                        ;;
-                    go)
-                        if [[ "$line" =~ import[[:space:]]+[\""]([^\"]+)[\""]] ]]; then
-                            module="${BASH_REMATCH[1]}"
-                        fi
-                        ;;
-                    rust)
+                    fi
+                    ;;
+                go)
+                    if [[ "$line" =~ ^[[:space:]]*import[[:space:]]*\($ ]]; then
+                        in_go_import_block=1
+                        continue
+                    fi
+                    if [[ $in_go_import_block -eq 1 && "$line" =~ ^[[:space:]]*\)[[:space:]]*$ ]]; then
+                        in_go_import_block=0
+                        continue
+                    fi
+                    if [[ "$line" =~ ^[[:space:]]*import[[:space:]]+\"([^\"]+)\" ]]; then
+                        matched_import=1
+                        module="${BASH_REMATCH[1]}"
+                    elif [[ $in_go_import_block -eq 1 && "$line" =~ ^[[:space:]]*\"([^\"]+)\" ]]; then
+                        matched_import=1
+                        module="${BASH_REMATCH[1]}"
+                    fi
+                    ;;
+                rust)
+                    if [[ "$line" =~ $pattern ]]; then
+                        matched_import=1
                         if [[ "$line" =~ use[[:space:]]+([a-zA-Z0-9_:]+) ]]; then
                             module="${BASH_REMATCH[1]}"
                         fi
-                        ;;
-                    *)
+                    fi
+                    ;;
+                *)
+                    if [[ "$line" =~ $pattern ]]; then
+                        matched_import=1
                         module="$line"
-                        ;;
-                esac
+                    fi
+                    ;;
+            esac
 
-                [[ -z "$module" ]] && module="(unknown)"
+            [[ $matched_import -eq 0 ]] && continue
+            [[ -z "$module" ]] && module="(unknown)"
 
-                # Apply module filter
-                if [[ -n "$module_pattern" ]]; then
-                    [[ ! "$module" =~ $module_pattern ]] && continue
-                fi
-
-                if [[ $json_output -eq 1 ]]; then
-                    local escaped_file escaped_module escaped_line
-                    escaped_file=$(_codesearch_escape_json "$file")
-                    escaped_module=$(_codesearch_escape_json "$module")
-                    escaped_line=$(_codesearch_escape_json "$line")
-                    results+=("{\"file\":\"$escaped_file\",\"line\":$line_num,\"module\":\"$escaped_module\",\"statement\":\"$escaped_line\",\"lang\":\"$file_lang\"}")
-                else
-                    printf '%s:%d:%s\n' "$file" "$line_num" "$module"
-                fi
-
-                ((count++))
-                [[ $count -ge $MAINFRAME_CODESEARCH_MAX_RESULTS ]] && break 2
+            if [[ -n "$module_pattern" ]]; then
+                [[ ! "$module" =~ $module_pattern ]] && continue
             fi
+
+            if [[ $json_output -eq 1 ]]; then
+                local escaped_file escaped_module escaped_line
+                escaped_file=$(_codesearch_escape_json "$file")
+                escaped_module=$(_codesearch_escape_json "$module")
+                escaped_line=$(_codesearch_escape_json "$line")
+                results+=("{\"file\":\"$escaped_file\",\"line\":$line_num,\"module\":\"$escaped_module\",\"statement\":\"$escaped_line\",\"lang\":\"$file_lang\"}")
+            else
+                printf '%s:%d:%s\n' "$file" "$line_num" "$module"
+            fi
+
+            count=$((count + 1))
+            [[ $count -ge $MAINFRAME_CODESEARCH_MAX_RESULTS ]] && break 2
         done < "$file"
     done
 
@@ -1221,7 +1269,7 @@ code_find_exports() {
 
         local line_num=0
         while IFS= read -r line; do
-            ((line_num++))
+            line_num=$((line_num + 1))
 
             if [[ "$line" =~ $pattern ]]; then
                 local export_name=""
@@ -1264,7 +1312,7 @@ code_find_exports() {
                     printf '%s:%d:%s\n' "$file" "$line_num" "$export_name"
                 fi
 
-                ((count++))
+                count=$((count + 1))
                 [[ $count -ge $MAINFRAME_CODESEARCH_MAX_RESULTS ]] && break 2
             fi
         done < "$file"

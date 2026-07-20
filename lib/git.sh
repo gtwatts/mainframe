@@ -25,7 +25,12 @@ git_is_repo() {
 # Get repository root directory
 # Usage: root=$(git_root)
 git_root() {
-    git rev-parse --show-toplevel 2>/dev/null
+    git_is_repo || return 1
+
+    local top
+    top=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
+
+    printf '%s\n' "$top"
 }
 
 # Get current branch name

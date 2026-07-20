@@ -222,7 +222,7 @@ _task_get_step_field() {
         char="${content:i:1}"
 
         if [[ "$char" == "{" ]]; then
-            ((depth++))
+            depth=$(( depth + 1 ))
             if [[ $depth -eq 1 ]]; then
                 current_block="{"
                 continue
@@ -237,7 +237,7 @@ _task_get_step_field() {
                 fi
                 current_block=""
             fi
-            ((depth--))
+            depth=$(( depth - 1 ))
             continue
         fi
 
@@ -310,7 +310,7 @@ _task_update_step() {
             char="${content:i:1}"
 
             if [[ "$char" == "{" ]]; then
-                ((depth++))
+                depth=$(( depth + 1 ))
                 if [[ $depth -eq 1 ]]; then
                     current_block="{"
                     continue
@@ -332,7 +332,7 @@ _task_update_step() {
                     fi
                     current_block=""
                 fi
-                ((depth--))
+                depth=$(( depth - 1 ))
                 continue
             fi
 
@@ -438,7 +438,7 @@ _task_count_steps() {
         count=0
         local tmp="$content"
         while [[ "$tmp" =~ \"name\"[[:space:]]*: ]]; do
-            ((count++))
+            count=$(( count + 1 ))
             tmp="${tmp#*\"name\"*:}"
         done
         printf '%d' "$count"
@@ -446,7 +446,7 @@ _task_count_steps() {
         count=0
         local tmp="$content"
         while [[ "$tmp" =~ \"status\"[[:space:]]*:[[:space:]]*\"$status\" ]]; do
-            ((count++))
+            count=$(( count + 1 ))
             tmp="${tmp#*\"status\"*:*\"$status\"}"
         done
         printf '%d' "$count"
@@ -740,7 +740,7 @@ task_cleanup() {
             local id="${dir_entry%/}"
             id="${id##*/}"
             rm -rf "$dir_entry"
-            ((cleaned++))
+            cleaned=$(( cleaned + 1 ))
             _task_log debug "cleaned up task: $id (age: $((age / 86400))d)"
         fi
     done
@@ -1223,7 +1223,7 @@ task_remaining() {
         char="${content:i:1}"
 
         if [[ "$char" == "{" ]]; then
-            ((depth++))
+            depth=$(( depth + 1 ))
             if [[ $depth -eq 1 ]]; then
                 current_block="{"
                 continue
@@ -1239,7 +1239,7 @@ task_remaining() {
                 fi
                 current_block=""
             fi
-            ((depth--))
+            depth=$(( depth - 1 ))
             continue
         fi
 

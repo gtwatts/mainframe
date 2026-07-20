@@ -32,7 +32,7 @@ readonly BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 # Determine MAINFRAME root directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export MAINFRAME_ROOT="${MAINFRAME_ROOT:-$SCRIPT_DIR}"
+export MAINFRAME_ROOT="$SCRIPT_DIR"
 
 # Source common library with minimal profile for bootstrapping
 MAINFRAME_PROFILE=minimal source "$MAINFRAME_ROOT/lib/common.sh"
@@ -138,6 +138,72 @@ _log_success() {
 }
 
 # =============================================================================
+# BUILD HELPERS
+# =============================================================================
+
+readonly -a MAINFRAME_CORE_BUILD_LIBS=(
+    pure-string pure-array pure-util pure-file
+    json ansi output errors hints
+)
+
+common_default_libraries() {
+    awk '
+        /# Full loading: backward-compatible, source everything/ { in_block = 1; next }
+        in_block && /^fi # End of full loading/ { in_block = 0 }
+        in_block && /_mainframe_load_library "/ {
+            line = $0
+            sub(/.*_mainframe_load_library "/, "", line)
+            sub(/".*/, "", line)
+            print line
+        }
+    ' "$MAINFRAME_ROOT/lib/common.sh" | sort -u
+}
+
+strip_shebang_stream() {
+    awk 'NR == 1 && /^#!/ { next } { print }'
+}
+
+strip_included_source_lines() {
+    local lib_regex="${1:-}"
+
+    if [[ -z "$lib_regex" ]]; then
+        cat
+        return 0
+    fi
+
+    awk -v libs="$lib_regex" '
+        $0 ~ "^[[:space:]]*(source|\\.)[[:space:]].*(" libs ")\\.sh([^[:alnum:]_-]|$)" {
+            match($0, /^[[:space:]]*/)
+            printf "%s:\n", substr($0, 1, RLENGTH)
+            next
+        }
+        { print }
+    '
+}
+
+order_inlined_libraries() {
+    local libs="$1"
+    local lib
+    local -a preferred=(common "${MAINFRAME_CORE_BUILD_LIBS[@]}")
+    local -A seen=()
+
+    for lib in "${preferred[@]}"; do
+        while IFS= read -r candidate; do
+            [[ "$candidate" != "$lib" ]] && continue
+            [[ -n "${seen[$candidate]:-}" ]] && continue
+            printf '%s\n' "$candidate"
+            seen["$candidate"]=1
+        done <<< "$libs"
+    done
+
+    while IFS= read -r candidate; do
+        [[ -z "$candidate" ]] && continue
+        [[ -n "${seen[$candidate]:-}" ]] && continue
+        printf '%s\n' "$candidate"
+    done <<< "$libs"
+}
+
+# =============================================================================
 # DEPENDENCY DETECTION
 # =============================================================================
 
@@ -210,11 +276,11 @@ resolve_library_deps() {
         # Find sourced libraries within this library
         while IFS= read -r line; do
             [[ "$line" =~ ^[[:space:]]*# ]] && continue
-            if [[ "$line" =~ (source|\.).*lib/([a-zA-Z0-9_-]+)\.sh ]]; then
+            if [[ "$line" =~ (source|\.)[[:space:]].*/([a-zA-Z0-9_-]+)\.sh ]]; then
                 local dep="${BASH_REMATCH[2]}"
                 [[ -z "${all_libs[$dep]:-}" ]] && queue+=("$dep")
             fi
-            if [[ "$line" =~ _mainframe_load_library[[:space:]]+[\"\']?([a-zA-Z0-9_-]+) ]]; then
+            if [[ "$lib" != "common" && "$line" =~ _mainframe_load_library[[:space:]]+[\"\']?([a-zA-Z0-9_-]+) ]]; then
                 local dep="${BASH_REMATCH[1]}"
                 [[ -z "${all_libs[$dep]:-}" ]] && queue+=("$dep")
             fi
@@ -295,20 +361,51 @@ build_static() {
     local raw_libs
     raw_libs=$(detect_sourced_libraries "$script")
 
+    local uses_common=false
     local libs=()
     while IFS= read -r lib; do
-        [[ -n "$lib" ]] && libs+=("$lib")
+        [[ -z "$lib" ]] && continue
+        if [[ "$lib" == "common" ]]; then
+            uses_common=true
+        else
+            libs+=("$lib")
+        fi
     done <<< "$raw_libs"
+
+    local resolve_inputs=()
+    if $uses_common; then
+        resolve_inputs+=("common")
+        if [[ ${#libs[@]} -eq 0 ]]; then
+            while IFS= read -r lib; do
+                [[ -n "$lib" ]] && resolve_inputs+=("$lib")
+            done < <(common_default_libraries)
+        else
+            resolve_inputs+=("${MAINFRAME_CORE_BUILD_LIBS[@]}")
+            resolve_inputs+=("${libs[@]}")
+        fi
+    else
+        resolve_inputs=("${libs[@]}")
+    fi
 
     # Resolve dependencies
     local all_libs
-    if [[ ${#libs[@]} -gt 0 ]]; then
-        all_libs=$(resolve_library_deps "${libs[@]}")
+    if [[ ${#resolve_inputs[@]} -gt 0 ]]; then
+        all_libs=$(resolve_library_deps "${resolve_inputs[@]}")
     else
         all_libs=""
     fi
 
-    _log_info "Detected libraries: $(echo "$all_libs" | tr '\n' ' ')"
+    local ordered_libs="$all_libs"
+    if [[ -n "$ordered_libs" ]]; then
+        ordered_libs=$(order_inlined_libraries "$ordered_libs")
+    fi
+
+    local lib_pattern=""
+    if [[ -n "$ordered_libs" ]]; then
+        lib_pattern=$(printf '%s\n' "$ordered_libs" | paste -sd'|' -)
+    fi
+
+    _log_info "Detected libraries: $(echo "$ordered_libs" | tr '\n' ' ')"
 
     # Detect external deps
     local external_deps
@@ -340,6 +437,11 @@ build_static() {
         echo "set -euo pipefail"
         echo ""
 
+        if $uses_common; then
+            echo "export MAINFRAME_SKIP_AUTOLOAD=1"
+            echo ""
+        fi
+
         # Inline each library
         while IFS= read -r lib; do
             [[ -z "$lib" ]] && continue
@@ -350,19 +452,17 @@ build_static() {
                 echo "# === Inlined: lib/${lib}.sh ==="
 
                 local lib_content
-                lib_content=$(cat "$lib_file")
-
-                # Remove shebang from libraries
-                lib_content=$(echo "$lib_content" | sed '1{/^#!/d}')
+                lib_content=$(strip_shebang_stream < "$lib_file")
+                lib_content=$(printf '%s\n' "$lib_content" | strip_included_source_lines "$lib_pattern")
 
                 # Strip comments if requested
                 if [[ "$strip_comments" == "true" ]]; then
-                    lib_content=$(echo "$lib_content" | grep -v '^[[:space:]]*#' | grep -v '^#')
+                    lib_content=$(printf '%s\n' "$lib_content" | grep -v '^[[:space:]]*#' | grep -v '^#' || true)
                 fi
 
                 # Minify if requested
                 if [[ "$minify" == "true" ]]; then
-                    lib_content=$(echo "$lib_content" | \
+                    lib_content=$(printf '%s\n' "$lib_content" | \
                         sed 's/^[[:space:]]*//' | \
                         sed '/^$/d' | \
                         tr '\n' ';' | \
@@ -378,7 +478,20 @@ build_static() {
             else
                 _log_warn "Library not found: $lib_file"
             fi
-        done <<< "$all_libs"
+        done <<< "$ordered_libs"
+
+        if [[ -n "$ordered_libs" ]]; then
+            echo ""
+            echo "# Register inlined libraries so mainframe_load remains idempotent."
+            echo "declare -gA _MAINFRAME_LOADED_LIBS 2>/dev/null || declare -A _MAINFRAME_LOADED_LIBS"
+            while IFS= read -r lib; do
+                [[ -z "$lib" ]] && continue
+                printf '_MAINFRAME_LOADED_LIBS["%s"]=1\n' "$lib"
+            done <<< "$ordered_libs"
+            if $uses_common; then
+                echo "unset MAINFRAME_SKIP_AUTOLOAD"
+            fi
+        fi
 
         echo ""
         echo "# === Original Script: ${script_basename} ==="
@@ -386,26 +499,17 @@ build_static() {
 
         # Inline the original script, removing source statements
         local script_content
-        script_content=$(cat "$script")
-
-        # Remove shebang
-        script_content=$(echo "$script_content" | sed '1{/^#!/d}')
-
-        # Remove MAINFRAME source statements (already inlined)
-        script_content=$(echo "$script_content" | \
-            grep -v 'source.*MAINFRAME_ROOT.*lib/' | \
-            grep -v 'source.*common\.sh' | \
-            grep -v '\. .*MAINFRAME_ROOT.*lib/' | \
-            grep -v 'mainframe_load')
+        script_content=$(strip_shebang_stream < "$script")
+        script_content=$(printf '%s\n' "$script_content" | strip_included_source_lines "$lib_pattern")
 
         # Strip comments if requested
         if [[ "$strip_comments" == "true" ]]; then
-            script_content=$(echo "$script_content" | grep -v '^[[:space:]]*#' || true)
+            script_content=$(printf '%s\n' "$script_content" | grep -v '^[[:space:]]*#' || true)
         fi
 
         # Minify if requested
         if [[ "$minify" == "true" ]]; then
-            script_content=$(echo "$script_content" | \
+            script_content=$(printf '%s\n' "$script_content" | \
                 sed 's/^[[:space:]]*//' | \
                 sed '/^$/d')
         fi
@@ -486,16 +590,39 @@ build_minimal() {
     local raw_libs
     raw_libs=$(detect_sourced_libraries "$script")
 
+    local uses_common=false
     local libs=()
     while IFS= read -r lib; do
-        [[ -n "$lib" ]] && libs+=("$lib")
+        [[ -z "$lib" ]] && continue
+        if [[ "$lib" == "common" ]]; then
+            uses_common=true
+        else
+            libs+=("$lib")
+        fi
     done <<< "$raw_libs"
 
-    local all_libs
-    if [[ ${#libs[@]} -gt 0 ]]; then
-        all_libs=$(resolve_library_deps "${libs[@]}")
+    local runtime_libs_spec=""
+    local resolve_inputs=()
+    if $uses_common; then
+        resolve_inputs+=("common")
+        if [[ ${#libs[@]} -eq 0 ]]; then
+            while IFS= read -r lib; do
+                [[ -n "$lib" ]] && resolve_inputs+=("$lib")
+            done < <(common_default_libraries)
+        else
+            runtime_libs_spec=$(printf '%s\n' "${libs[@]}" | awk '!seen[$0]++' | paste -sd, -)
+            resolve_inputs+=("${MAINFRAME_CORE_BUILD_LIBS[@]}")
+            resolve_inputs+=("${libs[@]}")
+        fi
     else
-        all_libs="common"  # At minimum, include common.sh
+        resolve_inputs=("${libs[@]}")
+    fi
+
+    local all_libs
+    if [[ ${#resolve_inputs[@]} -gt 0 ]]; then
+        all_libs=$(resolve_library_deps "${resolve_inputs[@]}")
+    else
+        all_libs=""
     fi
 
     _log_info "Including libraries: $(echo "$all_libs" | tr '\n' ' ')"
@@ -543,11 +670,17 @@ build_minimal() {
                 else
                     lib_name="common"
                 fi
+                if [[ "$lib_name" == "common" && -n "$runtime_libs_spec" ]]; then
+                    printf 'export MAINFRAME_LIBS="${MAINFRAME_LIBS:-%s}"\n' "$runtime_libs_spec"
+                fi
                 echo "source \"\${BASH_SOURCE%/*}/lib/${lib_name}.sh\""
             elif [[ "$line" =~ \.[[:space:]]+.*MAINFRAME_ROOT.*lib/ ]]; then
                 local lib_name
                 if [[ "$line" =~ lib/([a-zA-Z0-9_-]+)\.sh ]]; then
                     lib_name="${BASH_REMATCH[1]}"
+                    if [[ "$lib_name" == "common" && -n "$runtime_libs_spec" ]]; then
+                        printf 'export MAINFRAME_LIBS="${MAINFRAME_LIBS:-%s}"\n' "$runtime_libs_spec"
+                    fi
                     echo ". \"\${BASH_SOURCE%/*}/lib/${lib_name}.sh\""
                 else
                     echo "$line"
@@ -570,7 +703,13 @@ set -euo pipefail
 
 BUNDLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export MAINFRAME_ROOT="$BUNDLE_DIR"
+EOF
 
+    if [[ -n "$runtime_libs_spec" ]]; then
+        printf 'export MAINFRAME_LIBS="${MAINFRAME_LIBS:-%s}"\n' "$runtime_libs_spec" >> "${bundle_dir}/run.sh"
+    fi
+
+    cat >> "${bundle_dir}/run.sh" << 'EOF'
 exec bash "$BUNDLE_DIR/agent.sh" "$@"
 EOF
     chmod +x "${bundle_dir}/run.sh"

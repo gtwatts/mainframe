@@ -1,113 +1,138 @@
 #!/usr/bin/env bats
 
-# Tests for workpool.sh - Work Pool Management
-# Critical: Pool operations, semaphore race condition fix
+# Smoke tests for the current workpool.sh API surface.
 
 load ../test_helper
 
 setup() {
-    source "$MAINFRAME_ROOT/lib/common.sh"
     TEST_DIR=$(mktemp -d)
-    export MAINFRAME_WORKPOOL_DIR="$TEST_DIR/workpools"
-    mkdir -p "$MAINFRAME_WORKPOOL_DIR"
+    export POOL_STATE_DIR="$TEST_DIR/pools"
+
+    source "$MAINFRAME_ROOT/lib/common.sh"
+    source "$MAINFRAME_ROOT/lib/workpool.sh"
 }
 
 teardown() {
     rm -rf "$TEST_DIR"
 }
 
-@test "workpool_create initializes new pool" {
-    workpool_create "test_pool"
-    [ -d "$MAINFRAME_WORKPOOL_DIR/test_pool" ]
-    [ -f "$MAINFRAME_WORKPOOL_DIR/test_pool/queue" ]
+@test "pool_create initializes pool directories" {
+    pool_create "test_pool" 2
+    [ -d "$POOL_STATE_DIR/test_pool/jobs" ]
+    [ -d "$POOL_STATE_DIR/test_pool/results" ]
 }
 
-@test "workpool_destroy removes pool" {
-    workpool_create "test_pool"
-    workpool_destroy "test_pool"
-    [ ! -d "$MAINFRAME_WORKPOOL_DIR/test_pool" ]
+@test "pool_destroy removes the pool" {
+    pool_create "test_pool" 2
+    pool_destroy "test_pool"
+    [ ! -d "$POOL_STATE_DIR/test_pool" ]
 }
 
-@test "workpool_push adds work item" {
-    workpool_create "test_pool"
-    workpool_push "test_pool" "task1"
-    run workpool_count "test_pool"
-    [ "$output" -eq 1 ]
-}
+@test "pool_submit and pool_wait execute a job asynchronously" {
+    pool_create "test_pool" 2
 
-@test "workpool_pop removes and returns work item" {
-    workpool_create "test_pool"
-    workpool_push "test_pool" "task1"
-    result=$(workpool_pop "test_pool")
-    [ "$result" = "task1" ]
-}
+    job_id=$(pool_submit "test_pool" sleep 0.5)
+    run pool_result "test_pool" "$job_id"
+    [ "$status" -eq 1 ]
 
-@test "workpool_pop returns empty when pool empty" {
-    workpool_create "test_pool"
-    result=$(workpool_pop "test_pool")
-    [ -z "$result" ]
-}
-
-@test "workpool_count returns correct number" {
-    workpool_create "test_pool"
-    workpool_push "test_pool" "task1"
-    workpool_push "test_pool" "task2"
-    workpool_push "test_pool" "task3"
-    count=$(workpool_count "test_pool")
-    [ "$count" -eq 3 ]
-}
-
-@test "workpool_clear removes all items" {
-    workpool_create "test_pool"
-    workpool_push "test_pool" "task1"
-    workpool_push "test_pool" "task2"
-    workpool_clear "test_pool"
-    count=$(workpool_count "test_pool")
-    [ "$count" -eq 0 ]
-}
-
-@test "workpool_semaphore_acquire respects limit" {
-    workpool_create "test_pool" 2  # max 2 concurrent
-    workpool_semaphore_acquire "test_pool"
-    workpool_semaphore_acquire "test_pool"
-    run workpool_semaphore_acquire "test_pool" 1  # timeout 1s
-    [ "$status" -eq 1 ]  # timeout, semaphore full
-}
-
-@test "workpool_semaphore_release frees slot" {
-    workpool_create "test_pool" 1
-    workpool_semaphore_acquire "test_pool"
-    workpool_semaphore_release "test_pool"
-    run workpool_semaphore_acquire "test_pool" 1
-    [ "$status" -eq 0 ]  # acquired successfully
-}
-
-@test "workpool_list returns all pools" {
-    workpool_create "pool1"
-    workpool_create "pool2"
-    workpool_create "pool3"
-    result=$(workpool_list)
-    [[ "$result" == *"pool1"* ]]
-    [[ "$result" == *"pool2"* ]]
-    [[ "$result" == *"pool3"* ]]
-}
-
-@test "workpool_exists returns true for existing pool" {
-    workpool_create "test_pool"
-    run workpool_exists "test_pool"
+    run pool_wait "test_pool" "$job_id"
     [ "$status" -eq 0 ]
+
+    status_text=$(pool_status "test_pool" "$job_id")
+    [ "$status_text" = "done" ]
 }
 
-@test "workpool_exists returns false for non-existing pool" {
-    run workpool_exists "nonexistent"
+@test "pool_result returns completed stdout" {
+    pool_create "test_pool" 2
+
+    job_id=$(pool_submit "test_pool" printf "hello")
+    pool_wait "test_pool" "$job_id"
+
+    result=$(pool_result "test_pool" "$job_id")
+    [ "$result" = "hello" ]
+}
+
+@test "pool_submit_batch returns one job per command" {
+    pool_create "test_pool" 2
+
+    cat > "$TEST_DIR/commands.txt" <<'EOF'
+echo first
+echo second
+EOF
+
+    job_ids=$(pool_submit_batch "test_pool" "$TEST_DIR/commands.txt")
+    run pool_wait "test_pool"
+    [ "$status" -eq 0 ]
+
+    count=$(printf '%s\n' "$job_ids" | wc -l | tr -d ' ')
+    [ "$count" -eq 2 ]
+}
+
+@test "pool_map fans out a command over items" {
+    pool_create "test_pool" 2
+
+    job_ids=$(pool_map "test_pool" echo "alpha" "beta")
+    pool_wait "test_pool"
+
+    results=$(pool_results "test_pool")
+    [[ "$job_ids" == *"job_1"* ]]
+    [[ "$job_ids" == *"job_2"* ]]
+    [[ "$results" == *'"result":"alpha"'* ]]
+    [[ "$results" == *'"result":"beta"'* ]]
+}
+
+@test "pool_wait returns failure when any job fails" {
+    pool_create "test_pool" 2
+
+    pool_submit "test_pool" true > /dev/null
+    pool_submit "test_pool" false > /dev/null
+
+    run pool_wait "test_pool"
     [ "$status" -eq 1 ]
 }
 
-@test "workpool_peek returns item without removing" {
-    workpool_create "test_pool"
-    workpool_push "test_pool" "task1"
-    result=$(workpool_peek "test_pool")
-    [ "$result" = "task1" ]
-    count=$(workpool_count "test_pool")
-    [ "$count" -eq 1 ]  # still there
+@test "pool_info reports counts for completed jobs" {
+    pool_create "test_pool" 2
+
+    pool_submit "test_pool" true > /dev/null
+    pool_submit "test_pool" false > /dev/null
+    run pool_wait "test_pool"
+    [ "$status" -eq 1 ]
+
+    info=$(pool_info "test_pool")
+    [[ "$info" == *'"done":1'* ]]
+    [[ "$info" == *'"failed":1'* ]]
+}
+
+@test "pool_semaphore limits concurrent entries" {
+    pool_create "test_pool" 2
+    pool_semaphore "test_pool" 1
+
+    job1=$(pool_submit "test_pool" sleep 0.2)
+    job2=$(pool_submit "test_pool" sleep 0.2)
+
+    sleep 0.05
+    sem_count=$(cat "$POOL_STATE_DIR/test_pool/semaphore_count")
+    [ "$sem_count" -eq 1 ]
+
+    pool_wait "test_pool" "$job1"
+    pool_wait "test_pool" "$job2"
+
+    sem_count=$(cat "$POOL_STATE_DIR/test_pool/semaphore_count")
+    [ "$sem_count" -eq 0 ]
+}
+
+@test "pool_list_jobs lists submitted work across pools" {
+    pool_create "pool_a" 1
+    pool_create "pool_b" 1
+
+    pool_submit "pool_a" echo "from a" > /dev/null
+    pool_submit "pool_b" echo "from b" > /dev/null
+    pool_wait "pool_a"
+    pool_wait "pool_b"
+
+    jobs_a=$(pool_list_jobs "pool_a")
+    jobs_b=$(pool_list_jobs "pool_b")
+    [ "$jobs_a" = "job_1" ]
+    [ "$jobs_b" = "job_1" ]
 }

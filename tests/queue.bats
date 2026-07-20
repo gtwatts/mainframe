@@ -65,7 +65,7 @@ count_callback() { ((test_count++)) || true; }
     queue_push q "first"
     queue_push q "second"
     local result
-    result=$(queue_pop q)
+    queue_pop_v q result
     [ "$result" = "first" ]
     [ "${#q[@]}" -eq 1 ]
 }
@@ -75,9 +75,13 @@ count_callback() { ((test_count++)) || true; }
     queue_push q "1"
     queue_push q "2"
     queue_push q "3"
-    [ "$(queue_pop q)" = "1" ]
-    [ "$(queue_pop q)" = "2" ]
-    [ "$(queue_pop q)" = "3" ]
+    local result
+    queue_pop_v q result
+    [ "$result" = "1" ]
+    queue_pop_v q result
+    [ "$result" = "2" ]
+    queue_pop_v q result
+    [ "$result" = "3" ]
 }
 
 @test "queue_pop fails on empty queue" {
@@ -192,7 +196,7 @@ count_callback() { ((test_count++)) || true; }
     stack_push s "bottom"
     stack_push s "top"
     local result
-    result=$(stack_pop s)
+    stack_pop_v s result
     [ "$result" = "top" ]
     [ "${#s[@]}" -eq 1 ]
 }
@@ -202,9 +206,13 @@ count_callback() { ((test_count++)) || true; }
     stack_push s "1"
     stack_push s "2"
     stack_push s "3"
-    [ "$(stack_pop s)" = "3" ]
-    [ "$(stack_pop s)" = "2" ]
-    [ "$(stack_pop s)" = "1" ]
+    local result
+    stack_pop_v s result
+    [ "$result" = "3" ]
+    stack_pop_v s result
+    [ "$result" = "2" ]
+    stack_pop_v s result
+    [ "$result" = "1" ]
 }
 
 @test "stack_pop fails on empty stack" {
@@ -325,7 +333,7 @@ count_callback() { ((test_count++)) || true; }
     deque_push_back d "front"
     deque_push_back d "back"
     local result
-    result=$(deque_pop_front d)
+    deque_pop_front_v d result
     [ "$result" = "front" ]
     [ "${#d[@]}" -eq 1 ]
 }
@@ -343,7 +351,7 @@ count_callback() { ((test_count++)) || true; }
     deque_push_back d "front"
     deque_push_back d "back"
     local result
-    result=$(deque_pop_back d)
+    deque_pop_back_v d result
     [ "$result" = "back" ]
     [ "${#d[@]}" -eq 1 ]
 }
@@ -450,9 +458,13 @@ count_callback() { ((test_count++)) || true; }
     deque_push_back d "1"
     deque_push_back d "2"
     deque_push_back d "3"
-    [ "$(deque_pop_front d)" = "1" ]
-    [ "$(deque_pop_front d)" = "2" ]
-    [ "$(deque_pop_front d)" = "3" ]
+    local result
+    deque_pop_front_v d result
+    [ "$result" = "1" ]
+    deque_pop_front_v d result
+    [ "$result" = "2" ]
+    deque_pop_front_v d result
+    [ "$result" = "3" ]
 }
 
 @test "deque works as stack (LIFO)" {
@@ -460,9 +472,13 @@ count_callback() { ((test_count++)) || true; }
     deque_push_back d "1"
     deque_push_back d "2"
     deque_push_back d "3"
-    [ "$(deque_pop_back d)" = "3" ]
-    [ "$(deque_pop_back d)" = "2" ]
-    [ "$(deque_pop_back d)" = "1" ]
+    local result
+    deque_pop_back_v d result
+    [ "$result" = "3" ]
+    deque_pop_back_v d result
+    [ "$result" = "2" ]
+    deque_pop_back_v d result
+    [ "$result" = "1" ]
 }
 
 # =============================================================================
@@ -497,7 +513,7 @@ count_callback() { ((test_count++)) || true; }
     pqueue_push pq 10 "high"
     pqueue_push pq 1 "low"
     local result
-    result=$(pqueue_pop pq)
+    pqueue_pop_v pq result
     [ "$result" = "high" ]
 }
 
@@ -506,9 +522,13 @@ count_callback() { ((test_count++)) || true; }
     pqueue_push pq 1 "low"
     pqueue_push pq 10 "high"
     pqueue_push pq 5 "medium"
-    [ "$(pqueue_pop pq)" = "high" ]
-    [ "$(pqueue_pop pq)" = "medium" ]
-    [ "$(pqueue_pop pq)" = "low" ]
+    local result
+    pqueue_pop_v pq result
+    [ "$result" = "high" ]
+    pqueue_pop_v pq result
+    [ "$result" = "medium" ]
+    pqueue_pop_v pq result
+    [ "$result" = "low" ]
 }
 
 @test "pqueue_pop_v stores value in variable" {
@@ -581,9 +601,13 @@ count_callback() { ((test_count++)) || true; }
     pqueue_push pq -5 "very-low"
     pqueue_push pq 0 "zero"
     pqueue_push pq 5 "positive"
-    [ "$(pqueue_pop pq)" = "positive" ]
-    [ "$(pqueue_pop pq)" = "zero" ]
-    [ "$(pqueue_pop pq)" = "very-low" ]
+    local result
+    pqueue_pop_v pq result
+    [ "$result" = "positive" ]
+    pqueue_pop_v pq result
+    [ "$result" = "zero" ]
+    pqueue_pop_v pq result
+    [ "$result" = "very-low" ]
 }
 
 @test "pqueue handles equal priorities (stable)" {
@@ -636,7 +660,7 @@ count_callback() { ((test_count++)) || true; }
     ring_push r r_meta "first"
     ring_push r r_meta "second"
     local result
-    result=$(ring_pop r r_meta)
+    ring_pop_v r r_meta result
     [ "$result" = "first" ]
     [ "$(ring_size r r_meta)" = "1" ]
 }
@@ -886,15 +910,20 @@ count_callback() { ((test_count++)) || true; }
     queue_push q ""
     queue_push q "non-empty"
     [ "${#q[@]}" -eq 2 ]
-    [ "$(queue_pop q)" = "" ]
+    local result
+    queue_pop_v q result
+    [ "$result" = "" ]
 }
 
 @test "stack handles empty strings" {
     stack_create s
     stack_push s ""
     stack_push s "non-empty"
-    [ "$(stack_pop s)" = "non-empty" ]
-    [ "$(stack_pop s)" = "" ]
+    local result
+    stack_pop_v s result
+    [ "$result" = "non-empty" ]
+    stack_pop_v s result
+    [ "$result" = "" ]
 }
 
 @test "queue handles special characters" {

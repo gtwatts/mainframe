@@ -13,6 +13,7 @@
 setup() {
     BATS_TEST_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
     MAINFRAME_ROOT="${BATS_TEST_DIR}/../../.."
+    ORIGINAL_PATH="$PATH"
 
     # Create temp directory for test artifacts
     TEST_TMPDIR="$(mktemp -d)"
@@ -27,6 +28,7 @@ setup() {
 
 # Teardown: Clean up test artifacts
 teardown() {
+    PATH="$ORIGINAL_PATH"
     rm -rf "$TEST_TMPDIR"
 }
 
@@ -245,7 +247,7 @@ EOF
     create_mock_gcloud 'exit 0'
     result=$(gcp_storage_list)
     [[ "$result" =~ "success\":true" ]]
-    [[ "$result" =~ "data\":\[\]" ]]
+    [[ "$result" == *'"data":[]'* ]]
 }
 
 @test "gcp_storage_upload: uploads file successfully" {
@@ -371,7 +373,7 @@ EOF
     '
     result=$(gcp_compute_list)
     [[ "$result" =~ "success\":true" ]]
-    [[ "$result" =~ "data\":\[\]" ]]
+    [[ "$result" == *'"data":[]'* ]]
 }
 
 @test "gcp_compute_list: handles gcloud failure" {
@@ -482,7 +484,7 @@ EOJSON
     '
     result=$(gcp_functions_list)
     [[ "$result" =~ "success\":true" ]]
-    [[ "$result" =~ "data\":\[\]" ]]
+    [[ "$result" == *'"data":[]'* ]]
 }
 
 @test "gcp_functions_list: handles gcloud failure" {

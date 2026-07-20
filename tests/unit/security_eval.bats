@@ -56,7 +56,7 @@ teardown() {
     source "$MAINFRAME_ROOT/lib/procsub.sh"
 
     count=0
-    my_callback() { ((count++)); }
+    my_callback() { count=$((count + 1)); }
 
     for_each_line "echo -e 'a\nb\nc'" my_callback
 
@@ -95,11 +95,8 @@ teardown() {
 }
 
 @test "stream: stream_fanout uses subprocess isolation" {
-    source "$MAINFRAME_ROOT/lib/stream.sh" 2>/dev/null || skip "stream.sh has dependencies"
-
-    result=$(echo "test" | stream_fanout 'wc -c')
-    # Should count characters
-    [[ -n "$result" ]]
+    run bash -c 'export MAINFRAME_SKIP_AUTOLOAD=1; source "'"$MAINFRAME_ROOT"'/lib/stream.sh"; result=$(echo "test" | stream_fanout "wc -c"); [[ -n "$result" ]]'
+    [[ "$status" -eq 0 ]]
 }
 
 @test "stream: stream_chain uses subprocess isolation" {
@@ -155,16 +152,13 @@ teardown() {
     source "$MAINFRAME_ROOT/lib/streams.sh"
 
     declare -a arr
-    echo -e "a\nb\nc" | stream_collect arr
+    stream_collect arr < <(printf "a\nb\nc\n")
     [[ ${#arr[@]} -eq 3 ]]
     [[ "${arr[0]}" == "a" ]]
 }
 
 @test "streams: stream_collect rejects invalid array names" {
-    source "$MAINFRAME_ROOT/lib/streams.sh"
-
-    # Invalid array name should fail
-    run bash -c 'echo test | stream_collect "invalid;name"'
+    run bash -c 'source "'"$MAINFRAME_ROOT"'/lib/streams.sh"; echo test | stream_collect "invalid;name"'
     [[ "$status" -ne 0 ]]
 }
 
@@ -246,7 +240,7 @@ teardown() {
     source "$MAINFRAME_ROOT/lib/agent_exec.sh"
 
     # Simple transaction should work
-    result=$(agent_transaction --label "test" <<'EOF'
+    result=$(agent_transaction --label "test" <<EOF
 do: mkdir -p "$TEST_TMPDIR/tx_test"
 undo: rm -rf "$TEST_TMPDIR/tx_test"
 EOF
@@ -276,7 +270,7 @@ EOF
     marker="$TEST_TMPDIR/injection_marker_procsub"
 
     # Attempt injection - should be isolated in subprocess
-    capture_output result "\$(touch '$marker' && echo pwned)"
+    capture_output result "\$(touch '$marker' && echo pwned)" || true
 
     # Marker should not exist
     [[ ! -f "$marker" ]]

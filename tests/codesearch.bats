@@ -655,13 +655,13 @@ EOF
 # =============================================================================
 
 @test "code_symbol_at: identifies symbol at position" {
-    run code_symbol_at "$TEST_DIR/test_module.py" 23 5
+    run code_symbol_at "$TEST_DIR/test_module.py" 31 5
     [ "$status" -eq 0 ]
     [[ "$output" == *"def"* ]] || [[ "$output" == *"authenticate"* ]] || [[ "$output" == *"identifier"* ]]
 }
 
 @test "code_symbol_at: outputs JSON format" {
-    run code_symbol_at "$TEST_DIR/test_module.py" 23 5 --json
+    run code_symbol_at "$TEST_DIR/test_module.py" 31 5 --json
     [ "$status" -eq 0 ]
     [[ "$output" == "{"* ]]
     [[ "$output" == *'"symbol"'* ]]

@@ -32,7 +32,7 @@ _mainframe_load_config() {
     local config_file="${MAINFRAME_CONFIG:-$HOME/.mainframe/config}"
     [[ -f "$config_file" ]] || return 0
 
-    local key value
+    local key value export_key
     while IFS='=' read -r key value || [[ -n "$key" ]]; do
         # Skip comments and empty lines
         [[ "$key" =~ ^[[:space:]]*# ]] && continue
@@ -49,7 +49,12 @@ _mainframe_load_config() {
 
         # Uppercase the key and export with MAINFRAME_ prefix
         key=$(printf '%s' "$key" | tr '[:lower:]' '[:upper:]')
-        export "MAINFRAME_$key"="$value"
+        export_key="MAINFRAME_${key}"
+
+        # Explicit environment/bootstrap variables win over config defaults.
+        [[ -n "${!export_key+x}" ]] && continue
+
+        export "$export_key"="$value"
     done < "$config_file"
 }
 _mainframe_load_config
@@ -162,8 +167,33 @@ readonly LOG_LEVEL_WARN=2
 readonly LOG_LEVEL_ERROR=3
 readonly LOG_LEVEL_FATAL=4
 
-# Current log level (can be overridden by BASHER_LOG_LEVEL env var)
-BASHER_LOG_LEVEL="${BASHER_LOG_LEVEL:-$LOG_LEVEL_INFO}"
+_mainframe_parse_log_level() {
+    local raw_level="${1:-$LOG_LEVEL_INFO}"
+    local normalized_level
+    normalized_level=$(printf '%s' "$raw_level" | tr '[:upper:]' '[:lower:]')
+
+    case "$normalized_level" in
+        debug) printf '%s' "$LOG_LEVEL_DEBUG" ;;
+        info)  printf '%s' "$LOG_LEVEL_INFO" ;;
+        warn|warning) printf '%s' "$LOG_LEVEL_WARN" ;;
+        error) printf '%s' "$LOG_LEVEL_ERROR" ;;
+        fatal) printf '%s' "$LOG_LEVEL_FATAL" ;;
+        ''|*[!0-9]*)
+            printf '%s' "$LOG_LEVEL_INFO"
+            ;;
+        *)
+            if [[ "$raw_level" =~ ^[0-4]$ ]]; then
+                printf '%s' "$raw_level"
+            else
+                printf '%s' "$LOG_LEVEL_INFO"
+            fi
+            ;;
+    esac
+}
+
+# Current log level.
+# Priority: BASHER_LOG_LEVEL env > MAINFRAME_LOG_LEVEL config/env > default INFO.
+BASHER_LOG_LEVEL="$(_mainframe_parse_log_level "${BASHER_LOG_LEVEL:-${MAINFRAME_LOG_LEVEL:-$LOG_LEVEL_INFO}}")"
 
 # Log file (optional, set BASHER_LOG_FILE to enable file logging)
 BASHER_LOG_FILE="${BASHER_LOG_FILE:-}"
@@ -280,6 +310,44 @@ assert() {
 _mainframe_cleanup_files=()
 _mainframe_cleanup_dirs=()
 _mainframe_cleanup_funcs=()
+_MAINFRAME_EXIT_TRAP_COMMANDS=()
+_MAINFRAME_PREVIOUS_EXIT_TRAP=""
+_MAINFRAME_EXIT_TRAP_INSTALLED=0
+
+# Capture the current trap command for a signal so we can preserve it.
+_mainframe_get_trap_command() {
+    local signal="$1"
+    local trap_def
+
+    trap_def=$(trap -p "$signal") || return 0
+    [[ -n "$trap_def" ]] || return 0
+
+    trap_def=${trap_def#trap -- \'}
+    trap_def=${trap_def%\' "$signal"}
+    printf '%s\n' "$trap_def"
+}
+
+# Register an EXIT trap command without clobbering any pre-existing handler.
+_mainframe_add_exit_trap() {
+    local trap_command="$1"
+
+    [[ -n "${trap_command//[[:space:]]/}" ]] || return 1
+
+    if [[ "${_MAINFRAME_EXIT_TRAP_INSTALLED:-0}" != "1" ]]; then
+        if (( ${BASH_SUBSHELL:-0} == 0 )); then
+            _MAINFRAME_PREVIOUS_EXIT_TRAP="$(_mainframe_get_trap_command EXIT)"
+        else
+            # Inherited EXIT traps from parent shells are not safe to replay
+            # inside subshells; Bats uses EXIT internally and will emit
+            # duplicate/malformed results if we dispatch its parent trap here.
+            _MAINFRAME_PREVIOUS_EXIT_TRAP=""
+        fi
+        trap '_mainframe_dispatch_exit_traps "$?"' EXIT
+        _MAINFRAME_EXIT_TRAP_INSTALLED=1
+    fi
+
+    _MAINFRAME_EXIT_TRAP_COMMANDS+=("$trap_command")
+}
 
 # Register a cleanup function (called by name, no eval)
 # Usage: on_exit my_cleanup_function
@@ -287,9 +355,36 @@ on_exit() {
     _mainframe_cleanup_funcs+=("$1")
 }
 
-# Execute all cleanup handlers safely
+# Execute registered EXIT trap handlers in LIFO order while preserving the
+# original shell exit status and any pre-existing EXIT trap.
+_mainframe_dispatch_exit_traps() {
+    local exit_code="$1"
+    local idx trap_command
+    local restore_errexit=0
+
+    if [[ $- == *e* ]]; then
+        restore_errexit=1
+        set +e
+    fi
+
+    for ((idx=${#_MAINFRAME_EXIT_TRAP_COMMANDS[@]} - 1; idx >= 0; idx -= 1)); do
+        trap_command="${_MAINFRAME_EXIT_TRAP_COMMANDS[idx]}"
+        builtin eval -- "$trap_command" || true
+    done
+
+    if [[ -n "${_MAINFRAME_PREVIOUS_EXIT_TRAP:-}" ]]; then
+        builtin eval -- "$_MAINFRAME_PREVIOUS_EXIT_TRAP" || true
+    fi
+
+    if (( restore_errexit )); then
+        set -e
+    fi
+
+    return "$exit_code"
+}
+
+# Execute all cleanup handlers safely.
 _mainframe_run_cleanup() {
-    local exit_code=$?
     # Remove tracked temp files
     local f
     for f in "${_mainframe_cleanup_files[@]}"; do
@@ -304,12 +399,11 @@ _mainframe_run_cleanup() {
     for func in "${_mainframe_cleanup_funcs[@]}"; do
         "$func" 2>/dev/null || true
     done
-    exit $exit_code
 }
 
 # Set up trap (only if not already set)
 if [[ -z "${_MAINFRAME_TRAP_SET:-}" ]]; then
-    trap _mainframe_run_cleanup EXIT
+    _mainframe_add_exit_trap "_mainframe_run_cleanup"
     readonly _MAINFRAME_TRAP_SET=1
 fi
 
@@ -416,10 +510,16 @@ is_valid_json() {
     local input="$1"
 
     if [[ -f "$input" ]]; then
-        jq empty "$input" 2>/dev/null
+        if jq empty "$input" >/dev/null 2>&1; then
+            return 0
+        fi
     else
-        jq empty <<< "$input" 2>/dev/null
+        if jq empty <<< "$input" >/dev/null 2>&1; then
+            return 0
+        fi
     fi
+
+    return 1
 }
 
 # Validate email format
@@ -685,6 +785,9 @@ _MAINFRAME_TIER_AI=(
 
 declare -gA MAINFRAME_BUNDLES=(
     [agent_minimal]="core,agent,awm,validation"
+    [agent_memory]="core,awm,awm_storage,awm_tiers,awm_stream,agent_context"
+    [agent_runtime]="core,agent,agent_exec,agent_comm,agent_safety,agent_loop,workflow,taskstate,validation,retry,queue,state_machine,awm,awm_storage,awm_tiers,awm_stream"
+    [agent_full]="core,agent,agent_exec,agent_comm,agent_safety,agent_ai,agent_loop,agent_context,workflow,taskstate,observe,idempotent,atomic,validation,retry,queue,state_machine,diff,awm,awm_storage,awm_tiers,awm_stream,embeddings,rag"
     [data]="core,json,csv,datetime,parsers"
     [net]="core,http,burl,github"
     [devops]="core,git,docker,github_actions"
@@ -699,7 +802,7 @@ declare -gA MAINFRAME_BUNDLES=(
 # Usage: mainframe_bundle "agent_minimal"
 # Returns: 0 on success, 1 if bundle not found
 mainframe_bundle() {
-    local bundle="${1:-agent_minimal}"
+    local bundle="${1:-${MAINFRAME_DEFAULT_BUNDLE:-agent_minimal}}"
     local libs="${MAINFRAME_BUNDLES[$bundle]:-}"
 
     [[ -z "$libs" ]] && {
@@ -771,6 +874,7 @@ fi
 # =============================================================================
 
 declare -g MAINFRAME_LAZY="${MAINFRAME_LAZY:-0}"
+declare -g MAINFRAME_SKIP_AUTOLOAD="${MAINFRAME_SKIP_AUTOLOAD:-0}"
 
 # --- Loader Functions --------------------------------------------------------
 
@@ -826,10 +930,51 @@ _mainframe_load_tier() {
     done
 }
 
+# Load a named bundle from MAINFRAME_BUNDLES.
+_mainframe_load_bundle() {
+    local bundle_name="$1"
+    local libs="${MAINFRAME_BUNDLES[$bundle_name]:-}"
+    local lib
+    local IFS=','
+
+    [[ -n "$libs" ]] || {
+        log_warn "Unknown bundle: ${bundle_name}"
+        return 1
+    }
+
+    if [[ "$libs" == "all" ]]; then
+        _mainframe_load_tier "standard"
+        _mainframe_load_tier "extended"
+        _mainframe_load_tier "ai"
+        return 0
+    fi
+
+    for lib in $libs; do
+        lib="${lib#"${lib%%[![:space:]]*}"}"
+        lib="${lib%"${lib##*[![:space:]]}"}"
+        case "$lib" in
+            core|standard|extended|ai)
+                [[ "$lib" == "core" ]] || _mainframe_load_tier "$lib"
+                ;;
+            bundle:*)
+                _mainframe_load_bundle "${lib#bundle:}"
+                ;;
+            *+*)
+                _mainframe_load_selected "$lib"
+                ;;
+            *)
+                [[ -n "$lib" ]] && _mainframe_load_library "$lib"
+                ;;
+        esac
+    done
+}
+
 # Parse MAINFRAME_LIBS value and load requested libraries
-# Supports: comma-separated names, tier names with +, 'all'
+# Supports: comma-separated names, tier names with +, bundle:name, 'all'
 _mainframe_load_selected() {
     local libs_spec="$1"
+    local IFS=','
+    local item
 
     # Always load core tier first
     _mainframe_load_tier "core"
@@ -866,21 +1011,38 @@ _mainframe_load_selected() {
         return
     fi
 
-    # Handle comma-separated library names (e.g., 'json,validation,git')
-    local IFS=','
-    local lib
-    for lib in $libs_spec; do
+    # Handle comma-separated bundle/tier/library selections
+    for item in $libs_spec; do
         # Trim whitespace
-        lib="${lib#"${lib%%[![:space:]]*}"}"
-        lib="${lib%"${lib##*[![:space:]]}"}"
-        [[ -n "$lib" ]] && _mainframe_load_library "$lib"
+        item="${item#"${item%%[![:space:]]*}"}"
+        item="${item%"${item##*[![:space:]]}"}"
+        [[ -n "$item" ]] || continue
+
+        case "$item" in
+            core)
+                ;;
+            standard|extended|ai)
+                _mainframe_load_tier "$item"
+                ;;
+            bundle:*)
+                _mainframe_load_bundle "${item#bundle:}"
+                ;;
+            *+*)
+                _mainframe_load_selected "$item"
+                ;;
+            *)
+                _mainframe_load_library "$item"
+                ;;
+        esac
     done
 }
 
 # --- Load Decision -----------------------------------------------------------
 
 # Check for function-level lazy loading mode
-if [[ "${MAINFRAME_LAZY:-0}" == "1" ]]; then
+if [[ "${MAINFRAME_SKIP_AUTOLOAD:-0}" == "1" ]]; then
+    :
+elif [[ "${MAINFRAME_LAZY:-0}" == "1" ]]; then
     # Function-level lazy loading: load only lazy.sh, create stubs for everything else
     # This is the most efficient mode for AI agents
     _mainframe_load_library "lazy"

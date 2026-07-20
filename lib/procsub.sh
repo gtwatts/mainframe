@@ -33,7 +33,16 @@ readonly _MAINFRAME_PROCSUB_LOADED=1
 # Usage: _procsub_safe_exec "command string"
 # Security: Runs in subprocess, cannot affect parent shell variables
 _procsub_safe_exec() {
-    bash -c "$1"
+    local cmd="$1"
+
+    # Block command substitution so callers cannot smuggle side effects through
+    # a "read-only" capture helper.
+    if [[ "$cmd" == *'`'* ]] || [[ "$cmd" == *'$('* && "$cmd" != *'$(('* ]]; then
+        printf 'procsub: blocked dangerous pattern in command: %s\n' "$cmd" >&2
+        return 1
+    fi
+
+    bash -c "$cmd"
 }
 
 # Validate and execute a function by name (no eval needed)

@@ -9,6 +9,7 @@
 #   functions   List all available functions
 #   help        Show detailed help for a specific function
 #   search      Search functions by name or description
+#   awm         Agent Working Memory lifecycle, retrieval, and handoff tools
 #   quickref    Show compact function signatures (with --search for lookup)
 #   fzf         Interactive fuzzy finder for functions (requires fzf)
 #   explore     TUI browser for functions (requires dialog/whiptail)
@@ -23,7 +24,7 @@ set -euo pipefail
 
 # Determine MAINFRAME root directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export MAINFRAME_ROOT="${MAINFRAME_ROOT:-$SCRIPT_DIR}"
+export MAINFRAME_ROOT="$SCRIPT_DIR"
 
 # Source common library
 source "$MAINFRAME_ROOT/lib/common.sh"
@@ -44,6 +45,7 @@ Commands:
   help        Show detailed help for a specific function
   search      Search functions by name pattern
   count       Count total functions available
+  awm         Manage Agent Working Memory sessions and handoffs
   quickref    Show compact function signatures (with --search for lookup)
   fzf         Interactive fuzzy finder with preview (requires fzf)
   explore     TUI browser with drill-down menus (requires dialog/whiptail)
@@ -66,6 +68,9 @@ Examples:
   mainframe help json_object
   mainframe help validate_email
   mainframe search "array"
+  mainframe awm init code-audit
+  mainframe awm checkpoint --session <sid> current_step 3 --importance high
+  mainframe awm find --session <sid> postgres --kind mixed
   mainframe quickref json
   mainframe quickref --list
   mainframe quickref --search hash
@@ -337,6 +342,8 @@ cmd_benchmark() {
 cmd_test() {
     local bats="${MAINFRAME_ROOT}/tests/bats/bin/bats"
     local tests_dir="${MAINFRAME_ROOT}/tests"
+    local test_shell=""
+    local candidate=""
 
     if [[ ! -x "$bats" ]]; then
         echo "BATS not installed. Run: make test-deps"
@@ -347,7 +354,22 @@ cmd_test() {
         return 1
     fi
 
-    "$bats" "${tests_dir}/unit/" "${tests_dir}/integration/"
+    for candidate in "${BASH:-}" /opt/homebrew/bin/bash /usr/local/bin/bash "$(command -v bash 2>/dev/null)"; do
+        [[ -z "$candidate" || ! -x "$candidate" ]] && continue
+        if "$candidate" -lc '(( BASH_VERSINFO[0] >= 4 ))' >/dev/null 2>&1; then
+            test_shell="$candidate"
+            break
+        fi
+    done
+
+    if [[ -z "$test_shell" ]]; then
+        echo "MAINFRAME tests require Bash 4.0+."
+        echo "Install a newer bash and ensure it is available at /opt/homebrew/bin/bash,"
+        echo "/usr/local/bin/bash, or earlier in PATH."
+        return 1
+    fi
+
+    BATS_TEST_SHELL="$test_shell" "$bats" "${tests_dir}/unit/" "${tests_dir}/integration/"
 }
 
 cmd_update() {
@@ -364,6 +386,211 @@ cmd_update() {
     git pull --rebase origin main
     echo ""
     echo "Updated! Run 'mainframe doctor' to verify."
+}
+
+declare -a CMD_AWM_ARGS=()
+
+_cmd_awm_extract_session() {
+    local __target="$1"
+    shift
+    local session="${MAINFRAME_AWM_SESSION:-${AWM_SESSION_ID:-}}"
+    local -a remainder=()
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --session)
+                session="${2:-$session}"
+                shift 2
+                ;;
+            *)
+                remainder+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    printf -v "$__target" '%s' "$session"
+    CMD_AWM_ARGS=("${remainder[@]}")
+}
+
+_cmd_awm_require_session() {
+    local session="$1"
+    if [[ -z "$session" ]]; then
+        echo "Session required. Pass --session <sid> or set MAINFRAME_AWM_SESSION."
+        return 1
+    fi
+    awm_resume "$session" >/dev/null
+}
+
+_cmd_awm_help() {
+    cat << 'EOF'
+MAINFRAME AWM
+
+Usage:
+  mainframe awm init [name] [--parent ID] [--namespace NS] [--model MODEL] [--backend file|redis|chromadb|auto]
+  mainframe awm resume <session_id>
+  mainframe awm checkpoint --session <sid> <key> <value> [--importance LEVEL] [--tags CSV] [--ttl SEC]
+  mainframe awm discovery --session <sid> <text> [--importance LEVEL] [--tags CSV]
+  mainframe awm get --session <sid> <key> [default]
+  mainframe awm summary --session <sid> [--tokens N]
+  mainframe awm context --session <sid> <task> [--tokens N] [--format json|prompt] [--include LIST]
+  mainframe awm find --session <sid> <query> [--kind discovery|checkpoint|log|mixed] [--limit N]
+  mainframe awm handoff prepare --session <sid> <target> [--tokens N] [--format json|prompt]
+  mainframe awm handoff accept [--session <sid>] <handoff_json>
+  mainframe awm list [--json|--active|--completed]
+  mainframe awm status [--session <sid>|<sid>]
+  mainframe awm doctor [--session <sid>|<sid>]
+  mainframe awm export --session <sid> [path]
+  mainframe awm inspect <sid>
+  mainframe awm migrate <sid|--all>
+
+Examples:
+  mainframe awm init security-audit --namespace team-red
+  mainframe awm checkpoint --session abc123def456 current_step 3 --importance high
+  mainframe awm discovery --session abc123def456 "Auth uses JWT refresh tokens"
+  mainframe awm find --session abc123def456 jwt --kind mixed --limit 5
+  mainframe awm handoff prepare --session abc123def456 review-agent --tokens 2000
+EOF
+}
+
+cmd_awm() {
+    local subcommand="${1:-help}"
+    shift || true
+
+    case "$subcommand" in
+        help|-h|--help)
+            _cmd_awm_help
+            ;;
+        init)
+            awm_init "$@"
+            ;;
+        resume)
+            if [[ -z "${1:-}" ]]; then
+                echo "Usage: mainframe awm resume <session_id>"
+                return 1
+            fi
+            awm_resume "$1" >/dev/null && printf '%s\n' "$_AWM_SESSION_ID"
+            ;;
+        checkpoint)
+            local checkpoint_session=""
+            _cmd_awm_extract_session checkpoint_session "$@"
+            set -- "${CMD_AWM_ARGS[@]}"
+            _cmd_awm_require_session "$checkpoint_session" || return 1
+            awm_checkpoint "$@"
+            ;;
+        discovery)
+            local discovery_session=""
+            _cmd_awm_extract_session discovery_session "$@"
+            set -- "${CMD_AWM_ARGS[@]}"
+            _cmd_awm_require_session "$discovery_session" || return 1
+            awm_discovery "$@"
+            ;;
+        get)
+            local get_session=""
+            _cmd_awm_extract_session get_session "$@"
+            set -- "${CMD_AWM_ARGS[@]}"
+            _cmd_awm_require_session "$get_session" || return 1
+            awm_get "$@"
+            ;;
+        summary)
+            local summary_session=""
+            _cmd_awm_extract_session summary_session "$@"
+            set -- "${CMD_AWM_ARGS[@]}"
+            _cmd_awm_require_session "$summary_session" || return 1
+            awm_summary "$@"
+            ;;
+        context)
+            local context_session=""
+            _cmd_awm_extract_session context_session "$@"
+            set -- "${CMD_AWM_ARGS[@]}"
+            _cmd_awm_require_session "$context_session" || return 1
+            awm_context_for "$@"
+            ;;
+        find)
+            local find_session=""
+            _cmd_awm_extract_session find_session "$@"
+            set -- "${CMD_AWM_ARGS[@]}"
+            _cmd_awm_require_session "$find_session" || return 1
+            awm_find "$@"
+            ;;
+        handoff)
+            local action="${1:-prepare}"
+            shift || true
+            case "$action" in
+                prepare)
+                    local handoff_session=""
+                    _cmd_awm_extract_session handoff_session "$@"
+                    set -- "${CMD_AWM_ARGS[@]}"
+                    _cmd_awm_require_session "$handoff_session" || return 1
+                    awm_handoff_prepare "$@"
+                    ;;
+                accept)
+                    local accept_session=""
+                    _cmd_awm_extract_session accept_session "$@"
+                    set -- "${CMD_AWM_ARGS[@]}"
+                    if [[ -n "$accept_session" ]]; then
+                        awm_resume "$accept_session" >/dev/null || return 1
+                    fi
+                    awm_handoff_accept "$@"
+                    ;;
+                *)
+                    local handoff_session=""
+                    _cmd_awm_extract_session handoff_session "$action" "$@"
+                    set -- "${CMD_AWM_ARGS[@]}"
+                    _cmd_awm_require_session "$handoff_session" || return 1
+                    awm_handoff_prepare "$@"
+                    ;;
+            esac
+            ;;
+        list)
+            awm_list "$@"
+            ;;
+        status)
+            local status_session=""
+            _cmd_awm_extract_session status_session "$@"
+            set -- "${CMD_AWM_ARGS[@]}"
+            if [[ -z "$status_session" && -n "${1:-}" && "${1:0:2}" != "--" ]]; then
+                status_session="$1"
+                shift
+            fi
+            awm_status "${status_session:-$_AWM_SESSION_ID}"
+            ;;
+        doctor)
+            local doctor_session=""
+            _cmd_awm_extract_session doctor_session "$@"
+            set -- "${CMD_AWM_ARGS[@]}"
+            if [[ -z "$doctor_session" && -n "${1:-}" && "${1:0:2}" != "--" ]]; then
+                doctor_session="$1"
+                shift
+            fi
+            awm_doctor "${doctor_session:-$_AWM_SESSION_ID}"
+            ;;
+        export)
+            local export_session=""
+            _cmd_awm_extract_session export_session "$@"
+            set -- "${CMD_AWM_ARGS[@]}"
+            _cmd_awm_require_session "$export_session" || return 1
+            awm_export "${1:-}"
+            ;;
+        inspect)
+            if [[ -z "${1:-}" ]]; then
+                echo "Usage: mainframe awm inspect <session_id>"
+                return 1
+            fi
+            awm_resume "$1" >/dev/null || return 1
+            printf '{"status":%s,"summary":%s,"discoveries":%s}\n' \
+                "$(awm_status "$1")" \
+                "$(awm_summary)" \
+                "$(awm_recent discoveries 10)"
+            ;;
+        migrate)
+            awm_migrate "$@"
+            ;;
+        *)
+            _cmd_awm_help
+            return 1
+            ;;
+    esac
 }
 
 # =============================================================================
@@ -805,6 +1032,10 @@ case "${1:-help}" in
         ;;
     search|find|grep)
         cmd_search "${2:-}"
+        ;;
+    awm)
+        shift
+        cmd_awm "$@"
         ;;
     count)
         cmd_count

@@ -59,7 +59,7 @@ teardown() {
     cd "$GIT_DIR"
     local result
     result=$(git_root)
-    [ "$result" = "$GIT_DIR" ]
+    [ "$result" = "$(cd "$GIT_DIR" && pwd -P)" ]
 }
 
 @test "git_root works from subdirectory" {
@@ -67,7 +67,7 @@ teardown() {
     cd "$GIT_DIR/sub/dir"
     local result
     result=$(git_root)
-    [ "$result" = "$GIT_DIR" ]
+    [ "$result" = "$(cd "$GIT_DIR" && pwd -P)" ]
 }
 
 # =============================================================================

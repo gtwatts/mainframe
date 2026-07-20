@@ -201,12 +201,21 @@ sysinfo_mem_human() {
 
 sysinfo_interfaces() {
     if _sysinfo_is_linux; then
+        local iface
+        local found=1
         for iface in /sys/class/net/*/; do
             iface="${iface%/}"; iface="${iface##*/}"
-            [[ "$iface" != "lo" ]] && echo "$iface"
+            if [[ "$iface" != "lo" ]]; then
+                echo "$iface"
+                found=0
+            fi
         done
+        return "$found"
     elif _sysinfo_is_macos; then
-        ifconfig -l 2>/dev/null | tr ' ' '\n' | grep -v '^lo'
+        local interfaces
+        interfaces=$(ifconfig -l 2>/dev/null | tr ' ' '\n' | grep -v '^lo' || true)
+        [[ -n "$interfaces" ]] || return 1
+        printf '%s\n' "$interfaces"
     else
         echo ""; return 1
     fi
@@ -322,8 +331,14 @@ sysinfo_uptime() {
     if _sysinfo_is_linux; then
         awk '{printf "%d", $1}' /proc/uptime 2>/dev/null
     elif _sysinfo_is_macos; then
-        local boot; boot=$(sysctl -n kern.boottime 2>/dev/null | awk -F'[= ,]' '{print $4}')
-        [[ -n "$boot" ]] && echo $(( $(date +%s) - boot ))
+        local boot_info boot
+        boot_info=$(sysctl -n kern.boottime 2>/dev/null)
+        if [[ "$boot_info" =~ sec[[:space:]]*=[[:space:]]*([0-9]+) ]]; then
+            boot="${BASH_REMATCH[1]}"
+            echo $(( $(date +%s) - boot ))
+        else
+            return 1
+        fi
     else
         echo ""; return 1
     fi
@@ -344,7 +359,13 @@ sysinfo_boot_time() {
     if _sysinfo_is_linux; then
         local up; up=$(sysinfo_uptime) && echo $(( $(date +%s) - up ))
     elif _sysinfo_is_macos; then
-        sysctl -n kern.boottime 2>/dev/null | awk -F'[= ,]' '{print $4}'
+        local boot_info
+        boot_info=$(sysctl -n kern.boottime 2>/dev/null)
+        if [[ "$boot_info" =~ sec[[:space:]]*=[[:space:]]*([0-9]+) ]]; then
+            echo "${BASH_REMATCH[1]}"
+        else
+            return 1
+        fi
     else
         echo ""; return 1
     fi
@@ -358,14 +379,23 @@ sysinfo_users_logged_in() {
 # DISK
 # =============================================================================
 
+_sysinfo_df_kblocks() {
+    local path="${1:-.}"
+    df -Pk "$path" 2>/dev/null | awk 'NR==2 {print $2, $4}'
+}
+
 sysinfo_disk_total() {
     local path="${1:-.}"
-    df -B1 "$path" 2>/dev/null | awk 'NR==2{print $2}'
+    local total_k free_k
+    read -r total_k free_k <<< "$(_sysinfo_df_kblocks "$path")"
+    [[ "$total_k" =~ ^[0-9]+$ ]] && echo $(( total_k * 1024 ))
 }
 
 sysinfo_disk_free() {
     local path="${1:-.}"
-    df -B1 "$path" 2>/dev/null | awk 'NR==2{print $4}'
+    local total_k free_k
+    read -r total_k free_k <<< "$(_sysinfo_df_kblocks "$path")"
+    [[ "$free_k" =~ ^[0-9]+$ ]] && echo $(( free_k * 1024 ))
 }
 
 sysinfo_disk_usage() {

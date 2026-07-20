@@ -391,11 +391,9 @@ guard_null_byte() {
         return 1
     fi
 
-    # Raw null byte (bash typically strips these but check anyway)
-    if [[ "$input" == *$'\x00'* ]]; then
-        _guard_e_error "Null byte detected (raw)"
-        return 1
-    fi
+    # Raw NUL bytes cannot survive inside Bash strings, so by the time a value
+    # reaches this function they have already been truncated/stripped. Encoded
+    # forms above are the only detectable representations here.
 
     # Unicode null byte variants
     if [[ "$input" == *'%u0000'* ]] || [[ "$input" == *'%U0000'* ]]; then
@@ -477,8 +475,8 @@ guard_env_safe() {
                     _guard_e_error "Dangerous PATH manipulation detected: $value"
                     return 1
                 fi
-                _guard_e_warn "PATH modification detected: $value"
-                return 0  # Allow but warn
+                _guard_e_error "PATH modification detected: $value"
+                return 1
             fi
 
             _guard_e_error "Dangerous environment variable: $name"

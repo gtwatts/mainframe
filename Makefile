@@ -14,6 +14,8 @@ DEMOS_DIR := $(ROOT_DIR)/demos
 
 # Tools
 BATS := $(TESTS_DIR)/bats/bin/bats
+TEST_RUNNER := $(TESTS_DIR)/run_bats_suite.sh
+BATS_TEST_SHELL := $(shell if [ -x /opt/homebrew/bin/bash ]; then printf '/opt/homebrew/bin/bash'; elif [ -x /usr/local/bin/bash ]; then printf '/usr/local/bin/bash'; else command -v bash; fi)
 SHELLCHECK := shellcheck
 VHS := vhs
 
@@ -94,28 +96,34 @@ lint-hooks: ## Lint hook files
 # =============================================================================
 
 .PHONY: test
-test: test-deps ## Run all tests
-	@printf "$(BLUE)Running all tests...$(NC)\n"
-	@$(BATS) $(TESTS_DIR)/unit/ $(TESTS_DIR)/integration/
+test: test-deps ## Run the full Bats matrix
+	@printf "$(BLUE)Running the full Bats matrix...$(NC)\n"
+	@BATS_TEST_SHELL="$(BATS_TEST_SHELL)" $(TEST_RUNNER) --scope all
 	@printf "$(GREEN)Done!$(NC)\n"
 
 .PHONY: test-unit
-test-unit: test-deps ## Run unit tests only
+test-unit: test-deps ## Run unit and library contract tests
 	@printf "$(BLUE)Running unit tests...$(NC)\n"
-	@$(BATS) $(TESTS_DIR)/unit/
+	@BATS_TEST_SHELL="$(BATS_TEST_SHELL)" $(TEST_RUNNER) --scope unit
+	@printf "$(GREEN)Done!$(NC)\n"
+
+.PHONY: test-top
+test-top: test-deps ## Run top-level Bats suites in tests/*.bats
+	@printf "$(BLUE)Running top-level tests...$(NC)\n"
+	@BATS_TEST_SHELL="$(BATS_TEST_SHELL)" $(TEST_RUNNER) --scope top
 	@printf "$(GREEN)Done!$(NC)\n"
 
 .PHONY: test-integration
 test-integration: test-deps ## Run integration tests only
 	@printf "$(BLUE)Running integration tests...$(NC)\n"
-	@$(BATS) $(TESTS_DIR)/integration/
+	@BATS_TEST_SHELL="$(BATS_TEST_SHELL)" $(TEST_RUNNER) --scope integration
 	@printf "$(GREEN)Done!$(NC)\n"
 
 .PHONY: test-coverage
 test-coverage: test-deps ## Run tests with coverage
 	@printf "$(BLUE)Running tests with coverage...$(NC)\n"
 	@mkdir -p coverage
-	@kcov --include-path=$(LIB_DIR)/,$(SCRIPTS_DIR)/ coverage $(BATS) $(TESTS_DIR)/unit/
+	@BATS_TEST_SHELL="$(BATS_TEST_SHELL)" kcov --include-path=$(LIB_DIR)/,$(SCRIPTS_DIR)/ coverage $(BATS) $(TESTS_DIR)/unit/
 	@printf "$(GREEN)Coverage report: coverage/index.html$(NC)\n"
 
 .PHONY: test-watch

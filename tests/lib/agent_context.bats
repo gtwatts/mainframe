@@ -74,7 +74,7 @@ teardown() {
 @test "ctx_set: stores a key-value pair" {
     ctx_init "test_session"
     ctx_set "key1" "value1"
-    # Reload to verify persistence
+    ctx_save
     ctx_load "test_session"
     [[ "$(ctx_get "key1")" == "value1" ]]
 }
@@ -83,26 +83,30 @@ teardown() {
     ctx_init "test_session"
     ctx_set "key1" "value1"
     ctx_set "key1" "value2"
+    ctx_save
     ctx_load "test_session"
     [[ "$(ctx_get "key1")" == "value2" ]]
 }
 
-@test "ctx_get: returns default for missing key" {
+@test "ctx_get: fails for missing key" {
     ctx_init "test_session"
-    [[ "$(ctx_get "missing_key" "default_value")" == "default_value" ]]
+    run ctx_get "missing_key"
+    [[ "$status" -eq 1 ]]
 }
 
-@test "ctx_get: returns empty string for missing key without default" {
+@test "ctx_get: prints nothing for missing key" {
     ctx_init "test_session"
-    [[ -z "$(ctx_get "missing_key")" ]]
+    run ctx_get "missing_key"
+    [[ "$status" -eq 1 ]]
+    [[ -z "$output" ]]
 }
 
 @test "ctx_delete: removes a key" {
     ctx_init "test_session"
     ctx_set "key1" "value1"
     ctx_delete "key1"
-    ctx_load "test_session"
-    [[ -z "$(ctx_get "key1")" ]]
+    run ctx_get "key1"
+    [[ "$status" -eq 1 ]]
 }
 
 @test "ctx_get returns 0 for existing key and 1 for missing" {
@@ -111,7 +115,7 @@ teardown() {
     run ctx_get "key1"
     assert_success
     run ctx_get "nonexistent"
-    assert_failure
+    [[ "$status" -eq 1 ]]
 }
 
 @test "ctx_clear: removes all data" {
@@ -119,9 +123,10 @@ teardown() {
     ctx_set "key1" "value1"
     ctx_set "key2" "value2"
     ctx_clear
-    ctx_load "test_session"
-    [[ -z "$(ctx_get "key1")" ]]
-    [[ -z "$(ctx_get "key2")" ]]
+    run ctx_get "key1"
+    [[ "$status" -eq 1 ]]
+    run ctx_get "key2"
+    [[ "$status" -eq 1 ]]
 }
 
 @test "ctx_list_keys: lists all keys" {
@@ -142,16 +147,16 @@ teardown() {
     ctx_init "test_session"
     ctx_set "key1" "value1"
     local snapshot
-    snapshot=$(ctx_snapshot "test_snapshot")
+    snapshot=$(ctx_snapshot)
     [[ -n "$snapshot" ]]
-    [[ -f "$MAINFRAME_CONTEXT_DIR/test_session/snapshots/$snapshot" ]]
+    [[ -f "$MAINFRAME_CONTEXT_DIR/test_session/snapshots/${snapshot}.json" ]]
 }
 
 @test "ctx_snapshots: lists created snapshots" {
     ctx_init "test_session"
     ctx_set "key1" "value1"
-    ctx_snapshot "snap1" >/dev/null
-    ctx_snapshot "snap2" >/dev/null
+    ctx_snapshot >/dev/null
+    ctx_snapshot >/dev/null
     local snaps
     snaps=$(ctx_snapshots)
     [[ $(echo "$snaps" | wc -l) -ge 2 ]]
@@ -161,10 +166,9 @@ teardown() {
     ctx_init "test_session"
     ctx_set "key1" "value1"
     local snapshot
-    snapshot=$(ctx_snapshot "test_snapshot")
+    snapshot=$(ctx_snapshot)
     ctx_set "key1" "value2"
     ctx_restore "$snapshot"
-    ctx_load "test_session"
     [[ "$(ctx_get "key1")" == "value1" ]]
 }
 
@@ -178,9 +182,10 @@ teardown() {
     [[ "$(ctx_get_meta "author")" == "test_user" ]]
 }
 
-@test "ctx_get_meta: returns default for missing metadata" {
+@test "ctx_get_meta: fails for missing metadata" {
     ctx_init "test_session"
-    [[ "$(ctx_get_meta "missing" "default")" == "default" ]]
+    run ctx_get_meta "missing"
+    [[ "$status" -eq 1 ]]
 }
 
 @test "ctx_version: returns version info" {

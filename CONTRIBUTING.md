@@ -256,14 +256,17 @@ setup() {
 ### Running Tests
 
 ```bash
-# Run all unit tests
-./tests/bats/bin/bats tests/unit/
+# Run the full Bats matrix
+./tests/run_bats_suite.sh --scope all
+
+# Run unit + contract tests
+./tests/run_bats_suite.sh --scope unit
 
 # Run specific test file
 ./tests/bats/bin/bats tests/unit/your_library.bats
 
 # Run integration tests
-./tests/bats/bin/bats tests/integration/
+./tests/run_bats_suite.sh --scope integration
 
 # Run with verbose output
 ./tests/bats/bin/bats -t tests/unit/your_library.bats
@@ -367,17 +370,15 @@ All PRs run through GitHub Actions CI:
 | Job | Description |
 |-----|-------------|
 | **Lint** | ShellCheck on all `.sh` files |
-| **Unit Tests** | BATS tests in `tests/unit/` |
-| **Integration Tests** | BATS tests in `tests/integration/` |
-| **macOS Compatibility** | Cross-platform verification |
+| **Linux Bats Matrix** | Full BATS matrix via `tests/run_bats_suite.sh --scope all` |
+| **macOS Bats Matrix** | Full cross-platform verification via the same runner |
 
 ### CI Requirements
 
 Before your PR can be merged:
 - [ ] ShellCheck passes with no new warnings
-- [ ] All unit tests pass
-- [ ] All integration tests pass
-- [ ] macOS compatibility tests pass (within threshold)
+- [ ] The full Linux Bats matrix passes
+- [ ] The full macOS Bats matrix passes
 
 ### Local CI Simulation
 
@@ -385,8 +386,8 @@ Before your PR can be merged:
 # Run ShellCheck
 shellcheck -x lib/your_library.sh
 
-# Run all tests
-./tests/bats/bin/bats tests/unit/ tests/integration/
+# Run the same full suite CI uses
+./tests/run_bats_suite.sh --scope all
 ```
 
 ## Commit Messages
@@ -408,7 +409,7 @@ feat(awm): add session inheritance for sub-agents
 Before submitting, verify:
 
 - [ ] ShellCheck passes with no warnings
-- [ ] All tests pass (`./tests/bats/bin/bats tests/unit/`)
+- [ ] All tests pass (`./tests/run_bats_suite.sh --scope all`)
 - [ ] New functions have BATS tests
 - [ ] Functions are exported (`export -f function_name`)
 - [ ] CHEATSHEET.md updated (for new public functions)

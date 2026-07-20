@@ -180,13 +180,33 @@ aws_whoami() {
 aws_s3_list() {
     _aws_require_cli || return 1
 
-    local bucket="$1"
-    local prefix="$2"
+    local bucket="${1:-}"
+    local prefix="${2:-}"
 
     if [[ -z "$bucket" ]]; then
         # List all buckets
-        local buckets
-        buckets=$(aws s3 ls 2>/dev/null | awk '{print $3}')
+        local list_output exit_code
+        list_output=$(aws s3 ls 2>&1)
+        exit_code=$?
+
+        if [[ $exit_code -ne 0 ]]; then
+            local escaped_error
+            escaped_error=$(_aws_json_escape "$list_output")
+            printf '{"success":false,"error":"%s"}' "$escaped_error"
+            return 0
+        fi
+
+        local buckets=""
+        local line bucket_name
+        while IFS= read -r line; do
+            [[ -z "$line" ]] && continue
+            bucket_name="${line##* }"
+            [[ -n "$bucket_name" ]] || continue
+            if [[ -n "$buckets" ]]; then
+                buckets+=$'\n'
+            fi
+            buckets+="$bucket_name"
+        done <<< "$list_output"
 
         if [[ -z "$buckets" ]]; then
             printf '{"success":true,"data":[]}'
@@ -207,7 +227,7 @@ aws_s3_list() {
         printf '{"success":true,"data":%s}' "$json_array"
     else
         # List objects in bucket
-        local cmd_args=("s3api" "list-objects-v2" "--bucket" "$bucket" "--output" "json")
+        local cmd_args=("s3api" "list-objects-v2" "--bucket" "$bucket" "--output=json")
         [[ -n "$prefix" ]] && cmd_args+=("--prefix" "$prefix")
 
         local result
@@ -218,7 +238,7 @@ aws_s3_list() {
             local escaped_error
             escaped_error=$(_aws_json_escape "$result")
             printf '{"success":false,"error":"%s"}' "$escaped_error"
-            return 1
+            return 0
         fi
 
         # Extract Contents array or use empty array
@@ -257,17 +277,17 @@ aws_s3_upload() {
 
     [[ -z "$local_path" ]] && {
         printf '{"success":false,"error":"Local path required"}'
-        return 1
+        return 0
     }
 
     [[ -z "$s3_path" ]] && {
         printf '{"success":false,"error":"S3 path required"}'
-        return 1
+        return 0
     }
 
     [[ ! -f "$local_path" ]] && {
         printf '{"success":false,"error":"Local file not found: %s"}' "$local_path"
-        return 1
+        return 0
     }
 
     local cmd_args=("s3" "cp" "$local_path" "$s3_path")
@@ -281,7 +301,7 @@ aws_s3_upload() {
         local escaped_error
         escaped_error=$(_aws_json_escape "$result")
         printf '{"success":false,"error":"%s"}' "$escaped_error"
-        return 1
+        return 0
     fi
 
     printf '{"success":true,"data":{"source":"%s","destination":"%s"}}' "$local_path" "$s3_path"
@@ -300,12 +320,12 @@ aws_s3_download() {
 
     [[ -z "$s3_path" ]] && {
         printf '{"success":false,"error":"S3 path required"}'
-        return 1
+        return 0
     }
 
     [[ -z "$local_path" ]] && {
         printf '{"success":false,"error":"Local path required"}'
-        return 1
+        return 0
     }
 
     local result
@@ -316,7 +336,7 @@ aws_s3_download() {
         local escaped_error
         escaped_error=$(_aws_json_escape "$result")
         printf '{"success":false,"error":"%s"}' "$escaped_error"
-        return 1
+        return 0
     fi
 
     printf '{"success":true,"data":{"source":"%s","destination":"%s"}}' "$s3_path" "$local_path"
@@ -333,7 +353,7 @@ aws_s3_cp() {
 
     [[ -z "$source" || -z "$dest" ]] && {
         printf '{"success":false,"error":"Source and destination required"}'
-        return 1
+        return 0
     }
 
     local result
@@ -344,7 +364,7 @@ aws_s3_cp() {
         local escaped_error
         escaped_error=$(_aws_json_escape "$result")
         printf '{"success":false,"error":"%s","source":"%s","destination":"%s"}' "$escaped_error" "$source" "$dest"
-        return 1
+        return 0
     fi
 
     printf '{"success":true,"data":{"source":"%s","destination":"%s"}}' "$source" "$dest"
@@ -412,7 +432,7 @@ aws_ec2_list() {
         local escaped_error
         escaped_error=$(_aws_json_escape "$result")
         printf '{"success":false,"error":"%s"}' "$escaped_error"
-        return 1
+        return 0
     fi
 
     if [[ -n "$state" ]]; then
@@ -434,7 +454,7 @@ aws_ec2_status() {
 
     [[ -z "$instance_id" ]] && {
         printf '{"success":false,"error":"Instance ID required"}'
-        return 1
+        return 0
     }
 
     local result
@@ -447,7 +467,7 @@ aws_ec2_status() {
         local escaped_error
         escaped_error=$(_aws_json_escape "$result")
         printf '{"success":false,"error":"%s"}' "$escaped_error"
-        return 1
+        return 0
     fi
 
     # Extract fields from result
@@ -478,7 +498,7 @@ aws_ec2_start() {
     local instance_id="$1"
     [[ -z "$instance_id" ]] && {
         printf '{"success":false,"error":"Instance ID required"}'
-        return 1
+        return 0
     }
 
     local result
@@ -489,7 +509,7 @@ aws_ec2_start() {
         local escaped_error
         escaped_error=$(_aws_json_escape "$result")
         printf '{"success":false,"error":"%s","instance_id":"%s"}' "$escaped_error" "$instance_id"
-        return 1
+        return 0
     fi
 
     printf '{"success":true,"data":{"instance_id":"%s","action":"start"}}' "$instance_id"
@@ -504,7 +524,7 @@ aws_ec2_stop() {
     local instance_id="$1"
     [[ -z "$instance_id" ]] && {
         printf '{"success":false,"error":"Instance ID required"}'
-        return 1
+        return 0
     }
 
     local result
@@ -515,7 +535,7 @@ aws_ec2_stop() {
         local escaped_error
         escaped_error=$(_aws_json_escape "$result")
         printf '{"success":false,"error":"%s","instance_id":"%s"}' "$escaped_error" "$instance_id"
-        return 1
+        return 0
     fi
 
     printf '{"success":true,"data":{"instance_id":"%s","action":"stop"}}' "$instance_id"
@@ -543,7 +563,7 @@ aws_lambda_list() {
         local escaped_error
         escaped_error=$(_aws_json_escape "$result")
         printf '{"success":false,"error":"%s"}' "$escaped_error"
-        return 1
+        return 0
     fi
 
     printf '{"success":true,"data":%s}' "$result"
@@ -558,11 +578,12 @@ aws_lambda_invoke() {
     _aws_require_cli || return 1
 
     local function_name="$1"
-    local payload="${2:-{}}"
+    local payload="${2-}"
+    [[ -n "$payload" ]] || payload='{}'
 
     [[ -z "$function_name" ]] && {
         printf '{"success":false,"error":"Function name required"}'
-        return 1
+        return 0
     }
 
     local output_file
@@ -582,7 +603,7 @@ aws_lambda_invoke() {
         local escaped_error
         escaped_error=$(_aws_json_escape "$result")
         printf '{"success":false,"error":"%s","function":"%s"}' "$escaped_error" "$function_name"
-        return 1
+        return 0
     fi
 
     # Extract status code

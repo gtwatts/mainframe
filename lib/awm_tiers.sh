@@ -231,20 +231,17 @@ awm_warm_exists() {
 # Get warm tier size in bytes
 # Usage: awm_warm_size
 awm_warm_size() {
-    _awm_tier_dir_size_bytes "$AWM_WARM_DIR"
-}
+    if [[ ! -d "$AWM_WARM_DIR" ]]; then
+        printf '0\n'
+        return 0
+    fi
 
-# Internal: portable directory size in bytes.
-# `du -sb` is GNU-only; on BSD/macOS sum file sizes via stat.
-_awm_tier_dir_size_bytes() {
-    local dir="$1"
-    [[ -d "$dir" ]] || { echo 0; return 0; }
-    local size
-    size=$(du -sb "$dir" 2>/dev/null | cut -f1)
-    if [[ "$size" =~ ^[0-9]+$ ]]; then
-        printf '%s\n' "$size"
+    if du -sk "$AWM_WARM_DIR" >/dev/null 2>&1; then
+        local kb
+        kb=$(du -sk "$AWM_WARM_DIR" 2>/dev/null | awk '{print $1}')
+        printf '%d\n' "$(( ${kb:-0} * 1024 ))"
     else
-        find "$dir" -type f -exec stat -f%z {} + 2>/dev/null | awk '{s+=$1} END{print s+0}'
+        printf '0\n'
     fi
 }
 
@@ -585,7 +582,11 @@ awm_tier_stats() {
     warm_count=$(find "$AWM_WARM_DIR" -type f 2>/dev/null | wc -l | tr -d '[:space:]')
 
     local cold_size
-    cold_size=$(_awm_tier_dir_size_bytes "$AWM_COLD_DIR")
+    if du -sk "$AWM_COLD_DIR" >/dev/null 2>&1; then
+        cold_size=$(du -sk "$AWM_COLD_DIR" 2>/dev/null | awk '{print $1 * 1024}')
+    else
+        cold_size=0
+    fi
     local cold_count
     cold_count=$(find "$AWM_COLD_DIR" -type f 2>/dev/null | wc -l | tr -d '[:space:]')
 

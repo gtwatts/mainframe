@@ -74,8 +74,7 @@ compute_summary() {
 # =============================================================================
 
 @test "memo_wrap wraps a function successfully" {
-    run memo_wrap pure_func
-    [ "$status" -eq 0 ]
+    memo_wrap pure_func
 
     # Original should be preserved
     declare -F _memo_orig_pure_func
@@ -158,8 +157,10 @@ compute_summary() {
 
     # Should no longer be cached - each call increments
     local result1 result2
-    result1=$(stateful_func)
-    result2=$(stateful_func)
+    stateful_func > "$TEST_DIR/result1"
+    stateful_func > "$TEST_DIR/result2"
+    result1=$(<"$TEST_DIR/result1")
+    result2=$(<"$TEST_DIR/result2")
 
     [ "$result1" != "$result2" ]
 }

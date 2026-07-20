@@ -21,22 +21,24 @@ _MAINFRAME_SAFECONTEXT_LOADED=1
 # =============================================================================
 
 # Current active profile
-declare -g _MAINFRAME_CTX_PROFILE=""
+_MAINFRAME_CTX_PROFILE=""
 
 # Profile rule values (active)
-declare -g _MAINFRAME_CTX_RISK_THRESHOLD=""
-declare -g _MAINFRAME_CTX_CONFIRM_POLICY=""
-declare -g _MAINFRAME_CTX_LIMITS=""
-declare -g _MAINFRAME_CTX_DRY_RUN=""
+_MAINFRAME_CTX_RISK_THRESHOLD=""
+_MAINFRAME_CTX_CONFIRM_POLICY=""
+_MAINFRAME_CTX_LIMITS=""
+_MAINFRAME_CTX_DRY_RUN=""
 
 # Override tracking
-declare -gA _MAINFRAME_CTX_OVERRIDES=()
+declare -gA _MAINFRAME_CTX_OVERRIDES 2>/dev/null || declare -A _MAINFRAME_CTX_OVERRIDES
+_MAINFRAME_CTX_OVERRIDES=()
 
 # Custom profiles storage: "name" -> "risk_threshold|confirm_policy|limits|dry_run"
-declare -gA _MAINFRAME_CTX_CUSTOM_PROFILES=()
+declare -gA _MAINFRAME_CTX_CUSTOM_PROFILES 2>/dev/null || declare -A _MAINFRAME_CTX_CUSTOM_PROFILES
+_MAINFRAME_CTX_CUSTOM_PROFILES=()
 
 # Enforcement state
-declare -g _MAINFRAME_CTX_ENFORCED=0
+_MAINFRAME_CTX_ENFORCED=0
 
 # =============================================================================
 # PROFILE DEFINITIONS

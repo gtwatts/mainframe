@@ -90,6 +90,26 @@ _retry_now() {
     fi
 }
 
+# Get current epoch milliseconds for sub-second timing-sensitive flows.
+_retry_now_ms() {
+    if [[ -n "${EPOCHREALTIME:-}" ]]; then
+        local epoch_real="$EPOCHREALTIME"
+        local seconds="${epoch_real%%.*}"
+        local frac="${epoch_real#*.}"
+        frac="${frac}000"
+        printf '%s%s' "$seconds" "${frac:0:3}"
+        return 0
+    fi
+
+    local ts
+    ts=$(date +%s%3N 2>/dev/null)
+    if [[ "$ts" =~ ^[0-9]+$ ]]; then
+        printf '%s' "$ts"
+    else
+        printf '%s000' "$(_retry_now)"
+    fi
+}
+
 # =============================================================================
 # RETRY
 # =============================================================================
@@ -309,8 +329,8 @@ with_timeout() {
     local rc=$?
 
     # Kill the watchdog if it's still running
-    kill "$watchdog_pid" 2>/dev/null
-    wait "$watchdog_pid" 2>/dev/null
+    kill "$watchdog_pid" 2>/dev/null || true
+    wait "$watchdog_pid" 2>/dev/null || true
 
     # Check if the command was killed by our watchdog
     # SIGTERM=143 (128+15), SIGKILL=137 (128+9)
@@ -871,14 +891,14 @@ rate_limit_init() {
     mkdir -p "$MAINFRAME_RL_DIR"
 
     local state_file="${MAINFRAME_RL_DIR}/${name}"
-    local now
-    now=$(_retry_now)
+    local now_ms
+    now_ms=$(_retry_now_ms)
 
     _retry_state_write "$state_file" \
         "rate" "$rate" \
         "per" "$per" \
         "tokens" "$rate" \
-        "last_refill" "$now"
+        "last_refill_ms" "$now_ms"
 
     _retry_log debug "rate_limit_init: initialized '$name' (rate=$rate per ${per}s)"
     return 0
@@ -916,31 +936,41 @@ rate_limit_acquire() {
 
     while true; do
         # Read state
-        local rate per tokens last_refill
+        local rate per tokens last_refill_ms
         rate=$(_retry_state_get "$state_file" "rate")
         per=$(_retry_state_get "$state_file" "per")
         tokens=$(_retry_state_get "$state_file" "tokens")
-        last_refill=$(_retry_state_get "$state_file" "last_refill")
+        last_refill_ms=$(_retry_state_get "$state_file" "last_refill_ms")
+        if [[ -z "$last_refill_ms" ]]; then
+            local legacy_last_refill
+            legacy_last_refill=$(_retry_state_get "$state_file" "last_refill")
+            if [[ -n "$legacy_last_refill" ]]; then
+                last_refill_ms=$(( legacy_last_refill * 1000 ))
+            else
+                last_refill_ms=$(_retry_now_ms)
+            fi
+        fi
 
         # Calculate token refill
-        local now elapsed tokens_to_add
-        now=$(_retry_now)
-        elapsed=$(( now - last_refill ))
+        local now_ms elapsed_ms tokens_to_add per_ms
+        now_ms=$(_retry_now_ms)
+        per_ms=$(( per * 1000 ))
+        elapsed_ms=$(( now_ms - last_refill_ms ))
 
-        if [[ $elapsed -ge $per ]]; then
+        if [[ $elapsed_ms -ge $per_ms ]]; then
             # Full refill: enough time has passed for a complete bucket refill
             tokens=$rate
-            last_refill=$now
-        elif [[ $elapsed -gt 0 ]]; then
+            last_refill_ms=$now_ms
+        elif [[ $elapsed_ms -gt 0 ]]; then
             # Partial refill: add proportional tokens
-            # tokens_to_add = rate * elapsed / per
-            tokens_to_add=$(( rate * elapsed / per ))
+            # tokens_to_add = rate * elapsed_ms / per_ms
+            tokens_to_add=$(( rate * elapsed_ms / per_ms ))
             if [[ $tokens_to_add -gt 0 ]]; then
                 tokens=$(( tokens + tokens_to_add ))
                 if [[ $tokens -gt $rate ]]; then
                     tokens=$rate
                 fi
-                last_refill=$now
+                last_refill_ms=$(( last_refill_ms + (tokens_to_add * per_ms / rate) ))
             fi
         fi
 
@@ -951,7 +981,7 @@ rate_limit_acquire() {
                 "rate" "$rate" \
                 "per" "$per" \
                 "tokens" "$tokens" \
-                "last_refill" "$last_refill"
+                "last_refill_ms" "$last_refill_ms"
             return 0
         fi
 
@@ -987,16 +1017,16 @@ rate_limit_reset() {
         return 1
     fi
 
-    local rate per now
+    local rate per now_ms
     rate=$(_retry_state_get "$state_file" "rate")
     per=$(_retry_state_get "$state_file" "per")
-    now=$(_retry_now)
+    now_ms=$(_retry_now_ms)
 
     _retry_state_write "$state_file" \
         "rate" "$rate" \
         "per" "$per" \
         "tokens" "$rate" \
-        "last_refill" "$now"
+        "last_refill_ms" "$now_ms"
 
     _retry_log debug "rate_limit_reset: '$name' reset to $rate tokens"
     return 0

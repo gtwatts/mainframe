@@ -102,7 +102,8 @@ _tirith_pipe_escape() {
 # If they are not available, provide local fallbacks that store findings
 # in a simple array for the current session.
 
-declare -ga _TIRITH_PIPE_FINDINGS=()
+declare -ga _TIRITH_PIPE_FINDINGS 2>/dev/null || declare -a _TIRITH_PIPE_FINDINGS
+_TIRITH_PIPE_FINDINGS=()
 
 # Local fallback for _tirith_init_state
 _tirith_pipe_init_state() {

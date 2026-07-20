@@ -66,7 +66,7 @@ teardown() {
     mkdir -p subdir/nested
     cd subdir/nested
     result=$(git_root)
-    [[ "$result" == "$TEST_GIT_DIR" ]]
+    [[ "$result" == "$(cd "$TEST_GIT_DIR" && pwd -P)" ]]
 }
 
 @test "git_branch: returns current branch name" {

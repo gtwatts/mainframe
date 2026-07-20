@@ -10,12 +10,14 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 
 | Platform | Integration | Status |
 |----------|-------------|--------|
+| **Pi** | `skills/pi/SKILL.md` + Pi MAINFRAME tools | ✅ Full support |
 | **Claude Code** | `skills/claude-code/SKILL.md` | ✅ Full support |
+| **OpenAI Codex / Codex CLI** | `skills/codex/AGENTS.md` | ✅ Full support |
 | **Kimi Code CLI** | `skills/kimi-cli/SKILL.md` | ✅ Full support |
 | **Google CLI** | `skills/google-cli/SKILL.md` | ✅ Full support |
 | **OpenCode** | `skills/opencode/SKILL.md` | ✅ Full support |
 | **Cursor** | `.cursorrules` / `skills/cursor/` | ✅ Full support |
-| **Aider** | `skills/aider/SKILL.md` | ✅ Full support |
+| **Aider** | `skills/aider/CONVENTIONS.md` | ✅ Full support |
 | **Vercel AI SDK** | `skills/vercel-ai-sdk/` | ✅ Full support |
 | **Custom Agents** | `lib/uap.sh` + `lib/mcp_server.sh` | ✅ Protocol support |
 
@@ -144,3 +146,4 @@ Orchestration tools are available via MCP for teammates that prefer tool calls o
 - **DECISION_TREES.md** - "I need X" workflow guidance
 - **ERRORS.json** - Error codes and recovery
 - **docs/ORCHESTRATION.md** - Multi-agent team coordination guide
+- **docs/AI_CLI_INTEGRATIONS.md** - Pi, Claude, Codex, Cursor, Aider, OpenCode, Kimi, Google AI CLI, and custom-agent setup

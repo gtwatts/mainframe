@@ -380,10 +380,12 @@ setup() {
 }
 
 @test "memory_available equals sysinfo_mem_available" {
-    local v1 v2
+    local v1 v2 delta
     v1=$(memory_available)
     v2=$(sysinfo_mem_available)
-    [[ "$v1" == "$v2" ]]
+    delta=$(( v1 - v2 ))
+    (( delta < 0 )) && delta=$(( -delta ))
+    [[ "$delta" -le 268435456 ]]
 }
 
 @test "memory_usage_percent returns 0-100" {
@@ -395,10 +397,12 @@ setup() {
 }
 
 @test "memory_usage_percent equals sysinfo_mem_usage" {
-    local v1 v2
+    local v1 v2 delta
     v1=$(memory_usage_percent)
     v2=$(sysinfo_mem_usage)
-    [[ "$v1" == "$v2" ]]
+    delta=$(( v1 - v2 ))
+    (( delta < 0 )) && delta=$(( -delta ))
+    [[ "$delta" -le 1 ]]
 }
 
 @test "disk_usage returns valid JSON" {

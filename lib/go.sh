@@ -38,6 +38,40 @@ _go_escape_json() {
     echo "$s"
 }
 
+# _go_kv_value RECORD KEY
+# Extract a value from a comma-separated key=value record
+_go_kv_value() {
+    local record="$1"
+    local key="$2"
+    local value
+
+    value="${record#*"${key}="}"
+    [[ "$value" != "$record" ]] || return 1
+    value="${value%%,*}"
+    printf '%s\n' "$value"
+}
+
+# _go_grep_count PATTERN FILE
+# Count regex matches while remaining safe under set -e and BSD grep
+_go_grep_count() {
+    local pattern="$1"
+    local file="$2"
+    local count
+
+    count=$(grep -cE "$pattern" "$file" 2>/dev/null || true)
+    printf '%s\n' "${count:-0}"
+}
+
+# _go_loc_count FILE
+# Count non-blank, non-comment lines in a Go file
+_go_loc_count() {
+    local file="$1"
+    local count
+
+    count=$(sed '/\/\*/,/\*\//d' "$file" 2>/dev/null | grep -cvE '^\s*$|^\s*//' || true)
+    printf '%s\n' "${count:-0}"
+}
+
 # _go_find_files DIR
 # Find all .go files excluding vendor and hidden directories
 _go_find_files() {
@@ -188,7 +222,7 @@ go_import_graph() {
 go_circular_deps() {
     local dir="${1:-.}"
     local module
-    module=$(go_module_info "$dir" | grep -oP 'module=\K[^,]+' 2>/dev/null)
+    module=$(_go_kv_value "$(go_module_info "$dir")" "module")
     [[ -z "$module" ]] && return 1
 
     declare -A pkg_imports
@@ -262,9 +296,9 @@ go_module_info() {
         elif [[ $in_require -eq 1 && "$line" =~ ^\) ]]; then
             in_require=0
         elif [[ $in_require -eq 1 && "$line" =~ ^[[:space:]]+[a-zA-Z] ]]; then
-            ((require_count++))
+            require_count=$((require_count + 1))
         elif [[ "$line" =~ ^require[[:space:]]+[a-zA-Z] ]]; then
-            ((require_count++))
+            require_count=$((require_count + 1))
         fi
     done < "$mod_file"
 
@@ -293,13 +327,13 @@ go_dep_count() {
         fi
         if [[ $in_require -eq 1 && "$line" =~ ^[[:space:]]+[a-zA-Z] ]]; then
             if [[ "$line" == *"// indirect"* ]]; then
-                ((indirect++))
+                indirect=$((indirect + 1))
             else
-                ((direct++))
+                direct=$((direct + 1))
             fi
         fi
         if [[ "$line" =~ ^require[[:space:]]+[a-zA-Z] ]]; then
-            ((direct++))
+            direct=$((direct + 1))
         fi
     done < "$mod_file"
 
@@ -318,8 +352,8 @@ go_function_count() {
 
     while IFS= read -r file; do
         local file_count
-        file_count=$(grep -cE '^func\s+' "$file" 2>/dev/null || echo 0)
-        ((count += file_count))
+        file_count=$(_go_grep_count '^func\s+' "$file")
+        count=$((count + file_count))
     done < <(_go_find_files "$dir")
 
     echo "$count"
@@ -333,8 +367,8 @@ go_interface_count() {
 
     while IFS= read -r file; do
         local file_count
-        file_count=$(grep -cE '^type\s+\w+\s+interface\s*\{' "$file" 2>/dev/null || echo 0)
-        ((count += file_count))
+        file_count=$(_go_grep_count '^type\s+\w+\s+interface\s*\{' "$file")
+        count=$((count + file_count))
     done < <(_go_find_files "$dir")
 
     echo "$count"
@@ -348,8 +382,8 @@ go_struct_count() {
 
     while IFS= read -r file; do
         local file_count
-        file_count=$(grep -cE '^type\s+\w+\s+struct\s*\{' "$file" 2>/dev/null || echo 0)
-        ((count += file_count))
+        file_count=$(_go_grep_count '^type\s+\w+\s+struct\s*\{' "$file")
+        count=$((count + file_count))
     done < <(_go_find_files "$dir")
 
     echo "$count"
@@ -363,8 +397,8 @@ go_loc() {
 
     while IFS= read -r file; do
         local file_count
-        file_count=$(sed '/\/\*/,/\*\//d' "$file" 2>/dev/null | grep -cvE '^\s*$|^\s*//' || echo 0)
-        ((count += file_count))
+        file_count=$(_go_loc_count "$file")
+        count=$((count + file_count))
     done < <(_go_find_files "$dir")
 
     echo "$count"
@@ -378,10 +412,10 @@ go_test_coverage() {
     local test_files=0 test_funcs=0
 
     while IFS= read -r file; do
-        ((test_files++))
+        test_files=$((test_files + 1))
         local funcs
-        funcs=$(grep -cE '^func\s+Test' "$file" 2>/dev/null || echo 0)
-        ((test_funcs += funcs))
+        funcs=$(_go_grep_count '^func\s+Test' "$file")
+        test_funcs=$((test_funcs + funcs))
     done < <(_go_find_test_files "$dir")
 
     echo "test_files=${test_files},test_functions=${test_funcs}"
@@ -413,17 +447,17 @@ go_summary() {
     deps=$(go_dep_count "$dir")
 
     local module go_version require_count
-    module=$(echo "$info" | grep -oP 'module=\K[^,]+')
-    go_version=$(echo "$info" | grep -oP 'go_version=\K[^,]+')
-    require_count=$(echo "$info" | grep -oP 'require_count=\K[0-9]+')
+    module=$(_go_kv_value "$info" "module")
+    go_version=$(_go_kv_value "$info" "go_version")
+    require_count=$(_go_kv_value "$info" "require_count")
 
     local direct indirect
-    direct=$(echo "$deps" | grep -oP 'direct=\K[0-9]+')
-    indirect=$(echo "$deps" | grep -oP 'indirect=\K[0-9]+')
+    direct=$(_go_kv_value "$deps" "direct")
+    indirect=$(_go_kv_value "$deps" "indirect")
 
     local test_files test_functions
-    test_files=$(echo "$tests" | grep -oP 'test_files=\K[0-9]+')
-    test_functions=$(echo "$tests" | grep -oP 'test_functions=\K[0-9]+')
+    test_files=$(_go_kv_value "$tests" "test_files")
+    test_functions=$(_go_kv_value "$tests" "test_functions")
 
     local file_count
     file_count=$(_go_find_all_files "$dir" | wc -l)

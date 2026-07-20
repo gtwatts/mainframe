@@ -22,7 +22,7 @@ set -euo pipefail
 
 # Determine MAINFRAME root directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export MAINFRAME_ROOT="${MAINFRAME_ROOT:-$SCRIPT_DIR}"
+export MAINFRAME_ROOT="$SCRIPT_DIR"
 
 # Source common library
 source "$MAINFRAME_ROOT/lib/common.sh"
@@ -347,7 +347,7 @@ agent_main() {
     for task in "\$@"; do
         if ! agent_process_task "\$task"; then
             log_error "Task failed: \$task"
-            ((failed++))
+            failed=\$((failed + 1))
         fi
     done
 
@@ -1150,11 +1150,11 @@ cmd_doctor() {
             success "$MAINFRAME_ROOT"
         else
             failure "Set but directory not found: $MAINFRAME_ROOT"
-            ((errors++))
+            errors=$((errors + 1))
         fi
     else
         log_warn "Not set (using script directory)"
-        ((warnings++))
+        warnings=$((warnings + 1))
     fi
 
     # Check Bash version
@@ -1163,7 +1163,7 @@ cmd_doctor() {
         success "${BASH_VERSION} (OK, >= 4.0 required)"
     else
         failure "${BASH_VERSION} (ERROR: Bash 4.0+ required)"
-        ((errors++))
+        errors=$((errors + 1))
     fi
 
     # Check OS
@@ -1180,7 +1180,7 @@ cmd_doctor() {
         success "$(jq --version 2>&1 || echo 'installed')"
     else
         failure "Not found (required for JSON operations)"
-        ((errors++))
+        errors=$((errors + 1))
     fi
 
     # Check curl
@@ -1191,7 +1191,7 @@ cmd_doctor() {
         success "$curl_ver"
     else
         log_warn "Not found (optional, fallback to wget)"
-        ((warnings++))
+        warnings=$((warnings + 1))
     fi
 
     # Check flock
@@ -1200,7 +1200,7 @@ cmd_doctor() {
         success "Found"
     else
         log_warn "Not found (required for lock operations)"
-        ((warnings++))
+        warnings=$((warnings + 1))
     fi
 
     echo ""
@@ -1213,7 +1213,7 @@ cmd_doctor() {
         success "Found"
     else
         failure "Not found"
-        ((errors++))
+        errors=$((errors + 1))
     fi
 
     # Check common.sh is sourceable
@@ -1222,7 +1222,7 @@ cmd_doctor() {
         success "OK (json_object available)"
     else
         failure "Libraries not loaded properly"
-        ((errors++))
+        errors=$((errors + 1))
     fi
 
     # Count functions
@@ -1233,7 +1233,7 @@ cmd_doctor() {
         success "$func_count"
     else
         log_warn "$func_count (expected > 100)"
-        ((warnings++))
+        warnings=$((warnings + 1))
     fi
 
     # Check write permissions to context dir
@@ -1244,7 +1244,7 @@ cmd_doctor() {
         success "Writable ($ctx_dir)"
     else
         failure "Not writable: $ctx_dir"
-        ((errors++))
+        errors=$((errors + 1))
     fi
 
     # Check FUNCTIONS.json
@@ -1255,7 +1255,7 @@ cmd_doctor() {
         success "Found ($func_json_count functions documented)"
     else
         log_warn "Not found (run 'make docs' to generate)"
-        ((warnings++))
+        warnings=$((warnings + 1))
     fi
 
     echo ""
@@ -1387,8 +1387,42 @@ shift || true
 
 case "$COMMAND" in
     new)
-        TYPE="${1:-}"
-        NAME="${2:-}"
+        TYPE=""
+        NAME=""
+
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                -y|--yes)
+                    INTERACTIVE=0
+                    shift
+                    ;;
+                -o|--output)
+                    OUTPUT_DIR="${2:?Output directory required}"
+                    shift 2
+                    ;;
+                --)
+                    shift
+                    break
+                    ;;
+                -*)
+                    log_error "Unknown option: $1"
+                    show_help
+                    exit 1
+                    ;;
+                *)
+                    if [[ -z "$TYPE" ]]; then
+                        TYPE="$1"
+                    elif [[ -z "$NAME" ]]; then
+                        NAME="$1"
+                    else
+                        log_error "Unexpected argument: $1"
+                        show_help
+                        exit 1
+                    fi
+                    shift
+                    ;;
+            esac
+        done
 
         if [[ -z "$TYPE" ]]; then
             log_error "Type required: agent, tool, workflow, library"

@@ -1,9 +1,9 @@
 {
   "version": "10.1.0",
-  "generated": "2026-07-20T21:27:22Z",
+  "generated": "2026-07-20T23:51:26Z",
   "stats": {
-    "total_functions": 4434,
-    "total_libraries": 184,
+    "total_functions": 4458,
+    "total_libraries": 185,
     "categories": ["versioning", "strings", "utilities", "monitoring", "validation", "discovery", "caching", "cli", "parsing", "fp", "streaming", "ai", "performance", "system", "safety", "errors", "compatibility", "reliability", "network", "datetime", "logging", "async", "ci", "templating", "environment", "interactive", "containers", "vcs", "output", "security", "crypto", "metaprogramming", "process", "arrays", "other", "analysis", "data", "files", "config"]
   },
   "libraries": {
@@ -2688,6 +2688,48 @@
           "idempotent": false,
           "pure": false,
           "examples": ["agent_barrier phase1_done 3 30"]
+        },
+        "agent_barrier_create": {
+          "description": "Compatibility wrapper: pre-create a named barrier with an expected count.",
+          "signature": "agent_barrier_create",
+          "params": [
+            {
+              "name": "barrier_name",
+              "position": 1,
+              "required": false,
+              "default": ""
+            },
+            {
+              "name": "count",
+              "position": 2,
+              "required": false,
+              "default": ""
+            }
+          ],
+          "returns": "stdout",
+          "idempotent": false,
+          "pure": false
+        },
+        "agent_barrier_wait": {
+          "description": "Compatibility wrapper: wait on a previously created barrier.",
+          "signature": "agent_barrier_wait",
+          "params": [
+            {
+              "name": "barrier_name",
+              "position": 1,
+              "required": false,
+              "default": ""
+            },
+            {
+              "name": "timeout",
+              "position": 2,
+              "required": false,
+              "default": "30"
+            }
+          ],
+          "returns": "exit_code",
+          "idempotent": false,
+          "pure": false
         },
         "agent_signal": {
           "description": "Signal a named event. Any agents waiting via agent_wait will be released.",
@@ -7262,7 +7304,7 @@
           "description": "Get warm tier size in bytes",
           "signature": "awm_warm_size",
           "params": [],
-          "returns": "void",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -7570,34 +7612,20 @@
     },
     "awm": {
       "file": "lib/awm.sh",
-      "description": "Persistent external memory for AI agents with finite context. Enables agents to write state/discoveries OUTSIDE their context, read back relevant portions, support sub-agent inheritance, and resume sessions after interruption.",
+      "description": "Canonical Agent Working Memory facade for persistent session state, discovery logging, handoff preparation, retrieval, and context packing for finite-context agents.",
       "category": "other",
       "functions": {
         "awm_init": {
-          "description": "Initialize a new AWM session. Creates the storage directory and manifest. Optionally inherits from a parent session.",
-          "signature": "session_id=$(awm_init [\"session_name\"] [\"parent_session_id\"])",
-          "params": [
-            {
-              "name": "name",
-              "position": 1,
-              "required": false,
-              "default": ""
-            },
-            {
-              "name": "parent_session",
-              "position": 2,
-              "required": false,
-              "default": ""
-            }
-          ],
+          "description": null,
+          "signature": "awm_init",
+          "params": [],
           "returns": "stdout",
           "idempotent": false,
-          "pure": false,
-          "examples": ["sid=$(awm_init \"subtask\" \"$parent_sid\")", "sid=$(awm_init \"deploy-config\")"]
+          "pure": false
         },
         "awm_resume": {
-          "description": "Resume an existing AWM session by ID.",
-          "signature": "awm_resume \"session_id\"",
+          "description": null,
+          "signature": "awm_resume",
           "params": [
             {
               "name": "session_id",
@@ -7608,11 +7636,10 @@
           ],
           "returns": "exit_code",
           "idempotent": false,
-          "pure": false,
-          "examples": ["awm_resume \"a1b2c3d4e5f6\""]
+          "pure": false
         },
         "awm_close": {
-          "description": "Close the current AWM session (marks as complete but doesn't delete).",
+          "description": null,
           "signature": "awm_close",
           "params": [],
           "returns": "exit_code",
@@ -7620,77 +7647,47 @@
           "pure": false
         },
         "awm_namespace": {
-          "description": "Set a namespace for sub-agent isolation. Namespaced sessions are stored in separate directories.",
-          "signature": "awm_namespace \"agent-name\"",
+          "description": null,
+          "signature": "awm_namespace",
           "params": [
             {
               "name": "ns",
               "position": 1,
-              "required": true,
-              "default": null
+              "required": false,
+              "default": ""
             }
           ],
           "returns": "void",
           "idempotent": false,
-          "pure": false,
-          "examples": ["awm_namespace \"code-reviewer\""]
+          "pure": false
         },
         "awm_team_namespace": {
-          "description": "Auto-detect Agent Teams team name and set AWM namespace for team isolation. Reads team name from CLAUDE_AGENT_TEAM_NAME env var or ~/.claude/teams/.",
+          "description": null,
           "signature": "awm_team_namespace",
           "params": [],
           "returns": "exit_code",
           "idempotent": false,
-          "pure": false,
-          "examples": ["awm_team_namespace && awm_init \"shared-task\""]
+          "pure": false
         },
         "awm_checkpoint": {
-          "description": "Save a key-value pair to persistent memory. Keys are stored as individual files for atomic access.",
-          "signature": "awm_checkpoint \"key\" \"value\"",
-          "params": [
-            {
-              "name": "key",
-              "position": 1,
-              "required": true,
-              "default": null
-            },
-            {
-              "name": "value",
-              "position": 2,
-              "required": true,
-              "default": null
-            }
-          ],
-          "returns": "stdout",
+          "description": null,
+          "signature": "awm_checkpoint",
+          "params": [],
+          "returns": "exit_code",
           "idempotent": false,
-          "pure": false,
-          "examples": ["awm_checkpoint \"api_response\" \"$json_response\"", "awm_checkpoint \"current_step\" \"3\""]
+          "pure": false
         },
         "awm_log": {
-          "description": "Append a structured message to a categorized log. Categories enable selective retrieval of related entries.",
-          "signature": "awm_log \"category\" \"message\"",
-          "params": [
-            {
-              "name": "category",
-              "position": 1,
-              "required": true,
-              "default": null
-            },
-            {
-              "name": "message",
-              "position": 2,
-              "required": true,
-              "default": null
-            }
-          ],
-          "returns": "stdout",
+          "description": null,
+          "signature": "awm_log",
+          "params": [],
+          "returns": "exit_code",
           "idempotent": false,
-          "pure": false,
-          "examples": ["awm_log \"decisions\" \"Chose PostgreSQL over MySQL for transactions\"", "awm_log \"errors\" \"Failed to connect to API\""]
+          "pure": false
         },
         "awm_progress": {
-          "description": "Track task progress with a structured format. Progress entries include current/total for progress bar calculation.",
-          "signature": "awm_progress \"task_id\" \"current/total\" [\"status_message\"]",
+          "description": null,
+          "signature": "awm_progress",
           "params": [
             {
               "name": "task_id",
@@ -7713,12 +7710,11 @@
           ],
           "returns": "stdout",
           "idempotent": false,
-          "pure": false,
-          "examples": ["awm_progress \"file-processing\" \"47/200\" \"Processing batch 47\""]
+          "pure": false
         },
         "awm_discovery": {
-          "description": "Record a key insight or discovery that should be preserved. Discoveries are prioritized during inheritance and summarization.",
-          "signature": "awm_discovery \"insight text\"",
+          "description": null,
+          "signature": "awm_discovery",
           "params": [
             {
               "name": "insight",
@@ -7727,36 +7723,21 @@
               "default": null
             }
           ],
-          "returns": "stdout",
+          "returns": "exit_code",
           "idempotent": false,
-          "pure": false,
-          "examples": ["awm_discovery \"API rate limit is 100 req/min, not 1000\"", "awm_discovery \"User prefers PostgreSQL for all new projects\""]
+          "pure": false
         },
         "awm_get": {
-          "description": "Retrieve a checkpointed value by key.",
-          "signature": "value=$(awm_get \"key\")",
-          "params": [
-            {
-              "name": "key",
-              "position": 1,
-              "required": true,
-              "default": null
-            },
-            {
-              "name": "default",
-              "position": 2,
-              "required": false,
-              "default": ""
-            }
-          ],
+          "description": null,
+          "signature": "awm_get",
+          "params": [],
           "returns": "stdout",
           "idempotent": false,
-          "pure": false,
-          "examples": ["step=$(awm_get \"current_step\")"]
+          "pure": false
         },
         "awm_recent": {
-          "description": "Retrieve the last N entries from a category log. Returns newest entries first (reverse chronological).",
-          "signature": "entries=$(awm_recent \"category\" [count])",
+          "description": null,
+          "signature": "awm_recent",
           "params": [
             {
               "name": "category",
@@ -7769,28 +7750,40 @@
               "position": 2,
               "required": false,
               "default": "10"
+            },
+            {
+              "name": "sid",
+              "position": 3,
+              "required": false,
+              "default": "$_AWM_SESSION_ID"
             }
           ],
           "returns": "stdout",
           "idempotent": false,
-          "pure": false,
-          "examples": ["errors=$(awm_recent \"errors\" 10)"]
+          "pure": false
         },
         "awm_summary": {
-          "description": "Generate a compressed summary of the session for context injection. Includes: discoveries, recent progress, key checkpoints.",
-          "signature": "summary=$(awm_summary)",
+          "description": null,
+          "signature": "awm_summary",
           "params": [],
           "returns": "stdout",
           "idempotent": false,
-          "pure": false,
-          "examples": ["context=$(awm_summary)"]
+          "pure": false
+        },
+        "awm_find": {
+          "description": null,
+          "signature": "awm_find",
+          "params": [],
+          "returns": "stdout",
+          "idempotent": false,
+          "pure": false
         },
         "awm_context_for": {
-          "description": "Generate a context package for spawning a sub-agent. Includes essential state without full history.",
-          "signature": "ctx=$(awm_context_for \"subtask_name\")",
+          "description": null,
+          "signature": "awm_context_for",
           "params": [
             {
-              "name": "subtask",
+              "name": "task",
               "position": 1,
               "required": false,
               "default": "subtask"
@@ -7798,11 +7791,55 @@
           ],
           "returns": "stdout",
           "idempotent": false,
-          "pure": false,
-          "examples": ["ctx=$(awm_context_for \"validate-config\")"]
+          "pure": false
+        },
+        "awm_status": {
+          "description": null,
+          "signature": "awm_status",
+          "params": [
+            {
+              "name": "sid",
+              "position": 1,
+              "required": false,
+              "default": "$_AWM_SESSION_ID"
+            }
+          ],
+          "returns": "stdout",
+          "idempotent": false,
+          "pure": false
+        },
+        "awm_doctor": {
+          "description": null,
+          "signature": "awm_doctor",
+          "params": [
+            {
+              "name": "sid",
+              "position": 1,
+              "required": false,
+              "default": "$_AWM_SESSION_ID"
+            }
+          ],
+          "returns": "stdout",
+          "idempotent": false,
+          "pure": false
+        },
+        "awm_migrate": {
+          "description": null,
+          "signature": "awm_migrate",
+          "params": [
+            {
+              "name": "target",
+              "position": 1,
+              "required": false,
+              "default": "$_AWM_SESSION_ID"
+            }
+          ],
+          "returns": "stdout",
+          "idempotent": false,
+          "pure": false
         },
         "awm_compress": {
-          "description": "Compress old memory entries to reduce storage and context cost. Entries older than AWM_COMPRESS_AGE are summarized and archived.",
+          "description": null,
           "signature": "awm_compress",
           "params": [
             {
@@ -7817,8 +7854,8 @@
           "pure": false
         },
         "awm_export": {
-          "description": "Export session memory to a human-readable markdown file. Useful for handoff to humans or documentation.",
-          "signature": "awm_export \"/path/to/output.md\"",
+          "description": null,
+          "signature": "awm_export",
           "params": [
             {
               "name": "output_file",
@@ -7829,12 +7866,11 @@
           ],
           "returns": "stdout",
           "idempotent": false,
-          "pure": false,
-          "examples": ["awm_export \"session-report.md\""]
+          "pure": false
         },
         "awm_inherit": {
-          "description": "Create a sub-agent session that inherits from a parent. Equivalent to awm_init with parent parameter.",
-          "signature": "child_id=$(awm_inherit \"parent_session_id\")",
+          "description": null,
+          "signature": "awm_inherit",
           "params": [
             {
               "name": "parent_session",
@@ -7851,32 +7887,32 @@
           ],
           "returns": "void",
           "idempotent": false,
-          "pure": false,
-          "examples": ["sub_id=$(awm_inherit \"$main_session\")"]
+          "pure": false
         },
         "awm_token_estimate": {
-          "description": "Estimate the token cost of reading back all memory. Helps agents decide when to compress or summarize.",
-          "signature": "tokens=$(awm_token_estimate)",
-          "params": [],
+          "description": null,
+          "signature": "awm_token_estimate",
+          "params": [
+            {
+              "name": "sid",
+              "position": 1,
+              "required": false,
+              "default": "$_AWM_SESSION_ID"
+            }
+          ],
           "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
         "awm_estimate_read": {
-          "description": "Estimate tokens for a specific memory read.",
-          "signature": "tokens=$(awm_estimate_read \"recent\" \"errors\" 10)",
+          "description": null,
+          "signature": "awm_estimate_read",
           "params": [
             {
               "name": "operation",
               "position": 1,
               "required": true,
               "default": null
-            },
-            {
-              "name": "count",
-              "position": 2,
-              "required": false,
-              "default": "10"
             }
           ],
           "returns": "stdout",
@@ -7884,39 +7920,188 @@
           "pure": false
         },
         "awm_list": {
-          "description": "List all AWM sessions, optionally filtered by status.",
-          "signature": "awm_list [--status active|completed]",
+          "description": null,
+          "signature": "awm_list",
+          "params": [],
+          "returns": "stdout",
+          "idempotent": false,
+          "pure": false
+        },
+        "awm_list_sessions": {
+          "description": null,
+          "signature": "awm_list_sessions",
           "params": [],
           "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
         "awm_cleanup": {
-          "description": "Clean up old completed sessions (default: older than 7 days).",
-          "signature": "awm_cleanup [days]",
+          "description": null,
+          "signature": "awm_cleanup",
+          "params": [],
+          "returns": "stdout",
+          "idempotent": false,
+          "pure": false
+        },
+        "awm_check_limits": {
+          "description": null,
+          "signature": "awm_check_limits",
           "params": [
             {
-              "name": "max_days",
+              "name": "sid",
               "position": 1,
               "required": false,
-              "default": "7"
+              "default": "$_AWM_SESSION_ID"
+            }
+          ],
+          "returns": "void",
+          "idempotent": false,
+          "pure": false
+        },
+        "awm_handoff_prepare": {
+          "description": null,
+          "signature": "awm_handoff_prepare",
+          "params": [
+            {
+              "name": "target",
+              "position": 1,
+              "required": true,
+              "default": null
             }
           ],
           "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
-        "awm_check_limits": {
-          "description": "Check if memory usage is approaching configured limits.",
-          "signature": "awm_check_limits && echo \"OK\" || echo \"At limit\"",
-          "params": [],
+        "awm_handoff_accept": {
+          "description": null,
+          "signature": "awm_handoff_accept",
+          "params": [
+            {
+              "name": "handoff_json",
+              "position": 1,
+              "required": true,
+              "default": null
+            }
+          ],
+          "returns": "stdout",
+          "idempotent": false,
+          "pure": false
+        },
+        "awm_set": {
+          "description": null,
+          "signature": "awm_set",
+          "params": [
+            {
+              "name": "sid",
+              "position": 1,
+              "required": true,
+              "default": null
+            },
+            {
+              "name": "key",
+              "position": 2,
+              "required": true,
+              "default": null
+            },
+            {
+              "name": "value",
+              "position": 3,
+              "required": false,
+              "default": ""
+            }
+          ],
+          "returns": "void",
+          "idempotent": false,
+          "pure": false
+        },
+        "awm_append": {
+          "description": null,
+          "signature": "awm_append",
+          "params": [
+            {
+              "name": "sid",
+              "position": 1,
+              "required": true,
+              "default": null
+            },
+            {
+              "name": "key",
+              "position": 2,
+              "required": true,
+              "default": null
+            },
+            {
+              "name": "value",
+              "position": 3,
+              "required": true,
+              "default": null
+            }
+          ],
+          "returns": "void",
+          "idempotent": false,
+          "pure": false
+        },
+        "awm_unset": {
+          "description": null,
+          "signature": "awm_unset",
+          "params": [
+            {
+              "name": "sid",
+              "position": 1,
+              "required": true,
+              "default": null
+            },
+            {
+              "name": "key",
+              "position": 2,
+              "required": true,
+              "default": null
+            }
+          ],
+          "returns": "void",
+          "idempotent": false,
+          "pure": false
+        },
+        "awm_get_checkpoint": {
+          "description": null,
+          "signature": "awm_get_checkpoint",
+          "params": [
+            {
+              "name": "sid",
+              "position": 1,
+              "required": true,
+              "default": null
+            },
+            {
+              "name": "checkpoint_name",
+              "position": 2,
+              "required": true,
+              "default": null
+            }
+          ],
+          "returns": "stdout",
+          "idempotent": false,
+          "pure": false
+        },
+        "awm_destroy": {
+          "description": null,
+          "signature": "awm_destroy",
+          "params": [
+            {
+              "name": "sid",
+              "position": 1,
+              "required": true,
+              "default": null
+            }
+          ],
           "returns": "exit_code",
           "idempotent": false,
           "pure": false
         },
         "awm_v2_init": {
-          "description": "Initialize AWM v2 components (storage, tiers, streaming). This is called automatically on first v2 operation if not explicitly called.",
-          "signature": "awm_v2_init [model]",
+          "description": null,
+          "signature": "awm_v2_init",
           "params": [
             {
               "name": "model",
@@ -7925,13 +8110,12 @@
               "default": "auto"
             }
           ],
-          "returns": "stdout",
+          "returns": "exit_code",
           "idempotent": false,
-          "pure": false,
-          "examples": ["awm_v2_init \"claude-opus-4\""]
+          "pure": false
         },
         "awm_v2_status": {
-          "description": "Get comprehensive AWM v2 status including storage, tiers, and budget.",
+          "description": null,
           "signature": "awm_v2_status",
           "params": [],
           "returns": "stdout",
@@ -7939,8 +8123,8 @@
           "pure": false
         },
         "awm_checkpoint_v2": {
-          "description": "Enhanced checkpoint with automatic tiering. Small/critical items go to hot tier, large items to cold with pointer.",
-          "signature": "awm_checkpoint_v2 \"key\" \"value\" [importance]",
+          "description": null,
+          "signature": "awm_checkpoint_v2",
           "params": [
             {
               "name": "key",
@@ -7961,14 +8145,13 @@
               "default": "normal"
             }
           ],
-          "returns": "stdout",
+          "returns": "void",
           "idempotent": false,
-          "pure": false,
-          "examples": ["awm_checkpoint_v2 \"api_response\" \"$large_json\" \"high\""]
+          "pure": false
         },
         "awm_get_v2": {
-          "description": "Enhanced get with tier traversal and automatic promotion.",
-          "signature": "awm_get_v2 \"key\" [default] [promote]",
+          "description": null,
+          "signature": "awm_get_v2",
           "params": [
             {
               "name": "key",
@@ -7991,12 +8174,11 @@
           ],
           "returns": "stdout",
           "idempotent": false,
-          "pure": false,
-          "examples": ["value=$(awm_get_v2 \"api_response\" \"\" \"true\")"]
+          "pure": false
         },
         "awm_context_v2": {
-          "description": "Enhanced context generation with token budget enforcement.",
-          "signature": "awm_context_v2 [max_tokens] [include_cold]",
+          "description": null,
+          "signature": "awm_context_v2",
           "params": [
             {
               "name": "max_tokens",
@@ -8011,22 +8193,21 @@
               "default": "false"
             }
           ],
-          "returns": "stdout",
+          "returns": "void",
           "idempotent": false,
-          "pure": false,
-          "examples": ["ctx=$(awm_context_v2 10000 \"false\")"]
+          "pure": false
         },
         "awm_recovery_checkpoint": {
-          "description": "Create a recovery checkpoint (hot tier + session state).",
+          "description": null,
           "signature": "awm_recovery_checkpoint",
           "params": [],
-          "returns": "exit_code",
+          "returns": "void",
           "idempotent": false,
           "pure": false
         },
         "awm_recovery_restore": {
-          "description": "Recover from crash using checkpoint.",
-          "signature": "awm_recovery_restore session_id",
+          "description": null,
+          "signature": "awm_recovery_restore",
           "params": [
             {
               "name": "session_id",
@@ -8612,7 +8793,7 @@
               "default": "."
             }
           ],
-          "returns": "stdout",
+          "returns": "exit_code",
           "idempotent": false,
           "pure": false,
           "examples": ["bun_install express /path/to/project", "bun_install"]
@@ -9478,7 +9659,7 @@
               "default": null
             }
           ],
-          "returns": "void",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -10347,21 +10528,6 @@
       "description": "Transaction-like checkpoint/rollback for multi-file atomic operations with tar archives, JSON metadata, and SHA-256 integrity verification. Designed for AI agent recovery scenarios.",
       "category": "other",
       "functions": {
-        "json_escape": {
-          "description": null,
-          "signature": "json_escape",
-          "params": [
-            {
-              "name": "s",
-              "position": 1,
-              "required": true,
-              "default": null
-            }
-          ],
-          "returns": "stdout",
-          "idempotent": true,
-          "pure": true
-        },
         "checkpoint_create": {
           "description": "checkpoint_create - Create named checkpoint with files/dirs",
           "signature": "checkpoint_id=$(checkpoint_create \"config-backup\" /app/config/)",
@@ -14079,7 +14245,7 @@
               "default": null
             }
           ],
-          "returns": "stdout",
+          "returns": "exit_code",
           "idempotent": false,
           "pure": false,
           "examples": ["composed=$(compose \"uppercase\" \"trim\"); result=$($composed \"  hello  \")"]
@@ -14087,14 +14253,7 @@
         "pipe_fn": {
           "description": "Left-to-right function pipeline: pipe(f, g, h)(x) = h(g(f(x))) Opposite of mathematical composition - data flows left to right.",
           "signature": "piped=$(pipe_fn \"f1\" \"f2\" \"f3\"); result=$($piped \"input\")",
-          "params": [
-            {
-              "name": "__val",
-              "position": 1,
-              "required": true,
-              "default": null
-            }
-          ],
+          "params": [],
           "returns": "stdout",
           "idempotent": false,
           "pure": false,
@@ -14105,7 +14264,7 @@
           "signature": "chained=$(chain \"validate\" \"process\" \"save\"); $chained \"data\"",
           "params": [
             {
-              "name": "__val",
+              "name": "_compose_value",
               "position": 1,
               "required": true,
               "default": null
@@ -14126,7 +14285,7 @@
               "default": null
             }
           ],
-          "returns": "stdout",
+          "returns": "exit_code",
           "idempotent": false,
           "pure": false,
           "examples": ["greet=$(partial \"printf\" \"Hello, %s!\\n\"); $greet \"World\""]
@@ -14148,7 +14307,7 @@
               "default": "2"
             }
           ],
-          "returns": "stdout",
+          "returns": "exit_code",
           "idempotent": false,
           "pure": false
         },
@@ -14163,7 +14322,7 @@
               "default": null
             }
           ],
-          "returns": "stdout",
+          "returns": "exit_code",
           "idempotent": false,
           "pure": false
         },
@@ -14384,7 +14543,7 @@
               "default": null
             }
           ],
-          "returns": "stdout",
+          "returns": "exit_code",
           "idempotent": false,
           "pure": false
         },
@@ -17915,7 +18074,7 @@
               "default": "-1"
             }
           ],
-          "returns": "stdout",
+          "returns": "void",
           "idempotent": false,
           "pure": false
         },
@@ -18005,7 +18164,7 @@
               "default": "-1"
             }
           ],
-          "returns": "stdout",
+          "returns": "void",
           "idempotent": false,
           "pure": false
         },
@@ -18128,7 +18287,7 @@
               "default": "-1"
             }
           ],
-          "returns": "stdout",
+          "returns": "void",
           "idempotent": true,
           "pure": true
         },
@@ -18143,7 +18302,7 @@
               "default": "-1"
             }
           ],
-          "returns": "stdout",
+          "returns": "void",
           "idempotent": true,
           "pure": true
         },
@@ -18158,7 +18317,7 @@
               "default": "-1"
             }
           ],
-          "returns": "stdout",
+          "returns": "void",
           "idempotent": false,
           "pure": false
         },
@@ -18173,7 +18332,7 @@
               "default": "-1"
             }
           ],
-          "returns": "stdout",
+          "returns": "void",
           "idempotent": false,
           "pure": false
         },
@@ -18188,7 +18347,7 @@
               "default": "-1"
             }
           ],
-          "returns": "stdout",
+          "returns": "void",
           "idempotent": false,
           "pure": false
         },
@@ -18203,7 +18362,7 @@
               "default": "-1"
             }
           ],
-          "returns": "stdout",
+          "returns": "void",
           "idempotent": false,
           "pure": false
         },
@@ -18577,7 +18736,7 @@
           "pure": false
         },
         "device_largest_files": {
-          "description": "device_largest_files PATH [N] Top N largest files under PATH (default 10, maxdepth 3)",
+          "description": "device_largest_files PATH [N] Top N largest files under PATH (default 10)",
           "signature": "device_largest_files",
           "params": [
             {
@@ -18592,7 +18751,7 @@
           "pure": false
         },
         "device_oldest_files": {
-          "description": "device_oldest_files PATH [N] Top N oldest files by mtime under PATH (default 10, maxdepth 3)",
+          "description": "device_oldest_files PATH [N] Top N oldest files by mtime under PATH (default 10)",
           "signature": "device_oldest_files",
           "params": [
             {
@@ -21700,6 +21859,53 @@
         }
       }
     },
+    "fast_cache": {
+      "file": "lib/fast_cache.sh",
+      "description": "Small compatibility cache used by context helpers and tests. Supports multiple named caches, fixed entry limits, and simple hit/miss statistics without external dependencies.",
+      "category": "other",
+      "functions": {
+        "fast_cache_init": {
+          "description": null,
+          "signature": "fast_cache_init",
+          "params": [],
+          "returns": "stdout",
+          "idempotent": false,
+          "pure": false
+        },
+        "fast_cache_set": {
+          "description": null,
+          "signature": "fast_cache_set",
+          "params": [],
+          "returns": "void",
+          "idempotent": false,
+          "pure": false
+        },
+        "fast_cache_has": {
+          "description": null,
+          "signature": "fast_cache_has",
+          "params": [],
+          "returns": "exit_code",
+          "idempotent": false,
+          "pure": false
+        },
+        "fast_cache_clear": {
+          "description": null,
+          "signature": "fast_cache_clear",
+          "params": [],
+          "returns": "void",
+          "idempotent": false,
+          "pure": false
+        },
+        "fast_cache_stats": {
+          "description": null,
+          "signature": "fast_cache_stats",
+          "params": [],
+          "returns": "stdout",
+          "idempotent": false,
+          "pure": false
+        }
+      }
+    },
     "fluent": {
       "file": "lib/fluent.sh",
       "description": "Chainable validation primitives using is::, when::, assert:: namespaced functions for expressive file and value checks.",
@@ -24317,8 +24523,8 @@
       "category": "other",
       "functions": {
         "future_run": {
-          "description": "Run a command in background and return a future ID The command runs asynchronously; use future_await to wait for completion",
-          "signature": "future_run \"command\" [args...]",
+          "description": null,
+          "signature": "future_run",
           "params": [],
           "returns": "stdout",
           "idempotent": false,
@@ -24416,7 +24622,7 @@
               "default": null
             }
           ],
-          "returns": "stdout",
+          "returns": "exit_code",
           "idempotent": false,
           "pure": false
         },
@@ -24828,7 +25034,7 @@
               "default": "$FUZZY_THRESHOLD"
             }
           ],
-          "returns": "stdout",
+          "returns": "exit_code",
           "idempotent": false,
           "pure": false
         },
@@ -25490,7 +25696,7 @@
           "description": "Get repository root directory",
           "signature": "root=$(git_root)",
           "params": [],
-          "returns": "void",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -32549,7 +32755,7 @@
               "default": ""
             }
           ],
-          "returns": "exit_code",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -32612,7 +32818,7 @@
               "default": ""
             }
           ],
-          "returns": "exit_code",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -32708,7 +32914,7 @@
               "default": ""
             }
           ],
-          "returns": "exit_code",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -32729,7 +32935,7 @@
               "default": ""
             }
           ],
-          "returns": "exit_code",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -32750,7 +32956,7 @@
               "default": ""
             }
           ],
-          "returns": "exit_code",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -33121,7 +33327,7 @@
               "default": ""
             }
           ],
-          "returns": "exit_code",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -33142,7 +33348,7 @@
               "default": ""
             }
           ],
-          "returns": "exit_code",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -33214,7 +33420,7 @@
               "default": ""
             }
           ],
-          "returns": "exit_code",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -33235,7 +33441,7 @@
               "default": ""
             }
           ],
-          "returns": "exit_code",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -33256,7 +33462,7 @@
               "default": ""
             }
           ],
-          "returns": "exit_code",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -33277,7 +33483,7 @@
               "default": ""
             }
           ],
-          "returns": "exit_code",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -33352,7 +33558,7 @@
               "default": ""
             }
           ],
-          "returns": "exit_code",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -33373,7 +33579,7 @@
               "default": ""
             }
           ],
-          "returns": "exit_code",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -33479,7 +33685,7 @@
               "default": ""
             }
           ],
-          "returns": "exit_code",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -33550,8 +33756,8 @@
             {
               "name": "partial",
               "position": 1,
-              "required": false,
-              "default": ""
+              "required": true,
+              "default": null
             }
           ],
           "returns": "stdout",
@@ -34102,6 +34308,21 @@
               "position": 2,
               "required": false,
               "default": "  "
+            }
+          ],
+          "returns": "stdout",
+          "idempotent": true,
+          "pure": true
+        },
+        "json_parse": {
+          "description": "Parse and echo validated JSON.",
+          "signature": "json_parse '{\"a\":1}'",
+          "params": [
+            {
+              "name": "json",
+              "position": 1,
+              "required": true,
+              "default": null
             }
           ],
           "returns": "stdout",
@@ -38484,7 +38705,7 @@
               "default": ""
             }
           ],
-          "returns": "stdout",
+          "returns": "exit_code",
           "idempotent": false,
           "pure": false
         },
@@ -38622,7 +38843,7 @@
               "default": ""
             }
           ],
-          "returns": "stdout",
+          "returns": "exit_code",
           "idempotent": false,
           "pure": false
         },
@@ -38643,7 +38864,7 @@
               "default": ""
             }
           ],
-          "returns": "stdout",
+          "returns": "exit_code",
           "idempotent": false,
           "pure": false
         },
@@ -38670,7 +38891,7 @@
               "default": ""
             }
           ],
-          "returns": "stdout",
+          "returns": "exit_code",
           "idempotent": false,
           "pure": false
         },
@@ -38697,7 +38918,7 @@
               "default": ""
             }
           ],
-          "returns": "stdout",
+          "returns": "exit_code",
           "idempotent": false,
           "pure": false
         },
@@ -38841,7 +39062,7 @@
               "default": ""
             }
           ],
-          "returns": "stdout",
+          "returns": "void",
           "idempotent": false,
           "pure": false
         },
@@ -38970,7 +39191,7 @@
               "default": ""
             }
           ],
-          "returns": "stdout",
+          "returns": "exit_code",
           "idempotent": false,
           "pure": false
         },
@@ -39018,7 +39239,7 @@
               "default": ""
             }
           ],
-          "returns": "stdout",
+          "returns": "void",
           "idempotent": false,
           "pure": false
         },
@@ -39876,7 +40097,7 @@
               "default": ""
             }
           ],
-          "returns": "void",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -40776,16 +40997,9 @@
           "pure": false
         },
         "otel_trace_start": {
-          "description": "Start a new trace/span",
-          "signature": "otel_trace_start \"operation_name\"",
-          "params": [
-            {
-              "name": "name",
-              "position": 1,
-              "required": false,
-              "default": "operation"
-            }
-          ],
+          "description": null,
+          "signature": "otel_trace_start",
+          "params": [],
           "returns": "stdout",
           "idempotent": false,
           "pure": false
@@ -41380,6 +41594,14 @@
           "idempotent": false,
           "pure": false
         },
+        "output_json_string": {
+          "description": null,
+          "signature": "output_json_string \"key\" \"value\"",
+          "params": [],
+          "returns": "void",
+          "idempotent": false,
+          "pure": false
+        },
         "output_json_number": {
           "description": "Emit a JSON key-value pair with number value Output: \"key\":42",
           "signature": "output_json_number \"key\" 42",
@@ -41649,6 +41871,46 @@
           "idempotent": false,
           "pure": false,
           "examples": ["result=$(usop_write_file /tmp/test.txt \"Hello World\")"]
+        },
+        "usop_delete_file": {
+          "description": "Delete a file and return a USOP envelope describing the result.",
+          "signature": "usop_delete_file PATH",
+          "params": [
+            {
+              "name": "path",
+              "position": 1,
+              "required": true,
+              "default": null
+            }
+          ],
+          "returns": "exit_code",
+          "idempotent": false,
+          "pure": false,
+          "examples": ["result=$(usop_delete_file /tmp/test.txt)"]
+        },
+        "usop_file_read": {
+          "description": "Compatibility wrappers for older USOP file helper names.",
+          "signature": "usop_file_read",
+          "params": [],
+          "returns": "void",
+          "idempotent": false,
+          "pure": false
+        },
+        "usop_file_write": {
+          "description": null,
+          "signature": "usop_file_write",
+          "params": [],
+          "returns": "void",
+          "idempotent": false,
+          "pure": false
+        },
+        "usop_file_delete": {
+          "description": null,
+          "signature": "usop_file_delete",
+          "params": [],
+          "returns": "void",
+          "idempotent": false,
+          "pure": false
         },
         "usop_list_dir": {
           "description": "List directory contents and return USOP envelope Returns array of entries with file/directory information",
@@ -46156,7 +46418,7 @@
               "default": ""
             }
           ],
-          "returns": "stdout",
+          "returns": "exit_code",
           "idempotent": false,
           "pure": false
         },
@@ -50928,14 +51190,7 @@
         "rag_init": {
           "description": "Initialize RAG pipeline for a collection.",
           "signature": "rag_init COLLECTION_NAME [--backend BACKEND] [--provider PROVIDER]",
-          "params": [
-            {
-              "name": "collection",
-              "position": 1,
-              "required": false,
-              "default": "$RAG_COLLECTION"
-            }
-          ],
+          "params": [],
           "returns": "exit_code",
           "idempotent": false,
           "pure": false,
@@ -51078,14 +51333,7 @@
         "rag_stats": {
           "description": "Get RAG collection statistics.",
           "signature": "rag_stats [COLLECTION] [--json]",
-          "params": [
-            {
-              "name": "collection",
-              "position": 1,
-              "required": false,
-              "default": "$_RAG_CURRENT_COLLECTION"
-            }
-          ],
+          "params": [],
           "returns": "stdout",
           "idempotent": false,
           "pure": false,
@@ -53318,7 +53566,7 @@
               "default": null
             }
           ],
-          "returns": "exit_code",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -58018,6 +58266,12 @@
           "signature": "stream_map_v result_array \"double\" 1 2 3 4 5",
           "params": [
             {
+              "name": "result_name",
+              "position": 1,
+              "required": true,
+              "default": null
+            },
+            {
               "name": "fn",
               "position": 2,
               "required": true,
@@ -58047,6 +58301,12 @@
           "description": "Filter with nameref output (no subshells)",
           "signature": "stream_filter_v result_array \"is_even\" 1 2 3 4 5",
           "params": [
+            {
+              "name": "result_name",
+              "position": 1,
+              "required": true,
+              "default": null
+            },
             {
               "name": "predicate",
               "position": 2,
@@ -58083,6 +58343,12 @@
           "description": "Reduce with nameref output (no subshells for iteration)",
           "signature": "stream_reduce_v result \"sum\" 0 1 2 3 4 5",
           "params": [
+            {
+              "name": "result_name",
+              "position": 1,
+              "required": true,
+              "default": null
+            },
             {
               "name": "fn",
               "position": 2,
@@ -58727,7 +58993,7 @@
               "default": null
             }
           ],
-          "returns": "void",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false,
           "examples": ["stream_of 1 2 3 | stream_map 'echo $(($item * 2))'"]
@@ -60280,7 +60546,7 @@
               "default": "."
             }
           ],
-          "returns": "void",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -60295,7 +60561,7 @@
               "default": "."
             }
           ],
-          "returns": "void",
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -63714,7 +63980,7 @@
               "name": "char",
               "position": 1,
               "required": false,
-              "default": ""
+              "default": "\u2500"
             },
             {
               "name": "width",
@@ -64738,14 +65004,7 @@
         "uap_decode_message": {
           "description": null,
           "signature": "uap_decode_message",
-          "params": [
-            {
-              "name": "json",
-              "position": 1,
-              "required": true,
-              "default": null
-            }
-          ],
+          "params": [],
           "returns": "stdout",
           "idempotent": false,
           "pure": false
@@ -65032,7 +65291,7 @@
           "signature": "undo_chmod",
           "params": [
             {
-              "name": "mode",
+              "name": "path",
               "position": 1,
               "required": true,
               "default": null
@@ -65047,7 +65306,7 @@
           "signature": "undo_sed",
           "params": [
             {
-              "name": "pattern",
+              "name": "file",
               "position": 1,
               "required": true,
               "default": null

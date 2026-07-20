@@ -33,6 +33,25 @@ teardown() {
     rm -rf "$TEST_DIR"
 }
 
+_checkpoint_test_sha256() {
+    local file="$1"
+    if command -v sha256sum &>/dev/null; then
+        sha256sum "$file" | cut -d' ' -f1
+    elif command -v shasum &>/dev/null; then
+        shasum -a 256 "$file" | cut -d' ' -f1
+    else
+        openssl dgst -sha256 "$file" | awk '{print $NF}'
+    fi
+}
+
+_checkpoint_test_sed_in_place() {
+    local expr="$1"
+    local file="$2"
+    local tmp="${file}.tmp.$$"
+    sed "$expr" "$file" > "$tmp"
+    mv "$tmp" "$file"
+}
+
 # =============================================================================
 # BASIC CREATE/ROLLBACK TESTS
 # =============================================================================
@@ -170,7 +189,7 @@ teardown() {
     info=$(checkpoint_info "$checkpoint_id")
 
     echo "$info" | grep -q '"checkpoint_id"'
-    echo "$info" | grep -Eq '"name":[[:space:]]*"info1"'
+    echo "$info" | grep -Eq '"name"[[:space:]]*:[[:space:]]*"info1"'
     echo "$info" | grep -q '"archive_hash"'
 }
 
@@ -202,17 +221,13 @@ teardown() {
     local checkpoint_id
     checkpoint_id=$(checkpoint_create "exists1" "${TEST_DIR}/source/file1.txt")
 
-    checkpoint_exists "$checkpoint_id"
-    [ $? -eq 0 ]
+    run checkpoint_exists "$checkpoint_id"
+    [ "$status" -eq 0 ]
 
     checkpoint_delete "$checkpoint_id"
 
-    # Guard the expected failure: bats runs test bodies under errexit, so an
-    # unguarded non-zero command aborts before the assertion runs
-    if checkpoint_exists "$checkpoint_id"; then
-        echo "checkpoint should not exist after delete" >&2
-        return 1
-    fi
+    run checkpoint_exists "$checkpoint_id"
+    [ "$status" -ne 0 ]
 }
 
 # =============================================================================
@@ -227,7 +242,7 @@ teardown() {
     # Manually backdate the metadata
     local metadata="${MAINFRAME_CHECKPOINT_DIR}/${checkpoint_id}/metadata.json"
     local old_epoch=$(($(date +%s) - 100000))
-    sed -i.bak "s/\"created_epoch\":[[:space:]]*[0-9]*/\"created_epoch\": ${old_epoch}/" "$metadata" && rm -f "$metadata.bak"
+    _checkpoint_test_sed_in_place "s/\"created_epoch\":[[:space:]]*[0-9]*/\"created_epoch\": ${old_epoch}/" "$metadata"
 
     # Prune with short max age
     local result
@@ -250,7 +265,7 @@ teardown() {
     # Count remaining
     local count
     count=$(find "$MAINFRAME_CHECKPOINT_DIR" -maxdepth 1 -type d | wc -l)
-    ((count--))  # Subtract 1 for directory itself
+    count=$((count - 1))
 
     [ "$count" -le 5 ]
 }
@@ -262,7 +277,7 @@ teardown() {
     # Backdate
     local metadata="${MAINFRAME_CHECKPOINT_DIR}/${checkpoint_id}/metadata.json"
     local old_epoch=$(($(date +%s) - 100000))
-    sed -i.bak "s/\"created_epoch\":[[:space:]]*[0-9]*/\"created_epoch\": ${old_epoch}/" "$metadata" && rm -f "$metadata.bak"
+    _checkpoint_test_sed_in_place "s/\"created_epoch\":[[:space:]]*[0-9]*/\"created_epoch\": ${old_epoch}/" "$metadata"
 
     # Dry run prune
     checkpoint_prune --max-age 1000 --dry-run > /dev/null
@@ -354,11 +369,10 @@ teardown() {
     [ "$status" -eq 1 ]
 }
 
-@test "checkpoint_create rejects name with null byte" {
-    # Null bytes cannot survive bash argument passing (they are stripped
-    # before the function ever sees them), so this property is untestable
-    # at the shell boundary
-    skip "null bytes cannot be passed through bash arguments"
+@test "checkpoint_create rejects control characters in name" {
+    local bad_name=$'test\nbad'
+    run checkpoint_create "$bad_name" "${TEST_DIR}/source/file1.txt"
+    [ "$status" -eq 1 ]
 }
 
 # =============================================================================
@@ -400,7 +414,7 @@ teardown() {
 
     # Corrupt the archive hash in metadata (not the actual archive)
     local metadata="${MAINFRAME_CHECKPOINT_DIR}/${checkpoint_id}/metadata.json"
-    sed -i.bak -E 's/"archive_hash":[[:space:]]*"[^"]*"/"archive_hash": "badhash"/' "$metadata" && rm -f "$metadata.bak"
+    _checkpoint_test_sed_in_place 's/"archive_hash":"[^"]*"/"archive_hash":"badhash"/' "$metadata"
 
     # Rollback with --force should work (but we've corrupted the hash, not the archive)
     run checkpoint_rollback "$checkpoint_id" --force
@@ -452,7 +466,7 @@ teardown() {
     # Create a binary file
     dd if=/dev/urandom of="${TEST_DIR}/source/binary.bin" bs=1K count=100 2>/dev/null
     local original_hash
-    original_hash=$(sha256sum "${TEST_DIR}/source/binary.bin" | cut -d' ' -f1)
+    original_hash=$(_checkpoint_test_sha256 "${TEST_DIR}/source/binary.bin")
 
     # Create checkpoint
     local checkpoint_id
@@ -466,7 +480,7 @@ teardown() {
 
     # Verify hash matches
     local restored_hash
-    restored_hash=$(sha256sum "${TEST_DIR}/source/binary.bin" | cut -d' ' -f1)
+    restored_hash=$(_checkpoint_test_sha256 "${TEST_DIR}/source/binary.bin")
     [ "$original_hash" = "$restored_hash" ]
 }
 

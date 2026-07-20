@@ -38,8 +38,11 @@ declare -g _CTX_CREATED_AT=""
 declare -g _CTX_UPDATED_AT=""
 declare -g _CTX_SNAPSHOT_COUNTER=0
 declare -g _CTX_LAST_SNAPSHOT=""
+declare -g _CTX_DIRTY=0
 declare -gA _CTX_DATA=()
 declare -gA _CTX_METADATA=()
+declare -g _CTX_EXIT_CLEANUP_REGISTERED=0
+declare -g _CTX_PREVIOUS_EXIT_TRAP=""
 
 # =============================================================================
 # INTERNAL HELPERS
@@ -72,8 +75,21 @@ _ctx_require_jq() {
 
 # Generate unique snapshot ID
 _ctx_next_snapshot_id() {
-    ((_CTX_SNAPSHOT_COUNTER++))
-    printf 'snap_%03d' "$_CTX_SNAPSHOT_COUNTER"
+    local target_var="${1:-}"
+    local next_snapshot_id
+
+    if [[ -f "${_CTX_SESSION_DIR}/meta.json" ]]; then
+        _CTX_SNAPSHOT_COUNTER=$(jq -r '.snapshot_count // 0' "${_CTX_SESSION_DIR}/meta.json" 2>/dev/null || printf '%s' "$_CTX_SNAPSHOT_COUNTER")
+    fi
+
+    ((_CTX_SNAPSHOT_COUNTER += 1))
+    printf -v next_snapshot_id 'snap_%03d' "$_CTX_SNAPSHOT_COUNTER"
+
+    if [[ -n "$target_var" ]]; then
+        printf -v "$target_var" '%s' "$next_snapshot_id"
+    else
+        printf '%s' "$next_snapshot_id"
+    fi
 }
 
 # Atomic file write (temp + rename)
@@ -127,9 +143,11 @@ _ctx_json_to_assoc() {
     target_arr=()
 
     # Parse each key-value pair
-    while IFS=$'\t' read -r key value; do
-        [[ -n "$key" ]] && target_arr["$key"]="$value"
-    done < <(echo "$json" | jq -r 'to_entries | .[] | [.key, (.value | tostring)] | @tsv' 2>/dev/null)
+    local key value
+    while IFS= read -r key; do
+        value=$(printf '%s\n' "$json" | jq -r --arg key "$key" '.[$key]')
+        target_arr["$key"]="$value"
+    done < <(printf '%s\n' "$json" | jq -r 'keys[]' 2>/dev/null)
 }
 
 # Build full context JSON
@@ -159,17 +177,18 @@ _ctx_build_json() {
 _ctx_parse_json() {
     local json="$1"
 
-    _CTX_SESSION_ID=$(echo "$json" | jq -r '.session_id // ""')
-    _CTX_CREATED_AT=$(echo "$json" | jq -r '.created_at // ""')
-    _CTX_UPDATED_AT=$(echo "$json" | jq -r '.updated_at // ""')
-    _CTX_VERSION=$(echo "$json" | jq -r '.version // 0')
+    _CTX_SESSION_ID=$(printf '%s\n' "$json" | jq -r '.session_id // ""')
+    _CTX_CREATED_AT=$(printf '%s\n' "$json" | jq -r '.created_at // ""')
+    _CTX_UPDATED_AT=$(printf '%s\n' "$json" | jq -r '.updated_at // ""')
+    _CTX_VERSION=$(printf '%s\n' "$json" | jq -r '.version // 0')
 
     local data_json metadata_json
-    data_json=$(echo "$json" | jq -c '.data // {}')
-    metadata_json=$(echo "$json" | jq -c '.metadata // {}')
+    data_json=$(printf '%s\n' "$json" | jq -c '.data // {}')
+    metadata_json=$(printf '%s\n' "$json" | jq -c '.metadata // {}')
 
     _ctx_json_to_assoc "$data_json" _CTX_DATA
     _ctx_json_to_assoc "$metadata_json" _CTX_METADATA
+    _CTX_DIRTY=0
 }
 
 # Append to history log
@@ -194,7 +213,7 @@ _ctx_log_change() {
 
 # Auto-save check
 _ctx_check_autosave() {
-    ((_CTX_CHANGE_COUNT++))
+    ((_CTX_CHANGE_COUNT += 1))
     if [[ $_CTX_CHANGE_COUNT -ge ${MAINFRAME_CONTEXT_AUTOSAVE:-10} ]]; then
         ctx_save
         _CTX_CHANGE_COUNT=0
@@ -203,9 +222,46 @@ _ctx_check_autosave() {
 
 # Cleanup handler for exit trap
 _ctx_cleanup() {
-    if [[ -n "$_CTX_SESSION_ID" ]]; then
+    if [[ -n "$_CTX_SESSION_ID" && ("$_CTX_DIRTY" == "1" || ! -f "${_CTX_SESSION_DIR}/current.json") ]]; then
         ctx_save 2>/dev/null || true
     fi
+}
+
+_ctx_get_trap_command() {
+    local signal="$1"
+    local trap_def
+
+    trap_def=$(trap -p "$signal") || return 0
+    [[ -n "$trap_def" ]] || return 0
+
+    trap_def=${trap_def#trap -- \'}
+    trap_def=${trap_def%\' "$signal"}
+    printf '%s\n' "$trap_def"
+}
+
+_ctx_run_exit_cleanup() {
+    local exit_code="$1"
+
+    _ctx_cleanup || true
+
+    if [[ -n "${_CTX_PREVIOUS_EXIT_TRAP:-}" ]]; then
+        builtin eval -- "$_CTX_PREVIOUS_EXIT_TRAP" || true
+    fi
+
+    return "$exit_code"
+}
+
+_ctx_install_exit_cleanup() {
+    [[ "${_CTX_EXIT_CLEANUP_REGISTERED:-0}" == "1" ]] && return 0
+
+    if declare -F _mainframe_add_exit_trap >/dev/null 2>&1; then
+        _mainframe_add_exit_trap "_ctx_cleanup"
+    else
+        _CTX_PREVIOUS_EXIT_TRAP="$(_ctx_get_trap_command EXIT)"
+        trap '_ctx_run_exit_cleanup "$?"' EXIT
+    fi
+
+    _CTX_EXIT_CLEANUP_REGISTERED=1
 }
 
 # =============================================================================
@@ -235,10 +291,11 @@ ctx_init() {
     _CTX_SESSION_DIR="${MAINFRAME_CONTEXT_DIR}/${session_id}"
     _CTX_CREATED_AT=$(_ctx_timestamp)
     _CTX_UPDATED_AT="$_CTX_CREATED_AT"
-    _CTX_VERSION=1
+    _CTX_VERSION=0
     _CTX_CHANGE_COUNT=0
     _CTX_SNAPSHOT_COUNTER=0
     _CTX_LAST_SNAPSHOT=""
+    _CTX_DIRTY=1
     _CTX_DATA=()
     _CTX_METADATA=()
 
@@ -261,7 +318,7 @@ ctx_init() {
     ctx_save || return 1
 
     # Register cleanup handler
-    trap _ctx_cleanup EXIT
+    _ctx_install_exit_cleanup
 
     _ctx_log debug "ctx_init: created session $session_id"
     return 0
@@ -304,9 +361,10 @@ ctx_load() {
     if [[ -f "${session_dir}/meta.json" ]]; then
         _CTX_SNAPSHOT_COUNTER=$(jq -r '.snapshot_count // 0' "${session_dir}/meta.json")
     fi
+    _CTX_DIRTY=0
 
     # Register cleanup handler
-    trap _ctx_cleanup EXIT
+    _ctx_install_exit_cleanup
 
     _ctx_log debug "ctx_load: loaded session $session_id (version $_CTX_VERSION)"
     return 0
@@ -326,7 +384,7 @@ ctx_save() {
     fi
 
     _CTX_UPDATED_AT=$(_ctx_timestamp)
-    ((_CTX_VERSION++))
+    ((_CTX_VERSION += 1))
 
     local json
     json=$(_ctx_build_json)
@@ -337,6 +395,7 @@ ctx_save() {
     }
 
     _ctx_log_change "save" "" ""
+    _CTX_DIRTY=0
     _ctx_log debug "ctx_save: saved version $_CTX_VERSION"
     return 0
 }
@@ -353,7 +412,9 @@ ctx_close() {
     fi
 
     # Final save
-    ctx_save 2>/dev/null || true
+    if [[ "$_CTX_DIRTY" == "1" || ! -f "${_CTX_SESSION_DIR}/current.json" ]]; then
+        ctx_save 2>/dev/null || true
+    fi
 
     # Update meta
     if [[ -f "${_CTX_SESSION_DIR}/meta.json" ]]; then
@@ -377,6 +438,7 @@ ctx_close() {
     _CTX_UPDATED_AT=""
     _CTX_SNAPSHOT_COUNTER=0
     _CTX_LAST_SNAPSHOT=""
+    _CTX_DIRTY=0
     _CTX_DATA=()
     _CTX_METADATA=()
 
@@ -410,6 +472,7 @@ ctx_set() {
     fi
 
     _CTX_DATA["$key"]="$value"
+    _CTX_DIRTY=1
     _ctx_log_change "set" "$key" "$value"
     _ctx_check_autosave
 
@@ -466,6 +529,7 @@ ctx_delete() {
 
     if [[ -v "_CTX_DATA[$key]" ]]; then
         unset "_CTX_DATA[$key]"
+        _CTX_DIRTY=1
         _ctx_log_change "delete" "$key" ""
         _ctx_check_autosave
         return 0
@@ -508,6 +572,7 @@ ctx_clear() {
     fi
 
     _CTX_DATA=()
+    _CTX_DIRTY=1
     _ctx_log_change "clear" "" ""
     ctx_save
 
@@ -536,7 +601,7 @@ ctx_snapshot() {
     ctx_save || return 1
 
     local snapshot_id
-    snapshot_id=$(_ctx_next_snapshot_id)
+    _ctx_next_snapshot_id snapshot_id
     local snapshot_file="${_CTX_SESSION_DIR}/snapshots/${snapshot_id}.json"
 
     # Copy current state to snapshot
@@ -544,7 +609,7 @@ ctx_snapshot() {
     json=$(_ctx_build_json)
 
     # Add snapshot metadata
-    json=$(echo "$json" | jq \
+    json=$(printf '%s\n' "$json" | jq \
         --arg snapshot_id "$snapshot_id" \
         --arg snapshot_at "$(_ctx_timestamp)" \
         '. + {snapshot_id: $snapshot_id, snapshot_at: $snapshot_at}')
@@ -648,8 +713,8 @@ ctx_diff() {
 
     # Extract data objects
     local current_data snapshot_data
-    current_data=$(echo "$current_json" | jq -c '.data')
-    snapshot_data=$(echo "$snapshot_json" | jq -c '.data')
+    current_data=$(printf '%s\n' "$current_json" | jq -c '.data')
+    snapshot_data=$(printf '%s\n' "$snapshot_json" | jq -c '.data')
 
     # Compute differences
     local added removed changed
@@ -768,14 +833,14 @@ ctx_import() {
     json=$(<"$source_file")
 
     # Validate JSON
-    if ! echo "$json" | jq empty 2>/dev/null; then
+    if ! printf '%s\n' "$json" | jq empty >/dev/null 2>&1; then
         _ctx_log error "ctx_import: invalid JSON in file"
         return 1
     fi
 
     # Extract and import data
     local data_json
-    data_json=$(echo "$json" | jq -c '.data // {}')
+    data_json=$(printf '%s\n' "$json" | jq -c '.data // {}')
 
     local -A import_data=()
     _ctx_json_to_assoc "$data_json" import_data
@@ -785,6 +850,7 @@ ctx_import() {
         _CTX_DATA["$key"]="${import_data[$key]}"
     done
 
+    _CTX_DIRTY=1
     _ctx_log_change "import" "$source_file" ""
     ctx_save
 
@@ -823,7 +889,7 @@ ctx_merge() {
     other_json=$(<"$other_file")
 
     local other_data
-    other_data=$(echo "$other_json" | jq -c '.data // {}')
+    other_data=$(printf '%s\n' "$other_json" | jq -c '.data // {}')
 
     local -A merge_data=()
     _ctx_json_to_assoc "$other_data" merge_data
@@ -833,6 +899,7 @@ ctx_merge() {
         _CTX_DATA["$key"]="${merge_data[$key]}"
     done
 
+    _CTX_DIRTY=1
     _ctx_log_change "merge" "$other_session_id" ""
     ctx_save
 
@@ -866,6 +933,7 @@ ctx_set_meta() {
     fi
 
     _CTX_METADATA["$key"]="$value"
+    _CTX_DIRTY=1
     return 0
 }
 

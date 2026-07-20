@@ -224,7 +224,9 @@ teardown() {
     for ((i=0; i<50; i++)); do
         local result
         result=$(gen_frequency 99 "heavy" 1 "light")
-        [[ "$result" == "heavy" ]] && ((heavy_count++))
+        if [[ "$result" == "heavy" ]]; then
+            heavy_count=$(( heavy_count + 1 ))
+        fi
     done
 
     # Should have heavy at least 40 times out of 50
@@ -448,12 +450,12 @@ teardown() {
 @test "prop_check outputs USOP failure JSON" {
     always_false() { return 1; }
 
-    local result
-    result=$(prop_check gen_int always_false 10)
+    run prop_check gen_int always_false 10
+    [ "$status" -eq 1 ]
 
-    [[ "$result" == *'"ok":false'* ]]
-    [[ "$result" == *'"counterexample":'* ]]
-    [[ "$result" == *'"shrink_steps":'* ]]
+    [[ "$output" == *'"ok":false'* ]]
+    [[ "$output" == *'"counterexample":'* ]]
+    [[ "$output" == *'"shrink_steps":'* ]]
 }
 
 @test "prop_check includes seed in output" {
