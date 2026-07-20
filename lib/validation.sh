@@ -345,20 +345,33 @@ validate_path() {
 
 # Validate path is safe (no traversal attacks)
 # Usage: validate_path_safe "path" [base_dir]
-# Prevents: ../, symlink escapes, null bytes
+# Prevents: ../ traversal (incl. URL-encoded), symlink escapes, null bytes
 validate_path_safe() {
     local path="$1"
     local base_dir="${2:-}"
 
     [[ -z "$path" ]] && return 1
 
-    # Note: Null bytes cannot exist in bash strings, so no check needed
+    # Note: Null bytes cannot exist in bash strings, but encoded ones can
+    [[ "$path" == *"%00"* ]] && return 1
 
-    # Reject obvious traversal patterns
-    [[ "$path" == *".."* ]] && return 1
+    # Decode URL-encoded traversal markers before inspection (fail closed)
+    local decoded="$path"
+    decoded="${decoded//%2e/.}"; decoded="${decoded//%2E/.}"
+    decoded="${decoded//%2f//}"; decoded="${decoded//%2F//}"
+    decoded="${decoded//%5c/\\}"; decoded="${decoded//%5C/\\}"
 
     # Reject backslash (Windows-style path manipulation)
-    [[ "$path" == *"\\"* ]] && return 1
+    [[ "$decoded" == *"\\"* ]] && return 1
+
+    # Reject '..' as an exact path component (allows names like foo..bar.txt
+    # while catching real traversal: ../x, a/../../b, %2e%2e%2f, ....//..x)
+    local -a _vps_parts
+    IFS='/' read -r -a _vps_parts <<< "$decoded"
+    local _vps_part
+    for _vps_part in "${_vps_parts[@]}"; do
+        [[ "$_vps_part" == ".." ]] && return 1
+    done
 
     # If base_dir provided, ensure path stays within it
     if [[ -n "$base_dir" ]]; then
@@ -386,8 +399,8 @@ validate_path_safe() {
             fi
         fi
 
-        # Ensure path starts with base
-        [[ "$abs_path" != "$abs_base"* ]] && return 1
+        # Boundary-aware containment: exact match or proper subdirectory
+        [[ "$abs_path" != "$abs_base" && "$abs_path" != "$abs_base"/* ]] && return 1
     fi
 
     return 0

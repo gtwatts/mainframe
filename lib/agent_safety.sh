@@ -63,6 +63,17 @@ declare -gA _AGENT_PROFILE_CAN_NETWORK=(
     [system]=1
 )
 
+# Destructive disk/system operations require the highest tier.
+# Even the system profile should treat these as exceptional.
+declare -gA _AGENT_PROFILE_CAN_DESTRUCTIVE=(
+    [readonly]=0
+    [project]=0
+    [system]=1
+)
+
+# One-shot operator approval for above-threshold commands (consumed on use)
+declare -g AGENT_APPROVED="${AGENT_APPROVED:-0}"
+
 # =============================================================================
 # CALLBACK WHITELIST (NO EVAL)
 # =============================================================================
@@ -178,9 +189,13 @@ agent_error() {
     local line="${BASH_LINENO[0]:-0}"
 
     # Build JSON manually (avoid subshell for json_object)
-    local json
+    # msg must be fully escaped or the envelope is not valid JSON
+    local json _esc_msg="${msg//\"/\\\"}"
+    _esc_msg="${_esc_msg//$'\n'/\\n}"
+    _esc_msg="${_esc_msg//$'\t'/\\t}"
+    _esc_msg="${_esc_msg//$'\r'/\\r}"
     printf -v json '{"success":false,"error":"%s","function":"%s","line":%d,"context":%s,"timestamp":"%s"}' \
-        "${msg//\"/\\\"}" \
+        "$_esc_msg" \
         "${func//\"/\\\"}" \
         "$line" \
         "$ctx_json" \
@@ -220,9 +235,12 @@ agent_success() {
     done
     data_json+="}"
 
-    local json
+    local json _esc_msg="${msg//\"/\\\"}"
+    _esc_msg="${_esc_msg//$'\n'/\\n}"
+    _esc_msg="${_esc_msg//$'\t'/\\t}"
+    _esc_msg="${_esc_msg//$'\r'/\\r}"
     printf -v json '{"success":true,"message":"%s","data":%s,"timestamp":"%s"}' \
-        "${msg//\"/\\\"}" \
+        "$_esc_msg" \
         "$data_json" \
         "$(date -Iseconds)"
 
@@ -274,105 +292,401 @@ agent_result() {
 # COMMAND VALIDATION
 # =============================================================================
 
-# Dangerous command patterns that require extra scrutiny
-declare -ga _AGENT_DANGEROUS_COMMANDS=(
-    "rm" "rmdir" "unlink"
-    "mv"
-    "dd"
-    "mkfs" "fdisk" "parted"
-    "chmod" "chown"
-    "kill" "killall" "pkill"
-    "reboot" "shutdown" "halt" "poweroff"
-    "iptables" "ip6tables" "nft"
-    "systemctl" "service"
-    "useradd" "userdel" "usermod"
-    "passwd"
-    "crontab"
-    "curl" "wget"  # Network operations
+# Command classification tiers (policy is checked BEFORE existence so
+# outcomes are host-independent and fail closed on policy, not on what
+# happens to be installed).
+#
+# Tier 1 - DESTRUCTIVE: raw disk / irreversible system operations
+#   Requires: destructive tier (system profile only)
+declare -ga _AGENT_DESTRUCTIVE_COMMANDS=(
+    "dd" "mkfs" "mkswap" "newfs"
+    "fdisk" "parted" "diskutil"
+    "shred" "wipe" "hdparm" "nvme"
 )
 
-# Validate command before execution
-# @pre: command and args provided
-# @post: validates command exists and is safe
-# @returns: 0 if valid, 1 if invalid
-#
-# Usage: agent_validate_command "cmd" "arg1" "arg2"
-agent_validate_command() {
+# Tier 2 - SYSTEM: system administration
+#   Requires: system profile
+declare -ga _AGENT_SYSTEM_COMMANDS=(
+    "systemctl" "service" "launchctl"
+    "reboot" "shutdown" "halt" "poweroff"
+    "useradd" "userdel" "usermod" "passwd"
+    "crontab" "iptables" "ip6tables" "nft"
+    "mount" "umount"
+)
+
+# Tier 3 - NETWORK: outbound network operations
+#   Requires: system profile
+declare -ga _AGENT_NETWORK_COMMANDS=(
+    "curl" "wget"
+)
+
+# Tier 4 - WRITE: filesystem/process mutation
+#   Requires: project or system profile
+declare -ga _AGENT_WRITE_COMMANDS=(
+    "rm" "rmdir" "unlink" "mv" "cp"
+    "chmod" "chown" "chgrp"
+    "kill" "killall" "pkill"
+)
+
+# Kept for backward compatibility (union of all tiers)
+declare -ga _AGENT_DANGEROUS_COMMANDS=(
+    "${_AGENT_DESTRUCTIVE_COMMANDS[@]}"
+    "${_AGENT_SYSTEM_COMMANDS[@]}"
+    "${_AGENT_NETWORK_COMMANDS[@]}"
+    "${_AGENT_WRITE_COMMANDS[@]}"
+)
+
+# Internal: membership test against a command tier
+# Usage: _agent_in_tier "$cmd" "${_AGENT_SYSTEM_COMMANDS[@]}"
+_agent_in_tier() {
     local cmd="$1"
     shift
-    local -a args=("$@")
+    local tier_cmd
+    for tier_cmd in "$@"; do
+        [[ "$cmd" == "$tier_cmd" ]] && return 0
+    done
+    # mkfs family: match mkfs.ext4, mkfs.xfs, ... against literal "mkfs"
+    case "$cmd" in
+        mkfs.*)
+            for tier_cmd in "$@"; do
+                [[ "$tier_cmd" == "mkfs" ]] && return 0
+            done
+            ;;
+    esac
+    return 1
+}
+
+# =============================================================================
+# COMMAND TOKENIZATION (STRING-FORM API)
+# =============================================================================
+# AI agents naturally produce command strings ("ls -la"). The validation and
+# execution API accepts both argv form and a single string form. String form
+# is tokenized WITHOUT a shell: quotes and escapes are honored, but shell
+# operators, variable expansion, and command substitution are rejected
+# (agent_safe_exec never invokes a shell, so such input could never execute
+# anyway - rejecting it here produces first-time-correct errors).
+
+# Normalized argv output buffer (avoids nameref for bash 4.0 compat)
+declare -ga _AGENT_NORMALIZED_ARGV=()
+
+# Internal: tokenize a command string into _AGENT_NORMALIZED_ARGV
+# @returns: 0 on success, 1 with agent_error on unsafe/unparseable input
+_agent_tokenize() {
+    local input="$1"
+    _AGENT_NORMALIZED_ARGV=()
+
+    local cur="" token_started=0 in_squote=0 in_dquote=0
+    local i ch next
+    local len=${#input}
+
+    for (( i=0; i<len; i++ )); do
+        ch="${input:i:1}"
+
+        if (( in_squote )); then
+            if [[ "$ch" == "'" ]]; then in_squote=0; else cur+="$ch"; fi
+            continue
+        fi
+
+        if (( in_dquote )); then
+            case "$ch" in
+                '"') in_dquote=0 ;;
+                '\\')
+                    next="${input:i+1:1}"
+                    if [[ "$next" == '"' || "$next" == '\\' ]]; then
+                        cur+="$next"; (( i++ )) || true
+                    else
+                        cur+="$ch"
+                    fi
+                    ;;
+                '$'|'`')
+                    agent_error "expansion not allowed in validated command string" \
+                        "suggestion=Expand variables yourself and pass argv form: agent_validate_command cmd arg1 arg2"
+                    return 1
+                    ;;
+                *) cur+="$ch" ;;
+            esac
+            continue
+        fi
+
+        case "$ch" in
+            "'") in_squote=1; token_started=1 ;;
+            '"') in_dquote=1; token_started=1 ;;
+            '\\')
+                next="${input:i+1:1}"
+                if [[ -z "$next" ]]; then
+                    agent_error "trailing backslash in command string"
+                    return 1
+                fi
+                cur+="$next"; (( i++ )) || true; token_started=1
+                ;;
+            [[:space:]])
+                if (( token_started )); then
+                    _AGENT_NORMALIZED_ARGV+=("$cur")
+                    cur=""; token_started=0
+                fi
+                ;;
+            '$'|'`')
+                agent_error "variable/command expansion not allowed in validated command string" \
+                    "suggestion=Expand variables yourself and pass argv form: agent_validate_command cmd arg1 arg2"
+                return 1
+                ;;
+            '|'|'&'|';'|'<'|'>'|'('|')')
+                agent_error "shell operators are not supported in validated command strings" \
+                    "operator=$ch" \
+                    "suggestion=Run one simple command per call; agent_safe_exec never uses a shell"
+                return 1
+                ;;
+            *) cur+="$ch"; token_started=1 ;;
+        esac
+    done
+
+    if (( in_squote || in_dquote )); then
+        agent_error "unbalanced quotes in command string"
+        return 1
+    fi
+
+    if (( token_started )); then
+        _AGENT_NORMALIZED_ARGV+=("$cur")
+    fi
+
+    if (( ${#_AGENT_NORMALIZED_ARGV[@]} == 0 )); then
+        agent_error "empty command"
+        return 1
+    fi
+
+    return 0
+}
+
+# Internal: normalize argv-or-string input into _AGENT_NORMALIZED_ARGV
+# @returns: 0 on success (buffer populated), 1 with agent_error otherwise
+_agent_normalize_argv() {
+    _AGENT_NORMALIZED_ARGV=()
+
+    if (( $# == 0 )); then
+        agent_error "no command provided"
+        return 1
+    fi
+
+    if (( $# > 1 )); then
+        _AGENT_NORMALIZED_ARGV=("$@")
+        return 0
+    fi
+
+    local input="$1"
+    # Fast path: single token with no whitespace, quoting, or shell syntax
+    case "$input" in
+        *[[:space:]\"\'\`\$\\\|\&\;\<\>\(\)]*)
+            _agent_tokenize "$input"
+            ;;
+        *)
+            _AGENT_NORMALIZED_ARGV=("$input")
+            ;;
+    esac
+}
+
+# =============================================================================
+# FLAG NORMALIZATION
+# =============================================================================
+# Flag detection must handle bundled (-rf), split (-r -f), and long
+# (--recursive --force) forms uniformly, and stop at "--".
+
+# Internal: returns 0 if args contain recursive AND force flags (rm-style)
+_agent_has_recursive_force() {
+    local has_r=0 has_f=0 arg
+    for arg in "$@"; do
+        [[ "$arg" == "--" ]] && break
+        [[ "$arg" != -* ]] && continue
+        case "$arg" in
+            --recursive) has_r=1 ;;
+            --force) has_f=1 ;;
+            --*) ;;
+            *)
+                [[ "$arg" == *[rR]* ]] && has_r=1
+                [[ "$arg" == *f* ]] && has_f=1
+                ;;
+        esac
+    done
+    (( has_r && has_f ))
+}
+
+# Internal: returns 0 if args contain a recursive flag (chmod/chown-style)
+_agent_has_recursive_flag() {
+    local arg
+    for arg in "$@"; do
+        [[ "$arg" == "--" ]] && break
+        [[ "$arg" != -* ]] && continue
+        case "$arg" in
+            --recursive) return 0 ;;
+            --*) ;;
+            *) [[ "$arg" == *R* ]] && return 0 ;;
+        esac
+    done
+    return 1
+}
+
+# =============================================================================
+# PATH CONFINEMENT
+# =============================================================================
+
+# Internal: confine a single path to AGENT_SAFE_BASE (emits agent_error)
+_agent_confine_path() {
+    local path="$1"
+    local op_context="$2"
+    if ! _agent_validate_path_safe "$path" "$AGENT_SAFE_BASE"; then
+        agent_error "unsafe $op_context target: $path" \
+            "base=$AGENT_SAFE_BASE" \
+            "suggestion=Keep operations inside AGENT_SAFE_BASE"
+        return 1
+    fi
+    return 0
+}
+
+# Internal: enforce AGENT_SAFE_BASE on the write targets of a command
+# @pre: AGENT_SAFE_BASE is non-empty
+_agent_confine_write_targets() {
+    local cmd="$1"
+    shift
+
+    local arg skip_next=0 confine_next=0 first_operand=1
+
+    case "$cmd" in
+        rm|rmdir|unlink)
+            # Recursive+force deletion is the destructive combination;
+            # confine every operand when it is present.
+            if _agent_has_recursive_force "$@"; then
+                for arg in "$@"; do
+                    [[ "$arg" == -* ]] && continue
+                    _agent_confine_path "$arg" "$cmd" || return 1
+                done
+            fi
+            ;;
+        chmod|chown|chgrp)
+            # Confine path operands (after the mode/owner spec) when recursive.
+            if _agent_has_recursive_flag "$@"; then
+                for arg in "$@"; do
+                    case "$arg" in
+                        --reference*) first_operand=0; continue ;;
+                        -*) continue ;;
+                    esac
+                    if (( first_operand )); then
+                        first_operand=0   # mode/owner spec, not a path
+                        continue
+                    fi
+                    _agent_confine_path "$arg" "$cmd" || return 1
+                done
+            fi
+            ;;
+        dd)
+            # Only of= is a write target
+            for arg in "$@"; do
+                if [[ "$arg" == of=* ]]; then
+                    _agent_confine_path "${arg#of=}" "dd output" || return 1
+                fi
+            done
+            ;;
+        mv|cp|truncate|tee)
+            for arg in "$@"; do
+                if (( confine_next )); then
+                    confine_next=0
+                    _agent_confine_path "$arg" "$cmd" || return 1
+                    continue
+                fi
+                if (( skip_next )); then
+                    skip_next=0
+                    continue
+                fi
+                case "$arg" in
+                    -t|--target-directory) confine_next=1 ;;
+                    --target-directory=*) _agent_confine_path "${arg#*=}" "$cmd" || return 1 ;;
+                    -s|--size|--reference|-o|--option|-S|--suffix|--backup) skip_next=1 ;;
+                    --reference=*) _agent_confine_path "${arg#*=}" "$cmd" || return 1 ;;
+                    --*=*) ;;
+                    -*) ;;
+                    *) _agent_confine_path "$arg" "$cmd" || return 1 ;;
+                esac
+            done
+            ;;
+    esac
+    return 0
+}
+
+# Validate command before execution
+# @pre: command and args provided (argv form), or a single command string
+# @post: validates command is permitted by policy and safe to execute
+# @returns: 0 if valid, 1 if invalid
+#
+# Policy checks run BEFORE existence checks so that policy decisions are
+# host-independent: a forbidden command is forbidden even on hosts where
+# it is not installed (fail closed on policy, not on environment).
+#
+# Usage: agent_validate_command "cmd" "arg1" "arg2"
+#        agent_validate_command "cmd arg1 arg2"   # string form, safely tokenized
+agent_validate_command() {
+    if ! _agent_normalize_argv "$@"; then
+        return 1
+    fi
+
+    local cmd="${_AGENT_NORMALIZED_ARGV[0]}"
+    local -a args=("${_AGENT_NORMALIZED_ARGV[@]:1}")
 
     if [[ -z "$cmd" ]]; then
         agent_error "empty command"
         return 1
     fi
 
-    # Check command exists (executable or function)
+    # -----------------------------------------------------------------
+    # POLICY CHECKS FIRST (host-independent, fail closed)
+    # -----------------------------------------------------------------
+    local can_write="${_AGENT_PROFILE_CAN_WRITE[$AGENT_CURRENT_PROFILE]:-0}"
+    local can_system="${_AGENT_PROFILE_CAN_SYSTEM[$AGENT_CURRENT_PROFILE]:-0}"
+    local can_network="${_AGENT_PROFILE_CAN_NETWORK[$AGENT_CURRENT_PROFILE]:-0}"
+    local can_destructive="${_AGENT_PROFILE_CAN_DESTRUCTIVE[$AGENT_CURRENT_PROFILE]:-0}"
+
+    # Tier 1: destructive disk/system commands
+    if _agent_in_tier "$cmd" "${_AGENT_DESTRUCTIVE_COMMANDS[@]}"; then
+        if (( ! can_destructive )); then
+            agent_error "destructive command '$cmd' not allowed in profile '$AGENT_CURRENT_PROFILE'" \
+                "suggestion=Use 'system' profile for destructive disk operations"
+            return 1
+        fi
+    # Tier 3: network commands
+    elif _agent_in_tier "$cmd" "${_AGENT_NETWORK_COMMANDS[@]}"; then
+        if (( ! can_network )); then
+            agent_error "network command '$cmd' not allowed in profile '$AGENT_CURRENT_PROFILE'" \
+                "suggestion=Use 'system' profile for network operations"
+            return 1
+        fi
+    # Tier 2: system administration commands
+    elif _agent_in_tier "$cmd" "${_AGENT_SYSTEM_COMMANDS[@]}"; then
+        if (( ! can_system )); then
+            agent_error "system command '$cmd' not allowed in profile '$AGENT_CURRENT_PROFILE'" \
+                "suggestion=Use 'system' profile for system administration"
+            return 1
+        fi
+    # Tier 4: write-class commands
+    elif _agent_in_tier "$cmd" "${_AGENT_WRITE_COMMANDS[@]}"; then
+        if (( ! can_write )); then
+            agent_error "write command '$cmd' not allowed in profile '$AGENT_CURRENT_PROFILE'" \
+                "suggestion=Use 'project' or 'system' profile"
+            return 1
+        fi
+    fi
+
+    # -----------------------------------------------------------------
+    # EXISTENCE CHECK (after policy: existence is host-dependent, policy is not)
+    # -----------------------------------------------------------------
     if ! type -P "$cmd" &>/dev/null && ! declare -F "$cmd" &>/dev/null; then
         agent_error "command not found: $cmd" \
             "suggestion=Check spelling or install package"
         return 1
     fi
 
-    # Profile-based permission checks
-    local can_write="${_AGENT_PROFILE_CAN_WRITE[$AGENT_CURRENT_PROFILE]:-0}"
-    local can_system="${_AGENT_PROFILE_CAN_SYSTEM[$AGENT_CURRENT_PROFILE]:-0}"
-    local can_network="${_AGENT_PROFILE_CAN_NETWORK[$AGENT_CURRENT_PROFILE]:-0}"
-
-    # Check for dangerous commands based on profile
-    local dangerous_cmd
-    for dangerous_cmd in "${_AGENT_DANGEROUS_COMMANDS[@]}"; do
-        if [[ "$cmd" == "$dangerous_cmd" ]]; then
-            # Network commands need network permission
-            if [[ "$cmd" == "curl" || "$cmd" == "wget" ]]; then
-                if (( ! can_network )); then
-                    agent_error "network command '$cmd' not allowed in profile '$AGENT_CURRENT_PROFILE'" \
-                        "suggestion=Use 'system' profile for network operations"
-                    return 1
-                fi
-            # System commands need system permission
-            elif [[ "$cmd" =~ ^(systemctl|service|reboot|shutdown|useradd|passwd)$ ]]; then
-                if (( ! can_system )); then
-                    agent_error "system command '$cmd' not allowed in profile '$AGENT_CURRENT_PROFILE'" \
-                        "suggestion=Use 'system' profile for system administration"
-                    return 1
-                fi
-            # Write commands need write permission
-            elif (( ! can_write )); then
-                agent_error "write command '$cmd' not allowed in profile '$AGENT_CURRENT_PROFILE'" \
-                    "suggestion=Use 'project' or 'system' profile"
-                return 1
-            fi
-            break
-        fi
-    done
-
-    # Special handling for rm with -rf
-    if [[ "$cmd" == "rm" ]]; then
-        local has_rf=0
-        local arg
-        for arg in "${args[@]}"; do
-            if [[ "$arg" == "-rf" || "$arg" == "-fr" || "$arg" == *"r"*"f"* ]]; then
-                has_rf=1
-                break
-            fi
-        done
-
-        if (( has_rf )); then
-            for arg in "${args[@]}"; do
-                # Skip flags
-                [[ "$arg" == -* ]] && continue
-
-                # Validate path safety
-                if [[ -n "${AGENT_SAFE_BASE:-}" ]]; then
-                    if ! _agent_validate_path_safe "$arg" "$AGENT_SAFE_BASE"; then
-                        agent_error "unsafe rm target: $arg" \
-                            "base=$AGENT_SAFE_BASE" \
-                            "suggestion=Use safe_remove for safer deletion"
-                        return 1
-                    fi
-                fi
-            done
+    # -----------------------------------------------------------------
+    # PATH CONFINEMENT (when AGENT_SAFE_BASE is set)
+    # -----------------------------------------------------------------
+    if [[ -n "${AGENT_SAFE_BASE:-}" ]]; then
+        if ! _agent_confine_write_targets "$cmd" "${args[@]}"; then
+            return 1
         fi
     fi
 
@@ -387,34 +701,48 @@ _agent_validate_path_safe() {
     [[ -z "$path" ]] && return 1
     [[ -z "$base" ]] && return 0  # No base = allow all
 
-    # Reject traversal patterns
-    [[ "$path" == *".."* ]] && return 1
-    [[ "$path" == *"\\"* ]] && return 1
+    # Decode URL-encoded traversal markers before inspection (fail closed)
+    local decoded="$path"
+    decoded="${decoded//%2e/.}"; decoded="${decoded//%2E/.}"
+    decoded="${decoded//%2f//}"; decoded="${decoded//%2F//}"
+    decoded="${decoded//%5c/\\}"; decoded="${decoded//%5C/\\}"
+    [[ "$decoded" == *"%00"* ]] && return 1
+
+    # Reject backslash (Windows-style path manipulation)
+    [[ "$decoded" == *"\\"* ]] && return 1
+
+    # Reject '..' as an exact path component (allows names like foo..bar)
+    local -a _avps_parts
+    IFS='/' read -r -a _avps_parts <<< "$decoded"
+    local _avps_part
+    for _avps_part in "${_avps_parts[@]}"; do
+        [[ "$_avps_part" == ".." ]] && return 1
+    done
 
     # Resolve paths
     local abs_base abs_path
 
     if [[ -d "$base" ]]; then
-        abs_base=$(cd "$base" && pwd -P)
+        abs_base=$(cd "$base" && pwd -P) || return 1
     else
         return 1
     fi
 
     # Handle both existing and non-existing paths
     if [[ -e "$path" ]]; then
-        abs_path=$(cd "$(dirname "$path")" && pwd -P)/$(basename "$path")
+        abs_path=$(cd "$(dirname -- "$path")" && pwd -P)/$(basename -- "$path")
     else
         local parent_dir
-        parent_dir=$(dirname "$path")
+        parent_dir=$(dirname -- "$path")
         if [[ -d "$parent_dir" ]]; then
-            abs_path=$(cd "$parent_dir" && pwd -P)/$(basename "$path")
+            abs_path=$(cd "$parent_dir" && pwd -P)/$(basename -- "$path")
         else
             return 1
         fi
     fi
 
-    # Ensure path starts with base
-    [[ "$abs_path" == "$abs_base"* ]]
+    # Boundary-aware containment: exact match or proper subdirectory
+    [[ "$abs_path" == "$abs_base" || "$abs_path" == "$abs_base"/* ]]
 }
 
 # =============================================================================
@@ -426,21 +754,36 @@ _agent_validate_path_safe() {
 #
 # Usage: score=$(agent_risk_score "rm" "-rf" "/tmp/test")
 agent_risk_score() {
-    local cmd="$1"
-    shift
-    local -a args=("$@")
+    if ! _agent_normalize_argv "$@"; then
+        return 1
+    fi
+    local cmd="${_AGENT_NORMALIZED_ARGV[0]}"
+    local -a args=("${_AGENT_NORMALIZED_ARGV[@]:1}")
     local score=0
 
     # Base risk for dangerous commands
     case "$cmd" in
         rm|rmdir|unlink)
             score=$((score + 30))
-            # Higher risk for recursive
-            [[ " ${args[*]} " == *" -r"* || " ${args[*]} " == *" -rf "* ]] && score=$((score + 20))
-            # Higher risk for force
-            [[ " ${args[*]} " == *" -f "* ]] && score=$((score + 10))
+            # Higher risk for recursive (handles -r, -rf, -r -f, --recursive)
+            local _rs_r=0 _rs_f=0 _rs_arg
+            for _rs_arg in "${args[@]}"; do
+                [[ "$_rs_arg" == "--" ]] && break
+                [[ "$_rs_arg" != -* ]] && continue
+                case "$_rs_arg" in
+                    --recursive) _rs_r=1 ;;
+                    --force) _rs_f=1 ;;
+                    --*) ;;
+                    *)
+                        [[ "$_rs_arg" == *[rR]* ]] && _rs_r=1
+                        [[ "$_rs_arg" == *f* ]] && _rs_f=1
+                        ;;
+                esac
+            done
+            (( _rs_r )) && score=$((score + 20))
+            (( _rs_f )) && score=$((score + 10))
             ;;
-        dd|mkfs|fdisk)
+        dd|mkfs|mkfs.*|mkswap|newfs|fdisk|parted|diskutil|shred|wipe|hdparm|nvme)
             score=$((score + 80))
             ;;
         chmod|chown)
@@ -505,24 +848,97 @@ agent_requires_confirmation() {
 }
 
 # =============================================================================
+# EXECUTION APPROVAL
+# =============================================================================
+# Above-threshold commands are blocked unless explicitly approved. Two
+# approval channels:
+#   1. AGENT_APPROVED=1 - one-shot operator approval (consumed on use)
+#   2. An approval callback registered via agent_register_approval_callback
+#      (receives the command argv, returns 0 to approve)
+
+# Registered approval callback (function name, empty = none)
+declare -g _AGENT_APPROVAL_CALLBACK=""
+
+# Register a callback invoked to approve above-threshold commands
+# @pre: function must be defined
+# @returns: 0 on success, 1 if function not defined
+#
+# Usage: agent_register_approval_callback "my_approval_fn"
+agent_register_approval_callback() {
+    local name="$1"
+
+    if [[ -z "$name" ]]; then
+        agent_error "callback name required"
+        return 1
+    fi
+
+    if ! declare -F "$name" &>/dev/null; then
+        agent_error "callback '$name' is not a defined function"
+        return 1
+    fi
+
+    _AGENT_APPROVAL_CALLBACK="$name"
+    _AGENT_ALLOWED_CALLBACKS["$name"]=1
+    agent_audit "approval_callback_registered" "name=$name"
+    return 0
+}
+
+# Clear the approval callback
+# @returns: 0
+agent_clear_approval_callback() {
+    _AGENT_APPROVAL_CALLBACK=""
+    return 0
+}
+
+# Internal: check whether an above-threshold command is approved
+# @returns: 0 if approved, 1 otherwise
+_agent_execution_approved() {
+    # One-shot operator approval via environment (consumed on use)
+    case "${AGENT_APPROVED:-0}" in
+        1|true|yes|TRUE|YES)
+            AGENT_APPROVED=0
+            return 0
+            ;;
+    esac
+
+    # Approval callback receives the command argv; 0 = approve
+    if [[ -n "$_AGENT_APPROVAL_CALLBACK" ]]; then
+        if "$_AGENT_APPROVAL_CALLBACK" "$@"; then
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+# =============================================================================
 # SAFE COMMAND DISPATCH (NO EVAL)
 # =============================================================================
 
 # Execute command with full safety checks and audit trail
 # @pre: command validated
 # @post: command executed with audit logging
-# @returns: command's exit code
+# @returns: command's exit code (1 with structured error if blocked)
+#
+# Commands whose risk score meets or exceeds AGENT_RISK_THRESHOLD are
+# BLOCKED unless approved via AGENT_APPROVED=1 (one-shot) or an approval
+# callback (agent_register_approval_callback). Advisory scoring is not a
+# guardrail - enforcement happens here.
 #
 # Usage: agent_safe_exec ls -la /tmp
+#        agent_safe_exec "ls -la /tmp"   # string form, safely tokenized
 agent_safe_exec() {
-    local -a cmd=("$@")
+    if ! _agent_normalize_argv "$@"; then
+        return 1
+    fi
+    local -a cmd=("${_AGENT_NORMALIZED_ARGV[@]}")
 
     if (( ${#cmd[@]} == 0 )); then
         agent_error "no command provided"
         return 1
     fi
 
-    # Pre-execution validation
+    # Pre-execution validation (policy -> existence -> confinement)
     if ! agent_validate_command "${cmd[@]}"; then
         return 1
     fi
@@ -531,10 +947,25 @@ agent_safe_exec() {
     local risk_score
     risk_score=$(agent_risk_score "${cmd[@]}")
 
+    # Enforce the risk threshold
+    if (( risk_score >= AGENT_RISK_THRESHOLD )); then
+        if _agent_execution_approved "${cmd[@]}"; then
+            agent_audit "exec_approved" "cmd=${cmd[*]}" "risk=$risk_score" "profile=$AGENT_CURRENT_PROFILE"
+        else
+            agent_audit "exec_blocked_risk" "cmd=${cmd[*]}" "risk=$risk_score" "threshold=$AGENT_RISK_THRESHOLD" "profile=$AGENT_CURRENT_PROFILE"
+            agent_error "command blocked: risk score $risk_score meets threshold $AGENT_RISK_THRESHOLD" \
+                "cmd=${cmd[*]}" \
+                "risk_score=$risk_score" \
+                "threshold=$AGENT_RISK_THRESHOLD" \
+                "suggestion=Obtain operator approval (AGENT_APPROVED=1) or register an approval callback"
+            return 1
+        fi
+    fi
+
     # Audit the execution attempt
     agent_audit "exec_start" "cmd=${cmd[*]}" "risk=$risk_score" "profile=$AGENT_CURRENT_PROFILE"
 
-    # Execute the command (array expansion preserves arguments)
+    # Execute the command (array expansion preserves arguments; no shell)
     local exit_code
     "${cmd[@]}"
     exit_code=$?
@@ -550,16 +981,36 @@ agent_safe_exec() {
 #
 # Usage: agent_safe_exec_capture ls -la /tmp
 agent_safe_exec_capture() {
-    local -a cmd=("$@")
+    if ! _agent_normalize_argv "$@"; then
+        return 1
+    fi
+    local -a cmd=("${_AGENT_NORMALIZED_ARGV[@]}")
 
     if (( ${#cmd[@]} == 0 )); then
         agent_error "no command provided"
         return 1
     fi
 
-    # Pre-execution validation
+    # Pre-execution validation (policy -> existence -> confinement)
     if ! agent_validate_command "${cmd[@]}"; then
         return 1
+    fi
+
+    # Enforce the risk threshold (same gate as agent_safe_exec)
+    local risk_score
+    risk_score=$(agent_risk_score "${cmd[@]}")
+    if (( risk_score >= AGENT_RISK_THRESHOLD )); then
+        if _agent_execution_approved "${cmd[@]}"; then
+            agent_audit "exec_capture_approved" "cmd=${cmd[*]}" "risk=$risk_score" "profile=$AGENT_CURRENT_PROFILE"
+        else
+            agent_audit "exec_capture_blocked_risk" "cmd=${cmd[*]}" "risk=$risk_score" "threshold=$AGENT_RISK_THRESHOLD" "profile=$AGENT_CURRENT_PROFILE"
+            agent_error "command blocked: risk score $risk_score meets threshold $AGENT_RISK_THRESHOLD" \
+                "cmd=${cmd[*]}" \
+                "risk_score=$risk_score" \
+                "threshold=$AGENT_RISK_THRESHOLD" \
+                "suggestion=Obtain operator approval (AGENT_APPROVED=1) or register an approval callback"
+            return 1
+        fi
     fi
 
     agent_audit "exec_capture_start" "cmd=${cmd[*]}"
