@@ -147,7 +147,9 @@ _checkpoint_calc_size() {
             ((total += size))
         elif [[ -d "$file" ]]; then
             local dir_size
-            dir_size=$(du -sb "$file" 2>/dev/null | cut -f1 || echo 0)
+            dir_size=$(du -sb "$file" 2>/dev/null | cut -f1)
+            [[ "$dir_size" =~ ^[0-9]+$ ]] || dir_size=$(find "$file" -type f -exec stat -f%z {} + 2>/dev/null | awk '{s+=$1} END{print s+0}')
+            [[ "$dir_size" =~ ^[0-9]+$ ]] || dir_size=0
             ((total += dir_size))
         fi
     done
@@ -615,7 +617,9 @@ checkpoint_delete() {
 
     # Get size before deletion for reporting
     local freed_bytes
-    freed_bytes=$(du -sb "$checkpoint_dir" 2>/dev/null | cut -f1 || echo 0)
+    freed_bytes=$(du -sb "$checkpoint_dir" 2>/dev/null | cut -f1)
+    [[ "$freed_bytes" =~ ^[0-9]+$ ]] || freed_bytes=$(find "$checkpoint_dir" -type f -exec stat -f%z {} + 2>/dev/null | awk '{s+=$1} END{print s+0}')
+    [[ "$freed_bytes" =~ ^[0-9]+$ ]] || freed_bytes=0
 
     rm -rf "$checkpoint_dir" || {
         _checkpoint_unlock
@@ -721,7 +725,9 @@ checkpoint_prune() {
     for id in "${unique_prune[@]}"; do
         local checkpoint_dir="${MAINFRAME_CHECKPOINT_DIR}/${id}"
         local size
-        size=$(du -sb "$checkpoint_dir" 2>/dev/null | cut -f1 || echo 0)
+        size=$(du -sb "$checkpoint_dir" 2>/dev/null | cut -f1)
+        [[ "$size" =~ ^[0-9]+$ ]] || size=$(find "$checkpoint_dir" -type f -exec stat -f%z {} + 2>/dev/null | awk '{s+=$1} END{print s+0}')
+        [[ "$size" =~ ^[0-9]+$ ]] || size=0
 
         if [[ $dry_run -eq 1 ]]; then
             _checkpoint_log info "[dry-run] Would prune: $id (${size} bytes)"

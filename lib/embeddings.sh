@@ -814,7 +814,9 @@ embed_stats() {
     local cache_size=0
     if [[ -d "$EMBED_CACHE_DIR" ]]; then
         cache_count=$(find "$EMBED_CACHE_DIR" -name "*.json" -type f 2>/dev/null | wc -l)
-        cache_size=$(du -sb "$EMBED_CACHE_DIR" 2>/dev/null | cut -f1 || echo 0)
+        cache_size=$(du -sb "$EMBED_CACHE_DIR" 2>/dev/null | cut -f1)
+        [[ "$cache_size" =~ ^[0-9]+$ ]] || cache_size=$(find "$EMBED_CACHE_DIR" -type f -exec stat -f%z {} + 2>/dev/null | awk '{s+=$1} END{print s+0}')
+        [[ "$cache_size" =~ ^[0-9]+$ ]] || cache_size=0
     fi
 
     if [[ "$json_output" == true ]]; then

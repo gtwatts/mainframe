@@ -292,8 +292,8 @@ ts_api_extract() {
     grep -E "^export\s+(declare\s+)?(function|class|interface|type|const|let|var|enum|namespace|abstract)" \
         "$file" 2>/dev/null | \
         sed 's/^export[[:space:]]*declare[[:space:]]*//;s/^export[[:space:]]*//' | \
-        # Normalize whitespace
-        sed 's/[[:space:]]\+/ /g' | \
+        # Normalize whitespace (BRE-safe: BSD sed has no \+)
+        sed 's/[[:space:]][[:space:]]*/ /g' | \
         sort
 }
 

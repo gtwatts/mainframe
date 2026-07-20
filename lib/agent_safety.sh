@@ -24,6 +24,11 @@ readonly _MAINFRAME_AGENT_SAFETY_LOADED=1
 # Audit log file (JSONL format for structured logging)
 declare -g AGENT_AUDIT_LOG="${AGENT_AUDIT_LOG:-/tmp/mainframe_agent_$$.audit.jsonl}"
 
+# Audit log rotation: cap size, keep N generations
+# (unbounded JSONL grows forever - the repo root audit.log reached 9.6MB)
+declare -g AGENT_AUDIT_MAX_BYTES="${AGENT_AUDIT_MAX_BYTES:-10485760}"  # 10MB
+declare -g AGENT_AUDIT_KEEP="${AGENT_AUDIT_KEEP:-5}"
+
 # Safe base directory for file operations (defaults to current directory)
 declare -g AGENT_SAFE_BASE="${AGENT_SAFE_BASE:-}"
 
@@ -728,18 +733,34 @@ _agent_validate_path_safe() {
         return 1
     fi
 
-    # Handle both existing and non-existing paths
-    if [[ -e "$path" ]]; then
-        abs_path=$(cd "$(dirname -- "$path")" && pwd -P)/$(basename -- "$path")
-    else
-        local parent_dir
-        parent_dir=$(dirname -- "$path")
-        if [[ -d "$parent_dir" ]]; then
-            abs_path=$(cd "$parent_dir" && pwd -P)/$(basename -- "$path")
-        else
+    # Handle both existing and non-existing paths by resolving the deepest
+    # existing ancestor and appending the (not yet created) remainder.
+    # Requiring the immediate parent to exist would make it impossible to
+    # validate paths whose parents are about to be created (e.g. ensure_file).
+    local check_path="$path"
+    local -a missing=()
+    while [[ ! -e "$check_path" ]]; do
+        missing+=("$(basename -- "$check_path")")
+        check_path=$(dirname -- "$check_path")
+        if [[ "$check_path" == "/" || -z "$check_path" ]]; then
             return 1
         fi
+    done
+    # '..' in the uncreated remainder cannot be resolved safely - reject
+    local _avps_miss
+    for _avps_miss in "${missing[@]}"; do
+        [[ "$_avps_miss" == ".." ]] && return 1
+    done
+    if [[ -d "$check_path" ]]; then
+        abs_path=$(cd "$check_path" && pwd -P) || return 1
+    else
+        # Deepest existing component is a file: resolve its directory
+        abs_path=$(cd "$(dirname -- "$check_path")" && pwd -P)/$(basename -- "$check_path") || return 1
     fi
+    local _avps_i
+    for (( _avps_i=${#missing[@]}-1; _avps_i>=0; _avps_i-- )); do
+        abs_path="$abs_path/${missing[_avps_i]}"
+    done
 
     # Boundary-aware containment: exact match or proper subdirectory
     [[ "$abs_path" == "$abs_base" || "$abs_path" == "$abs_base"/* ]]
@@ -1296,7 +1317,30 @@ agent_audit() {
         "${action//\"/\\\"}" \
         "$details_json"
 
+    # Rotate before append when the log exceeds the size cap
+    _agent_audit_rotate "$AGENT_AUDIT_LOG"
+
     printf '%s\n' "$entry" >> "$AGENT_AUDIT_LOG"
+}
+
+# Internal: rotate an audit log when it exceeds AGENT_AUDIT_MAX_BYTES,
+# keeping AGENT_AUDIT_KEEP numbered generations (file.1 newest)
+_agent_audit_rotate() {
+    local file="$1"
+    [[ -f "$file" ]] || return 0
+
+    local size
+    size=$(wc -c < "$file" 2>/dev/null | tr -d '[:space:]')
+    [[ "$size" =~ ^[0-9]+$ ]] || return 0
+    (( size < AGENT_AUDIT_MAX_BYTES )) && return 0
+
+    local i
+    for (( i=AGENT_AUDIT_KEEP-1; i>=1; i-- )); do
+        [[ -f "$file.$i" ]] && mv -f "$file.$i" "$file.$((i+1))"
+    done
+    mv -f "$file" "$file.1"
+    : > "$file"
+    return 0
 }
 
 # Replay audit log entries

@@ -39,7 +39,7 @@ teardown() {
 @test "atomic_write sets permissions" {
     atomic_write "$TEST_DIR/perm.txt" "secret" "0600"
     local mode
-    mode=$(stat -c '%a' "$TEST_DIR/perm.txt")
+    mode=$(file_mode "$TEST_DIR/perm.txt")
     [ "$mode" = "600" ]
 }
 
@@ -53,14 +53,14 @@ teardown() {
     chmod 0640 "$TEST_DIR/existing.txt"
     atomic_write "$TEST_DIR/existing.txt" "updated"
     local mode
-    mode=$(stat -c '%a' "$TEST_DIR/existing.txt")
+    mode=$(file_mode "$TEST_DIR/existing.txt")
     [ "$mode" = "640" ]
 }
 
 @test "atomic_write no temp file left on success" {
     atomic_write "$TEST_DIR/clean.txt" "data"
     local temps
-    temps=$(ls "$TEST_DIR"/.mainframe_atomic_* 2>/dev/null | wc -l)
+    temps=$(count_matches "$TEST_DIR"/.mainframe_atomic_*)
     [ "$temps" = "0" ]
 }
 
@@ -95,7 +95,7 @@ teardown() {
     atomic_append "$TEST_DIR/nl.txt" "line1"
     atomic_append "$TEST_DIR/nl.txt" "line2"
     local count
-    count=$(wc -l < "$TEST_DIR/nl.txt")
+    count=$(count_lines "$TEST_DIR/nl.txt")
     [ "$count" = "2" ]
 }
 
@@ -120,7 +120,7 @@ teardown() {
     echo "original" > "$TEST_DIR/backup.txt"
     atomic_replace "$TEST_DIR/backup.txt" "new"
     local backups
-    backups=$(ls "$TEST_DIR"/backup.txt.bak.* 2>/dev/null | wc -l)
+    backups=$(count_matches "$TEST_DIR"/backup.txt.bak.*)
     [ "$backups" = "1" ]
 }
 
@@ -260,6 +260,6 @@ teardown() {
     touch -t 202001010000 "$MAINFRAME_CHECKPOINT_DIR"/*
     file_checkpoint_cleanup 1
     local remaining
-    remaining=$(ls "$MAINFRAME_CHECKPOINT_DIR"/* 2>/dev/null | grep -v ".meta" | wc -l)
+    remaining=$(ls "$MAINFRAME_CHECKPOINT_DIR"/* 2>/dev/null | grep -v ".meta" | wc -l | tr -d '[:space:]')
     [ "$remaining" = "0" ]
 }

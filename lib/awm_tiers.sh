@@ -216,7 +216,21 @@ awm_warm_exists() {
 # Get warm tier size in bytes
 # Usage: awm_warm_size
 awm_warm_size() {
-    du -sb "$AWM_WARM_DIR" 2>/dev/null | cut -f1 || echo 0
+    _awm_tier_dir_size_bytes "$AWM_WARM_DIR"
+}
+
+# Internal: portable directory size in bytes.
+# `du -sb` is GNU-only; on BSD/macOS sum file sizes via stat.
+_awm_tier_dir_size_bytes() {
+    local dir="$1"
+    [[ -d "$dir" ]] || { echo 0; return 0; }
+    local size
+    size=$(du -sb "$dir" 2>/dev/null | cut -f1)
+    if [[ "$size" =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "$size"
+    else
+        find "$dir" -type f -exec stat -f%z {} + 2>/dev/null | awk '{s+=$1} END{print s+0}'
+    fi
 }
 
 # =============================================================================
@@ -553,12 +567,12 @@ awm_tier_stats() {
     local warm_size
     warm_size=$(awm_warm_size)
     local warm_count
-    warm_count=$(find "$AWM_WARM_DIR" -type f 2>/dev/null | wc -l)
+    warm_count=$(find "$AWM_WARM_DIR" -type f 2>/dev/null | wc -l | tr -d '[:space:]')
 
     local cold_size
-    cold_size=$(du -sb "$AWM_COLD_DIR" 2>/dev/null | cut -f1 || echo 0)
+    cold_size=$(_awm_tier_dir_size_bytes "$AWM_COLD_DIR")
     local cold_count
-    cold_count=$(find "$AWM_COLD_DIR" -type f 2>/dev/null | wc -l)
+    cold_count=$(find "$AWM_COLD_DIR" -type f 2>/dev/null | wc -l | tr -d '[:space:]')
 
     local budget_max budget_remaining
     budget_max=$(awm_budget_max)

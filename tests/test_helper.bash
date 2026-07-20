@@ -172,3 +172,25 @@ cleanup_test_dir() {
     local dir="$1"
     [[ -d "$dir" ]] && rm -rf "$dir"
 }
+
+# Portable file mode (octal) across GNU stat (Linux) and BSD stat (macOS)
+# Usage: mode=$(file_mode "/path")
+file_mode() {
+    local path="$1"
+    if stat -c '%a' "$path" 2>/dev/null; then
+        return 0
+    fi
+    stat -f '%Lp' "$path" 2>/dev/null
+}
+
+# Line count without BSD wc(1) leading-space padding
+# Usage: n=$(count_lines "/path")
+count_lines() {
+    wc -l < "$1" | tr -d '[:space:]'
+}
+
+# Count of glob matches without BSD wc(1) padding (0 when no matches)
+# Usage: n=$(count_matches "/dir"/pattern-*)
+count_matches() {
+    ls "$@" 2>/dev/null | wc -l | tr -d '[:space:]'
+}

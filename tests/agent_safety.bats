@@ -331,7 +331,7 @@ teardown() {
     run agent_ensure_file "$TEST_DIR/perms.txt" "secret" "0600"
     [ "$status" -eq 0 ]
     local mode
-    mode=$(stat -c '%a' "$TEST_DIR/perms.txt")
+    mode=$(file_mode "$TEST_DIR/perms.txt")
     [ "$mode" = "600" ]
 }
 
@@ -359,7 +359,7 @@ teardown() {
     run agent_ensure_dir "$TEST_DIR/permdir" "0700"
     [ "$status" -eq 0 ]
     local mode
-    mode=$(stat -c '%a' "$TEST_DIR/permdir")
+    mode=$(file_mode "$TEST_DIR/permdir")
     [ "$mode" = "700" ]
 }
 
@@ -502,8 +502,10 @@ teardown() {
 # =============================================================================
 
 @test "agent_set_profile accepts valid profile" {
-    run agent_set_profile "readonly" "$TEST_DIR"
-    [ "$status" -eq 0 ]
+    # Call directly (not via run): the assertions inspect variables the
+    # function sets in the current shell, which a run-subshell would discard
+    agent_set_profile "readonly" "$TEST_DIR" >/dev/null
+    [ "$?" -eq 0 ]
     [ "$AGENT_CURRENT_PROFILE" = "readonly" ]
 }
 
@@ -559,8 +561,9 @@ teardown() {
 # =============================================================================
 
 @test "agent_safety_init sets profile and base" {
-    run agent_safety_init "readonly" "/test/path"
-    [ "$status" -eq 0 ]
+    # Direct call: assertions inspect shell state set by the function
+    agent_safety_init "readonly" "/test/path" >/dev/null
+    [ "$?" -eq 0 ]
     [ "$AGENT_CURRENT_PROFILE" = "readonly" ]
     [ "$AGENT_SAFE_BASE" = "/test/path" ]
 }

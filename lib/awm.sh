@@ -163,7 +163,16 @@ _awm_atomic_write() {
     return 1
 }
 
-# Append with flock for concurrent safety
+# Append with mutual exclusion for concurrent safety
+#
+# Locking strategy:
+#   1. flock(1) when available. The lock file is NEVER deleted: unlinking a
+#      lock file another process may hold open splits the lock domain (two
+#      holders on different inodes, both believing they own the lock).
+#   2. mkdir-based spin lock otherwise (atomic on POSIX, incl. stock macOS
+#      which ships without flock). Stale locks (holder died) are broken
+#      after 60s. Contention beyond the timeout degrades to an unlocked
+#      append with a one-time logged warning.
 _awm_locked_append() {
     local target="$1"
     local content="$2"
@@ -176,10 +185,40 @@ _awm_locked_append() {
             flock -x 200
             printf '%s\n' "$content" >> "$target"
         ) 200>"${target}.lock"
-        rm -f "${target}.lock" 2>/dev/null
-    else
-        printf '%s\n' "$content" >> "$target"
+        return $?
     fi
+
+    # flock unavailable: note degraded mode once, then use mkdir mutex
+    if [[ -z "${_AWM_NO_FLOCK_LOGGED:-}" ]]; then
+        _AWM_NO_FLOCK_LOGGED=1
+        declare -F _awm_log &>/dev/null && \
+            _awm_log debug "flock unavailable; using mkdir-based locking for AWM appends"
+    fi
+
+    local lockdir="${target}.lock.d"
+    local tries=0 max_tries=50
+    while ! mkdir "$lockdir" 2>/dev/null; do
+        (( ++tries >= max_tries )) && break
+        # Break stale locks (holder died without rmdir) roughly once a second
+        if (( tries % 10 == 0 )) && [[ -d "$lockdir" ]]; then
+            [[ -n $(find "$lockdir" -mmin +1 2>/dev/null) ]] && rmdir "$lockdir" 2>/dev/null
+        fi
+        sleep 0.02 2>/dev/null || sleep 1
+    done
+
+    if (( tries < max_tries )); then
+        printf '%s\n' "$content" >> "$target"
+        rmdir "$lockdir" 2>/dev/null
+        return 0
+    fi
+
+    # Lock contention timeout: append unlocked, log once
+    if [[ -z "${_AWM_LOCK_DEGRADED_LOGGED:-}" ]]; then
+        _AWM_LOCK_DEGRADED_LOGGED=1
+        declare -F _awm_log &>/dev/null && \
+            _awm_log warn "lock contention timed out; appending without mutual exclusion: $target"
+    fi
+    printf '%s\n' "$content" >> "$target"
 }
 
 # Count lines in a file (safely)

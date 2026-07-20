@@ -385,19 +385,31 @@ validate_path_safe() {
             return 1
         fi
 
-        # For path, handle both existing and non-existing paths
-        if [[ -e "$path" ]]; then
-            abs_path=$(cd "$(dirname "$path")" && pwd -P)/$(basename "$path")
-        else
-            # For non-existing paths, resolve parent
-            local parent_dir
-            parent_dir=$(dirname "$path")
-            if [[ -d "$parent_dir" ]]; then
-                abs_path=$(cd "$parent_dir" && pwd -P)/$(basename "$path")
-            else
+        # For path, handle both existing and non-existing paths by resolving
+        # the deepest existing ancestor and appending the uncreated remainder
+        local check_path="$path"
+        local -a _vps_missing=()
+        while [[ ! -e "$check_path" ]]; do
+            _vps_missing+=("$(basename -- "$check_path")")
+            check_path=$(dirname -- "$check_path")
+            if [[ "$check_path" == "/" || -z "$check_path" ]]; then
                 return 1
             fi
+        done
+        local _vps_m
+        for _vps_m in "${_vps_missing[@]}"; do
+            [[ "$_vps_m" == ".." ]] && return 1
+        done
+        if [[ -d "$check_path" ]]; then
+            abs_path=$(cd "$check_path" && pwd -P) || return 1
+        else
+            # Deepest existing component is a file: resolve its directory
+            abs_path=$(cd "$(dirname -- "$check_path")" && pwd -P)/$(basename -- "$check_path") || return 1
         fi
+        local _vps_i
+        for (( _vps_i=${#_vps_missing[@]}-1; _vps_i>=0; _vps_i-- )); do
+            abs_path="$abs_path/${_vps_missing[_vps_i]}"
+        done
 
         # Boundary-aware containment: exact match or proper subdirectory
         [[ "$abs_path" != "$abs_base" && "$abs_path" != "$abs_base"/* ]] && return 1

@@ -43,6 +43,10 @@ declare -g _AUDIT_SESSION_ID=""
 declare -g _AUDIT_RETENTION_DAYS="${_AUDIT_DEFAULT_RETENTION_DAYS}"
 declare -g _AUDIT_INITIALIZED=0
 
+# Audit log rotation: cap size, keep N generations (chain-aware)
+declare -g AUDIT_MAX_BYTES="${AUDIT_MAX_BYTES:-10485760}"   # 10MB
+declare -g AUDIT_KEEP="${AUDIT_KEEP:-5}"
+
 # Index cache for efficient querying
 declare -gA _AUDIT_ACTOR_INDEX
 declare -gA _AUDIT_ACTION_INDEX
@@ -285,6 +289,41 @@ audit_init() {
 #
 # Actor format: Can include type and roles as "type:id:role1,role2"
 #              Example: "agent:agent-123:operator,admin"
+
+# Rotate the audit log when it exceeds AUDIT_MAX_BYTES, keeping
+# AUDIT_KEEP numbered generations (file.1 = most recent archive).
+# Chain-aware: the new file begins with a rotation marker recording the
+# previous file's final chain hash so verification can follow (or
+# explicitly reject) cross-file chains instead of failing mysteriously.
+# For manual/full rotation with archiving, see audit_rotate().
+# Usage: audit_rotate_if_needed [file] [max_bytes] [keep]
+audit_rotate_if_needed() {
+    local file="${1:-$_AUDIT_OUTPUT}"
+    local max_bytes="${2:-$AUDIT_MAX_BYTES}"
+    local keep="${3:-$AUDIT_KEEP}"
+
+    [[ -f "$file" ]] || return 0
+
+    local size
+    size=$(wc -c < "$file" 2>/dev/null | tr -d '[:space:]')
+    [[ "$size" =~ ^[0-9]+$ ]] || return 0
+    (( size < max_bytes )) && return 0
+
+    local i
+    for (( i=keep-1; i>=1; i-- )); do
+        [[ -f "$file.$i" ]] && mv -f "$file.$i" "$file.$((i+1))"
+    done
+    mv -f "$file" "$file.1"
+
+    local ts
+    ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    printf '{"timestamp":"%s","action":"audit_rotated","previous_file":"%s","previous_chain_hash":"%s"}\n' \
+        "$ts" "${file}.1" "${_AUDIT_LAST_HASH:-genesis}" > "$file"
+
+    _audit_log "info" "Audit log rotated: $file (size cap $max_bytes bytes)"
+    return 0
+}
+
 audit_log() {
     if [[ $_AUDIT_INITIALIZED -ne 1 ]]; then
         # Auto-initialize with defaults
@@ -410,7 +449,8 @@ audit_log() {
     # Add entry hash
     entry="${entry%\}},\"hash\":\"sha256:$entry_hash\"}"
 
-    # Write to log file
+    # Write to log file (rotate first when the size cap is exceeded)
+    audit_rotate_if_needed "$_AUDIT_OUTPUT"
     printf '%s\n' "$entry" >> "$_AUDIT_OUTPUT" || {
         _audit_log "error" "Failed to write audit entry"
         return 1
