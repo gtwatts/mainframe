@@ -767,6 +767,117 @@ _agent_validate_path_safe() {
 }
 
 # =============================================================================
+# DESTRUCTIVE COMMAND GATE (SHARED RULE SET)
+# =============================================================================
+# String-level pattern gate for destructive commands. This is the canonical
+# rule set: host integrations (Pi extension, hooks, CI checks) should call
+# agent_gate_classify instead of maintaining their own regex lists, so the
+# rules never diverge between enforcement points.
+#
+# Tiers: critical (irreversible/system), high (destructive but scoped),
+# medium (externally visible / hard to reverse), low (everything else).
+
+# Internal: match a command string against the gate rules
+# Prints: "<tier> <rule_id>" for the first (highest-severity) match
+_agent_gate_match() {
+    local s="$1"
+
+    # Regexes as variables: [[ =~ ]] parses bare >, &, |, (, ) in unquoted
+    # patterns as shell syntax; indirection avoids that class of bug.
+    local re_rm='(^|[[:space:]&|;|(|)])rm[[:space:]]+([^-;|&]*-([a-zA-Z]*[rR][a-zA-Z]*f|[a-zA-Z]*f[a-zA-Z]*[rR])[a-zA-Z]*|[^-;|&]*-[a-zA-Z]*[rR][[:space:]]+-[a-zA-Z]*f|[^-;|&]*--recursive[^[:space:]]*[[:space:]]+--force)'
+    local re_sudo_rm='(^|[[:space:]&|;|(|)])sudo[[:space:]]+rm([[:space:]]|$)'
+    local re_mkfs='(^|[[:space:]&|;|(|)])(mkfs|mkfs\.[a-z0-9]+|newfs|mkswap)([[:space:]]|$)'
+    local re_dd='(^|[[:space:]&|;|(|)])dd[[:space:]].*of=/dev/'
+    local re_diskutil='(^|[[:space:]&|;|(|)])diskutil[[:space:]]+(erase|partition|unmountDisk|apfs)'
+    local re_devredir='>[[:space:]]*/dev/(sd|disk|rdisk|nvme)'
+    local re_chmod777='(^|[[:space:]&|;|(|)])chmod[[:space:]]+(-[a-zA-Z]*R[a-zA-Z]*[[:space:]]+)*777([[:space:]]|$)'
+    local re_chownR='(^|[[:space:]&|;|(|)])chown[[:space:]]+-[a-zA-Z]*R'
+    local re_gitclean='(^|[[:space:]&|;|(|)])git[[:space:]]+clean[[:space:]].*-[a-zA-Z]*[fxd]'
+    local re_gitreset='(^|[[:space:]&|;|(|)])git[[:space:]]+reset[[:space:]]+--hard([[:space:]]|$)'
+    local re_dockerprune='(^|[[:space:]&|;|(|)])docker[[:space:]]+system[[:space:]]+prune.*(-a|--all|--volumes)'
+    local re_kubectl='(^|[[:space:]&|;|(|)])kubectl[[:space:]]+delete([[:space:]]|$)'
+    local re_tfdestroy='(^|[[:space:]&|;|(|)])(terraform|tofu)[[:space:]]+destroy([[:space:]]|$)'
+    local re_s3rm='(^|[[:space:]&|;|(|)])aws[[:space:]]+s3[[:space:]]+rm.*--recursive'
+    local re_finddelete='(^|[[:space:]&|;|(|)])find[[:space:]].*-delete([[:space:]]|$)'
+    local re_xargsrm='\|[[:space:]]*xargs[[:space:]].*rm([[:space:]]|$)'
+    local re_rsyncdel='(^|[[:space:]&|;|(|)])rsync[[:space:]].*--delete'
+    local re_pipeshell='(curl|wget)[[:space:]].*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh)([[:space:]]|$)'
+    local re_pushmirror='(^|[[:space:]&|;|(|)])git[[:space:]]+push[[:space:]].*--mirror'
+    local re_killall1='(^|[[:space:]&|;|(|)])kill[[:space:]]+(-9|-KILL)[[:space:]]+-1([[:space:]]|$)'
+    local re_pushforce='(^|[[:space:]&|;|(|)])git[[:space:]]+push[[:space:]].*(--force|-f)([[:space:]]|$)'
+    local re_gitwipe='(^|[[:space:]&|;|(|)])git[[:space:]]+(checkout|restore)[[:space:]]+(--[[:space:]]+)?\.([[:space:]]|$)'
+    local re_killall='(^|[[:space:]&|;|(|)])killall([[:space:]]|$)'
+    local re_npmpub='(^|[[:space:]&|;|(|)])npm[[:space:]]+publish([[:space:]]|$)'
+    local re_crontab='(^|[[:space:]&|;|(|)])crontab[[:space:]]+-r([[:space:]]|$)'
+    local re_launchctl='(^|[[:space:]&|;|(|)])launchctl[[:space:]]+(load|unload|remove|kickstart)([[:space:]]|$)'
+
+    # --- critical -------------------------------------------------------------
+    [[ "$s" =~ $re_rm ]]       && { printf 'critical recursive-force-rm'; return 0; }
+    [[ "$s" =~ $re_sudo_rm ]]  && { printf 'critical sudo-rm'; return 0; }
+    [[ "$s" =~ $re_mkfs ]]     && { printf 'critical filesystem-format'; return 0; }
+    [[ "$s" =~ $re_dd ]]       && { printf 'critical dd-raw-disk-write'; return 0; }
+    [[ "$s" =~ $re_diskutil ]] && { printf 'critical diskutil-erase'; return 0; }
+    [[ "$s" == *":(){ :|:& };:"* || "$s" == *":() {:|:&};:"* ]] \
+        && { printf 'critical fork-bomb'; return 0; }
+    [[ "$s" =~ $re_devredir ]] && { printf 'critical raw-device-redirect'; return 0; }
+
+    # --- high -----------------------------------------------------------------
+    [[ "$s" =~ $re_chmod777 ]]   && { printf 'high chmod-recursive-777'; return 0; }
+    [[ "$s" =~ $re_chownR ]]     && { printf 'high chown-recursive'; return 0; }
+    [[ "$s" =~ $re_gitclean ]]   && { printf 'high git-clean-destructive'; return 0; }
+    [[ "$s" =~ $re_gitreset ]]   && { printf 'high git-reset-hard'; return 0; }
+    [[ "$s" =~ $re_dockerprune ]] && { printf 'high docker-system-prune'; return 0; }
+    [[ "$s" =~ $re_kubectl ]]    && { printf 'high kubectl-delete'; return 0; }
+    [[ "$s" =~ $re_tfdestroy ]]  && { printf 'high terraform-destroy'; return 0; }
+    [[ "$s" =~ $re_s3rm ]]       && { printf 'high s3-recursive-delete'; return 0; }
+    [[ "$s" =~ $re_finddelete ]] && { printf 'high find-delete'; return 0; }
+    [[ "$s" =~ $re_xargsrm ]]    && { printf 'high xargs-rm-pipeline'; return 0; }
+    [[ "$s" =~ $re_rsyncdel ]]   && { printf 'high rsync-delete'; return 0; }
+    [[ "$s" =~ $re_pipeshell ]]  && { printf 'high download-piped-to-shell'; return 0; }
+    [[ "$s" =~ $re_pushmirror ]] && { printf 'high git-push-mirror'; return 0; }
+    [[ "$s" =~ $re_killall1 ]]   && { printf 'high kill-all-processes'; return 0; }
+
+    # --- medium ---------------------------------------------------------------
+    [[ "$s" =~ $re_pushforce ]]  && { printf 'medium git-push-force'; return 0; }
+    [[ "$s" =~ $re_gitwipe ]]    && { printf 'medium git-worktree-reset'; return 0; }
+    [[ "$s" =~ $re_killall ]]    && { printf 'medium killall'; return 0; }
+    [[ "$s" =~ $re_npmpub ]]     && { printf 'medium npm-publish'; return 0; }
+    [[ "$s" =~ $re_crontab ]]    && { printf 'medium crontab-remove'; return 0; }
+    [[ "$s" =~ $re_launchctl ]]  && { printf 'medium launchctl-mutate'; return 0; }
+
+    printf 'low none'
+    return 0
+}
+
+# Classify a command string against the destructive-command gate
+# @returns: 0 always; JSON on stdout: {"risk":...,"rule":...,"blocked":...}
+#
+# blocked=true when the tier meets or exceeds AGENT_GATE_BLOCK_TIER
+# (default: high; critical/high block, medium/low pass).
+#
+# Usage: agent_gate_classify "rm -rf /tmp/x"
+#        agent_gate_classify "${cmd[*]}"
+agent_gate_classify() {
+    local cmd_string="$*"
+    local block_tier="${AGENT_GATE_BLOCK_TIER:-high}"
+
+    local match tier rule
+    match=$(_agent_gate_match "$cmd_string")
+    tier="${match%% *}"
+    rule="${match#* }"
+
+    local blocked=false
+    case "$block_tier" in
+        critical) [[ "$tier" == "critical" ]] && blocked=true ;;
+        high)     [[ "$tier" == "critical" || "$tier" == "high" ]] && blocked=true ;;
+        medium)   [[ "$tier" != "low" ]] && blocked=true ;;
+        *)        blocked=false ;;
+    esac
+
+    printf '{"risk":"%s","rule":"%s","blocked":%s}\n' "$tier" "$rule" "$blocked"
+}
+
+# =============================================================================
 # RISK ASSESSMENT
 # =============================================================================
 
@@ -968,6 +1079,15 @@ agent_safe_exec() {
     local risk_score
     risk_score=$(agent_risk_score "${cmd[@]}")
 
+    # Floor the score via the destructive-command gate (string patterns)
+    local _gate_match
+    _gate_match=$(_agent_gate_match "${cmd[*]}")
+    case "${_gate_match%% *}" in
+        critical) (( risk_score < 90 )) && risk_score=90 ;;
+        high)     (( risk_score < 60 )) && risk_score=60 ;;
+        medium)   (( risk_score < 30 )) && risk_score=30 ;;
+    esac
+
     # Enforce the risk threshold
     if (( risk_score >= AGENT_RISK_THRESHOLD )); then
         if _agent_execution_approved "${cmd[@]}"; then
@@ -1020,6 +1140,16 @@ agent_safe_exec_capture() {
     # Enforce the risk threshold (same gate as agent_safe_exec)
     local risk_score
     risk_score=$(agent_risk_score "${cmd[@]}")
+
+    # Floor the score via the destructive-command gate (string patterns)
+    local _gate_match
+    _gate_match=$(_agent_gate_match "${cmd[*]}")
+    case "${_gate_match%% *}" in
+        critical) (( risk_score < 90 )) && risk_score=90 ;;
+        high)     (( risk_score < 60 )) && risk_score=60 ;;
+        medium)   (( risk_score < 30 )) && risk_score=30 ;;
+    esac
+
     if (( risk_score >= AGENT_RISK_THRESHOLD )); then
         if _agent_execution_approved "${cmd[@]}"; then
             agent_audit "exec_capture_approved" "cmd=${cmd[*]}" "risk=$risk_score" "profile=$AGENT_CURRENT_PROFILE"
