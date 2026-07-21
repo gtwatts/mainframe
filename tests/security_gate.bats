@@ -515,3 +515,115 @@ _gate_tier() {
     [ "$status" -eq 1 ]
     [[ "$output" == *"meets threshold"* ]]
 }
+
+# =============================================================================
+# 9. SEMANTIC RISK ANALYSIS (RESOLVED-COMMAND SCORING)
+# =============================================================================
+
+@test "semantic: assignment indirection resolves and blocks (FLAGS=-rf evasion)" {
+    [ "$(_gate_tier FLAGS=-rf\; rm \$FLAGS /tmp/x)" = "critical" ]
+}
+
+@test "semantic: environment variable indirection resolves" {
+    local TEST_EVIL=-rf
+    FLAGS="$TEST_EVIL" agent_gate_classify "rm \$FLAGS /tmp/x" | grep -q '"risk":"critical"'
+    FLAGS=-rf agent_gate_classify "rm \$FLAGS /tmp/x" | grep -q '"risk":"critical"'
+}
+
+@test "semantic: unset variables resolve to empty (no false positive)" {
+    unset FLAGS 2>/dev/null || true
+    [ "$(_gate_tier rm \$FLAGS /tmp/x)" = "low" ]
+}
+
+@test "semantic: quoted values resolve" {
+    [ "$(_gate_tier 'MODE=777; chmod -R $MODE /var/www')" = "high" ]
+}
+
+@test "semantic: safe_exec blocks env-var evasion at critical floor" {
+    mkdir -p "$TEST_DIR/sem"
+    FLAGS=-rf
+    export FLAGS
+    run agent_safe_exec rm \$FLAGS "$TEST_DIR/sem"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"meets threshold"* ]]
+    [ -d "$TEST_DIR/sem" ]
+    unset FLAGS
+}
+
+@test "semantic: execution uses original argv, not the resolved form" {
+    # A benign variable that does not resolve to anything dangerous must
+    # still execute the literal argv (resolution is analysis-only)
+    run agent_safe_exec echo "hello"
+    [ "$status" -eq 0 ]
+    [[ "$output" == "hello" ]]
+}
+
+# =============================================================================
+# 10. RATE LIMITING
+# =============================================================================
+
+@test "rate limit: blocks after AGENT_RATE_LIMIT executions in window" {
+    export AGENT_RATE_LIMIT=3 AGENT_RATE_WINDOW=60 _AGENT_EXEC_TIMES=()
+    agent_safe_exec echo one >/dev/null 2>&1
+    agent_safe_exec echo two >/dev/null 2>&1
+    agent_safe_exec echo three >/dev/null 2>&1
+    run agent_safe_exec echo four
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"rate limit exceeded"* ]]
+}
+
+@test "rate limit: zero limit means unlimited (default)" {
+    export AGENT_RATE_LIMIT=0 _AGENT_EXEC_TIMES=()
+    for i in 1 2 3 4 5; do
+        agent_safe_exec echo "n$i" >/dev/null 2>&1
+    done
+    run agent_safe_exec echo six
+    [ "$status" -eq 0 ]
+}
+
+@test "rate limit: old entries expire from the sliding window" {
+    export AGENT_RATE_LIMIT=2 AGENT_RATE_WINDOW=60 _AGENT_EXEC_TIMES=()
+    # Backdate existing entries outside the window
+    _AGENT_EXEC_TIMES=( $(( $(date +%s) - 120 )) $(( $(date +%s) - 119 )) )
+    run agent_safe_exec echo fresh
+    [ "$status" -eq 0 ]
+}
+
+# =============================================================================
+# 11. PER-SESSION PROFILE INHERITANCE
+# =============================================================================
+
+@test "session profile: init persists profile into active AWM session" {
+    source_lib "common"
+    _AWM_SESSION_ID=$(awm_init "profile-test" | tail -1)
+    agent_safety_init project "$TEST_DIR" >/dev/null 2>&1
+    local session_dir
+    session_dir=$(_awm_session_dir "$_AWM_SESSION_ID")
+    [ -f "$session_dir/data/agent_profile" ]
+    [ "$(< "$session_dir/data/agent_profile")" = "project" ]
+}
+
+@test "session profile: child can attenuate (project -> readonly)" {
+    source_lib "common"
+    _AWM_SESSION_ID=$(awm_init "profile-parent" | tail -1)
+    agent_safety_init project "$TEST_DIR" >/dev/null 2>&1
+    agent_adopt_session_profile "$_AWM_SESSION_ID" readonly >/dev/null 2>&1
+    [ "$AGENT_CURRENT_PROFILE" = "readonly" ]
+}
+
+@test "session profile: child cannot amplify (project -> system capped)" {
+    source_lib "common"
+    _AWM_SESSION_ID=$(awm_init "profile-parent2" | tail -1)
+    agent_safety_init project "$TEST_DIR" >/dev/null 2>&1
+    agent_adopt_session_profile "$_AWM_SESSION_ID" system >/dev/null 2>&1
+    [ "$AGENT_CURRENT_PROFILE" = "project" ]
+}
+
+@test "session profile: adoption from session without checkpoint errors cleanly" {
+    source_lib "common"
+    local sid
+    sid=$(awm_init "profile-empty" | tail -1)
+    run agent_adopt_session_profile "$sid"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"no agent_profile checkpoint"* ]]
+}

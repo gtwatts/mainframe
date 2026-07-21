@@ -79,6 +79,11 @@ declare -gA _AGENT_PROFILE_CAN_DESTRUCTIVE=(
 # One-shot operator approval for above-threshold commands (consumed on use)
 declare -g AGENT_APPROVED="${AGENT_APPROVED:-0}"
 
+# Rate limiting: cap executions per sliding window (0 = unlimited, opt-in)
+declare -g AGENT_RATE_LIMIT="${AGENT_RATE_LIMIT:-0}"
+declare -g AGENT_RATE_WINDOW="${AGENT_RATE_WINDOW:-60}"
+declare -ga _AGENT_EXEC_TIMES=()
+
 # =============================================================================
 # CALLBACK WHITELIST (NO EVAL)
 # =============================================================================
@@ -767,6 +772,81 @@ _agent_validate_path_safe() {
 }
 
 # =============================================================================
+# SEMANTIC RISK ANALYSIS (RESOLVED-COMMAND SCORING)
+# =============================================================================
+# Scoring the literal command string misses indirection: "FLAGS=-rf; rm
+# $FLAGS /x" looks benign until the shell expands it. Resolution happens in
+# two stages, without ever invoking a shell:
+#   1. Harvest leading VAR=value assignments from the command itself
+#      (self-contained indirection - the real evasion pattern)
+#   2. Expand simple $VAR and ${VAR} references from those assignments,
+#      then from the current environment
+# Command substitution, operators, and complex ${...} forms stay opaque.
+
+# Internal: resolve simple variable references in a command string
+# @returns: resolved string on stdout
+_agent_resolve_command() {
+    local input="$1"
+
+    # Stage 1: harvest leading assignments (VAR=value, quoted or bare)
+    local -A _resolve_env=()
+    local rest="$input" name value
+    # Value stops at command separators; regex via variable ([[ ]] parses
+    # bare | and & in unquoted patterns as shell syntax)
+    local assign_re='^([A-Za-z_][A-Za-z0-9_]*)=([^[:space:];&|]*)[[:space:];&|]+'
+    while [[ "$rest" =~ $assign_re ]]; do
+        name="${BASH_REMATCH[1]}"
+        value="${BASH_REMATCH[2]}"
+        # Strip surrounding quotes from the value
+        value="${value#\"}"; value="${value%\"}"
+        value="${value#\'}"; value="${value%\'}"
+        _resolve_env["$name"]="$value"
+        rest="${rest#"${BASH_REMATCH[0]}"}"
+    done
+
+    # Stage 2: expand simple $VAR / ${VAR} (assignment vars win over env)
+    local out="" i ch varname next rest2
+    local len=${#rest}
+    for (( i=0; i<len; i++ )); do
+        ch="${rest:i:1}"
+        if [[ "$ch" == '$' ]]; then
+            next="${rest:i+1:1}"
+            varname=""
+            if [[ "$next" == "{" ]]; then
+                rest2="${rest:i+2}"
+                if [[ "$rest2" =~ ^([A-Za-z_][A-Za-z0-9_]*)\} ]]; then
+                    varname="${BASH_REMATCH[1]}"
+                    i=$(( i + ${#varname} + 2 ))
+                else
+                    out+="$ch"
+                    continue
+                fi
+            elif [[ "$next" =~ [A-Za-z_] ]]; then
+                rest2="${rest:i+1}"
+                [[ "$rest2" =~ ^[A-Za-z_][A-Za-z0-9_]* ]] && varname="${BASH_REMATCH[0]}"
+                if [[ -n "$varname" ]]; then
+                    i=$(( i + ${#varname} ))
+                else
+                    out+="$ch"
+                    continue
+                fi
+            else
+                out+="$ch"
+                continue
+            fi
+            if [[ -n "${_resolve_env[$varname]+x}" ]]; then
+                out+="${_resolve_env[$varname]}"
+            else
+                out+="${!varname:-}"
+            fi
+        else
+            out+="$ch"
+        fi
+    done
+    printf '%s' "$out"
+}
+
+# =============================================================================
 # DESTRUCTIVE COMMAND GATE (SHARED RULE SET)
 # =============================================================================
 # String-level pattern gate for destructive commands. This is the canonical
@@ -858,7 +938,8 @@ _agent_gate_match() {
 # Usage: agent_gate_classify "rm -rf /tmp/x"
 #        agent_gate_classify "${cmd[*]}"
 agent_gate_classify() {
-    local cmd_string="$*"
+    local cmd_string
+    cmd_string=$(_agent_resolve_command "$*")
     local block_tier="${AGENT_GATE_BLOCK_TIER:-high}"
 
     local match tier rule
@@ -1044,6 +1125,39 @@ _agent_execution_approved() {
 }
 
 # =============================================================================
+# RATE LIMITING
+# =============================================================================
+# An agent in a retry loop can do a lot of damage fast even when every
+# individual command is allowed. When AGENT_RATE_LIMIT > 0, at most that
+# many executions may pass through agent_safe_exec/_capture per
+# AGENT_RATE_WINDOW seconds; the excess blocks with a structured error.
+
+# Internal: sliding-window rate check (records this execution on success)
+_agent_rate_check() {
+    (( AGENT_RATE_LIMIT <= 0 )) && return 0
+
+    local now cutoff t
+    now=$(date +%s)
+    cutoff=$(( now - AGENT_RATE_WINDOW ))
+
+    local -a recent=()
+    for t in "${_AGENT_EXEC_TIMES[@]:-}"; do
+        [[ -n "$t" ]] && (( t >= cutoff )) && recent+=("$t")
+    done
+    _AGENT_EXEC_TIMES=("${recent[@]}")
+
+    if (( ${#_AGENT_EXEC_TIMES[@]} >= AGENT_RATE_LIMIT )); then
+        agent_audit "exec_blocked_rate" "count=${#_AGENT_EXEC_TIMES[@]}" "window=$AGENT_RATE_WINDOW" "limit=$AGENT_RATE_LIMIT"
+        agent_error "rate limit exceeded: ${#_AGENT_EXEC_TIMES[@]} executions in ${AGENT_RATE_WINDOW}s (limit $AGENT_RATE_LIMIT)" \
+            "suggestion=Slow down, batch operations, or raise AGENT_RATE_LIMIT"
+        return 1
+    fi
+
+    _AGENT_EXEC_TIMES+=("$now")
+    return 0
+}
+
+# =============================================================================
 # SAFE COMMAND DISPATCH (NO EVAL)
 # =============================================================================
 
@@ -1075,13 +1189,21 @@ agent_safe_exec() {
         return 1
     fi
 
-    # Risk assessment
+    # Risk assessment (on the resolved command: indirection is analyzed,
+    # execution still uses the original argv)
     local risk_score
-    risk_score=$(agent_risk_score "${cmd[@]}")
+    local _resolved_cmd
+    _resolved_cmd=$(_agent_resolve_command "${cmd[*]}")
+    # shellcheck disable=SC2086
+    risk_score=$(agent_risk_score $_resolved_cmd) || risk_score=""
+    # Resolution can produce operators the tokenizer rejects; fall back
+    if [[ -z "$risk_score" ]]; then
+        risk_score=$(agent_risk_score "${cmd[@]}")
+    fi
 
     # Floor the score via the destructive-command gate (string patterns)
     local _gate_match
-    _gate_match=$(_agent_gate_match "${cmd[*]}")
+    _gate_match=$(_agent_gate_match "$_resolved_cmd")
     case "${_gate_match%% *}" in
         critical) (( risk_score < 90 )) && risk_score=90 ;;
         high)     (( risk_score < 60 )) && risk_score=60 ;;
@@ -1105,6 +1227,11 @@ agent_safe_exec() {
 
     # Audit the execution attempt
     agent_audit "exec_start" "cmd=${cmd[*]}" "risk=$risk_score" "profile=$AGENT_CURRENT_PROFILE"
+
+    # Rate limiting (only executions that passed all gates count)
+    if ! _agent_rate_check; then
+        return 1
+    fi
 
     # Execute the command (array expansion preserves arguments; no shell)
     local exit_code
@@ -1139,11 +1266,17 @@ agent_safe_exec_capture() {
 
     # Enforce the risk threshold (same gate as agent_safe_exec)
     local risk_score
-    risk_score=$(agent_risk_score "${cmd[@]}")
+    local _resolved_cmd
+    _resolved_cmd=$(_agent_resolve_command "${cmd[*]}")
+    # shellcheck disable=SC2086
+    risk_score=$(agent_risk_score $_resolved_cmd) || risk_score=""
+    if [[ -z "$risk_score" ]]; then
+        risk_score=$(agent_risk_score "${cmd[@]}")
+    fi
 
     # Floor the score via the destructive-command gate (string patterns)
     local _gate_match
-    _gate_match=$(_agent_gate_match "${cmd[*]}")
+    _gate_match=$(_agent_gate_match "$_resolved_cmd")
     case "${_gate_match%% *}" in
         critical) (( risk_score < 90 )) && risk_score=90 ;;
         high)     (( risk_score < 60 )) && risk_score=60 ;;
@@ -1165,6 +1298,11 @@ agent_safe_exec_capture() {
     fi
 
     agent_audit "exec_capture_start" "cmd=${cmd[*]}"
+
+    # Rate limiting (only executions that passed all gates count)
+    if ! _agent_rate_check; then
+        return 1
+    fi
 
     # Capture both stdout and stderr
     local stdout exit_code
@@ -1599,6 +1737,55 @@ agent_safety_init() {
 
     agent_set_profile "$profile" "$base" || return 1
     agent_audit "agent_safety_initialized" "profile=$profile" "base=$base" "pid=$$"
+
+    # Persist the profile into the active AWM session so child agents
+    # inheriting the session cannot exceed the parent's profile
+    if declare -F awm_checkpoint &>/dev/null && [[ -n "${_AWM_SESSION_ID:-}" ]]; then
+        awm_checkpoint "agent_profile" "$AGENT_CURRENT_PROFILE" >/dev/null 2>&1 || true
+    fi
+}
+
+# Adopt the agent profile from a parent AWM session. The child may only go
+# LOWER (more restrictive) than the parent's profile, never higher -
+# sandbox permissions attenuate across handoffs, they never amplify.
+# @returns: 0 on success (JSON result), 1 if no profile checkpoint exists
+#
+# Usage: agent_adopt_session_profile "$PARENT_SID" [requested_profile] [base]
+agent_adopt_session_profile() {
+    local sid="$1"
+    local requested="${2:-}"
+    local base="${3:-$PWD}"
+
+    if ! declare -F _awm_session_dir &>/dev/null; then
+        agent_error "AWM not available for session profile adoption"
+        return 1
+    fi
+
+    local parent_profile session_dir
+    session_dir=$(_awm_session_dir "$sid" 2>/dev/null) || true
+    if [[ -z "$session_dir" || ! -f "$session_dir/data/agent_profile" ]]; then
+        agent_error "no agent_profile checkpoint in session '$sid'" \
+            "suggestion=Run agent_safety_init in the parent session first"
+        return 1
+    fi
+    parent_profile=$(< "$session_dir/data/agent_profile")
+
+    # Profile hierarchy: readonly(0) < project(1) < system(2)
+    local -A _profile_rank=([readonly]=0 [project]=1 [system]=2)
+    local parent_rank="${_profile_rank[$parent_profile]:-1}"
+    local requested_rank="${_profile_rank[${requested:-$parent_profile}]:-$parent_rank}"
+
+    local effective
+    if (( requested_rank > parent_rank )); then
+        effective="$parent_profile"
+        agent_audit "profile_adoption_capped" "parent=$parent_profile" "requested=$requested" "session=$sid"
+    else
+        effective="${requested:-$parent_profile}"
+    fi
+
+    agent_set_profile "$effective" "$base" >/dev/null
+    agent_audit "profile_adopted" "session=$sid" "parent=$parent_profile" "effective=$effective"
+    agent_success "profile adopted from session" "session=$sid" "parent_profile=$parent_profile" "effective_profile=$effective"
 }
 
 # =============================================================================
