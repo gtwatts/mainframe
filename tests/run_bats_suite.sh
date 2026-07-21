@@ -110,7 +110,21 @@ done < "$manifest"
 printf 'Running Bats scope=%s (%d files) with shell=%s\n' \
     "$scope" "${#test_files[@]}" "$BATS_TEST_SHELL" >&2
 
+failures=0
+declare -a failed_files=()
 for test_file in "${test_files[@]}"; do
     printf '==> %s\n' "$test_file" >&2
-    "$BATS_BIN" --print-output-on-failure "${bats_args[@]}" "$test_file"
+    # Aggregate failures instead of dying on the first one (set -e) or
+    # masking them behind the last file's exit status
+    if ! "$BATS_BIN" --print-output-on-failure "${bats_args[@]}" "$test_file"; then
+        failures=$((failures + 1))
+        failed_files+=("$test_file")
+    fi
 done
+
+if (( failures > 0 )); then
+    printf '\nFAILED: %d of %d test files had failures:\n' "$failures" "${#test_files[@]}" >&2
+    printf '  - %s\n' "${failed_files[@]}" >&2
+    exit 1
+fi
+printf '\nOK: all %d test files passed\n' "${#test_files[@]}" >&2
