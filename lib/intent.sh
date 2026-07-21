@@ -1027,8 +1027,8 @@ intent_explain() {
 # Output: find all python files
 #         find all .py files modified today
 intent_complete() {
-    local partial="$1"
-    shift
+    local partial="${1:-}"
+    shift || true
 
     local json_output=0 max_suggestions=10
     while [[ $# -gt 0 ]]; do
@@ -1040,60 +1040,64 @@ intent_complete() {
     done
 
     local -a suggestions=()
-    local partial_lower="${partial,,}"
+    # Keep this exported function parseable by macOS /bin/bash 3.x. Newer Bash
+    # can export functions into the environment; child /bin/bash 3.x shells then
+    # parse the body on startup. Avoid Bash 4+ syntax such as ${var,,} and ;;&.
+    local partial_lower
+    partial_lower=$(printf '%s' "$partial" | tr '[:upper:]' '[:lower:]')
 
-    # Pattern-based suggestions
-    case "$partial_lower" in
-        *find*)
-            suggestions+=("find all files")
-            suggestions+=("find all directories")
-            suggestions+=("find all *.py files")
-            suggestions+=("find all *.txt files")
-            suggestions+=("find all files modified today")
-            suggestions+=("find all files larger than 1MB")
-            ;;&
-        *count*)
-            suggestions+=("count lines in file")
-            suggestions+=("count files in directory")
-            suggestions+=("count words in file")
-            suggestions+=("count all *.log files")
-            ;;&
-        *remove*|*delete*)
-            suggestions+=("remove all *.tmp files")
-            suggestions+=("remove empty directories")
-            suggestions+=("remove files older than 30 days")
-            ;;&
-        *sort*)
-            suggestions+=("sort file alphabetically")
-            suggestions+=("sort file numerically")
-            suggestions+=("sort and remove duplicates")
-            ;;&
-        *show*|*list*)
-            suggestions+=("show all files")
-            suggestions+=("show hidden files")
-            suggestions+=("list directory contents")
-            ;;&
-        *get*|*download*)
-            suggestions+=("get from URL")
-            suggestions+=("download file from URL")
-            ;;&
-        *backup*)
-            suggestions+=("backup directory with timestamp")
-            suggestions+=("backup all important files")
-            ;;&
-        *compress*)
-            suggestions+=("compress directory to tar.gz")
-            suggestions+=("compress files to zip")
-            ;;&
-        *extract*)
-            suggestions+=("extract tar.gz archive")
-            suggestions+=("extract zip file")
-            ;;&
-    esac
+    # Pattern-based suggestions. These are intentionally independent tests to
+    # emulate Bash 4's case fall-through (;;&) without breaking Bash 3 imports.
+    if [[ "$partial_lower" == *find* ]]; then
+        suggestions+=("find all files")
+        suggestions+=("find all directories")
+        suggestions+=("find all *.py files")
+        suggestions+=("find all *.txt files")
+        suggestions+=("find all files modified today")
+        suggestions+=("find all files larger than 1MB")
+    fi
+    if [[ "$partial_lower" == *count* ]]; then
+        suggestions+=("count lines in file")
+        suggestions+=("count files in directory")
+        suggestions+=("count words in file")
+        suggestions+=("count all *.log files")
+    fi
+    if [[ "$partial_lower" == *remove* || "$partial_lower" == *delete* ]]; then
+        suggestions+=("remove all *.tmp files")
+        suggestions+=("remove empty directories")
+        suggestions+=("remove files older than 30 days")
+    fi
+    if [[ "$partial_lower" == *sort* ]]; then
+        suggestions+=("sort file alphabetically")
+        suggestions+=("sort file numerically")
+        suggestions+=("sort and remove duplicates")
+    fi
+    if [[ "$partial_lower" == *show* || "$partial_lower" == *list* ]]; then
+        suggestions+=("show all files")
+        suggestions+=("show hidden files")
+        suggestions+=("list directory contents")
+    fi
+    if [[ "$partial_lower" == *get* || "$partial_lower" == *download* ]]; then
+        suggestions+=("get from URL")
+        suggestions+=("download file from URL")
+    fi
+    if [[ "$partial_lower" == *backup* ]]; then
+        suggestions+=("backup directory with timestamp")
+        suggestions+=("backup all important files")
+    fi
+    if [[ "$partial_lower" == *compress* ]]; then
+        suggestions+=("compress directory to tar.gz")
+        suggestions+=("compress files to zip")
+    fi
+    if [[ "$partial_lower" == *extract* ]]; then
+        suggestions+=("extract tar.gz archive")
+        suggestions+=("extract zip file")
+    fi
 
     # Add matching common commands
     for cmd in "${_INTENT_COMMON_COMMANDS[@]}"; do
-        local cmd_lower="${cmd,,}"
+        local cmd_lower
+        cmd_lower=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]')
         if [[ "$cmd_lower" == *"$partial_lower"* ]]; then
             suggestions+=("$cmd")
         fi
