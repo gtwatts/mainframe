@@ -563,7 +563,7 @@ _gate_tier() {
 # =============================================================================
 
 @test "rate limit: blocks after AGENT_RATE_LIMIT executions in window" {
-    export AGENT_RATE_LIMIT=3 AGENT_RATE_WINDOW=60 _AGENT_EXEC_TIMES=()
+    AGENT_RATE_LIMIT=3; AGENT_RATE_WINDOW=60; _AGENT_EXEC_TIMES=()
     agent_safe_exec echo one >/dev/null 2>&1
     agent_safe_exec echo two >/dev/null 2>&1
     agent_safe_exec echo three >/dev/null 2>&1
@@ -573,7 +573,7 @@ _gate_tier() {
 }
 
 @test "rate limit: zero limit means unlimited (default)" {
-    export AGENT_RATE_LIMIT=0 _AGENT_EXEC_TIMES=()
+    AGENT_RATE_LIMIT=0; _AGENT_EXEC_TIMES=()
     for i in 1 2 3 4 5; do
         agent_safe_exec echo "n$i" >/dev/null 2>&1
     done
@@ -582,7 +582,7 @@ _gate_tier() {
 }
 
 @test "rate limit: old entries expire from the sliding window" {
-    export AGENT_RATE_LIMIT=2 AGENT_RATE_WINDOW=60 _AGENT_EXEC_TIMES=()
+    AGENT_RATE_LIMIT=2; AGENT_RATE_WINDOW=60; _AGENT_EXEC_TIMES=()
     # Backdate existing entries outside the window
     _AGENT_EXEC_TIMES=( $(( $(date +%s) - 120 )) $(( $(date +%s) - 119 )) )
     run agent_safe_exec echo fresh
@@ -633,7 +633,7 @@ _gate_tier() {
 # =============================================================================
 
 @test "anomaly: identical-command burst engages pause latch" {
-    export AGENT_ANOMALY_MODE=pause AGENT_ANOMALY_BURST_LIMIT=3 _AGENT_CMD_HISTORY=() _AGENT_PAUSED=0 _AGENT_BLOCKED_STREAK=0
+    AGENT_ANOMALY_MODE=pause; AGENT_ANOMALY_BURST_LIMIT=3; _AGENT_CMD_HISTORY=(); _AGENT_PAUSED=0; _AGENT_BLOCKED_STREAK=0
     agent_safe_exec echo repeat-me >/dev/null 2>&1
     agent_safe_exec echo repeat-me >/dev/null 2>&1
     agent_safe_exec echo repeat-me >/dev/null 2>&1 || true   # burst engages here
@@ -644,7 +644,7 @@ _gate_tier() {
 }
 
 @test "anomaly: resume requires AGENT_APPROVED" {
-    export _AGENT_PAUSED=1 AGENT_APPROVED=0
+    _AGENT_PAUSED=1; AGENT_APPROVED=0
     run agent_anomaly_resume
     [ "$status" -eq 1 ]
     AGENT_APPROVED=1
@@ -653,7 +653,7 @@ _gate_tier() {
 }
 
 @test "anomaly: probing streak (consecutive blocked) engages pause" {
-    export AGENT_ANOMALY_MODE=pause AGENT_ANOMALY_BLOCK_LIMIT=2 _AGENT_BLOCKED_STREAK=0 _AGENT_CMD_HISTORY=() _AGENT_PAUSED=0 AGENT_RATE_LIMIT=0
+    AGENT_ANOMALY_MODE=pause; AGENT_ANOMALY_BLOCK_LIMIT=2; _AGENT_BLOCKED_STREAK=0; _AGENT_CMD_HISTORY=(); _AGENT_PAUSED=0; AGENT_RATE_LIMIT=0
     mkdir -p "$TEST_DIR/p1" "$TEST_DIR/p2"
     # These are threshold-blocked (rm -rf floors at 90), feeding the streak
     agent_safe_exec rm -rf "$TEST_DIR/p1" >/dev/null 2>&1 || true
@@ -664,7 +664,7 @@ _gate_tier() {
 }
 
 @test "anomaly: warn mode reports but does not block" {
-    export AGENT_ANOMALY_MODE=warn AGENT_ANOMALY_BURST_LIMIT=2 _AGENT_CMD_HISTORY=() _AGENT_PAUSED=0
+    AGENT_ANOMALY_MODE=warn; AGENT_ANOMALY_BURST_LIMIT=2; _AGENT_CMD_HISTORY=(); _AGENT_PAUSED=0
     agent_safe_exec echo w-cmd >/dev/null 2>&1
     run agent_safe_exec echo w-cmd
     [ "$status" -eq 0 ]
@@ -672,7 +672,7 @@ _gate_tier() {
 }
 
 @test "anomaly: off mode disables detection (default)" {
-    export AGENT_ANOMALY_MODE=off _AGENT_CMD_HISTORY=() _AGENT_PAUSED=0
+    AGENT_ANOMALY_MODE=off; _AGENT_CMD_HISTORY=(); _AGENT_PAUSED=0
     for i in 1 2 3 4 5; do
         agent_safe_exec echo same >/dev/null 2>&1
     done
