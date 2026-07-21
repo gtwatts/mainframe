@@ -1,6 +1,6 @@
 {
   "version": "10.1.0",
-  "generated": "2026-07-21T01:30:50Z",
+  "generated": "2026-07-21T01:48:41Z",
   "source": "lib/agent_safety.sh (_agent_gate_match)",
   "rules": [
     {
