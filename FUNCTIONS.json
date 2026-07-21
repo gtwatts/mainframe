@@ -1,8 +1,8 @@
 {
   "version": "10.1.0",
-  "generated": "2026-07-20T23:51:26Z",
+  "generated": "2026-07-21T01:23:07Z",
   "stats": {
-    "total_functions": 4458,
+    "total_functions": 4459,
     "total_libraries": 185,
     "categories": ["versioning", "strings", "utilities", "monitoring", "validation", "discovery", "caching", "cli", "parsing", "fp", "streaming", "ai", "performance", "system", "safety", "errors", "compatibility", "reliability", "network", "datetime", "logging", "async", "ci", "templating", "environment", "interactive", "containers", "vcs", "output", "security", "crypto", "metaprogramming", "process", "arrays", "other", "analysis", "data", "files", "config"]
   },
@@ -2334,6 +2334,33 @@
             }
           ],
           "returns": "void",
+          "idempotent": false,
+          "pure": false
+        },
+        "agent_adopt_session_profile": {
+          "description": "Adopt the agent profile from a parent AWM session. The child may only go LOWER (more restrictive) than the parent's profile, never higher - sandbox permissions attenuate across handoffs, they never amplify.",
+          "signature": "agent_adopt_session_profile \"$PARENT_SID\" [requested_profile] [base]",
+          "params": [
+            {
+              "name": "sid",
+              "position": 1,
+              "required": true,
+              "default": null
+            },
+            {
+              "name": "requested",
+              "position": 2,
+              "required": false,
+              "default": ""
+            },
+            {
+              "name": "base",
+              "position": 3,
+              "required": false,
+              "default": "$PWD"
+            }
+          ],
+          "returns": "exit_code",
           "idempotent": false,
           "pure": false
         },
@@ -33756,8 +33783,8 @@
             {
               "name": "partial",
               "position": 1,
-              "required": true,
-              "default": null
+              "required": false,
+              "default": ""
             }
           ],
           "returns": "stdout",
