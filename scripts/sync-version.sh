@@ -88,7 +88,31 @@ def load(p):
         d = json.load(f)
     d.pop("generated", None)
     return d
-sys.exit(0 if load(sys.argv[1]) == load(sys.argv[2]) else 1)
+committed = load(sys.argv[1])
+fresh = load(sys.argv[2])
+if committed == fresh:
+    sys.exit(0)
+# Report the actual differences to make CI failures diagnosable
+c_stats, f_stats = committed.get("stats", {}), fresh.get("stats", {})
+if c_stats != f_stats:
+    print(f"STATS differ: committed={c_stats} fresh={f_stats}", file=sys.stderr)
+c_libs, f_libs = committed.get("libraries", {}), fresh.get("libraries", {})
+only_committed = sorted(set(c_libs) - set(f_libs))
+only_fresh = sorted(set(f_libs) - set(c_libs))
+if only_committed:
+    print(f"libs only in committed: {only_committed[:10]}", file=sys.stderr)
+if only_fresh:
+    print(f"libs only in fresh: {only_fresh[:10]}", file=sys.stderr)
+for lib in sorted(set(c_libs) & set(f_libs)):
+    if c_libs[lib] != f_libs[lib]:
+        cf, ff = c_libs[lib].get("functions", {}), f_libs[lib].get("functions", {})
+        c_names = set(cf) if isinstance(cf, dict) else set(x.get("name") for x in cf)
+        f_names = set(ff) if isinstance(ff, dict) else set(x.get("name") for x in ff)
+        extra_c = sorted(c_names - f_names)[:5]
+        extra_f = sorted(f_names - c_names)[:5]
+        print(f"lib '{lib}' differs: only-committed-fns={extra_c} only-fresh-fns={extra_f}", file=sys.stderr)
+        break
+sys.exit(1)
 PYEOF
         then
             echo "  OK    FUNCTIONS.json registry (content current)"
