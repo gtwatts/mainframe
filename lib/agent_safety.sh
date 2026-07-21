@@ -1158,6 +1158,197 @@ _agent_rate_check() {
 }
 
 # =============================================================================
+# ANOMALY DETECTION ON THE EXECUTION STREAM
+# =============================================================================
+# Rate limiting caps VOLUME. Anomaly detection spots PATTERNS that indicate
+# an agent has lost the plot even when each command is individually allowed:
+#   1. Identical-command burst: the same command string repeatedly executed
+#      (retry loop) - AGENT_ANOMALY_BURST_LIMIT per AGENT_RATE_WINDOW seconds
+#   2. Blocked-command probing: a streak of consecutively blocked commands
+#      (guessing/probing around the gate) - AGENT_ANOMALY_BLOCK_LIMIT
+#
+# Modes (AGENT_ANOMALY_MODE):
+#   off  - disabled (default)
+#   warn - audit + structured stderr warning, execution continues
+#   pause- auto-pause the profile: subsequent executions require
+#          AGENT_APPROVED=1 to resume (agent_anomaly_resume)
+
+declare -g AGENT_ANOMALY_MODE="${AGENT_ANOMALY_MODE:-off}"
+declare -g AGENT_ANOMALY_BURST_LIMIT="${AGENT_ANOMALY_BURST_LIMIT:-8}"
+declare -g AGENT_ANOMALY_BLOCK_LIMIT="${AGENT_ANOMALY_BLOCK_LIMIT:-5}"
+declare -g _AGENT_PAUSED=0
+declare -gA _AGENT_CMD_HISTORY=()   # cmd -> "count:first_ts"
+declare -g _AGENT_BLOCKED_STREAK=0
+
+# Internal: evaluate one command string against the anomaly rules.
+# Sets _AGENT_ANOMALY_RESULT (empty when clean). Called DIRECTLY, never
+# via $() - it mutates the history array, which a subshell would discard.
+_AGENT_ANOMALY_RESULT=""
+_agent_anomaly_eval() {
+    _AGENT_ANOMALY_RESULT=""
+    local cmd_str="$1"
+    local now
+    now=$(date +%s)
+    local cutoff=$(( now - AGENT_RATE_WINDOW ))
+
+    # Rule 1: identical-command burst within the window
+    local entry="${_AGENT_CMD_HISTORY[$cmd_str]:-0:$now}"
+    local count="${entry%%:*}" first_ts="${entry##*:}"
+    (( first_ts < cutoff )) && { count=0; first_ts=$now; }
+    count=$(( count + 1 ))
+    _AGENT_CMD_HISTORY[$cmd_str]="$count:$first_ts"
+    if (( count >= AGENT_ANOMALY_BURST_LIMIT )); then
+        _AGENT_ANOMALY_RESULT="burst-identical"
+        return 0
+    fi
+
+    # Rule 2: consecutive blocked streak (fed by _agent_anomaly_note_blocked)
+    if (( _AGENT_BLOCKED_STREAK >= AGENT_ANOMALY_BLOCK_LIMIT )); then
+        _AGENT_ANOMALY_RESULT="probing-streak"
+        return 0
+    fi
+
+    return 0
+}
+
+# Internal: record a blocked execution (resets on successful execution)
+_agent_anomaly_note_blocked() {
+    _AGENT_BLOCKED_STREAK=$(( _AGENT_BLOCKED_STREAK + 1 ))
+}
+
+# Internal: record a successful execution
+_agent_anomaly_note_success() {
+    _AGENT_BLOCKED_STREAK=0
+}
+
+# Internal: act on an anomaly evaluation result per AGENT_ANOMALY_MODE
+_agent_anomaly_check() {
+    local cmd_str="$1"
+    [[ "$AGENT_ANOMALY_MODE" == "off" ]] && return 0
+
+    _agent_anomaly_eval "$cmd_str"
+    local anomaly="$_AGENT_ANOMALY_RESULT"
+    [[ -z "$anomaly" ]] && return 0
+
+    agent_audit "anomaly_detected" "type=$anomaly" "cmd=$cmd_str" "mode=$AGENT_ANOMALY_MODE"
+
+    if [[ "$AGENT_ANOMALY_MODE" == "warn" ]]; then
+        agent_error "anomaly detected ($anomaly): execution continues (warn mode)" \
+            "cmd=$cmd_str" \
+            "suggestion=Review the agent's recent behavior; set AGENT_ANOMALY_MODE=pause for enforcement"
+        return 0   # warn: non-fatal
+    fi
+
+    # pause mode: engage the pause latch
+    _AGENT_PAUSED=1
+    agent_audit "anomaly_pause_engaged" "type=$anomaly" "cmd=$cmd_str"
+    agent_error "execution paused: anomaly detected ($anomaly)" \
+        "cmd=$cmd_str" \
+        "suggestion=Human review required; resume with AGENT_APPROVED=1 or agent_anomaly_resume"
+    return 1
+}
+
+# Resume from an anomaly pause (requires AGENT_APPROVED=1)
+agent_anomaly_resume() {
+    if [[ "${AGENT_APPROVED:-0}" != "1" ]]; then
+        agent_error "resume requires AGENT_APPROVED=1"
+        return 1
+    fi
+    _AGENT_PAUSED=0
+    _AGENT_BLOCKED_STREAK=0
+    AGENT_APPROVED=0
+    agent_audit "anomaly_pause_resumed" "pid=$$"
+    agent_success "anomaly pause cleared"
+}
+
+# =============================================================================
+# GATE TELEMETRY
+# =============================================================================
+
+# Analyze the agent audit log into gate telemetry (JSON on stdout).
+# Reports execution volume, block reasons, anomalies, top triggered rules,
+# and false-positive candidates (commands blocked then later approved -
+# operator overrides are the best available FP signal for gate tuning).
+# Pure awk implementation (zero-dependency discipline).
+#
+# Usage: agent_gate_report [audit_log_path]
+agent_gate_report() {
+    local log_file="${1:-$AGENT_AUDIT_LOG}"
+
+    [[ -f "$log_file" ]] || {
+        agent_error "no audit log at $log_file"
+        return 1
+    }
+
+    awk '
+    function count(s) { return (s in c) ? c[s] : 0 }
+    {
+        action = ""
+        if (match($0, /"action":"[^"]*"/)) {
+            action = substr($0, RSTART + 10, RLENGTH - 11)
+            c[action]++
+        }
+        cmd = ""
+        if (match($0, /cmd=[^,"]*/)) {
+            cmd = substr($0, RSTART + 4, RLENGTH - 4)
+        }
+        if (action ~ /^exec(_capture)?_blocked_risk$/) blocked[cmd] = 1
+        if (action ~ /^exec(_capture)?_approved$/) approved[cmd] = 1
+        if (action == "anomaly_detected") {
+            if (match($0, /"type=[^,"]*"?/)) {
+                t = substr($0, RSTART + 6, RLENGTH - 6)
+                sub(/"$/, "", t)
+                atypes[t]++
+            }
+        }
+    }
+    END {
+        started = count("exec_start") + count("exec_capture_start")
+        completed = count("exec_complete") + count("exec_capture_complete")
+        appr = count("exec_approved") + count("exec_capture_approved")
+        br = count("exec_blocked_risk") + count("exec_capture_blocked_risk")
+        brl = count("exec_blocked_rate")
+        bp = count("exec_blocked_paused") + count("exec_capture_blocked_paused")
+        ad = count("anomaly_detected")
+        ap = count("anomaly_pause_engaged")
+
+        # false-positive candidates: blocked then later approved
+        nfp = 0
+        fp_json = ""
+        for (cmd in blocked) {
+            if (cmd in approved && cmd != "") {
+                nfp++
+                gsub(/\\/, "\\\\", cmd); gsub(/"/, "\\\"", cmd)
+                if (nfp <= 20) fp_json = fp_json (fp_json ? "," : "") "\"" cmd "\""
+            }
+        }
+
+        # top 5 anomaly types
+        top_json = ""
+        n = 0
+        for (t in atypes) {
+            n++
+            top_json = top_json (top_json ? "," : "") "{\"type\":\"" t "\",\"count\":" atypes[t] "}"
+        }
+
+        printf "{\n"
+        printf "  \"executions_started\": %d,\n", started
+        printf "  \"executions_completed\": %d,\n", completed
+        printf "  \"approved\": %d,\n", appr
+        printf "  \"blocked_risk\": %d,\n", br
+        printf "  \"blocked_rate_limited\": %d,\n", brl
+        printf "  \"blocked_paused\": %d,\n", bp
+        printf "  \"anomalies_detected\": %d,\n", ad
+        printf "  \"anomaly_pauses\": %d,\n", ap
+        printf "  \"top_anomaly_types\": [%s],\n", top_json
+        printf "  \"fp_candidates\": [%s],\n", fp_json
+        printf "  \"fp_candidate_count\": %d\n", nfp
+        printf "}\n"
+    }
+    ' "$log_file"
+}
+
+# =============================================================================
 # SAFE COMMAND DISPATCH (NO EVAL)
 # =============================================================================
 
@@ -1189,6 +1380,14 @@ agent_safe_exec() {
         return 1
     fi
 
+    # Anomaly pause latch: after an anomaly, everything requires a resume
+    if (( _AGENT_PAUSED )); then
+        agent_audit "exec_blocked_paused" "cmd=${cmd[*]}"
+        agent_error "execution paused: anomaly latch engaged" \
+            "suggestion=Resume with agent_anomaly_resume (requires AGENT_APPROVED=1)"
+        return 1
+    fi
+
     # Risk assessment (on the resolved command: indirection is analyzed,
     # execution still uses the original argv)
     local risk_score
@@ -1216,6 +1415,7 @@ agent_safe_exec() {
             agent_audit "exec_approved" "cmd=${cmd[*]}" "risk=$risk_score" "profile=$AGENT_CURRENT_PROFILE"
         else
             agent_audit "exec_blocked_risk" "cmd=${cmd[*]}" "risk=$risk_score" "threshold=$AGENT_RISK_THRESHOLD" "profile=$AGENT_CURRENT_PROFILE"
+            _agent_anomaly_note_blocked
             agent_error "command blocked: risk score $risk_score meets threshold $AGENT_RISK_THRESHOLD" \
                 "cmd=${cmd[*]}" \
                 "risk_score=$risk_score" \
@@ -1230,6 +1430,12 @@ agent_safe_exec() {
 
     # Rate limiting (only executions that passed all gates count)
     if ! _agent_rate_check; then
+        _agent_anomaly_note_blocked
+        return 1
+    fi
+
+    # Anomaly detection (burst/probing patterns)
+    if ! _agent_anomaly_check "${cmd[*]}"; then
         return 1
     fi
 
@@ -1237,6 +1443,8 @@ agent_safe_exec() {
     local exit_code
     "${cmd[@]}"
     exit_code=$?
+
+    (( exit_code == 0 )) && _agent_anomaly_note_success
 
     # Audit the result
     agent_audit "exec_complete" "cmd=${cmd[0]}" "exit_code=$exit_code"
@@ -1264,6 +1472,14 @@ agent_safe_exec_capture() {
         return 1
     fi
 
+    # Anomaly pause latch: after an anomaly, everything requires a resume
+    if (( _AGENT_PAUSED )); then
+        agent_audit "exec_capture_blocked_paused" "cmd=${cmd[*]}"
+        agent_error "execution paused: anomaly latch engaged" \
+            "suggestion=Resume with agent_anomaly_resume (requires AGENT_APPROVED=1)"
+        return 1
+    fi
+
     # Enforce the risk threshold (same gate as agent_safe_exec)
     local risk_score
     local _resolved_cmd
@@ -1288,6 +1504,7 @@ agent_safe_exec_capture() {
             agent_audit "exec_capture_approved" "cmd=${cmd[*]}" "risk=$risk_score" "profile=$AGENT_CURRENT_PROFILE"
         else
             agent_audit "exec_capture_blocked_risk" "cmd=${cmd[*]}" "risk=$risk_score" "threshold=$AGENT_RISK_THRESHOLD" "profile=$AGENT_CURRENT_PROFILE"
+            _agent_anomaly_note_blocked
             agent_error "command blocked: risk score $risk_score meets threshold $AGENT_RISK_THRESHOLD" \
                 "cmd=${cmd[*]}" \
                 "risk_score=$risk_score" \
@@ -1301,6 +1518,12 @@ agent_safe_exec_capture() {
 
     # Rate limiting (only executions that passed all gates count)
     if ! _agent_rate_check; then
+        _agent_anomaly_note_blocked
+        return 1
+    fi
+
+    # Anomaly detection (burst/probing patterns)
+    if ! _agent_anomaly_check "${cmd[*]}"; then
         return 1
     fi
 

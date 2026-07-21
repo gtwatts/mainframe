@@ -1,8 +1,8 @@
 {
   "version": "10.1.0",
-  "generated": "2026-07-21T03:17:09Z",
+  "generated": "2026-07-21T11:30:47Z",
   "stats": {
-    "total_functions": 4459,
+    "total_functions": 4461,
     "total_libraries": 185,
     "categories": ["versioning", "strings", "utilities", "monitoring", "validation", "discovery", "caching", "cli", "parsing", "fp", "streaming", "ai", "performance", "system", "safety", "errors", "compatibility", "reliability", "network", "datetime", "logging", "async", "ci", "templating", "environment", "interactive", "containers", "vcs", "output", "security", "crypto", "metaprogramming", "process", "arrays", "other", "analysis", "data", "files", "config"]
   },
@@ -2095,6 +2095,29 @@
           "signature": "agent_clear_approval_callback",
           "params": [],
           "returns": "exit_code",
+          "idempotent": false,
+          "pure": false
+        },
+        "agent_anomaly_resume": {
+          "description": "Resume from an anomaly pause (requires AGENT_APPROVED=1)",
+          "signature": "agent_anomaly_resume",
+          "params": [],
+          "returns": "exit_code",
+          "idempotent": false,
+          "pure": false
+        },
+        "agent_gate_report": {
+          "description": "Analyze the agent audit log into gate telemetry (JSON on stdout). Reports execution volume, block reasons, anomalies, top triggered rules, and false-positive candidates (commands blocked then later approved - operator overrides are the best available FP signal for gate tuning). Pure awk implementation (zero-dependency discipline).",
+          "signature": "agent_gate_report [audit_log_path]",
+          "params": [
+            {
+              "name": "log_file",
+              "position": 1,
+              "required": false,
+              "default": "$AGENT_AUDIT_LOG"
+            }
+          ],
+          "returns": "stdout",
           "idempotent": false,
           "pure": false
         },
@@ -33783,8 +33806,8 @@
             {
               "name": "partial",
               "position": 1,
-              "required": true,
-              "default": null
+              "required": false,
+              "default": ""
             }
           ],
           "returns": "stdout",

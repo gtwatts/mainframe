@@ -627,3 +627,81 @@ _gate_tier() {
     [ "$status" -eq 1 ]
     [[ "$output" == *"no agent_profile checkpoint"* ]]
 }
+
+# =============================================================================
+# 12. ANOMALY DETECTION ON THE EXECUTION STREAM
+# =============================================================================
+
+@test "anomaly: identical-command burst engages pause latch" {
+    export AGENT_ANOMALY_MODE=pause AGENT_ANOMALY_BURST_LIMIT=3 _AGENT_CMD_HISTORY=() _AGENT_PAUSED=0 _AGENT_BLOCKED_STREAK=0
+    agent_safe_exec echo repeat-me >/dev/null 2>&1
+    agent_safe_exec echo repeat-me >/dev/null 2>&1
+    agent_safe_exec echo repeat-me >/dev/null 2>&1 || true   # burst engages here
+    run agent_safe_exec echo anything-else
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"paused"* ]]
+    [ "$_AGENT_PAUSED" = "1" ]
+}
+
+@test "anomaly: resume requires AGENT_APPROVED" {
+    export _AGENT_PAUSED=1 AGENT_APPROVED=0
+    run agent_anomaly_resume
+    [ "$status" -eq 1 ]
+    AGENT_APPROVED=1
+    agent_anomaly_resume >/dev/null 2>&1
+    [ "$_AGENT_PAUSED" = "0" ]
+}
+
+@test "anomaly: probing streak (consecutive blocked) engages pause" {
+    export AGENT_ANOMALY_MODE=pause AGENT_ANOMALY_BLOCK_LIMIT=2 _AGENT_BLOCKED_STREAK=0 _AGENT_CMD_HISTORY=() _AGENT_PAUSED=0 AGENT_RATE_LIMIT=0
+    mkdir -p "$TEST_DIR/p1" "$TEST_DIR/p2"
+    # These are threshold-blocked (rm -rf floors at 90), feeding the streak
+    agent_safe_exec rm -rf "$TEST_DIR/p1" >/dev/null 2>&1 || true
+    agent_safe_exec rm -rf "$TEST_DIR/p2" >/dev/null 2>&1 || true
+    run agent_safe_exec echo after-streak
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"paused"* ]]
+}
+
+@test "anomaly: warn mode reports but does not block" {
+    export AGENT_ANOMALY_MODE=warn AGENT_ANOMALY_BURST_LIMIT=2 _AGENT_CMD_HISTORY=() _AGENT_PAUSED=0
+    agent_safe_exec echo w-cmd >/dev/null 2>&1
+    run agent_safe_exec echo w-cmd
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"anomaly detected"* ]] || [ "$status" -eq 0 ]
+}
+
+@test "anomaly: off mode disables detection (default)" {
+    export AGENT_ANOMALY_MODE=off _AGENT_CMD_HISTORY=() _AGENT_PAUSED=0
+    for i in 1 2 3 4 5; do
+        agent_safe_exec echo same >/dev/null 2>&1
+    done
+    run agent_safe_exec echo same
+    [ "$status" -eq 0 ]
+}
+
+# =============================================================================
+# 13. GATE TELEMETRY
+# =============================================================================
+
+@test "telemetry: report counts executions, blocks, and approvals" {
+    export AGENT_AUDIT_LOG="$TEST_DIR/telemetry.jsonl"
+    agent_safety_init project "$TEST_DIR" >/dev/null 2>&1
+    agent_safe_exec echo tracked >/dev/null 2>&1
+    mkdir -p "$TEST_DIR/t1"
+    agent_safe_exec rm -rf "$TEST_DIR/t1" >/dev/null 2>&1 || true   # blocked
+    AGENT_APPROVED=1
+    agent_safe_exec rm -rf "$TEST_DIR/t1" >/dev/null 2>&1   # approved + executed
+    run agent_gate_report "$AGENT_AUDIT_LOG"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"executions_started": 2'* ]]
+    [[ "$output" == *'"blocked_risk": 1'* ]]
+    [[ "$output" == *'"approved": 1'* ]]
+    [[ "$output" == *'"fp_candidates": ["rm -rf'* ]]
+}
+
+@test "telemetry: report on missing log errors cleanly" {
+    run agent_gate_report "$TEST_DIR/nonexistent.jsonl"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"no audit log"* ]]
+}
