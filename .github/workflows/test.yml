@@ -152,9 +152,16 @@ jobs:
           git clone https://github.com/bats-core/bats-assert.git tests/bats-assert
           git clone https://github.com/bats-core/bats-file.git tests/bats-file
 
+      - name: Install bash 5 (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install bash
+
       - name: Run safety-critical suites
         timeout-minutes: 15
         run: |
+          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            export BATS_TEST_SHELL="$(brew --prefix bash)/bin/bash"
+          fi
           ./tests/bats/bin/bats --formatter tap \
             --print-output-on-failure \
             tests/agent_safety.bats \
