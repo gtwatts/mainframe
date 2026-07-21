@@ -1,0 +1,142 @@
+{
+  "version": "10.1.0",
+  "generated": "2026-07-21T01:30:50Z",
+  "source": "lib/agent_safety.sh (_agent_gate_match)",
+  "rules": [
+    {
+      "tier": "critical",
+      "id": "recursive-force-rm",
+      "js": "(^|[[:space:]&|;|(|)])rm\\s+([^-;|&]*-([a-zA-Z]*[rR][a-zA-Z]*f|[a-zA-Z]*f[a-zA-Z]*[rR])[a-zA-Z]*|[^-;|&]*-[a-zA-Z]*[rR]\\s+-[a-zA-Z]*f|[^-;|&]*--recursive[^\\s]*\\s+--force)"
+    },
+    {
+      "tier": "critical",
+      "id": "sudo-rm",
+      "js": "(^|[[:space:]&|;|(|)])sudo\\s+rm(\\s|$)"
+    },
+    {
+      "tier": "critical",
+      "id": "filesystem-format",
+      "js": "(^|[[:space:]&|;|(|)])(mkfs|mkfs\\.[a-z0-9]+|newfs|mkswap)(\\s|$)"
+    },
+    {
+      "tier": "critical",
+      "id": "dd-raw-disk-write",
+      "js": "(^|[[:space:]&|;|(|)])dd\\s.*of=/dev/"
+    },
+    {
+      "tier": "critical",
+      "id": "diskutil-erase",
+      "js": "(^|[[:space:]&|;|(|)])diskutil\\s+(erase|partition|unmountDisk|apfs)"
+    },
+    {
+      "tier": "critical",
+      "id": "raw-device-redirect",
+      "js": ">\\s*/dev/(sd|disk|rdisk|nvme)"
+    },
+    {
+      "tier": "high",
+      "id": "chmod-recursive-777",
+      "js": "(^|[[:space:]&|;|(|)])chmod\\s+(-[a-zA-Z]*R[a-zA-Z]*\\s+)*777(\\s|$)"
+    },
+    {
+      "tier": "high",
+      "id": "chown-recursive",
+      "js": "(^|[[:space:]&|;|(|)])chown\\s+-[a-zA-Z]*R"
+    },
+    {
+      "tier": "high",
+      "id": "git-clean-destructive",
+      "js": "(^|[[:space:]&|;|(|)])git\\s+clean\\s.*-[a-zA-Z]*[fxd]"
+    },
+    {
+      "tier": "high",
+      "id": "git-reset-hard",
+      "js": "(^|[[:space:]&|;|(|)])git\\s+reset\\s+--hard(\\s|$)"
+    },
+    {
+      "tier": "high",
+      "id": "docker-system-prune",
+      "js": "(^|[[:space:]&|;|(|)])docker\\s+system\\s+prune.*(-a|--all|--volumes)"
+    },
+    {
+      "tier": "high",
+      "id": "kubectl-delete",
+      "js": "(^|[[:space:]&|;|(|)])kubectl\\s+delete(\\s|$)"
+    },
+    {
+      "tier": "high",
+      "id": "terraform-destroy",
+      "js": "(^|[[:space:]&|;|(|)])(terraform|tofu)\\s+destroy(\\s|$)"
+    },
+    {
+      "tier": "high",
+      "id": "s3-recursive-delete",
+      "js": "(^|[[:space:]&|;|(|)])aws\\s+s3\\s+rm.*--recursive"
+    },
+    {
+      "tier": "high",
+      "id": "find-delete",
+      "js": "(^|[[:space:]&|;|(|)])find\\s.*-delete(\\s|$)"
+    },
+    {
+      "tier": "high",
+      "id": "xargs-rm-pipeline",
+      "js": "\\|\\s*xargs\\s.*rm(\\s|$)"
+    },
+    {
+      "tier": "high",
+      "id": "rsync-delete",
+      "js": "(^|[[:space:]&|;|(|)])rsync\\s.*--delete"
+    },
+    {
+      "tier": "high",
+      "id": "download-piped-to-shell",
+      "js": "(curl|wget)\\s.*\\|\\s*(sudo\\s+)?(bash|sh|zsh)(\\s|$)"
+    },
+    {
+      "tier": "high",
+      "id": "git-push-mirror",
+      "js": "(^|[[:space:]&|;|(|)])git\\s+push\\s.*--mirror"
+    },
+    {
+      "tier": "high",
+      "id": "kill-all-processes",
+      "js": "(^|[[:space:]&|;|(|)])kill\\s+(-9|-KILL)\\s+-1(\\s|$)"
+    },
+    {
+      "tier": "medium",
+      "id": "git-push-force",
+      "js": "(^|[[:space:]&|;|(|)])git\\s+push\\s.*(--force|-f)(\\s|$)"
+    },
+    {
+      "tier": "medium",
+      "id": "git-worktree-reset",
+      "js": "(^|[[:space:]&|;|(|)])git\\s+(checkout|restore)\\s+(--\\s+)?\\.(\\s|$)"
+    },
+    {
+      "tier": "medium",
+      "id": "killall",
+      "js": "(^|[[:space:]&|;|(|)])killall(\\s|$)"
+    },
+    {
+      "tier": "medium",
+      "id": "npm-publish",
+      "js": "(^|[[:space:]&|;|(|)])npm\\s+publish(\\s|$)"
+    },
+    {
+      "tier": "medium",
+      "id": "crontab-remove",
+      "js": "(^|[[:space:]&|;|(|)])crontab\\s+-r(\\s|$)"
+    },
+    {
+      "tier": "medium",
+      "id": "launchctl-mutate",
+      "js": "(^|[[:space:]&|;|(|)])launchctl\\s+(load|unload|remove|kickstart)(\\s|$)"
+    },
+    {
+      "tier": "critical",
+      "id": "fork-bomb",
+      "js": ":\\(\\)\\{ :\\|:& \\};:|:\\(\\) \\{:\\|:&\\};:"
+    }
+  ]
+}
