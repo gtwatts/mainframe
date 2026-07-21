@@ -1,0 +1,49 @@
+#!/usr/bin/env bats
+# =============================================================================
+# MAINFRAME/tests/unit/myutils.bats - Myutils Tests
+# =============================================================================
+# Description: Unit tests for lib/myutils.sh
+# =============================================================================
+
+setup() {
+    BATS_TEST_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+    MAINFRAME_ROOT="${BATS_TEST_DIR}/../.."
+
+    # Create temp directory for test artifacts
+    TEST_TMPDIR="$(mktemp -d)"
+
+    # Source the library
+    source "$MAINFRAME_ROOT/lib/myutils.sh"
+}
+
+teardown() {
+    rm -rf "$TEST_TMPDIR"
+}
+
+# =============================================================================
+# BASIC TESTS
+# =============================================================================
+
+@test "myutils: library loaded guard is set" {
+    [[ -n "${_MAINFRAME_MYUTILS_LOADED:-}" ]]
+}
+
+@test "myutils: myutils_example function exists" {
+    declare -F myutils_example
+}
+
+@test "myutils: myutils_example processes input" {
+    result=$(myutils_example "hello")
+    [[ "$result" == "HELLO" ]]
+}
+
+@test "myutils: myutils_example_v nameref variant works" {
+    local result=""
+    myutils_example_v result "hello"
+    [[ "$result" == "HELLO" ]]
+}
+
+@test "myutils: myutils_example fails on missing input" {
+    run myutils_example
+    [[ "$status" -ne 0 ]]
+}

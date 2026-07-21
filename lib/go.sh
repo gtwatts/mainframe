@@ -77,11 +77,10 @@ _go_loc_count() {
 _go_find_files() {
     local dir="$1"
     [[ -d "$dir" ]] || return 1
-    find "$dir" -type f -name "*.go" \
+    _go_filter_files "$dir" "$(find "$dir" -type f -name "*.go" \
         ! -path "*/vendor/*" \
-        ! -path "*/\.*" \
         ! -path "*/_[!_]*" \
-        ! -name "*_test.go" 2>/dev/null
+        ! -name "*_test.go" 2>/dev/null)"
 }
 
 # _go_find_all_files DIR
@@ -89,9 +88,22 @@ _go_find_files() {
 _go_find_all_files() {
     local dir="$1"
     [[ -d "$dir" ]] || return 1
-    find "$dir" -type f -name "*.go" \
-        ! -path "*/vendor/*" \
-        ! -path "*/\.*" 2>/dev/null
+    _go_filter_files "$dir" "$(find "$dir" -type f -name "*.go" \
+        ! -path "*/vendor/*" 2>/dev/null)"
+}
+
+# Internal: drop files in dot-directories INSIDE the project (a naive
+# ! -path "*/\.*" would also drop everything when the project itself
+# lives under a dot directory, e.g. ~/.mainframe)
+_go_filter_files() {
+    local dir="$1" files="$2"
+    local f rel
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        rel="${f#$dir/}"
+        [[ "$rel" == .* || "$rel" == */.* ]] && continue
+        printf '%s\n' "$f"
+    done <<< "$files"
 }
 
 # _go_find_test_files DIR

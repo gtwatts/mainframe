@@ -89,9 +89,15 @@ _rust_loc_count() {
 _rust_find_files() {
     local dir="$1"
     [[ -d "$dir" ]] || return 1
-    find "$dir" -type f -name "*.rs" \
-        ! -path "*/target/*" \
-        ! -path "*/\.*" 2>/dev/null
+    # Exclude dot-directories INSIDE the project only: a naive
+    # ! -path "*/\.*" also excludes everything when the project itself
+    # lives under a dot directory (e.g. ~/.mainframe).
+    local f rel
+    while IFS= read -r f; do
+        rel="${f#$dir/}"
+        [[ "$rel" == .* || "$rel" == */.* ]] && continue
+        printf '%s\n' "$f"
+    done < <(find "$dir" -type f -name "*.rs" ! -path "*/target/*" 2>/dev/null)
 }
 
 # _rust_find_src_files DIR
