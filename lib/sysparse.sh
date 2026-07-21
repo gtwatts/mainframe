@@ -1617,6 +1617,6 @@ parse_env() {
         first=false
         printf '"%s":"%s"' "$escaped_name" "$escaped_value"
         ((count++))
-    done < <(env | sort)
+    done < <(env | sort | grep -E '^[A-Za-z_][A-Za-z0-9_]*=')
     printf '}\n'
 }

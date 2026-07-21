@@ -24,7 +24,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LIB_DIR="$PROJECT_ROOT/lib"
 
 # Project version (from common.sh MAINFRAME_VERSION)
-PROJECT_VERSION="5.0.0"
+PROJECT_VERSION="10.1.0"
 
 # Output defaults
 OUTPUT_PATH="$PROJECT_ROOT/FUNCTIONS.json"
@@ -721,7 +721,12 @@ generate_json() {
         lib_name="${lib_basename%.sh}"
 
         local func_count
-        func_count=$(grep -cE '^[a-zA-Z][a-zA-Z0-9_]*[[:space:]]*\(\)[[:space:]]*\{?[[:space:]]*$' "$lib_file" 2>/dev/null || echo 0)
+        # grep -c prints "0" and exits 1 on no match; do NOT append `|| echo 0`
+        # (that produced "0\n0" and an arithmetic error, silently skipping
+        # libraries whose function definitions use other styles)
+        # Accept both plain (name) and namespaced (ns::name) public functions
+        func_count=$(grep -cE '^[a-zA-Z][a-zA-Z0-9_]*(::[a-zA-Z0-9_]+)*[[:space:]]*\(\)[[:space:]]*\{?[[:space:]]*$' "$lib_file" 2>/dev/null || true)
+        [[ "$func_count" =~ ^[0-9]+$ ]] || func_count=0
 
         if [[ $func_count -gt 0 ]]; then
             total_functions=$((total_functions + func_count))
@@ -791,8 +796,8 @@ generate_json() {
         local lineno=0
         while IFS= read -r line; do
             lineno=$((lineno + 1))
-            # Match: funcname() { or funcname () {
-            if [[ "$line" =~ ^([a-zA-Z][a-zA-Z0-9_]*)[[:space:]]*\(\)[[:space:]]*\{?[[:space:]]*$ ]]; then
+            # Match: funcname() { or funcname () { or ns::funcname() {
+            if [[ "$line" =~ ^([a-zA-Z][a-zA-Z0-9_]*(::[a-zA-Z0-9_]+)*)[[:space:]]*\(\)[[:space:]]*\{?[[:space:]]*$ ]]; then
                 local fname="${BASH_REMATCH[1]}"
                 func_names+=("$fname")
                 func_lines+=("$lineno")

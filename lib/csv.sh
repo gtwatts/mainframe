@@ -17,9 +17,9 @@ readonly _MAINFRAME_CSV_LOADED=1
 # =============================================================================
 
 # Parsed data storage
-declare -a CSV_FIELDS=()      # Fields from last parsed line
-declare -a CSV_HEADERS=()     # Column headers
-declare -a CSV_ROWS=()        # All data rows (serialized)
+declare -ga CSV_FIELDS=()      # Fields from last parsed line
+declare -ga CSV_HEADERS=()     # Column headers
+declare -ga CSV_ROWS=()        # All data rows (serialized)
 declare -g CSV_DELIMITER=','  # Field delimiter
 declare -g CSV_QUOTE='"'      # Quote character
 

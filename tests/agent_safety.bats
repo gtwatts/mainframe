@@ -502,6 +502,8 @@ teardown() {
 # =============================================================================
 
 @test "agent_set_profile accepts valid profile" {
+    # Call directly (not via run): the assertions inspect variables the
+    # function sets in the current shell, which a run-subshell would discard
     agent_set_profile "readonly" "$TEST_DIR" >/dev/null
     [ "$?" -eq 0 ]
     [ "$AGENT_CURRENT_PROFILE" = "readonly" ]
@@ -559,6 +561,7 @@ teardown() {
 # =============================================================================
 
 @test "agent_safety_init sets profile and base" {
+    # Direct call: assertions inspect shell state set by the function
     agent_safety_init "readonly" "/test/path" >/dev/null
     [ "$?" -eq 0 ]
     [ "$AGENT_CURRENT_PROFILE" = "readonly" ]

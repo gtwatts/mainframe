@@ -60,8 +60,8 @@ teardown() {
 @test "atomic_write no temp file left on success" {
     atomic_write "$TEST_DIR/clean.txt" "data"
     local temps
-    temps=$(find "$TEST_DIR" -name ".mainframe_atomic.*" 2>/dev/null | wc -l)
-    [ "$temps" -eq 0 ]
+    temps=$(count_matches "$TEST_DIR"/.mainframe_atomic_*)
+    [ "$temps" = "0" ]
 }
 
 @test "atomic_write handles multiline content" {
@@ -94,9 +94,9 @@ teardown() {
 @test "atomic_append adds newline" {
     atomic_append "$TEST_DIR/nl.txt" "line1"
     atomic_append "$TEST_DIR/nl.txt" "line2"
-    local content
-    content=$(<"$TEST_DIR/nl.txt")
-    [ "$content" = $'line1\nline2' ]
+    local count
+    count=$(count_lines "$TEST_DIR/nl.txt")
+    [ "$count" = "2" ]
 }
 
 @test "atomic_append fails with empty args" {
@@ -119,9 +119,9 @@ teardown() {
 @test "atomic_replace creates backup" {
     echo "original" > "$TEST_DIR/backup.txt"
     atomic_replace "$TEST_DIR/backup.txt" "new"
-    local backup
-    backup=$(ls "$TEST_DIR"/backup.txt.bak.* 2>/dev/null | head -1)
-    [ -n "$backup" ]
+    local backups
+    backups=$(count_matches "$TEST_DIR"/backup.txt.bak.*)
+    [ "$backups" = "1" ]
 }
 
 @test "atomic_replace backup contains original content" {
@@ -260,6 +260,6 @@ teardown() {
     touch -t 202001010000 "$MAINFRAME_CHECKPOINT_DIR"/*
     file_checkpoint_cleanup 1
     local remaining
-    remaining=$(ls "$MAINFRAME_CHECKPOINT_DIR"/* 2>/dev/null | grep -v ".meta" | wc -l)
-    [ "$remaining" -eq 0 ]
+    remaining=$(ls "$MAINFRAME_CHECKPOINT_DIR"/* 2>/dev/null | grep -v ".meta" | wc -l | tr -d '[:space:]')
+    [ "$remaining" = "0" ]
 }

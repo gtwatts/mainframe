@@ -7,6 +7,21 @@
 [[ -n "${_AWM_STREAM_LOADED:-}" ]] && return 0
 readonly _AWM_STREAM_LOADED=1
 
+# Portable SHA-256 digest (sha256sum -> shasum -> openssl fallback chain).
+# Shared micro-shim: the declare -F guard means it is defined once per
+# process no matter how many MAINFRAME libraries are sourced.
+if ! declare -F _mainframe_sha256 &>/dev/null; then
+_mainframe_sha256() {
+    if command -v sha256sum &>/dev/null; then
+        sha256sum "$@"
+    elif command -v shasum &>/dev/null; then
+        shasum -a 256 "$@"
+    else
+        openssl dgst -sha256 "$@" | sed 's/^.* //'
+    fi
+}
+fi
+
 # Load dependencies
 # shellcheck source=./awm_storage.sh
 source "${BASH_SOURCE%/*}/awm_storage.sh" 2>/dev/null || source "$(dirname "$0")/awm_storage.sh"
@@ -289,7 +304,7 @@ awm_pointer_create() {
 
     # Generate content hash
     local hash
-    hash=$(echo -n "$content" | sha256sum | cut -c1-32)
+    hash=$(echo -n "$content" | _mainframe_sha256 | cut -c1-32)
 
     local pointer="ptr://awm/$hash"
 

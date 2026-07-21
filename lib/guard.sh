@@ -171,6 +171,50 @@ guard_path_exists() {
     return 0
 }
 
+# Internal: resolve a path to its canonical absolute form.
+# Portable replacement for GNU `realpath -m`: uses realpath when available
+# (GNU or BSD), falls back to pwd -P on the deepest existing ancestor.
+# Usage: resolved=$(_guard_resolve_path "/some/path")
+_guard_resolve_path() {
+    local path="$1"
+
+    # GNU realpath (-m resolves without requiring existence)
+    if realpath -m "$path" 2>/dev/null; then
+        return 0
+    fi
+
+    # BSD/macOS realpath (requires existence)
+    if [[ -e "$path" ]]; then
+        if realpath "$path" 2>/dev/null; then
+            return 0
+        fi
+        # Last-resort: shell builtin resolution
+        (cd "$(dirname -- "$path")" >/dev/null 2>&1 && printf '%s/%s\n' "$(pwd -P)" "$(basename -- "$path")") && return 0
+        return 1
+    fi
+
+    # Non-existent path: resolve deepest existing ancestor, append the rest
+    local current="$path"
+    local -a missing=()
+    while [[ ! -e "$current" ]]; do
+        missing=("$(basename -- "$current")" "${missing[@]}")
+        current=$(dirname -- "$current")
+        [[ "$current" == "/" || -z "$current" ]] && break
+    done
+
+    local resolved
+    resolved=$(cd "$current" 2>/dev/null && pwd -P) || return 1
+
+    local part
+    for part in "${missing[@]}"; do
+        # Refuse to fabricate paths through '..' components
+        [[ "$part" == ".." ]] && return 1
+        resolved="$resolved/$part"
+    done
+
+    printf '%s\n' "$resolved"
+}
+
 # Guard: Path must be safe (no traversal outside base)
 # Usage: guard_path_safe "/base" "/user/provided/path"
 # Returns: 0 if safe, 1 if traversal detected
@@ -178,9 +222,18 @@ guard_path_safe() {
     local base_dir="$1"
     local user_path="$2"
 
+    # Block encoded traversal attempts outright (fail closed).
+    # Checked on the ORIGINAL input before any resolution.
+    if [[ "$user_path" == *"%2e%2e"* ]] || \
+       [[ "$user_path" == *"%2E%2E"* ]] || \
+       [[ "$user_path" == *"%00"* ]]; then
+        _guard_error "Encoded traversal pattern blocked: $user_path"
+        return 1
+    fi
+
     # Resolve base directory
     local real_base
-    real_base=$(realpath -m "$base_dir" 2>/dev/null) || {
+    real_base=$(_guard_resolve_path "$base_dir") || {
         _guard_error "Cannot resolve base directory: $base_dir"
         return 1
     }
@@ -188,13 +241,13 @@ guard_path_safe() {
     # Build and resolve full path
     local full_path="${base_dir}/${user_path}"
     local real_path
-    real_path=$(realpath -m "$full_path" 2>/dev/null) || {
+    real_path=$(_guard_resolve_path "$full_path") || {
         _guard_error "Cannot resolve path: $full_path"
         return 1
     }
 
-    # Check for traversal
-    if [[ "$real_path" != "$real_base"/* && "$real_path" != "$real_base" ]]; then
+    # Check for traversal (boundary-aware: exact match or proper subdirectory)
+    if [[ "$real_path" != "$real_base" && "$real_path" != "$real_base"/* ]]; then
         _guard_error "Path traversal detected!"
         _guard_error "  User input: $user_path"
         _guard_error "  Resolved: $real_path"
@@ -202,12 +255,9 @@ guard_path_safe() {
         return 1
     fi
 
-    # Also check for encoded traversal attempts in original input
-    if [[ "$user_path" == *".."* ]] || \
-       [[ "$user_path" == *"%2e%2e"* ]] || \
-       [[ "$user_path" == *"%2E%2E"* ]] || \
-       [[ "$user_path" == *"%00"* ]]; then
-        _guard_warn "Suspicious path pattern detected: $user_path"
+    # Literal '..' that resolved inside the base is safe but noteworthy
+    if [[ "$user_path" == *".."* ]]; then
+        _guard_warn "Path contains '..' (resolved within base): $user_path"
     fi
 
     return 0

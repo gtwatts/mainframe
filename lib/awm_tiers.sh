@@ -7,6 +7,21 @@
 [[ -n "${_AWM_TIERS_LOADED:-}" ]] && return 0
 readonly _AWM_TIERS_LOADED=1
 
+# Portable SHA-256 digest (sha256sum -> shasum -> openssl fallback chain).
+# Shared micro-shim: the declare -F guard means it is defined once per
+# process no matter how many MAINFRAME libraries are sourced.
+if ! declare -F _mainframe_sha256 &>/dev/null; then
+_mainframe_sha256() {
+    if command -v sha256sum &>/dev/null; then
+        sha256sum "$@"
+    elif command -v shasum &>/dev/null; then
+        shasum -a 256 "$@"
+    else
+        openssl dgst -sha256 "$@" | sed 's/^.* //'
+    fi
+}
+fi
+
 # Load dependencies
 # shellcheck source=./awm_storage.sh
 source "${BASH_SOURCE%/*}/awm_storage.sh" 2>/dev/null || source "$(dirname "$0")/awm_storage.sh"
@@ -150,7 +165,7 @@ awm_warm_set() {
     local importance="${4:-$AWM_IMPORTANCE_NORMAL}"
 
     local key_hash
-    key_hash=$(echo -n "$key" | sha256sum | cut -c1-16)
+    key_hash=$(echo -n "$key" | _mainframe_sha256 | cut -c1-16)
 
     # Store with metadata
     local data
@@ -174,7 +189,7 @@ awm_warm_get() {
     local key="$1"
 
     local key_hash
-    key_hash=$(echo -n "$key" | sha256sum | cut -c1-16)
+    key_hash=$(echo -n "$key" | _mainframe_sha256 | cut -c1-16)
 
     local data
     data=$(awm_store_get "warm:$key_hash")
@@ -197,7 +212,7 @@ awm_warm_delete() {
     local key="$1"
 
     local key_hash
-    key_hash=$(echo -n "$key" | sha256sum | cut -c1-16)
+    key_hash=$(echo -n "$key" | _mainframe_sha256 | cut -c1-16)
 
     awm_store_delete "warm:$key_hash"
 }
@@ -208,7 +223,7 @@ awm_warm_exists() {
     local key="$1"
 
     local key_hash
-    key_hash=$(echo -n "$key" | sha256sum | cut -c1-16)
+    key_hash=$(echo -n "$key" | _mainframe_sha256 | cut -c1-16)
 
     awm_store_exists "warm:$key_hash"
 }
@@ -242,7 +257,7 @@ awm_cold_set() {
     local metadata="${3:-{}}"
 
     local key_hash
-    key_hash=$(echo -n "$key" | sha256sum | cut -c1-16)
+    key_hash=$(echo -n "$key" | _mainframe_sha256 | cut -c1-16)
 
     # Validate metadata is valid JSON, default to empty object
     if ! echo "$metadata" | jq . >/dev/null 2>&1; then
@@ -272,7 +287,7 @@ awm_cold_get() {
     local key="$1"
 
     local key_hash
-    key_hash=$(echo -n "$key" | sha256sum | cut -c1-16)
+    key_hash=$(echo -n "$key" | _mainframe_sha256 | cut -c1-16)
 
     local data
     data=$(awm_store_get "cold:$key_hash")
@@ -288,7 +303,7 @@ awm_cold_delete() {
     local key="$1"
 
     local key_hash
-    key_hash=$(echo -n "$key" | sha256sum | cut -c1-16)
+    key_hash=$(echo -n "$key" | _mainframe_sha256 | cut -c1-16)
 
     awm_store_delete "cold:$key_hash"
 }

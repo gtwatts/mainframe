@@ -18,6 +18,22 @@
 [[ -n "${_MAINFRAME_BURL_AI_LOADED:-}" ]] && return 0
 readonly _MAINFRAME_BURL_AI_LOADED=1
 
+
+# Portable SHA-256 digest (sha256sum -> shasum -> openssl fallback chain).
+# Shared micro-shim: the declare -F guard means it is defined once per
+# process no matter how many MAINFRAME libraries are sourced.
+if ! declare -F _mainframe_sha256 &>/dev/null; then
+_mainframe_sha256() {
+    if command -v sha256sum &>/dev/null; then
+        sha256sum "$@"
+    elif command -v shasum &>/dev/null; then
+        shasum -a 256 "$@"
+    else
+        openssl dgst -sha256 "$@" | sed 's/^.* //'
+    fi
+}
+fi
+
 # =============================================================================
 # AUTO-SOURCE DEPENDENCIES
 # =============================================================================
@@ -94,7 +110,7 @@ _burl_ai_now() {
 _burl_ai_sha256() {
     local input="$1"
     if type -p sha256sum &>/dev/null; then
-        printf '%s' "$input" | sha256sum | cut -d' ' -f1
+        printf '%s' "$input" | _mainframe_sha256 | cut -d' ' -f1
     elif type -p shasum &>/dev/null; then
         printf '%s' "$input" | shasum -a 256 | cut -d' ' -f1
     elif type -p openssl &>/dev/null; then

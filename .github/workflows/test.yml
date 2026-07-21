@@ -33,6 +33,9 @@ jobs:
           # SC1090: Non-constant source (lazy loading engine uses dynamic paths)
           # SC1091: Can't follow source (CI doesn't have files in expected paths)
           # SC2034: Variables unused (exported for library users)
+          # RATCHET LEDGER (2026-07-21, hits remaining): SC2034=209 SC2178=31
+          # SC2206=21 SC2128=19. An exclusion may be removed when its count
+          # reaches 0. common.sh SC2206 is now clean (read -a splitting).
           # SC2178: Nameref false positive
           # SC2053: Intentional glob patterns
           # SC2206: Intentional word splitting for arrays
@@ -119,6 +122,58 @@ jobs:
           find hooks -name '*.sh' -type f | xargs shellcheck -x \
             -e SC1090 -e SC2034 -e SC2053 -e SC2155
 
+      - name: Version and registry drift check
+        run: |
+          # VERSION is the single source of truth; lib/common.sh, the root
+          # CLI, the registry generator, and FUNCTIONS.json must all agree.
+          # FUNCTIONS.json must also match a fresh generation from lib/*.sh.
+          bash scripts/sync-version.sh --check
+
+  # Safety-critical suites run with ZERO tolerance on both platforms.
+  # These cover the agent execution safety stack (agent_safety), the
+  # destructive-command gate (security_gate), path validation, atomic
+  # writes, confirmation flows, dry-run plans, audit, and AWM.
+  test-safety:
+    name: Safety-Critical Suites (Zero Tolerance)
+    runs-on: ${{ matrix.os }}
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install BATS
+        run: |
+          git clone https://github.com/bats-core/bats-core.git tests/bats
+          git clone https://github.com/bats-core/bats-support.git tests/bats-support
+          git clone https://github.com/bats-core/bats-assert.git tests/bats-assert
+          git clone https://github.com/bats-core/bats-file.git tests/bats-file
+
+      - name: Install bash 5 (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install bash
+
+      - name: Run safety-critical suites
+        timeout-minutes: 15
+        run: |
+          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            export BATS_TEST_SHELL="$(brew --prefix bash)/bin/bash"
+          fi
+          ./tests/bats/bin/bats --formatter tap \
+            --print-output-on-failure \
+            tests/agent_safety.bats \
+            tests/security_gate.bats \
+            tests/validation.bats \
+            tests/confirm.bats \
+            tests/dryrun.bats \
+            tests/atomic.bats \
+            tests/unit/audit.bats \
+            tests/unit/awm.bats \
+            tests/unit/awm_v2.bats
+
   test-linux:
     name: Linux Bats Matrix
     runs-on: ubuntu-latest
@@ -195,7 +250,7 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    needs: [test-linux, test-macos]
+    needs: [test-safety, test-linux, test-macos]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Checkout
@@ -215,6 +270,10 @@ jobs:
             echo "changed=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Generate SBOM and checksums
+        if: steps.version.outputs.changed == 'true'
+        run: bash scripts/generate-sbom.sh
+
       - name: Create Release
         if: steps.version.outputs.changed == 'true'
         uses: softprops/action-gh-release@v1
@@ -224,3 +283,6 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+          files: |
+            SHA256SUMS
+            sbom.json

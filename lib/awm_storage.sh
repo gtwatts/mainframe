@@ -7,6 +7,21 @@
 [[ -n "${_AWM_STORAGE_LOADED:-}" ]] && return 0
 readonly _AWM_STORAGE_LOADED=1
 
+# Portable SHA-256 digest (sha256sum -> shasum -> openssl fallback chain).
+# Shared micro-shim: the declare -F guard means it is defined once per
+# process no matter how many MAINFRAME libraries are sourced.
+if ! declare -F _mainframe_sha256 &>/dev/null; then
+_mainframe_sha256() {
+    if command -v sha256sum &>/dev/null; then
+        sha256sum "$@"
+    elif command -v shasum &>/dev/null; then
+        shasum -a 256 "$@"
+    else
+        openssl dgst -sha256 "$@" | sed 's/^.* //'
+    fi
+}
+fi
+
 # =============================================================================
 # STORAGE BACKEND STATE
 # =============================================================================
@@ -389,7 +404,7 @@ _awm_file_set() {
     local ttl="$3"
 
     local key_hash
-    key_hash=$(echo -n "$key" | sha256sum | cut -c1-16)
+    key_hash=$(echo -n "$key" | _mainframe_sha256 | cut -c1-16)
     local file="$_AWM_STORAGE_DIR/kv/$key_hash"
 
     # Atomic write via temp file
@@ -406,7 +421,7 @@ _awm_file_get() {
     local key="$1"
 
     local key_hash
-    key_hash=$(echo -n "$key" | sha256sum | cut -c1-16)
+    key_hash=$(echo -n "$key" | _mainframe_sha256 | cut -c1-16)
     local file="$_AWM_STORAGE_DIR/kv/$key_hash"
 
     [[ ! -f "$file" ]] && return 0
@@ -429,7 +444,7 @@ _awm_file_delete() {
     local key="$1"
 
     local key_hash
-    key_hash=$(echo -n "$key" | sha256sum | cut -c1-16)
+    key_hash=$(echo -n "$key" | _mainframe_sha256 | cut -c1-16)
     rm -f "$_AWM_STORAGE_DIR/kv/$key_hash"
 }
 
@@ -437,7 +452,7 @@ _awm_file_exists() {
     local key="$1"
 
     local key_hash
-    key_hash=$(echo -n "$key" | sha256sum | cut -c1-16)
+    key_hash=$(echo -n "$key" | _mainframe_sha256 | cut -c1-16)
     local file="$_AWM_STORAGE_DIR/kv/$key_hash"
 
     [[ -f "$file" ]] || return 1
@@ -458,7 +473,7 @@ _awm_file_push() {
     local value="$2"
 
     local list_hash
-    list_hash=$(echo -n "$list" | sha256sum | cut -c1-16)
+    list_hash=$(echo -n "$list" | _mainframe_sha256 | cut -c1-16)
     local file="$_AWM_STORAGE_DIR/lists/$list_hash"
 
     # Append with newline delimiter (handle multiline via base64)
@@ -471,7 +486,7 @@ _awm_file_pop() {
     local list="$1"
 
     local list_hash
-    list_hash=$(echo -n "$list" | sha256sum | cut -c1-16)
+    list_hash=$(echo -n "$list" | _mainframe_sha256 | cut -c1-16)
     local file="$_AWM_STORAGE_DIR/lists/$list_hash"
 
     [[ ! -f "$file" ]] && return 0
@@ -493,7 +508,7 @@ _awm_file_range() {
     local end="$3"
 
     local list_hash
-    list_hash=$(echo -n "$list" | sha256sum | cut -c1-16)
+    list_hash=$(echo -n "$list" | _mainframe_sha256 | cut -c1-16)
     local file="$_AWM_STORAGE_DIR/lists/$list_hash"
 
     [[ ! -f "$file" ]] && echo '[]' && return 0
@@ -527,7 +542,7 @@ _awm_file_len() {
     local list="$1"
 
     local list_hash
-    list_hash=$(echo -n "$list" | sha256sum | cut -c1-16)
+    list_hash=$(echo -n "$list" | _mainframe_sha256 | cut -c1-16)
     local file="$_AWM_STORAGE_DIR/lists/$list_hash"
 
     [[ ! -f "$file" ]] && echo 0 && return 0
@@ -578,7 +593,7 @@ _awm_file_index() {
     local metadata="$3"
 
     local key_hash
-    key_hash=$(echo -n "$key" | sha256sum | cut -c1-16)
+    key_hash=$(echo -n "$key" | _mainframe_sha256 | cut -c1-16)
     local file="$_AWM_STORAGE_DIR/index/$key_hash"
 
     # Store content with metadata header
@@ -590,7 +605,7 @@ _awm_file_publish() {
     local message="$2"
 
     local channel_hash
-    channel_hash=$(echo -n "$channel" | sha256sum | cut -c1-16)
+    channel_hash=$(echo -n "$channel" | _mainframe_sha256 | cut -c1-16)
     local channel_dir="$_AWM_STORAGE_DIR/pubsub/$channel_hash"
     mkdir -p "$channel_dir"
 
@@ -605,7 +620,7 @@ _awm_file_subscribe() {
     local timeout="$3"
 
     local channel_hash
-    channel_hash=$(echo -n "$channel" | sha256sum | cut -c1-16)
+    channel_hash=$(echo -n "$channel" | _mainframe_sha256 | cut -c1-16)
     local channel_dir="$_AWM_STORAGE_DIR/pubsub/$channel_hash"
     mkdir -p "$channel_dir"
 

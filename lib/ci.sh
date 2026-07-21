@@ -16,6 +16,21 @@
 [[ -n "${_MAINFRAME_CI_LOADED:-}" ]] && return 0
 readonly _MAINFRAME_CI_LOADED=1
 
+# Portable SHA-256 digest (sha256sum -> shasum -> openssl fallback chain).
+# Shared micro-shim: the declare -F guard means it is defined once per
+# process no matter how many MAINFRAME libraries are sourced.
+if ! declare -F _mainframe_sha256 &>/dev/null; then
+_mainframe_sha256() {
+    if command -v sha256sum &>/dev/null; then
+        sha256sum "$@"
+    elif command -v shasum &>/dev/null; then
+        shasum -a 256 "$@"
+    else
+        openssl dgst -sha256 "$@" | sed 's/^.* //'
+    fi
+}
+fi
+
 # =============================================================================
 # INTERNAL: CI PLATFORM DETECTION
 # =============================================================================
@@ -857,7 +872,7 @@ ci::artifact_checksum() {
     [[ -z "$file" || ! -e "$file" ]] && return 1
 
     if command -v sha256sum &>/dev/null; then
-        sha256sum "$file" | awk '{print $1}'
+        _mainframe_sha256 "$file" | awk '{print $1}'
     elif command -v shasum &>/dev/null; then
         shasum -a 256 "$file" | awk '{print $1}'
     else

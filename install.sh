@@ -313,7 +313,44 @@ verify_installation() {
         die "MAINFRAME failed to run"
     fi
 
+    # Verify file integrity against the release checksum manifest when present
+    if [[ -f "$MAINFRAME_INSTALL_DIR/SHA256SUMS" ]]; then
+        info "Verifying release checksums (SHA256SUMS)..."
+        if ! (cd "$MAINFRAME_INSTALL_DIR" && _verify_checksums); then
+            die "Checksum verification failed - installation may be corrupted or tampered with"
+        fi
+        success "Checksums verified"
+    else
+        warn "SHA256SUMS not found; skipping integrity verification"
+    fi
+
     success "Deployment verified"
+}
+
+# Verify files against SHA256SUMS using whichever tool is available
+_verify_checksums() {
+    local sums_file="SHA256SUMS"
+    local failures=0 checked=0 line hash file actual
+    while IFS= read -r line; do
+        [[ "$line" == \#* || -z "$line" ]] && continue
+        hash="${line%%  *}"
+        file="${line##*  }"
+        [[ -f "$file" ]] || continue
+        if command -v sha256sum &>/dev/null; then
+            actual=$(sha256sum "$file" | cut -d' ' -f1)
+        elif command -v shasum &>/dev/null; then
+            actual=$(shasum -a 256 "$file" | cut -d' ' -f1)
+        else
+            actual=$(openssl dgst -sha256 "$file" | awk '{print $NF}')
+        fi
+        checked=$((checked + 1))
+        [[ "$actual" != "$hash" ]] && {
+            printf '  MISMATCH: %s\n' "$file" >&2
+            failures=$((failures + 1))
+        }
+    done < "$sums_file"
+    printf '  %d files checked, %d mismatches\n' "$checked" "$failures" >&2
+    [[ "$failures" -eq 0 && "$checked" -gt 0 ]]
 }
 
 # =============================================================================

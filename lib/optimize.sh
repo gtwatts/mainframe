@@ -24,7 +24,7 @@ source "${BASH_SOURCE%/*}/json.sh"
 
 # Pattern → Replacement mappings with metadata
 # Format: pattern|replacement|improvement|safety|explanation
-declare -A _OPTIMIZE_RULES=(
+declare -gA _OPTIMIZE_RULES=(
     # Useless cat - most common anti-pattern
     ['cat \(.*\) | grep \(.*\)']='grep \2 \1|2.5x faster|equivalent|grep can read files directly, avoiding pipe overhead'
     ['cat \(.*\) | head']='head \1|2x faster|equivalent|head can read files directly'

@@ -70,6 +70,49 @@ Security issues we're particularly concerned about:
 
 ## Security Features
 
+### Threat Model
+
+MAINFRAME's safety layers are designed for a specific threat model.
+Understanding it matters for deciding how much to trust each layer.
+
+**In scope (what we defend against):**
+
+| Threat | Defense |
+|--------|---------|
+| AI agent **mistakes** (wrong flags, wrong paths, hallucinated commands) | Destructive-command gate, risk scoring, profile tiers, path confinement |
+| **Silent failures** that cascade into bad agent decisions | Structured errors (USOP), audit trails, fail-closed validation |
+| **Accidental** destructive operations (`rm -rf` wrong dir, `dd` to wrong device) | Destructive tier (system profile required), enforced risk threshold with approval flow |
+| Path traversal **in tool input** (`../`, encoded variants, symlink escapes) | Canonicalized path validation, boundary-aware containment |
+| Lost agent context leading to repeated/redundant dangerous work | AWM checkpoints, discoveries, audit replay |
+
+**Out of scope (what we do NOT defend against):**
+
+| Threat | Why |
+|--------|-----|
+| An **adversarial** AI actively trying to bypass the gate | String-level gates are inherently evadable (variable indirection, encoding, interpreter escapes like `python -c`). The gate catches *accidents*, not *attacks*. |
+| Malicious code executed *by* the agent (supply-chain compromise of tools) | Out of scope for a command gate; see `lib/tirith*.sh` for supply-chain scanning |
+| Privilege escalation via setuid/kernel exploits | MAINFRAME runs as the invoking user; OS-level isolation (containers, VMs, separate users) is the correct control |
+| Host compromise in general | If the host is compromised, in-process guardrails are meaningless |
+
+**Rule of thumb:** MAINFRAME makes an honest-but-fallible agent safe. For an
+adversarial workload, run the agent in an OS-level sandbox (container, VM,
+or dedicated low-privilege user) *in addition* to MAINFRAME.
+
+### Defense Layers (in order of evaluation)
+
+1. **Destructive-command gate** (`agent_gate_classify`) - canonical string-pattern
+   rule set (critical/high/medium/low). Host integrations should call this
+   rather than maintaining their own regex lists so rules never diverge.
+2. **Profile policy** (`agent_validate_command`) - destructive/system/network/
+   write tiers checked BEFORE command existence (policy is host-independent).
+3. **Path confinement** (`AGENT_SAFE_BASE`) - write targets confined to the
+   project tree, traversal canonicalized.
+4. **Risk threshold** (`agent_safe_exec`) - commands scoring at or above
+   `AGENT_RISK_THRESHOLD` block unless approved (`AGENT_APPROVED=1` one-shot
+   or a registered approval callback). Gate matches floor the score.
+5. **Audit** - every decision (blocked, approved, executed) written as JSONL
+   with rotation.
+
 ### Agent Safety Library (`lib/agent_safety.sh`)
 
 Safe command execution for AI agents:

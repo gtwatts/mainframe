@@ -15,6 +15,22 @@
 [[ -n "${_MAINFRAME_OBSERVE_LOADED:-}" ]] && return 0
 readonly _MAINFRAME_OBSERVE_LOADED=1
 
+
+# Portable SHA-256 digest (sha256sum -> shasum -> openssl fallback chain).
+# Shared micro-shim: the declare -F guard means it is defined once per
+# process no matter how many MAINFRAME libraries are sourced.
+if ! declare -F _mainframe_sha256 &>/dev/null; then
+_mainframe_sha256() {
+    if command -v sha256sum &>/dev/null; then
+        sha256sum "$@"
+    elif command -v shasum &>/dev/null; then
+        shasum -a 256 "$@"
+    else
+        openssl dgst -sha256 "$@" | sed 's/^.* //'
+    fi
+}
+fi
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -1505,8 +1521,8 @@ otel_from_trace() {
     local trace_id span_id
     # Use hash of legacy ID for deterministic mapping
     if type -p sha256sum &>/dev/null; then
-        trace_id=$(printf '%s' "$legacy_trace_id" | sha256sum | cut -c1-32)
-        span_id=$(printf '%s-root' "$legacy_trace_id" | sha256sum | cut -c1-16)
+        trace_id=$(printf '%s' "$legacy_trace_id" | _mainframe_sha256 | cut -c1-32)
+        span_id=$(printf '%s-root' "$legacy_trace_id" | _mainframe_sha256 | cut -c1-16)
     else
         # Fallback: pad/truncate legacy ID
         trace_id=$(printf '%-32s' "${legacy_trace_id//[^a-zA-Z0-9]/}" | tr ' ' '0' | cut -c1-32)
