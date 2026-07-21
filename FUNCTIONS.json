@@ -1,6 +1,6 @@
 {
   "version": "10.1.0",
-  "generated": "2026-07-21T02:49:45Z",
+  "generated": "2026-07-21T03:17:09Z",
   "stats": {
     "total_functions": 4459,
     "total_libraries": 185,
@@ -33783,8 +33783,8 @@
             {
               "name": "partial",
               "position": 1,
-              "required": false,
-              "default": ""
+              "required": true,
+              "default": null
             }
           ],
           "returns": "stdout",
