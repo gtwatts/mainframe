@@ -661,8 +661,11 @@ version_compare() {
 
     [[ "$v1" == "$v2" ]] && return 0
 
-    local IFS='.'
-    local i v1_parts=($v1) v2_parts=($v2)
+    # Split on '.' robustly (read -a instead of unquoted expansion)
+    local i
+    local -a v1_parts v2_parts
+    IFS='.' read -r -a v1_parts <<< "$v1"
+    IFS='.' read -r -a v2_parts <<< "$v2"
 
     for ((i=0; i<${#v1_parts[@]} || i<${#v2_parts[@]}; i++)); do
         local n1="${v1_parts[i]:-0}"

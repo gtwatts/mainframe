@@ -33,6 +33,9 @@ jobs:
           # SC1090: Non-constant source (lazy loading engine uses dynamic paths)
           # SC1091: Can't follow source (CI doesn't have files in expected paths)
           # SC2034: Variables unused (exported for library users)
+          # RATCHET LEDGER (2026-07-21, hits remaining): SC2034=209 SC2178=31
+          # SC2206=21 SC2128=19. An exclusion may be removed when its count
+          # reaches 0. common.sh SC2206 is now clean (read -a splitting).
           # SC2178: Nameref false positive
           # SC2053: Intentional glob patterns
           # SC2206: Intentional word splitting for arrays
