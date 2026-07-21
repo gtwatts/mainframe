@@ -1,6 +1,6 @@
 {
   "version": "10.1.0",
-  "generated": "2026-07-20T23:55:15Z",
+  "generated": "2026-07-21T11:55:20Z",
   "index_format": "lsp-2.0",
   "completions": [
     {
@@ -4748,6 +4748,67 @@
       }
     },
     {
+      "label": "agent_anomaly_resume",
+      "kind": "Function",
+      "detail": "agent_anomaly_resume",
+      "documentation": "Resume from an anomaly pause (requires AGENT_APPROVED=1)\n\n**Signature:**\n```bash\nagent_anomaly_resume\n```\n\n**Returns:** `exit_code`",
+      "insertText": "agent_anomaly_resume",
+      "insertTextFormat": 1,
+      "sortText": "0-other-agent_anomaly_resume",
+      "filterText": "agent_anomaly_resume agent_safety safe command dispatch, structured errors, and audit trail for ai agents executing bash commands",
+      "tags": [
+        "other"
+      ],
+      "data": {
+        "library": "agent_safety",
+        "libraryFile": "lib/agent_safety.sh",
+        "libraryDescription": "Safe command dispatch, structured errors, and audit trail for AI agents executing bash commands",
+        "category": "other",
+        "signature": "agent_anomaly_resume",
+        "description": "Resume from an anomaly pause (requires AGENT_APPROVED=1)",
+        "returns": "exit_code",
+        "params": [],
+        "idempotent": false,
+        "pure": false,
+        "examples": [],
+        "relatedFunctions": []
+      }
+    },
+    {
+      "label": "agent_gate_report",
+      "kind": "Function",
+      "detail": "agent_gate_report [audit_log_path]",
+      "documentation": "Analyze the agent audit log into gate telemetry (JSON on stdout). Reports execution volume, block reasons, anomalies, top triggered rules, and false-positive candidates (commands blocked then later approved - operator overrides are the best available FP signal for gate tuning). Pure awk implementation (zero-dependency discipline).\n\n**Signature:**\n```bash\nagent_gate_report [audit_log_path]\n```\n\n**Returns:** `stdout`",
+      "insertText": "agent_gate_report",
+      "insertTextFormat": 1,
+      "sortText": "0-other-agent_gate_report",
+      "filterText": "agent_gate_report agent_safety safe command dispatch, structured errors, and audit trail for ai agents executing bash commands",
+      "tags": [
+        "other"
+      ],
+      "data": {
+        "library": "agent_safety",
+        "libraryFile": "lib/agent_safety.sh",
+        "libraryDescription": "Safe command dispatch, structured errors, and audit trail for AI agents executing bash commands",
+        "category": "other",
+        "signature": "agent_gate_report [audit_log_path]",
+        "description": "Analyze the agent audit log into gate telemetry (JSON on stdout). Reports execution volume, block reasons, anomalies, top triggered rules, and false-positive candidates (commands blocked then later approved - operator overrides are the best available FP signal for gate tuning). Pure awk implementation (zero-dependency discipline).",
+        "returns": "stdout",
+        "params": [
+          {
+            "name": "log_file",
+            "position": 1,
+            "required": false,
+            "default": "$AGENT_AUDIT_LOG"
+          }
+        ],
+        "idempotent": false,
+        "pure": false,
+        "examples": [],
+        "relatedFunctions": []
+      }
+    },
+    {
       "label": "agent_safe_exec",
       "kind": "Function",
       "detail": "agent_safe_exec ls -la /tmp",
@@ -5280,6 +5341,52 @@
           {
             "name": "base",
             "position": 2,
+            "required": false,
+            "default": "$PWD"
+          }
+        ],
+        "idempotent": false,
+        "pure": false,
+        "examples": [],
+        "relatedFunctions": []
+      }
+    },
+    {
+      "label": "agent_adopt_session_profile",
+      "kind": "Function",
+      "detail": "agent_adopt_session_profile \"$PARENT_SID\" [requested_profile] [base]",
+      "documentation": "Adopt the agent profile from a parent AWM session. The child may only go LOWER (more restrictive) than the parent's profile, never higher - sandbox permissions attenuate across handoffs, they never amplify.\n\n**Signature:**\n```bash\nagent_adopt_session_profile \"$PARENT_SID\" [requested_profile] [base]\n```\n\n**Returns:** `exit_code`",
+      "insertText": "agent_adopt_session_profile",
+      "insertTextFormat": 1,
+      "sortText": "0-other-agent_adopt_session_profile",
+      "filterText": "agent_adopt_session_profile agent_safety safe command dispatch, structured errors, and audit trail for ai agents executing bash commands",
+      "tags": [
+        "other"
+      ],
+      "data": {
+        "library": "agent_safety",
+        "libraryFile": "lib/agent_safety.sh",
+        "libraryDescription": "Safe command dispatch, structured errors, and audit trail for AI agents executing bash commands",
+        "category": "other",
+        "signature": "agent_adopt_session_profile \"$PARENT_SID\" [requested_profile] [base]",
+        "description": "Adopt the agent profile from a parent AWM session. The child may only go LOWER (more restrictive) than the parent's profile, never higher - sandbox permissions attenuate across handoffs, they never amplify.",
+        "returns": "exit_code",
+        "params": [
+          {
+            "name": "sid",
+            "position": 1,
+            "required": true,
+            "default": null
+          },
+          {
+            "name": "requested",
+            "position": 2,
+            "required": false,
+            "default": ""
+          },
+          {
+            "name": "base",
+            "position": 3,
             "required": false,
             "default": "$PWD"
           }
@@ -75998,8 +76105,8 @@
           {
             "name": "partial",
             "position": 1,
-            "required": true,
-            "default": null
+            "required": false,
+            "default": ""
           }
         ],
         "idempotent": false,
@@ -153110,6 +153217,20 @@
       ]
     },
     {
+      "function": "agent_gate_report",
+      "signature": "agent_gate_report [audit_log_path]",
+      "description": "Analyze the agent audit log into gate telemetry (JSON on stdout). Reports execution volume, block reasons, anomalies, top triggered rules, and false-positive candidates (commands blocked then later approved - operator overrides are the best available FP signal for gate tuning). Pure awk implementation (zero-dependency discipline).",
+      "parameters": [
+        {
+          "label": "log_file",
+          "documentation": "",
+          "position": 1,
+          "required": true,
+          "default": "$AGENT_AUDIT_LOG"
+        }
+      ]
+    },
+    {
       "function": "agent_ensure_file",
       "signature": "agent_ensure_file \"/path/to/file\" \"content\" [mode]",
       "description": "Ensure file exists with exact content (idempotent)",
@@ -153286,6 +153407,34 @@
           "label": "base",
           "documentation": "",
           "position": 2,
+          "required": true,
+          "default": "$PWD"
+        }
+      ]
+    },
+    {
+      "function": "agent_adopt_session_profile",
+      "signature": "agent_adopt_session_profile \"$PARENT_SID\" [requested_profile] [base]",
+      "description": "Adopt the agent profile from a parent AWM session. The child may only go LOWER (more restrictive) than the parent's profile, never higher - sandbox permissions attenuate across handoffs, they never amplify.",
+      "parameters": [
+        {
+          "label": "sid",
+          "documentation": "",
+          "position": 1,
+          "required": true,
+          "default": null
+        },
+        {
+          "label": "requested",
+          "documentation": "",
+          "position": 2,
+          "required": true,
+          "default": ""
+        },
+        {
+          "label": "base",
+          "documentation": "",
+          "position": 3,
           "required": true,
           "default": "$PWD"
         }
@@ -177626,7 +177775,7 @@
           "documentation": "",
           "position": 1,
           "required": true,
-          "default": null
+          "default": ""
         }
       ]
     },
@@ -202830,7 +202979,7 @@
       "file": "lib/agent_safety.sh",
       "description": "Safe command dispatch, structured errors, and audit trail for AI agents executing bash commands",
       "category": "other",
-      "functionCount": 30
+      "functionCount": 33
     },
     {
       "name": "agent_teams",
@@ -204392,7 +204541,7 @@
         "verify",
         "workpool"
       ],
-      "functionCount": 2434
+      "functionCount": 2437
     },
     {
       "category": "output",
@@ -204508,9 +204657,9 @@
     }
   ],
   "stats": {
-    "total_completions": 4457,
+    "total_completions": 4460,
     "total_libraries": 185,
-    "total_signatures": 2876,
+    "total_signatures": 2878,
     "categories": [
       "versioning",
       "strings",
