@@ -738,34 +738,40 @@ _agent_validate_path_safe() {
         return 1
     fi
 
-    # Handle both existing and non-existing paths by resolving the deepest
-    # existing ancestor and appending the (not yet created) remainder.
-    # Requiring the immediate parent to exist would make it impossible to
-    # validate paths whose parents are about to be created (e.g. ensure_file).
-    local check_path="$path"
-    local -a missing=()
-    while [[ ! -e "$check_path" ]]; do
-        missing+=("$(basename -- "$check_path")")
-        check_path=$(dirname -- "$check_path")
-        if [[ "$check_path" == "/" || -z "$check_path" ]]; then
-            return 1
+    # Handle existing paths (resolve the FULL path, including a
+    # final-component symlink: a link inside the base must not point
+    # outside it), then non-existing paths via deepest existing ancestor.
+    if [[ -e "$path" || -L "$path" ]]; then
+        abs_path=$(realpath "$path" 2>/dev/null) || abs_path=""
+        if [[ -z "$abs_path" ]]; then
+            abs_path=$(cd "$(dirname -- "$path")" && pwd -P)/$(basename -- "$path")
         fi
-    done
-    # '..' in the uncreated remainder cannot be resolved safely - reject
-    local _avps_miss
-    for _avps_miss in "${missing[@]}"; do
-        [[ "$_avps_miss" == ".." ]] && return 1
-    done
-    if [[ -d "$check_path" ]]; then
-        abs_path=$(cd "$check_path" && pwd -P) || return 1
     else
-        # Deepest existing component is a file: resolve its directory
-        abs_path=$(cd "$(dirname -- "$check_path")" && pwd -P)/$(basename -- "$check_path") || return 1
+        local check_path="$path"
+        local -a missing=()
+        while [[ ! -e "$check_path" ]]; do
+            missing+=("$(basename -- "$check_path")")
+            check_path=$(dirname -- "$check_path")
+            if [[ "$check_path" == "/" || -z "$check_path" ]]; then
+                return 1
+            fi
+        done
+        # '..' in the uncreated remainder cannot be resolved safely - reject
+        local _avps_miss
+        for _avps_miss in "${missing[@]}"; do
+            [[ "$_avps_miss" == ".." ]] && return 1
+        done
+        if [[ -d "$check_path" ]]; then
+            abs_path=$(cd "$check_path" && pwd -P) || return 1
+        else
+            # Deepest existing component is a file: resolve its directory
+            abs_path=$(cd "$(dirname -- "$check_path")" && pwd -P)/$(basename -- "$check_path") || return 1
+        fi
+        local _avps_i
+        for (( _avps_i=${#missing[@]}-1; _avps_i>=0; _avps_i-- )); do
+            abs_path="$abs_path/${missing[_avps_i]}"
+        done
     fi
-    local _avps_i
-    for (( _avps_i=${#missing[@]}-1; _avps_i>=0; _avps_i-- )); do
-        abs_path="$abs_path/${missing[_avps_i]}"
-    done
 
     # Boundary-aware containment: exact match or proper subdirectory
     [[ "$abs_path" == "$abs_base" || "$abs_path" == "$abs_base"/* ]]
@@ -885,6 +891,13 @@ _agent_gate_match() {
     local re_pushmirror='(^|[[:space:]&|;|(|)])git[[:space:]]+push[[:space:]].*--mirror'
     local re_killall1='(^|[[:space:]&|;|(|)])kill[[:space:]]+(-9|-KILL)[[:space:]]+-1([[:space:]]|$)'
     local re_pushforce='(^|[[:space:]&|;|(|)])git[[:space:]]+push[[:space:]].*(--force|-f)([[:space:]]|$)'
+    local re_rmrecursive='(^|[[:space:]&|;|(|)])rm[[:space:]]+([^-;|&]*-[a-zA-Z]*[rR][a-zA-Z]*([[:space:]]|$)|[^-;|&]*--recursive([[:space:]]|$))'
+    local re_findexec='(^|[[:space:]&|;|(|)])find[[:space:]].*-exec[[:space:]]+(sh|bash|dash|zsh|rm)([[:space:]]|$)'
+    local re_pyrmtree='(^|[[:space:]&|;|(|)])python[0-9.]*[[:space:]].*(rmtree|os\.remove|os\.unlink|os\.rmdir|\.unlink\()'
+    local re_perlunlink='(^|[[:space:]&|;|(|)])perl[[:space:]].*(unlink|rmtree)'
+    local re_rbrm='(^|[[:space:]&|;|(|)])ruby[[:space:]].*(rm_rf|rmtree|FileUtils)'
+    local re_noderm='(^|[[:space:]&|;|(|)])node[[:space:]].*(rmSync|unlinkSync|fs\.rm)'
+    local re_truncate='(^|[[:space:]&|;|(|)])truncate[[:space:]]+(-s|--size)[[:space:]]'
     local re_gitwipe='(^|[[:space:]&|;|(|)])git[[:space:]]+(checkout|restore)[[:space:]]+(--[[:space:]]+)?\.([[:space:]]|$)'
     local re_killall='(^|[[:space:]&|;|(|)])killall([[:space:]]|$)'
     local re_npmpub='(^|[[:space:]&|;|(|)])npm[[:space:]]+publish([[:space:]]|$)'
@@ -916,9 +929,16 @@ _agent_gate_match() {
     [[ "$s" =~ $re_pipeshell ]]  && { printf 'high download-piped-to-shell'; return 0; }
     [[ "$s" =~ $re_pushmirror ]] && { printf 'high git-push-mirror'; return 0; }
     [[ "$s" =~ $re_killall1 ]]   && { printf 'high kill-all-processes'; return 0; }
+    [[ "$s" =~ $re_rmrecursive ]] && { printf 'high rm-recursive'; return 0; }
+    [[ "$s" =~ $re_findexec ]]    && { printf 'high find-exec-shell'; return 0; }
+    [[ "$s" =~ $re_pyrmtree ]]    && { printf 'high python-rmtree'; return 0; }
+    [[ "$s" =~ $re_perlunlink ]]  && { printf 'high perl-unlink'; return 0; }
+    [[ "$s" =~ $re_rbrm ]]        && { printf 'high ruby-rmrf'; return 0; }
+    [[ "$s" =~ $re_noderm ]]      && { printf 'high node-rmsync'; return 0; }
 
     # --- medium ---------------------------------------------------------------
     [[ "$s" =~ $re_pushforce ]]  && { printf 'medium git-push-force'; return 0; }
+    [[ "$s" =~ $re_truncate ]]    && { printf 'medium truncate-resize'; return 0; }
     [[ "$s" =~ $re_gitwipe ]]    && { printf 'medium git-worktree-reset'; return 0; }
     [[ "$s" =~ $re_killall ]]    && { printf 'medium killall'; return 0; }
     [[ "$s" =~ $re_npmpub ]]     && { printf 'medium npm-publish'; return 0; }

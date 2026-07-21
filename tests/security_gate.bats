@@ -705,3 +705,70 @@ _gate_tier() {
     [ "$status" -eq 1 ]
     [[ "$output" == *"no audit log"* ]]
 }
+
+# =============================================================================
+# 14. ADVERSARIAL RED-TEAM (EVASION CLASSES)
+# =============================================================================
+
+@test "redteam: command wrappers stay critical" {
+    [ "$(_gate_tier env rm -rf /tmp/x)" = "critical" ]
+    [ "$(_gate_tier nice -n 19 rm -rf /tmp/x)" = "critical" ]
+    [ "$(_gate_tier command rm -rf /tmp/x)" = "critical" ]
+}
+
+@test "redteam: multi-variable indirection resolves (A=-r B=-f)" {
+    [ "$(_gate_tier 'A=-r B=-f; rm $A $B /tmp/x')" = "critical" ]
+}
+
+@test "redteam: operand-vs-flag semantics (B=f is recursive, not force)" {
+    # B has no dash, so resolved form is 'rm -r f /tmp/x' - recursive,
+    # not recursive+force. Correct classification is high, not critical.
+    [ "$(_gate_tier 'A=-r B=f; rm $A $B /tmp/x')" = "high" ]
+}
+
+@test "redteam: rm recursive without force is high" {
+    [ "$(_gate_tier rm -r /tmp/x)" = "high" ]
+    [ "$(_gate_tier rm --recursive /tmp/x)" = "high" ]
+    [ "$(_gate_tier rm -R /tmp/x)" = "high" ]
+    [ "$(_gate_tier rm -v /tmp/x)" = "low" ]
+}
+
+@test "redteam: find -exec with shell is high" {
+    [ "$(_gate_tier find /tmp -name x -exec sh -c 'rm {}' \;)" = "high" ]
+    [ "$(_gate_tier find /tmp -name x -exec rm {} \;)" = "high" ]
+}
+
+@test "redteam: interpreter escape patterns are high" {
+    [ "$(_gate_tier "python3 -c 'import shutil;shutil.rmtree(/tmp/x)'")" = "high" ]
+    [ "$(_gate_tier "perl -e 'unlink @ARGV' -- /tmp/x")" = "high" ]
+    [ "$(_gate_tier "ruby -e 'require fileutils;FileUtils.rm_rf(/tmp/x)'")" = "high" ]
+    [ "$(_gate_tier "node -e 'require(fs).rmSync(/tmp/x,{recursive:true})'")" = "high" ]
+}
+
+@test "redteam: interpreter usage without destructive calls is low" {
+    [ "$(_gate_tier python3 -c 'print(1)')" = "low" ]
+    [ "$(_gate_tier node --version)" = "low" ]
+}
+
+@test "redteam: truncate -s is medium" {
+    [ "$(_gate_tier truncate -s 0 /etc/passwd)" = "medium" ]
+}
+
+@test "redteam: final-component symlink escape is rejected" {
+    mkdir -p "$TEST_DIR/base" "$TEST_DIR/outside"
+    touch "$TEST_DIR/outside/victim.txt"
+    ln -sf "$TEST_DIR/outside/victim.txt" "$TEST_DIR/base/link"
+    run _agent_validate_path_safe "$TEST_DIR/base/link" "$TEST_DIR/base"
+    [ "$status" -eq 1 ]
+    ln -sf "$TEST_DIR/outside" "$TEST_DIR/base/dirlink"
+    run _agent_validate_path_safe "$TEST_DIR/base/dirlink/inner" "$TEST_DIR/base"
+    [ "$status" -eq 1 ]
+}
+
+@test "redteam: legitimate symlinks inside base are allowed" {
+    mkdir -p "$TEST_DIR/base/real"
+    touch "$TEST_DIR/base/real/file.txt"
+    ln -sf "$TEST_DIR/base/real/file.txt" "$TEST_DIR/base/link"
+    run _agent_validate_path_safe "$TEST_DIR/base/link" "$TEST_DIR/base"
+    [ "$status" -eq 0 ]
+}

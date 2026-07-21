@@ -1,6 +1,6 @@
 {
   "version": "10.1.0",
-  "generated": "2026-07-21T01:48:41Z",
+  "generated": "2026-07-21T11:39:11Z",
   "source": "lib/agent_safety.sh (_agent_gate_match)",
   "rules": [
     {
@@ -104,9 +104,44 @@
       "js": "(^|[[:space:]&|;|(|)])kill\\s+(-9|-KILL)\\s+-1(\\s|$)"
     },
     {
+      "tier": "high",
+      "id": "rm-recursive",
+      "js": "(^|[[:space:]&|;|(|)])rm\\s+([^-;|&]*-[a-zA-Z]*[rR][a-zA-Z]*(\\s|$)|[^-;|&]*--recursive(\\s|$))"
+    },
+    {
+      "tier": "high",
+      "id": "find-exec-shell",
+      "js": "(^|[[:space:]&|;|(|)])find\\s.*-exec\\s+(sh|bash|dash|zsh|rm)(\\s|$)"
+    },
+    {
+      "tier": "high",
+      "id": "python-rmtree",
+      "js": "(^|[[:space:]&|;|(|)])python[0-9.]*\\s.*(rmtree|os\\.remove|os\\.unlink|os\\.rmdir|\\.unlink\\()"
+    },
+    {
+      "tier": "high",
+      "id": "perl-unlink",
+      "js": "(^|[[:space:]&|;|(|)])perl\\s.*(unlink|rmtree)"
+    },
+    {
+      "tier": "high",
+      "id": "ruby-rmrf",
+      "js": "(^|[[:space:]&|;|(|)])ruby\\s.*(rm_rf|rmtree|FileUtils)"
+    },
+    {
+      "tier": "high",
+      "id": "node-rmsync",
+      "js": "(^|[[:space:]&|;|(|)])node\\s.*(rmSync|unlinkSync|fs\\.rm)"
+    },
+    {
       "tier": "medium",
       "id": "git-push-force",
       "js": "(^|[[:space:]&|;|(|)])git\\s+push\\s.*(--force|-f)(\\s|$)"
+    },
+    {
+      "tier": "medium",
+      "id": "truncate-resize",
+      "js": "(^|[[:space:]&|;|(|)])truncate\\s+(-s|--size)\\s"
     },
     {
       "tier": "medium",
