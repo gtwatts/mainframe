@@ -16,6 +16,22 @@
 [[ -n "${_MAINFRAME_UAP_V2_LOADED:-}" ]] && return 0
 readonly _MAINFRAME_UAP_V2_LOADED=1
 
+
+# Portable SHA-256 digest (sha256sum -> shasum -> openssl fallback chain).
+# Shared micro-shim: the declare -F guard means it is defined once per
+# process no matter how many MAINFRAME libraries are sourced.
+if ! declare -F _mainframe_sha256 &>/dev/null; then
+_mainframe_sha256() {
+    if command -v sha256sum &>/dev/null; then
+        sha256sum "$@"
+    elif command -v shasum &>/dev/null; then
+        shasum -a 256 "$@"
+    else
+        openssl dgst -sha256 "$@" | sed 's/^.* //'
+    fi
+}
+fi
+
 # =============================================================================
 # DEPENDENCY LOADING
 # =============================================================================
@@ -190,7 +206,7 @@ _uap_v2_message_id() {
 _uap_v2_hash() {
     local data="$1"
     if command -v sha256sum &>/dev/null; then
-        printf '%s' "$data" | sha256sum | cut -d' ' -f1 | cut -c1-16
+        printf '%s' "$data" | _mainframe_sha256 | cut -d' ' -f1 | cut -c1-16
     elif command -v shasum &>/dev/null; then
         printf '%s' "$data" | shasum -a 256 | cut -d' ' -f1 | cut -c1-16
     else
@@ -583,7 +599,7 @@ uap_v2_register() {
     # Set agent identity
     UAP_V2_AGENT_NAME="$name"
     UAP_V2_AGENT_PID=$$
-    UAP_V2_TOKEN="${token:-$(openssl rand -hex 16 2>/dev/null || date +%s%N | sha256sum | head -c 32)}"
+    UAP_V2_TOKEN="${token:-$(openssl rand -hex 16 2>/dev/null || date +%s%N | _mainframe_sha256 | head -c 32)}"
     UAP_V2_TRANSPORT="${UAP_V2_TRANSPORT:-$(_uap_v2_detect_transport)}"
     
     # Parse capabilities
