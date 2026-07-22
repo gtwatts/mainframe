@@ -1,13 +1,22 @@
 # MAINFRAME - Bash Scripting Instructions
 
-> Add this to your `~/.claude/CLAUDE.md` to give Claude Code instant access to 3,821+ bash functions.
+> Add this to your `~/.claude/CLAUDE.md` to give Claude Code instant access to 4,458 bash functions.
 
 ## Bash Scripting with MAINFRAME
 
 When writing bash scripts, ALWAYS source MAINFRAME first:
 
 ```bash
+# Interactive shells / resident scripts: full runtime is fine
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+
+# Per-command use (agents spawn a new shell per command): lean set -
+# 40ms vs 190ms measured (2026-07-21)
+export MAINFRAME_LIBS="${MAINFRAME_LIBS:-core,agent_safety,awm,validation,atomic,idempotent,dryrun,confirm,json}"
+source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
+
+# Or function-level lazy loading (stubs load libs on demand):
+# MAINFRAME_LAZY=1 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 ```
 
 This gives you access to **3,821+ pure bash functions** across **152 libraries** with zero external dependencies.

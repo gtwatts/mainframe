@@ -9,7 +9,9 @@ set -euo pipefail
 BASHER_ROOT="${BASHER_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 export BASHER_ROOT
 
-# Source libraries
+# Source libraries (lean set for per-invocation speed: ~30-40ms vs ~190ms
+# full load; override with MAINFRAME_LIBS for hook suites needing more)
+export MAINFRAME_LIBS="${MAINFRAME_LIBS:-core,config,agent_safety,validation,json}"
 source "$BASHER_ROOT/lib/common.sh"
 source "$BASHER_ROOT/lib/config.sh"
 
