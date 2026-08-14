@@ -40,10 +40,24 @@ epoch_ms() {
     printf '%(%s)T000\n' -1
 }
 
-# Format timestamp
-# Usage: format_date "%Y-%m-%d"
+# Format the current date/time with a strftime format.
+# Usage: format_current_date "%Y-%m-%d"
+format_current_date() {
+    local format="${1:-%Y-%m-%d}"
+    printf "%(${format})T\n" -1
+}
+
+# Format either an epoch as YYYY-MM-DD or the current time with strftime.
+# Usage: format_date 0             # 1970-01-01 in UTC
+# Usage: format_date "%Y-%m-%d"   # Current date
 format_date() {
-    printf "%($1)T\n" -1
+    local value="${1:--1}"
+
+    if [[ "$value" =~ ^-?[0-9]+$ ]]; then
+        printf '%(%Y-%m-%d)T\n' "$value"
+    else
+        format_current_date "$value"
+    fi
 }
 
 # Get day of week

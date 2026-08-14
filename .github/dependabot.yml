@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /bindings/nodejs
+    schedule:
+      interval: weekly
+    groups:
+      node-binding:
+        patterns:
+          - "*"
+
+  - package-ecosystem: pip
+    directory: /bindings/python
+    schedule:
+      interval: weekly
+    groups:
+      python-binding:
+        patterns:
+          - "*"

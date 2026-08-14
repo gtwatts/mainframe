@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "kind": "mainframe-agent-impact-local-study",
+  "id": "local-development-smoke-v1",
+  "claim_scope": "local-development-smoke-protocol-conformance-only",
+  "task": "tasks/local-001/task.json",
+  "replicates": 3,
+  "transport": "runners/local-fake-transport.py",
+  "budgets": {
+    "wall_seconds_per_phase": 5,
+    "maximum_tool_calls_per_phase": 10,
+    "maximum_continuation_bytes": 4096
+  },
+  "statistics": {
+    "bootstrap_seed": "local-development-smoke-v1",
+    "bootstrap_resamples": 1000,
+    "confidence_level": 0.95
+  }
+}

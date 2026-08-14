@@ -1,6 +1,11 @@
 # AWM MCP Bridge: Unified Context Management for Claude Code & Bash
 
-> **Version**: 1.0 | **Status**: Implementation | **Author**: MAINFRAME Team
+> **Version**: 1.0 | **Status**: Historical design | **Author**: MAINFRAME Team
+>
+> This document predates the brokered 10.2 MCP package and is not its public
+> tool contract. Current shell handoffs use the durable AWM facade documented
+> in [`../reference/awm.md`](../reference/awm.md); the table below describes
+> the older protocol-v4 compatibility layer.
 
 ## Executive Summary
 
@@ -116,8 +121,8 @@ The AWM MCP Bridge solves the context limit problem that crashed 10 architect ag
 
 | Tool | Parameters | Returns | Description |
 |------|------------|---------|-------------|
-| `awm_handoff_prepare` | `target_agent: str, max_tokens?: int` | `{handoff_package}` | Create handoff for sub-agent |
-| `awm_handoff_accept` | `handoff_package: str` | `{session_id, discoveries, budget}` | Accept and init from handoff |
+| `awm_protocol_handoff_prepare` | `target_agent: str, max_tokens?: int` | `{handoff_package}` | Create a protocol-v4 handoff for a sub-agent |
+| `awm_protocol_handoff_accept` | `handoff_package: str` | `{session_id, discoveries, budget}` | Accept protocol-v4 handoff state |
 | `awm_handoff_complete` | `result: str` | `{sent_to_parent: bool}` | Report completion to parent |
 
 ### Category 5: Pre-Rot Management

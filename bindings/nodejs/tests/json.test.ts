@@ -3,6 +3,9 @@
  */
 
 import { describe, test, expect, beforeAll } from "bun:test";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { setConfig } from "../src/core";
 import {
   jsonObject,
@@ -142,6 +145,18 @@ describe("JSON Module", () => {
       const result = jsonString('hello "world"');
       expect(result.startsWith('"')).toBe(true);
       expect(result.endsWith('"')).toBe(true);
+    });
+
+    test("should pass command substitution as quoted data", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "mainframe-node-legacy-quote-"));
+      const marker = join(tempDir, "injection-ran");
+      try {
+        const result = jsonString(`$(/usr/bin/touch ${marker})`);
+        expect(result).toContain("$(/usr/bin/touch");
+        expect(existsSync(marker)).toBe(false);
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
     });
   });
 

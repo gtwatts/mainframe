@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-local-task-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "id", "title", "repository", "phases", "grader"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "kind": {"const": "mainframe-agent-impact-local-task"},
+    "id": {"const": "local-001"},
+    "title": {"type": "string", "minLength": 1},
+    "repository": {"const": "repository"},
+    "phases": {
+      "type": "array", "minItems": 2, "maxItems": 2,
+      "prefixItems": [
+        {"type": "object", "additionalProperties": false, "required": ["id", "prompt", "workspace_edits"], "properties": {"id": {"const": "investigate"}, "prompt": {"const": "investigate.md"}, "workspace_edits": {"const": false}}},
+        {"type": "object", "additionalProperties": false, "required": ["id", "prompt", "workspace_edits"], "properties": {"id": {"const": "implement"}, "prompt": {"const": "implement.md"}, "workspace_edits": {"const": true}}}
+      ],
+      "items": false
+    },
+    "grader": {
+      "type": "object", "additionalProperties": false,
+      "required": ["command", "maximum_score"],
+      "properties": {"command": {"const": "grade.py"}, "maximum_score": {"const": 100}}
+    }
+  }
+}

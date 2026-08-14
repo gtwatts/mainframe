@@ -1,5 +1,11 @@
 # MAINFRAME A++ Verification Report
 
+> **Historical v10.1.0 verification record.** This report captures a dated
+> candidate review and is not a current product guarantee. Its score and broad
+> safety wording are superseded by the current [security boundary](../SECURITY.md),
+> [compatibility matrix](COMPATIBILITY.md), and
+> [claims policy](CLAIMS_AND_BENCHMARKS.md).
+
 **Date**: 2026-07-21
 **Version**: 10.1.0 (tag `v10.1.0`)
 **Method**: hands-on adversarial verification — every claim below was tested live, not read.
@@ -28,9 +34,9 @@ the machinery to *prove* it, continuously.
 
 ## The Safety Stack (defense in depth, in evaluation order)
 
-1. **Destructive-command gate** (`agent_gate_classify`) — 34 canonical rules
-   (10 critical / 17 high / 7 medium), shared across all hosts via
-   `security/gate-rules.json` (dual-verified bash≡JS, 47-case corpus).
+1. **Destructive-command gate** (`agent_gate_classify`) — 38 canonical rules,
+   shared across all hosts via `security/gate-rules.json` (dual-verified
+   bash≡JS, 101-case corpus).
 2. **Semantic resolution** (`_agent_resolve_command`) — variable indirection
    (`FLAGS=-rf; rm $FLAGS /x`, env-set vars) resolved *without a shell*
    before scoring. The classic `$FLAGS` evasion is closed.

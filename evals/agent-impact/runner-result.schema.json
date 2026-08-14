@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-runner-result-v1.json",
+  "title": "MAINFRAME Agent Impact Protocol runner result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "status",
+    "handoff_relative_path",
+    "usage",
+    "tool_calls",
+    "ambient_probe_seen"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "mainframe-agent-impact-runner-result" },
+    "status": { "enum": ["completed", "agent_failure"] },
+    "handoff_relative_path": { "type": ["string", "null"] },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_tokens", "input_tokens_reason", "output_tokens", "output_tokens_reason"],
+      "properties": {
+        "input_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "input_tokens_reason": { "type": ["string", "null"] },
+        "output_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "output_tokens_reason": { "type": ["string", "null"] }
+      }
+    },
+    "tool_calls": { "type": "integer", "minimum": 0 },
+    "ambient_probe_seen": { "type": "boolean" }
+  }
+}

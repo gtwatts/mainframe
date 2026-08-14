@@ -1,0 +1,418 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/pi-release-evidence/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "claim_scope",
+    "mainframe",
+    "source",
+    "producer",
+    "tests",
+    "matrix",
+    "summary",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "mainframe-pi-exact-candidate-evidence" },
+    "claim_scope": { "const": "exact-candidate-pi-integration-conformance-only" },
+    "mainframe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "archive_name", "archive_size", "archive_sha256"],
+      "properties": {
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "archive_name": { "type": "string", "pattern": "^mainframe-[0-9]+\\.[0-9]+\\.[0-9]+\\.tar\\.gz$" },
+        "archive_size": { "type": "integer", "minimum": 1 },
+        "archive_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "tag",
+        "tag_ref_sha",
+        "tag_commit_sha",
+        "workflow_run_id",
+        "workflow_run_attempt"
+      ],
+      "properties": {
+        "repository": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+        "tag": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "tag_ref_sha": { "$ref": "#/$defs/git_sha" },
+        "tag_commit_sha": { "$ref": "#/$defs/git_sha" },
+        "workflow_run_id": { "type": "string", "pattern": "^[1-9][0-9]*$" },
+        "workflow_run_attempt": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_sha256",
+        "config_sha256",
+        "generator_sha256",
+        "schema_sha256",
+        "cell_generator_sha256",
+        "cell_schema_sha256"
+      ],
+      "properties": {
+        "contract_sha256": { "$ref": "#/$defs/sha256" },
+        "config_sha256": { "$ref": "#/$defs/sha256" },
+        "generator_sha256": { "$ref": "#/$defs/sha256" },
+        "schema_sha256": { "$ref": "#/$defs/sha256" },
+        "cell_generator_sha256": { "$ref": "#/$defs/sha256" },
+        "cell_schema_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "tests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonicalization",
+        "paths",
+        "source_tree_sha256",
+        "plan_per_run",
+        "bats_core_commit",
+        "cases"
+      ],
+      "properties": {
+        "canonicalization": { "const": "MAINFRAME-PACKAGE-TREE-SHA256-V1" },
+        "paths": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^tests/[A-Za-z0-9_.-]+\\.bats$" }
+        },
+        "source_tree_sha256": { "$ref": "#/$defs/sha256" },
+        "plan_per_run": { "type": "integer", "minimum": 1 },
+        "bats_core_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "cases": {
+          "type": "array",
+          "minItems": 45,
+          "maxItems": 45,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["number", "source", "name"],
+            "properties": {
+              "number": { "type": "integer", "minimum": 1 },
+              "source": { "type": "string", "pattern": "^tests/[A-Za-z0-9_.-]+\\.bats$" },
+              "name": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "matrix": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/matrix_row" }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "matrix_rows",
+        "passed_rows",
+        "failed_rows",
+        "planned_tests",
+        "ok",
+        "executed",
+        "not_ok",
+        "skipped"
+      ],
+      "properties": {
+        "matrix_rows": { "const": 6 },
+        "passed_rows": { "const": 6 },
+        "failed_rows": { "const": 0 },
+        "planned_tests": { "const": 270 },
+        "ok": { "const": 270 },
+        "executed": { "const": 267 },
+        "not_ok": { "const": 0 },
+        "skipped": { "const": 3 }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "git_sha": { "type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" },
+    "nullable_string": {
+      "anyOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "null" }
+      ]
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "file_sha256"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
+        "file_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "runtime_tree_digests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["package_tree_sha256", "runtime_tree_sha256"],
+      "properties": {
+        "package_tree_sha256": { "$ref": "#/$defs/sha256" },
+        "runtime_tree_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "runtime_proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "pre_test_snapshot",
+        "pre_test",
+        "post_test",
+        "package_unchanged",
+        "runtime_unchanged",
+        "result"
+      ],
+      "properties": {
+        "algorithm": { "const": "MAINFRAME-PI-RUNTIME-TREE-SHA256-V1" },
+        "pre_test_snapshot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "file_sha256"],
+          "properties": {
+            "name": { "type": "string", "pattern": "^pi-runtime-pre-[A-Za-z0-9_.-]+-[A-Za-z0-9_.-]+\\.json$" },
+            "file_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "pre_test": { "$ref": "#/$defs/runtime_tree_digests" },
+        "post_test": { "$ref": "#/$defs/runtime_tree_digests" },
+        "package_unchanged": { "const": true },
+        "runtime_unchanged": { "const": true },
+        "result": { "const": "unchanged" }
+      }
+    },
+    "node_executable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "architectures",
+        "basename",
+        "format",
+        "mode",
+        "sha256",
+        "size_bytes",
+        "type"
+      ],
+      "properties": {
+        "architectures": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^(?:arm64|x86_64)$" }
+        },
+        "basename": { "const": "node" },
+        "format": { "type": "string", "pattern": "^(?:elf|mach-o|mach-o-universal)$" },
+        "mode": { "type": "string", "pattern": "^0[0-7]{3}$" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "size_bytes": { "type": "integer", "minimum": 20, "maximum": 536870912 },
+        "type": { "const": "file" }
+      }
+    },
+    "node_runtime_observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_arch", "observed_process_arch", "executable"],
+      "properties": {
+        "expected_arch": { "type": "string", "pattern": "^(?:arm64|x86_64)$" },
+        "observed_process_arch": { "type": "string", "pattern": "^(?:arm64|x86_64)$" },
+        "executable": { "$ref": "#/$defs/node_executable" }
+      }
+    },
+    "node_runtime_proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "pre_test_binding",
+        "pre_test",
+        "post_test",
+        "executable_unchanged",
+        "process_arch_unchanged",
+        "result"
+      ],
+      "properties": {
+        "algorithm": { "const": "MAINFRAME-NATIVE-EXECUTABLE-BINDING-V1" },
+        "pre_test_binding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "file_sha256"],
+          "properties": {
+            "name": { "type": "string", "pattern": "^pi-node-pre-[A-Za-z0-9_.-]+-[A-Za-z0-9_.-]+\\.json$" },
+            "file_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "pre_test": { "$ref": "#/$defs/node_runtime_observation" },
+        "post_test": { "$ref": "#/$defs/node_runtime_observation" },
+        "executable_unchanged": { "const": true },
+        "process_arch_unchanged": { "const": true },
+        "result": { "const": "unchanged" }
+      }
+    },
+    "matrix_row": {
+      "type": "object",
+      "additionalProperties": false,
+        "required": [
+        "id",
+        "pi",
+        "platform",
+        "observation",
+        "compatibility",
+        "artifacts",
+        "result",
+        "limitations"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+$" },
+        "pi": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "package", "version", "npm_integrity", "profile"],
+          "properties": {
+            "id": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
+            "package": { "type": "string", "pattern": "^@[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+            "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+            "npm_integrity": { "type": "string", "pattern": "^sha512-[A-Za-z0-9+/]+={0,2}$" },
+            "profile": { "type": "string", "pattern": "^[a-z0-9-]+$" }
+          }
+        },
+        "platform": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "os", "arch", "system_libc"],
+          "properties": {
+            "id": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
+            "os": { "type": "string", "pattern": "^(?:Darwin|Linux)$" },
+            "arch": { "type": "string", "pattern": "^(?:arm64|x86_64)$" },
+            "system_libc": { "type": "string", "pattern": "^(?:none|glibc)$" }
+          }
+        },
+        "observation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "commands",
+            "package_json_sha256",
+            "package_tree_sha256",
+            "runtime_tree_sha256",
+            "runtime_proof",
+            "node_runtime",
+            "npm_integrity_input_sha256",
+            "source_files_sha256"
+          ],
+          "properties": {
+            "mode": { "type": "string", "pattern": "^(?:native|test-override)$" },
+            "commands": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "uname_system",
+                "uname_machine",
+                "getconf_long_bit",
+                "getconf_gnu_libc_version"
+              ],
+              "properties": {
+                "uname_system": { "$ref": "#/$defs/nullable_string" },
+                "uname_machine": { "$ref": "#/$defs/nullable_string" },
+                "getconf_long_bit": { "$ref": "#/$defs/nullable_string" },
+                "getconf_gnu_libc_version": { "$ref": "#/$defs/nullable_string" }
+              }
+            },
+            "package_json_sha256": { "$ref": "#/$defs/sha256" },
+            "package_tree_sha256": { "$ref": "#/$defs/sha256" },
+            "runtime_tree_sha256": { "$ref": "#/$defs/sha256" },
+            "runtime_proof": { "$ref": "#/$defs/runtime_proof" },
+            "node_runtime": { "$ref": "#/$defs/node_runtime_proof" },
+            "npm_integrity_input_sha256": { "$ref": "#/$defs/sha256" },
+            "source_files_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "compatibility": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["manifest_record_id", "platform_declared", "support", "runtime_state"],
+          "properties": {
+            "manifest_record_id": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
+            "platform_declared": { "type": "boolean" },
+            "support": { "type": "string", "pattern": "^(?:certified|limited|unverified)$" },
+            "runtime_state": { "type": "string", "pattern": "^(?:READY|LIMITED|COMPATIBILITY_UNVERIFIED)$" }
+          }
+        },
+        "artifacts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["archive_binding", "test_binding", "tap", "cell_receipt", "runtime_snapshot", "node_binding"],
+          "properties": {
+            "archive_binding": { "$ref": "#/$defs/artifact" },
+            "test_binding": { "$ref": "#/$defs/artifact" },
+            "tap": { "$ref": "#/$defs/artifact" },
+            "cell_receipt": { "$ref": "#/$defs/artifact" },
+            "runtime_snapshot": { "$ref": "#/$defs/artifact" },
+            "node_binding": { "$ref": "#/$defs/artifact" }
+          }
+        },
+        "result": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "plan", "ok", "executed", "not_ok", "skipped", "skip_details"],
+          "properties": {
+            "status": { "const": "pass" },
+            "plan": { "type": "integer", "minimum": 1 },
+            "ok": { "type": "integer", "minimum": 1 },
+            "executed": { "type": "integer", "minimum": 1 },
+            "not_ok": { "const": 0 },
+            "skipped": { "type": "integer", "minimum": 0 },
+            "skip_details": {
+              "type": "array",
+              "maxItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["number", "test", "reason"],
+                "properties": {
+                  "number": { "type": "integer", "minimum": 1 },
+                  "test": { "type": "string", "minLength": 1 },
+                  "reason": { "type": "string", "minLength": 1 }
+                }
+              }
+            }
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "maxItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

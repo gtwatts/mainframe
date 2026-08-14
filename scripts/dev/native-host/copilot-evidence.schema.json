@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/native-host-copilot-evidence-v1.json",
+  "title": "MAINFRAME Copilot native-host execution certification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "certification",
+    "host",
+    "host_version",
+    "host_package_integrity",
+    "host_dependency_package",
+    "host_dependency_version",
+    "host_dependency_integrity",
+    "host_platform_package",
+    "host_platform_version",
+    "host_platform_package_integrity",
+    "host_package_tree_sha256",
+    "host_launcher_sha256",
+    "host_executable_sha256",
+    "mainframe_version",
+    "archive_sha256",
+    "archive_origin",
+    "hook_config_sha256",
+    "fixture_sha256",
+    "os",
+    "arch",
+    "libc",
+    "system_libc",
+    "source_git_commit",
+    "source_git_dirty",
+    "credential_mode",
+    "provider_wire_api",
+    "provider_requests_per_run",
+    "provider_requests_total",
+    "project_trust_mode",
+    "provider_user_credentials_supplied",
+    "control_executions",
+    "protected_executions",
+    "control_tool_success",
+    "protected_tool_denied",
+    "protected_denial",
+    "audit",
+    "certified_at"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "certification": { "const": "execution-certified" },
+    "host": { "const": "copilot" },
+    "host_version": { "const": "1.0.78" },
+    "host_package_integrity": { "const": "sha512-jn+8HLZC3R7d6K1/1g9L1iWNKzBVS3JdVcx40r3aWyS5r+MLV1OPNp0fo5OfRMCDIm3NmEaaoqypi9sQkCXuiQ==" },
+    "host_dependency_package": { "const": "detect-libc" },
+    "host_dependency_version": { "const": "2.1.2" },
+    "host_dependency_integrity": { "const": "sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==" },
+    "host_platform_package": { "type": "string", "pattern": "^@github/copilot-(darwin|linux|linuxmusl)-(arm64|x64)$" },
+    "host_platform_version": { "const": "1.0.78" },
+    "host_platform_package_integrity": { "$ref": "#/$defs/npmIntegrity" },
+    "host_package_tree_sha256": { "$ref": "#/$defs/sha256" },
+    "host_launcher_sha256": { "const": "0ea824a86be5757533fdb092eff7050871bd7a711a46babde0ffe0e44ac5ad88" },
+    "host_executable_sha256": { "$ref": "#/$defs/sha256" },
+    "mainframe_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "archive_sha256": { "$ref": "#/$defs/sha256" },
+    "archive_origin": {
+      "anyOf": [
+        { "const": "workspace-build" },
+        { "const": "external-input" }
+      ]
+    },
+    "hook_config_sha256": { "$ref": "#/$defs/sha256" },
+    "fixture_sha256": { "const": "f79a034d619f89b2743d240919d47a0829104093fd358d4bb4a68487b3f96de9" },
+    "os": {
+      "anyOf": [
+        { "const": "Darwin" },
+        { "const": "Linux" }
+      ]
+    },
+    "arch": {
+      "anyOf": [
+        { "const": "arm64" },
+        { "const": "aarch64" },
+        { "const": "x86_64" }
+      ]
+    },
+    "libc": {
+      "anyOf": [
+        { "const": "none" },
+        { "const": "glibc" },
+        { "const": "musl" }
+      ]
+    },
+    "system_libc": {
+      "anyOf": [
+        { "const": "none" },
+        { "const": "glibc" },
+        { "const": "musl" }
+      ]
+    },
+    "source_git_commit": {
+      "anyOf": [
+        { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        { "const": "unknown" }
+      ]
+    },
+    "source_git_dirty": {
+      "anyOf": [
+        { "type": "boolean" },
+        { "type": "null" }
+      ]
+    },
+    "credential_mode": { "const": "copilot-offline-loopback-chat-completions-no-user-credentials" },
+    "provider_wire_api": { "const": "chat-completions" },
+    "provider_requests_per_run": { "const": 2 },
+    "provider_requests_total": { "const": 4 },
+    "project_trust_mode": { "const": "isolated-copilot-home-exact-project" },
+    "provider_user_credentials_supplied": { "const": false },
+    "control_executions": { "const": 1 },
+    "protected_executions": { "const": 0 },
+    "control_tool_success": { "const": true },
+    "protected_tool_denied": { "const": true },
+    "protected_denial": { "const": "Denied by preToolUse hook: hook exited with code 2" },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["host", "event", "tool", "risk", "rule", "decision", "records", "mode"],
+      "properties": {
+        "host": { "const": "copilot" },
+        "event": { "const": "PreToolUse" },
+        "tool": { "const": "bash" },
+        "risk": { "const": "high" },
+        "rule": { "const": "terraform-destroy" },
+        "decision": { "const": "deny" },
+        "records": { "const": 1 },
+        "mode": { "const": "600" }
+      }
+    },
+    "certified_at": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "anyOf": [
+        {
+          "properties": {
+            "os": { "const": "Darwin" },
+            "arch": { "const": "arm64" },
+            "libc": { "const": "none" },
+            "system_libc": { "const": "none" },
+            "host_platform_package": { "const": "@github/copilot-darwin-arm64" },
+            "host_platform_package_integrity": { "const": "sha512-P11+VyWg8ad0WlywGtO2d7AxqTLJv4hkUicFg6Ycth5lfk00aCu/74YOOZSPO6C2bBBJhAza7oAdmauM6KEojw==" },
+            "host_package_tree_sha256": { "const": "07b33e72d4a35ddc992abd2b0e6a4a0d0cc351772c9df7a1dc1e767372299af2" },
+            "host_executable_sha256": { "const": "1dd966fa15f5ad042c6c1b0272f36fee6ae82b1f175037499a6c19596bd9b291" }
+          }
+        },
+        {
+          "properties": {
+            "os": { "const": "Darwin" },
+            "arch": { "const": "x86_64" },
+            "libc": { "const": "none" },
+            "system_libc": { "const": "none" },
+            "host_platform_package": { "const": "@github/copilot-darwin-x64" },
+            "host_platform_package_integrity": { "const": "sha512-stimP3WDFs2GU8nJzTJbtRpZViV4bsf80yg7QrFq+G4RISQ3Nihg/3/H0U6UQF1+txMJ/Ohmb5RFYxSw1Hj2sw==" },
+            "host_package_tree_sha256": { "const": "78630dc12a9e33224472247fac180418a6419f796128efa27247d602e5443de5" },
+            "host_executable_sha256": { "const": "e2ef46125ceb6a3ea539b02b046f57bf8ebf2f35e8166ef7be8f02a4cc89896a" }
+          }
+        },
+        {
+          "properties": {
+            "os": { "const": "Linux" },
+            "arch": { "const": "aarch64" },
+            "libc": { "const": "glibc" },
+            "system_libc": { "const": "glibc" },
+            "host_platform_package": { "const": "@github/copilot-linux-arm64" },
+            "host_platform_package_integrity": { "const": "sha512-K31PRKGTm252V1Lof7ypjg283R2QSm3BgoCvZfX2taos4wqC3SaTozSQKwW3dgrAx7A3G3SGEoilVCNqfigdZA==" },
+            "host_package_tree_sha256": { "const": "14d57914866adbf1981bd6ed2edfb4cc728c1adb477b76d09b3d5ddaacf928f3" },
+            "host_executable_sha256": { "const": "8fc37b6dcb1275d049b4c94c1e25caf1b54d368adbc515ddb0b6969bc085de22" }
+          }
+        },
+        {
+          "properties": {
+            "os": { "const": "Linux" },
+            "arch": { "const": "x86_64" },
+            "libc": { "const": "glibc" },
+            "system_libc": { "const": "glibc" },
+            "host_platform_package": { "const": "@github/copilot-linux-x64" },
+            "host_platform_package_integrity": { "const": "sha512-QK3oMtAn9dIv+1u1kx0xNpZNtZxdI+uZVIyLl7myp+Oh2Uj8BLagVv6a7uP0cDphO3TgfIdlvpepCe5MIcx0fw==" },
+            "host_package_tree_sha256": { "const": "e80b4e541dda932fef319f79a14944c7e24acedb74b22c6dd8a6e7b015bbe386" },
+            "host_executable_sha256": { "const": "7e87127e53dc5f9ebc33663287ea05c6e55f1de254adfd9b7d17936d7d65a51c" }
+          }
+        },
+        {
+          "properties": {
+            "os": { "const": "Linux" },
+            "arch": { "const": "aarch64" },
+            "libc": { "const": "musl" },
+            "system_libc": { "const": "musl" },
+            "host_platform_package": { "const": "@github/copilot-linuxmusl-arm64" },
+            "host_platform_package_integrity": { "const": "sha512-F/0cTMsz6ug4yiXn3RKaCAMsLR261U5Njb6G9Y/HeAI7ES/tKEo2t5SHuvgXaIH4mYiZsRvfDKdX7c0WgBX/Jg==" },
+            "host_package_tree_sha256": { "const": "ea7b29df5af9782ea6c0dc3f69a76c5e24ed5dad5698bcdf4ea14533771b9d98" },
+            "host_executable_sha256": { "const": "feb9fc61493ec0e469bc2ca330ece29410559d8eaaba5a3d813e3c9cb3ea6110" }
+          }
+        },
+        {
+          "properties": {
+            "os": { "const": "Linux" },
+            "arch": { "const": "x86_64" },
+            "libc": { "const": "musl" },
+            "system_libc": { "const": "musl" },
+            "host_platform_package": { "const": "@github/copilot-linuxmusl-x64" },
+            "host_platform_package_integrity": { "const": "sha512-YMaJaeBGbArGAFYel+yFaFW/0rFgh0Oqki2f2mUtlonTX/xHr8EB4+mTnMJkHYMFy4gOTC3OtSEEe1NaW/cBXQ==" },
+            "host_package_tree_sha256": { "const": "1e8c490d6e06819f6d9ea1b1dfe9f789009286957a00baedd2d35c0844a70ad3" },
+            "host_executable_sha256": { "const": "a16c45dd92dab88f3b9f1d2135f160d7e39d411b1ca0110457420d417015a076" }
+          }
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "npmIntegrity": { "type": "string", "pattern": "^sha512-[A-Za-z0-9+/]+={0,2}$" }
+  }
+}

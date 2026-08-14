@@ -213,6 +213,7 @@ array_filter() {
     for item in "$@"; do
         [[ "$item" == $pattern ]] && printf '%s\n' "$item"
     done
+    return 0
 }
 
 # Reject array by pattern
@@ -288,9 +289,9 @@ array_remove() {
 # JOINING
 # =============================================================================
 
-# Join array with delimiter
-# Usage: array_join "," "${arr[@]}"
-array_join() {
+# Join values with delimiter. This is the canonical implementation used by
+# array_join after it resolves the supported calling convention.
+_array_join_values() {
     local delim="$1"
     shift
     local first=true
@@ -304,6 +305,32 @@ array_join() {
         fi
     done
     printf '\n'
+}
+
+# Join array values with a delimiter.
+#
+# Preferred usage passes the delimiter followed by values:
+#   array_join "," "${arr[@]}"
+#
+# For backward compatibility with collection.sh, an array variable name may
+# be passed first, followed by an optional delimiter:
+#   array_join arr ","
+array_join() {
+    # The canonical broker contract is always delimiter-first. Its clean child
+    # sets this internal marker so a delimiter that happens to name an array
+    # cannot activate the legacy nameref overload or expose shell state.
+    if [[ "${MAINFRAME_CANONICAL_INVOKE:-0}" != 1 ]] && (( $# > 0 )); then
+        local declaration
+        if declaration=$(declare -p "$1" 2>/dev/null) &&
+            [[ "$declaration" =~ ^declare\ -[^[:space:]]*[aA][^[:space:]]*\  ]]; then
+            local -n arr_ref="$1"
+            local delim="${2:-,}"
+            _array_join_values "$delim" "${arr_ref[@]}"
+            return 0
+        fi
+    fi
+
+    _array_join_values "$@"
 }
 
 # =============================================================================

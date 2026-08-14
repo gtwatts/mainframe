@@ -482,11 +482,12 @@ setup() {
     [[ "$result" -gt 0 ]]
 }
 
-@test "uptime_seconds equals sysinfo_uptime" {
-    local v1 v2
-    v1=$(uptime_seconds)
-    v2=$(sysinfo_uptime)
-    [[ "$v1" == "$v2" ]]
+@test "uptime_seconds delegates to sysinfo_uptime" {
+    sysinfo_uptime() { printf '4242'; }
+
+    run uptime_seconds
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "4242" ]]
 }
 
 @test "load_average returns valid JSON" {

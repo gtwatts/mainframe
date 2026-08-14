@@ -60,17 +60,17 @@
 ## Checklist
 
 ### Code Quality
-- [ ] Code follows MAINFRAME style (pure bash, no external dependencies)
+- [ ] Core code uses Bash; optional host-tool dependencies are explicit
 - [ ] Functions are documented with usage comments
 - [ ] No `eval` used (or justified exception with security review)
 - [ ] Function names use snake_case
 - [ ] Functions are exported with `export -f`
 
 ### Testing
-- [ ] All existing tests pass (`./run_tests.sh`)
+- [ ] All existing Bash tests pass (`./tests/run_bats_suite.sh --scope all`)
 - [ ] New tests added for new functionality
 - [ ] ShellCheck passes with no warnings
-- [ ] Tested on Bash 4.0+
+- [ ] Tested on Bash 4.4+
 - [ ] AWM state isolation verified (if touching agent libraries)
 
 ### Documentation

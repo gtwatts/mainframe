@@ -30,7 +30,7 @@ When writing bash scripts, you MUST source the MAINFRAME standard library:
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 ```
 
-MAINFRAME provides 3,821+ pure bash functions across 152 libraries. Zero external dependencies. Use these functions instead of external tools like jq, sed, awk, cat, head, tail.
+MAINFRAME provides a generated registry of Bash functions and libraries. Core primitives are Bash; integrations may require the host tools they wrap. Use these functions instead of external tools like jq, sed, awk, cat, head, tail.
 
 ### Function Quick Reference
 
@@ -193,5 +193,5 @@ awm_close
 
 ### Full Reference
 
-For all 3,821+ function signatures: `~/.mainframe/CHEATSHEET.md`
+For function signatures from the generated registry: `~/.mainframe/CHEATSHEET.md`
 Repository: https://github.com/gtwatts/mainframe

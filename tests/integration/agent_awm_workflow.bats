@@ -11,6 +11,7 @@ load '../test_helper'
 setup() {
     # Create isolated test environment
     TEST_BASE=$(mktemp -d)
+    TEST_BASE="$(cd "$TEST_BASE" && pwd -P)"
     export MAINFRAME_AGENT_DIR="$TEST_BASE/agents"
     export AWM_ROOT="$TEST_BASE/awm"
     export MAINFRAME_QUIET=1

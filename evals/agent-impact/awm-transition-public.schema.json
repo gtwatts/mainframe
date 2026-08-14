@@ -1,0 +1,287 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-awm-transition-public-v1.json",
+  "title": "MAINFRAME public AWM transition projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "claim_scope",
+    "binding",
+    "runtime",
+    "protocol",
+    "publication_boundary",
+    "commitments",
+    "measurements",
+    "checks",
+    "scope_boundary",
+    "non_claims",
+    "privacy"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "mainframe-agent-impact-awm-transition-public" },
+    "claim_scope": { "const": "synthetic-treatment-investigate-awm-mechanism-conformance-only" },
+    "binding": { "$ref": "#/$defs/binding" },
+    "runtime": { "$ref": "#/$defs/runtime" },
+    "protocol": { "$ref": "#/$defs/protocol" },
+    "publication_boundary": { "const": "post-scoring-and-assignment-reveal-only" },
+    "commitments": { "$ref": "#/$defs/commitments" },
+    "measurements": { "$ref": "#/$defs/measurements" },
+    "checks": { "$ref": "#/$defs/checks" },
+    "scope_boundary": { "$ref": "#/$defs/scopeBoundary" },
+    "non_claims": { "$ref": "#/$defs/nonClaims" },
+    "privacy": { "$ref": "#/$defs/privacy" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9][a-z0-9-]{0,127}$"
+    },
+    "pairId": {
+      "type": "string",
+      "minLength": 21,
+      "maxLength": 21,
+      "pattern": "^pair-[0-9a-f]{16}$"
+    },
+    "armId": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 20,
+      "pattern": "^arm-[0-9a-f]{16}$"
+    },
+    "npmPackage": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16384,
+      "pattern": "^(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,255}$"
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preregistration_sha256",
+        "randomization_context_sha256",
+        "assignment_commitment_sha256",
+        "study_id",
+        "pair_id",
+        "task_id",
+        "replicate",
+        "instance_sha256",
+        "opaque_arm_id",
+        "arm_mode",
+        "phase"
+      ],
+      "properties": {
+        "preregistration_sha256": { "$ref": "#/$defs/sha256" },
+        "randomization_context_sha256": { "$ref": "#/$defs/sha256" },
+        "assignment_commitment_sha256": { "$ref": "#/$defs/sha256" },
+        "study_id": { "$ref": "#/$defs/id" },
+        "pair_id": { "$ref": "#/$defs/pairId" },
+        "task_id": { "$ref": "#/$defs/id" },
+        "replicate": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "instance_sha256": { "$ref": "#/$defs/sha256" },
+        "opaque_arm_id": { "$ref": "#/$defs/armId" },
+        "arm_mode": { "const": "treatment" },
+        "phase": { "const": "investigate" }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mainframe_archive_sha256",
+        "installed_tree_algorithm",
+        "installed_tree_sha256",
+        "pi_package",
+        "pi_version",
+        "pi_executable_sha256",
+        "pi_loader_sha256",
+        "pi_extension_sha256",
+        "transition_driver_sha256",
+        "node_executable_sha256",
+        "node_version",
+        "bash_executable_sha256",
+        "bash_version"
+      ],
+      "properties": {
+        "mainframe_archive_sha256": { "$ref": "#/$defs/sha256" },
+        "installed_tree_algorithm": { "const": "mainframe-package-tree-sha256-v1" },
+        "installed_tree_sha256": { "$ref": "#/$defs/sha256" },
+        "pi_package": { "$ref": "#/$defs/npmPackage" },
+        "pi_version": { "$ref": "#/$defs/version" },
+        "pi_executable_sha256": { "$ref": "#/$defs/sha256" },
+        "pi_loader_sha256": { "$ref": "#/$defs/sha256" },
+        "pi_extension_sha256": { "$ref": "#/$defs/sha256" },
+        "transition_driver_sha256": { "$ref": "#/$defs/sha256" },
+        "node_executable_sha256": { "$ref": "#/$defs/sha256" },
+        "node_version": { "$ref": "#/$defs/version" },
+        "bash_executable_sha256": { "$ref": "#/$defs/sha256" },
+        "bash_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+():-]{0,255}$"
+        }
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixture_harness_sha256",
+        "receipt_tool_sha256",
+        "raw_schema_sha256",
+        "receipt_schema_sha256",
+        "public_schema_sha256",
+        "neutral_schema_sha256"
+      ],
+      "properties": {
+        "fixture_harness_sha256": { "$ref": "#/$defs/sha256" },
+        "receipt_tool_sha256": { "$ref": "#/$defs/sha256" },
+        "raw_schema_sha256": { "$ref": "#/$defs/sha256" },
+        "receipt_schema_sha256": { "$ref": "#/$defs/sha256" },
+        "public_schema_sha256": { "$ref": "#/$defs/sha256" },
+        "neutral_schema_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "commitments": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "key_id_sha256",
+        "raw_record_hmac_sha256",
+        "awm_before_hmac_sha256",
+        "awm_after_hmac_sha256",
+        "workspace_before_hmac_sha256",
+        "workspace_after_hmac_sha256",
+        "operation_chain_hmac_sha256",
+        "emitted_handoff_hmac_sha256",
+        "neutral_envelope_hmac_sha256",
+        "private_receipt_hmac_sha256"
+      ],
+      "properties": {
+        "algorithm": { "const": "hmac-sha256-domain-separated-v1" },
+        "key_id_sha256": { "$ref": "#/$defs/sha256" },
+        "raw_record_hmac_sha256": { "$ref": "#/$defs/sha256" },
+        "awm_before_hmac_sha256": { "$ref": "#/$defs/sha256" },
+        "awm_after_hmac_sha256": { "$ref": "#/$defs/sha256" },
+        "workspace_before_hmac_sha256": { "$ref": "#/$defs/sha256" },
+        "workspace_after_hmac_sha256": { "$ref": "#/$defs/sha256" },
+        "operation_chain_hmac_sha256": { "$ref": "#/$defs/sha256" },
+        "emitted_handoff_hmac_sha256": { "$ref": "#/$defs/sha256" },
+        "neutral_envelope_hmac_sha256": { "$ref": "#/$defs/sha256" },
+        "private_receipt_hmac_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "measurements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation_count", "emitted_handoff_size_bytes", "neutral_envelope_size_bytes", "maximum_bytes"],
+      "properties": {
+        "operation_count": { "const": 3 },
+        "emitted_handoff_size_bytes": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "neutral_envelope_size_bytes": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "maximum_bytes": { "const": 8192 }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "committed_treatment_assignment",
+        "real_pi_loader_surface_bound",
+        "ordered_init_checkpoint_handoff",
+        "all_operations_succeeded",
+        "operation_chain_valid",
+        "awm_state_changed_each_operation",
+        "private_awm_modes_valid",
+        "installed_tree_unchanged",
+        "workspace_unchanged",
+        "emitted_handoff_matches_persisted",
+        "neutral_payload_matches_source_context",
+        "neutral_envelope_within_budget",
+        "bound_driver_declares_provider_requests_zero"
+      ],
+      "properties": {
+        "committed_treatment_assignment": { "const": true },
+        "real_pi_loader_surface_bound": { "const": true },
+        "ordered_init_checkpoint_handoff": { "const": true },
+        "all_operations_succeeded": { "const": true },
+        "operation_chain_valid": { "const": true },
+        "awm_state_changed_each_operation": { "const": true },
+        "private_awm_modes_valid": { "const": true },
+        "installed_tree_unchanged": { "const": true },
+        "workspace_unchanged": { "const": true },
+        "emitted_handoff_matches_persisted": { "const": true },
+        "neutral_payload_matches_source_context": { "const": true },
+        "neutral_envelope_within_budget": { "const": true },
+        "bound_driver_declares_provider_requests_zero": { "const": true }
+      }
+    },
+    "scopeBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "control_transition_receipt",
+        "implement_phase_receipt",
+        "claim_quality_isolation",
+        "live_study_eligibility"
+      ],
+      "properties": {
+        "control_transition_receipt": { "const": "absent" },
+        "implement_phase_receipt": { "const": "absent" },
+        "claim_quality_isolation": { "const": "absent" },
+        "live_study_eligibility": { "const": "ineligible-preregistration-v2-does-not-prebind-receipt-runtime" }
+      }
+    },
+    "nonClaims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "real_provider_inference",
+        "live_agent_sessions",
+        "agent_quality",
+        "comparative_performance",
+        "developer_productivity",
+        "safety_improvement"
+      ],
+      "properties": {
+        "real_provider_inference": { "const": "not-run" },
+        "live_agent_sessions": { "const": 0 },
+        "agent_quality": { "const": "not-measured" },
+        "comparative_performance": { "const": "not-measured" },
+        "developer_productivity": { "const": "not-measured" },
+        "safety_improvement": { "const": "not-measured" }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw_awm_content", "raw_handoff", "environment_values", "absolute_paths", "provider_credentials"],
+      "properties": {
+        "raw_awm_content": { "const": "private-hmac-committed" },
+        "raw_handoff": { "const": "private-hmac-committed" },
+        "environment_values": { "const": "excluded" },
+        "absolute_paths": { "const": "excluded" },
+        "provider_credentials": { "const": "not-present" }
+      }
+    }
+  }
+}

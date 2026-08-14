@@ -154,6 +154,18 @@ setup() {
     [[ "$result" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
 }
 
+@test "format_date preserves current-time strftime shape" {
+    local result
+    result=$(format_date "%Y")
+    [[ "$result" =~ ^[0-9]{4}$ ]]
+}
+
+@test "format_current_date exposes explicit strftime API" {
+    local result
+    result=$(format_current_date "%Y-%m")
+    [[ "$result" =~ ^[0-9]{4}-[0-9]{2}$ ]]
+}
+
 @test "format_time returns HH:MM:SS" {
     local result
     result=$(format_time 0)

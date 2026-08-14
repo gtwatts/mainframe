@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-local-study-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "id", "claim_scope", "task", "replicates", "transport", "budgets", "statistics"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "kind": {"const": "mainframe-agent-impact-local-study"},
+    "id": {"const": "local-development-smoke-v1"},
+    "claim_scope": {"const": "local-development-smoke-protocol-conformance-only"},
+    "task": {"const": "tasks/local-001/task.json"},
+    "replicates": {"const": 3},
+    "transport": {"const": "runners/local-fake-transport.py"},
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wall_seconds_per_phase", "maximum_tool_calls_per_phase", "maximum_continuation_bytes"],
+      "properties": {
+        "wall_seconds_per_phase": {"const": 5},
+        "maximum_tool_calls_per_phase": {"const": 10},
+        "maximum_continuation_bytes": {"const": 4096}
+      }
+    },
+    "statistics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bootstrap_seed", "bootstrap_resamples", "confidence_level"],
+      "properties": {
+        "bootstrap_seed": {"const": "local-development-smoke-v1"},
+        "bootstrap_resamples": {"const": 1000},
+        "confidence_level": {"const": 0.95}
+      }
+    }
+  }
+}

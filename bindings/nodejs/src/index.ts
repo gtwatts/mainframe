@@ -30,6 +30,7 @@ export {
 
   // Execution
   execBash,
+  invokeCanonical,
   callFunction,
   callFunctionRaw,
   evalBash,
@@ -37,6 +38,9 @@ export {
   // Types
   type UsopEnvelope,
   type MainframeResult,
+  type BrokerEnvelopeV1,
+  type BrokerInvocationResult,
+  type BrokerInvokeOptions,
 } from "./core.js";
 
 // =============================================================================

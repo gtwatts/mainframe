@@ -1,6 +1,15 @@
 # MAINFRAME v6.0 Value Proof: Measurable Token & Speed Savings
 
-> **Quantified evidence that MAINFRAME speeds up production and saves tokens**
+> **Historical research only — not current product evidence.**
+>
+> This v6.0 draft is retained for repository provenance. Its benchmark figures,
+> function and test counts, token/productivity percentages, sample claims, and
+> agent-outcome conclusions were not validated under the current
+> [claims policy](CLAIMS_AND_BENCHMARKS.md). Do not use them as release,
+> compatibility, or marketing claims.
+>
+> Original draft subtitle: “Quantified evidence that MAINFRAME speeds up
+> production and saves tokens.”
 
 ## Executive Summary
 

@@ -5,7 +5,10 @@
  * Calls functions from pure-util.sh, datetime.sh, crypto.sh, common.sh
  */
 
-import { callFunction, callFunctionRaw, execBash } from "./core.js";
+import {
+  callLegacyFixedFunction as callFunction,
+  callLegacyFixedFunctionRaw as callFunctionRaw,
+} from "./internal/legacy.js";
 
 // =============================================================================
 // UUID and Random
@@ -209,7 +212,7 @@ export type LogLevel = "debug" | "info" | "warn" | "error" | "fatal";
  * logInfo("Application started")
  */
 export function logInfo(message: string): void {
-  execBash(`log_info "${message.replace(/"/g, '\\"')}"`);
+  callFunction("log::info", [message]);
 }
 
 /**
@@ -219,7 +222,7 @@ export function logInfo(message: string): void {
  * logWarn("Configuration file not found, using defaults")
  */
 export function logWarn(message: string): void {
-  execBash(`log_warn "${message.replace(/"/g, '\\"')}"`);
+  callFunction("log::warn", [message]);
 }
 
 /**
@@ -229,7 +232,7 @@ export function logWarn(message: string): void {
  * logError("Failed to connect to database")
  */
 export function logError(message: string): void {
-  execBash(`log_error "${message.replace(/"/g, '\\"')}"`);
+  callFunction("log::error", [message]);
 }
 
 /**
@@ -239,7 +242,7 @@ export function logError(message: string): void {
  * logDebug("Processing item: 42")
  */
 export function logDebug(message: string): void {
-  execBash(`log_debug "${message.replace(/"/g, '\\"')}"`);
+  callFunction("log_debug", [message]);
 }
 
 /**
@@ -249,7 +252,7 @@ export function logDebug(message: string): void {
  * success("Database connected")
  */
 export function success(message: string): void {
-  execBash(`success "${message.replace(/"/g, '\\"')}"`);
+  callFunction("success", [message]);
 }
 
 /**
@@ -259,7 +262,7 @@ export function success(message: string): void {
  * failure("Authentication failed")
  */
 export function failure(message: string): void {
-  execBash(`failure "${message.replace(/"/g, '\\"')}"`);
+  callFunction("failure", [message]);
 }
 
 // =============================================================================
@@ -543,7 +546,10 @@ export function formatDuration(seconds: number): string {
  * formatNumber(1234567)  // "1,234,567"
  */
 export function formatNumber(n: number): string {
-  return callFunctionRaw("format_number", [n]);
+  // Bash's printf grouping flag is locale-dependent and returns an ungrouped
+  // value under the C locale used by CI and many containers. Keep the binding's
+  // documented comma-separated contract deterministic across platforms.
+  return Math.trunc(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 /**

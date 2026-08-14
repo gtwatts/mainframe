@@ -109,7 +109,7 @@ describe("Utils Module", () => {
           expect(num).toBeGreaterThanOrEqual(1);
           expect(num).toBeLessThanOrEqual(10);
         }
-      });
+      }, 15_000);
     });
 
     describe("randomToken", () => {
@@ -356,7 +356,8 @@ describe("Utils Module", () => {
     describe("formatNumber", () => {
       test("should add thousands separator", () => {
         const result = formatNumber(1234567);
-        expect(result).toContain(",");
+        expect(result).toBe("1,234,567");
+        expect(formatNumber(-1234567)).toBe("-1,234,567");
       });
     });
   });

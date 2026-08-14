@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "platforms": [
+    {
+      "id": "Darwin-arm64-none",
+      "os": "Darwin",
+      "arch": "arm64",
+      "system_libc": "none"
+    },
+    {
+      "id": "Darwin-x86_64-none",
+      "os": "Darwin",
+      "arch": "x86_64",
+      "system_libc": "none"
+    },
+    {
+      "id": "Linux-x86_64-glibc",
+      "os": "Linux",
+      "arch": "x86_64",
+      "system_libc": "glibc"
+    }
+  ]
+}

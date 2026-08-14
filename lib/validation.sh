@@ -23,19 +23,38 @@ validate_int() {
     local value="$1"
     local min="${2:-}"
     local max="${3:-}"
+    local value_num min_num max_num
 
-    # Empty check
-    [[ -z "$value" ]] && return 1
+    # Arithmetic operands are data, never Bash expressions. Bash recursively
+    # evaluates variable contents inside (( ... )), including command
+    # substitutions hidden in array subscripts, so every operand must pass the
+    # decimal grammar before it reaches arithmetic evaluation.
+    [[ "$value" =~ ^-?[0-9]+$ ]] || return 1
+    [[ -z "$min" || "$min" =~ ^-?[0-9]+$ ]] || return 1
+    [[ -z "$max" || "$max" =~ ^-?[0-9]+$ ]] || return 1
 
-    # Must be integer (optional leading minus)
-    [[ ! "$value" =~ ^-?[0-9]+$ ]] && return 1
+    if [[ "$value" == -* ]]; then
+        value_num=$((-10#${value#-}))
+    else
+        value_num=$((10#$value))
+    fi
 
     # Range checks if provided
     if [[ -n "$min" ]]; then
-        (( value < min )) && return 1
+        if [[ "$min" == -* ]]; then
+            min_num=$((-10#${min#-}))
+        else
+            min_num=$((10#$min))
+        fi
+        (( value_num < min_num )) && return 1
     fi
     if [[ -n "$max" ]]; then
-        (( value > max )) && return 1
+        if [[ "$max" == -* ]]; then
+            max_num=$((-10#${max#-}))
+        else
+            max_num=$((10#$max))
+        fi
+        (( value_num > max_num )) && return 1
     fi
 
     return 0

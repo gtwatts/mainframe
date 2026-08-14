@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "kind": "mainframe-pi-exact-candidate-contract",
+  "claim_scope": "exact-candidate-pi-integration-conformance-only",
+  "test_tree_algorithm": "MAINFRAME-PACKAGE-TREE-SHA256-V1",
+  "test_paths": [
+    "tests/pi_integration.bats",
+    "tests/pi_install.bats",
+    "tests/pi_project_awm.bats",
+    "tests/pi_compatibility_manifest.bats"
+  ],
+  "plan_per_run": 45,
+  "bats_core_commit": "eb7f42f8d608ac693d7a4b67474f6714ea68cfc5",
+  "platforms": [
+    {
+      "id": "Darwin-arm64-none",
+      "os": "Darwin",
+      "arch": "arm64",
+      "system_libc": "none"
+    },
+    {
+      "id": "Darwin-x86_64-none",
+      "os": "Darwin",
+      "arch": "x86_64",
+      "system_libc": "none"
+    },
+    {
+      "id": "Linux-x86_64-glibc",
+      "os": "Linux",
+      "arch": "x86_64",
+      "system_libc": "glibc"
+    }
+  ],
+  "pi_versions": [
+    {
+      "id": "fork-0.84.1",
+      "package": "@earendil-works/pi-coding-agent",
+      "version": "0.84.1",
+      "npm_integrity": "sha512-ncAqFrG+iybuPGOhMiZoEHkEzTpJgz3guYD32pD+M7ucc0WeHmauP6wa7qwP8V/KWvsZDVNa5XGsdZ7fkC7w7A==",
+      "profile": "full",
+      "expected_skips": 0,
+      "expected_skip": null,
+      "limitations": []
+    },
+    {
+      "id": "upstream-0.73.1",
+      "package": "@mariozechner/pi-coding-agent",
+      "version": "0.73.1",
+      "npm_integrity": "sha512-gXQh3SaZmWTfVMc4Ao5+LGbVeKvzyO7tolok0nLsZgq9nGjZx/EEU3NM8C+qUnB4Nvs2rswG5qOVgLzQkq0fHQ==",
+      "profile": "legacy-rpc-limited",
+      "expected_skips": 1,
+      "expected_skip": {
+        "test": "Pi RPC works hand-in-glove with Mainframe from zsh and bash caller environments",
+        "reason": "this Pi version does not emit user_bash for the RPC bash command"
+      },
+      "limitations": [
+        "Pi 0.73.1 does not emit user_bash for the client-side RPC bash command."
+      ]
+    }
+  ]
+}

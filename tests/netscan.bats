@@ -175,24 +175,48 @@ Host: 10.0.0.2 (host2)\tPorts: 80/open/tcp//http///"
 }
 
 # =============================================================================
-# http_headers TESTS (with curl available)
+# netscan_http_headers TESTS
 # =============================================================================
 
-@test "http_headers returns 1 with no args" {
+@test "netscan_http_headers returns 1 with no args" {
     local rc=0
-    http_headers "" || rc=$?
+    netscan_http_headers "" || rc=$?
     [ "$rc" = "1" ]
 }
 
-@test "http_headers adds scheme if missing" {
+@test "netscan_http_headers adds scheme if missing" {
     # This tests the URL normalization logic
     # We test the output format with a known URL if curl is present
     if ! command -v curl &>/dev/null; then
         skip "curl not available"
     fi
     local result
-    result=$(http_headers "http://127.0.0.1:1" 1 2>/dev/null) || true
+    result=$(netscan_http_headers "127.0.0.1:1" 1 2>/dev/null) || true
     # Should either fail (connection refused) or return headers
     # Main thing is it doesn't crash
     true
+}
+
+@test "direct netscan source provides canonical raw-response http_headers" {
+    local response result
+    response=$'HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nX-Test: yes\r\n\r\nbody'
+
+    result=$(http_headers "$response")
+
+    [[ "$result" == *"Content-Type: text/plain"* ]]
+    [[ "$result" == *"X-Test: yes"* ]]
+    [[ "$result" != *"HTTP/1.1"* ]]
+}
+
+@test "canonical http_headers dispatches URL targets to netscan operation" {
+    curl() {
+        printf 'HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nX-Test: yes\r\n\r\n'
+    }
+
+    local result
+    result=$(http_headers "https://example.test/health" 2)
+
+    [[ "$result" == *'"Content-Type":"text/plain"'* ]]
+    [[ "$result" == *'"X-Test":"yes"'* ]]
+    [[ "$result" == *'"_status":"HTTP/1.1 200 OK"'* ]]
 }

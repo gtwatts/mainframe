@@ -39,9 +39,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/mainframe-project/mainframe"
-Documentation = "https://github.com/mainframe-project/mainframe/tree/main/bindings/python"
-Repository = "https://github.com/mainframe-project/mainframe.git"
+Homepage = "https://github.com/gtwatts/mainframe"
+Documentation = "https://github.com/gtwatts/mainframe/tree/main/bindings/python"
+Repository = "https://github.com/gtwatts/mainframe.git"
 
 [tool.hatch.build.targets.wheel]
 packages = ["mainframe_bash"]

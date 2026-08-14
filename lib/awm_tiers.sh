@@ -5,7 +5,6 @@
 
 # Prevent double-loading
 [[ -n "${_AWM_TIERS_LOADED:-}" ]] && return 0
-readonly _AWM_TIERS_LOADED=1
 
 # Portable SHA-256 digest (sha256sum -> shasum -> openssl fallback chain).
 # Shared micro-shim: the declare -F guard means it is defined once per
@@ -24,9 +23,21 @@ fi
 
 # Load dependencies
 # shellcheck source=./awm_storage.sh
-source "${BASH_SOURCE%/*}/awm_storage.sh" 2>/dev/null || source "$(dirname "$0")/awm_storage.sh"
+if declare -F lazy_load_library >/dev/null 2>&1; then
+    lazy_load_library awm_storage || return 1
+else
+    source "${BASH_SOURCE%/*}/awm_storage.sh" 2>/dev/null ||
+        source "$(dirname "$0")/awm_storage.sh" ||
+        return 1
+fi
 # shellcheck source=./awm_stream.sh
-source "${BASH_SOURCE%/*}/awm_stream.sh" 2>/dev/null || source "$(dirname "$0")/awm_stream.sh"
+if declare -F lazy_load_library >/dev/null 2>&1; then
+    lazy_load_library awm_stream || return 1
+else
+    source "${BASH_SOURCE%/*}/awm_stream.sh" 2>/dev/null ||
+        source "$(dirname "$0")/awm_stream.sh" ||
+        return 1
+fi
 
 # =============================================================================
 # TIER CONFIGURATION
@@ -905,3 +916,7 @@ MAINFRAME_AWM_TIERS_EXPORTS=(
     # Management
     awm_tier_clear
 )
+
+# Do not advertise a partially sourced tier manager as loaded. In particular,
+# a missing stream/storage dependency must be repairable within the same shell.
+readonly _AWM_TIERS_LOADED=1

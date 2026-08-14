@@ -955,12 +955,12 @@ require_var() {
 }
 
 # Safe array access with bounds checking
-# Usage: array_get arr_name index [default]
+# Usage: safe_array_get arr_name index [default]
 #
 # Example:
 #   arr=(a b c)
-#   value=$(array_get arr 5 "not found")
-array_get() {
+#   value=$(safe_array_get arr 5 "not found")
+safe_array_get() {
     local -n arr_ref="$1"
     local index="$2"
     local default_val="${3:-}"
@@ -1039,6 +1039,6 @@ MAINFRAME_SAFE_EXPORTS=(
     # Gotcha prevention
     default
     require_var
-    array_get
+    safe_array_get
     safe_math
 )

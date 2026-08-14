@@ -1,169 +1,159 @@
-# MAINFRAME MCP Server - Installation Guide
+# Installing MAINFRAME MCP
 
-## Prerequisites
+The v10.2.0 Python package is currently an **unpublished candidate**. This page
+defines the supported installation contract for its eventual publication; it
+does not claim that the package is available from PyPI today.
 
-- Python 3.10 or higher
-- MAINFRAME v6.0 installed (at `~/.mainframe` or custom `$MAINFRAME_ROOT`)
-- pip package manager
+## 1. Install the exact MAINFRAME runtime
 
-## Installation Steps
+Install and verify MAINFRAME v10.2.0 using its release instructions. The MCP
+adapter is not a standalone runtime and will not start against v10.1.0, a
+future version, or an incomplete source copy.
 
-### 1. Install MCP SDK
+The selected root must be an absolute path and contain the exact v10.2.0
+release inventory, including:
+
+```text
+VERSION
+FUNCTIONS.json
+MANIFEST.json
+SHA256SUMS
+bin/mainframe
+config/invocation-policy.json
+config/stable-core.json
+lib/common.sh
+lib/invoke.sh
+```
+
+Critical files and directories must be regular, safely owned, and not writable
+by group or other users. The checksum inventory is verified before server
+startup.
+
+## 2. Install the adapter after publication
+
+After the project announces that `mainframe-mcp==10.2.0` is published, choose
+one isolated installation method:
 
 ```bash
-pip install mcp
+uv tool install mainframe-mcp==10.2.0
+# or
+pipx install mainframe-mcp==10.2.0
 ```
 
-Or if you're using a virtual environment:
+For an ephemeral check after publication:
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install mcp
+uvx --from mainframe-mcp==10.2.0 \
+  mainframe-mcp --mainframe-root /absolute/path/to/mainframe-10.2.0 --check
+
+# pipx equivalent
+pipx run --spec mainframe-mcp==10.2.0 \
+  mainframe-mcp --mainframe-root /absolute/path/to/mainframe-10.2.0 --check
 ```
 
-### 2. Make Server Executable
+Do not install an unpinned package name into an agent configuration. The
+adapter/runtime version match is exact.
+
+## 3. Preflight the installed command
 
 ```bash
-cd /home/gordontwatts/Documents/Projects/mainframe/mcp
-chmod +x mainframe-mcp-server
+mainframe-mcp --version
+mainframe-mcp --mainframe-root /absolute/path/to/mainframe-10.2.0 --check
 ```
 
-### 3. Test Installation
+The version command must print `mainframe-mcp 10.2.0`. A successful check emits
+one compact JSON line containing `ok: true`, `tier: "stable-core"`,
+`tool_count: 26`, matching runner/runtime versions, the canonical root, and the
+verified inventory identity.
+
+Configuration failures are nonzero, write no stdout, and emit one diagnostic
+to stderr. In particular:
+
+- a relative, missing, unsafe, modified, or mismatched root is rejected;
+- `--tier` and legacy public tier-selection flags are unsupported; and
+- any presence of `MAINFRAME_MCP_TIER`, even `stable-core`, is rejected.
+
+Ambient `MAINFRAME_ROOT` is ignored by the public runner so another process or
+project cannot silently replace the selected runtime. Use the explicit
+`--mainframe-root` argument, or omit it to select the validated managed
+Mainframe launcher.
+
+## 4. Configure an MCP host or Pi
+
+For a stdio MCP host whose configuration has been separately verified, find
+the isolated executable:
 
 ```bash
-# Test basic imports and structure
-python3 test_import.py
+command -v mainframe-mcp
 ```
 
-Expected output:
-```
-✓ tool_registry imported
-✓ executor imported
-✓ server imported (MCP SDK available)
-✓ FUNCTIONS.json found
-✓ Loaded 4000+ functions from 117 libraries
-✓ Generated 300+ core tools (AWM support enabled)
+Configure that absolute command with these arguments, using only fields and a
+configuration location documented by the host:
+
+```text
+--mainframe-root /absolute/path/to/mainframe-10.2.0
 ```
 
-### 4. Configure Claude Code (Recommended)
+Confirm the host advertises exactly 26 tools and that a read/pure call such as
+`mainframe_json_get` succeeds. Unknown, external-command, and write-helper calls
+must be returned as MCP errors.
 
-Add to `~/.claude/mcp.json`:
+The second console name, `mainframe-mcp-server`, is an equivalent compatibility
+entry point. Do not configure a host with a checkout-relative Python file or a
+source-tree launcher.
 
-```json
-{
-  "mcpServers": {
-    "mainframe": {
-      "command": "/home/gordontwatts/Documents/Projects/mainframe/mcp/mainframe-mcp-server",
-      "env": {
-        "MAINFRAME_ROOT": "/home/gordontwatts/Documents/Projects/mainframe",
-        "MAINFRAME_MCP_TIER": "core"
-      }
-    }
-  }
-}
-```
-
-For full tier (all 4,000+ functions):
-```json
-{
-  "mcpServers": {
-    "mainframe": {
-      "command": "/home/gordontwatts/Documents/Projects/mainframe/mcp/mainframe-mcp-server",
-      "env": {
-        "MAINFRAME_ROOT": "/home/gordontwatts/Documents/Projects/mainframe",
-        "MAINFRAME_MCP_TIER": "full"
-      }
-    }
-  }
-}
-```
-
-### 5. Restart Claude Code
-
-After adding the MCP server configuration, restart Claude Code to load the new server.
-
-## Verification
-
-Once configured, you should see `mainframe_*` tools available in Claude Code:
-
-- `mainframe_json_object`
-- `mainframe_validate_email`
-- `mainframe_ensure_dir`
-- `mainframe_atomic_write`
-- `mainframe_awm_*` (Agent Working Memory functions)
-- And 300+ more (core tier) or 4,000+ (full tier)
-
-## Troubleshooting
-
-### "Module 'mcp' not found"
+Pi 0.84.1 has no repository-verified direct `mcpServers` path. Use the native
+Mainframe Pi package instead:
 
 ```bash
-pip install mcp
+mainframe pi status
+mainframe pi install --dry-run
+mainframe pi install --yes  # run yourself in an external terminal
 ```
 
-### "FUNCTIONS.json not found"
+After a changed install, use `/reload` in Pi and run `/mainframe doctor`.
 
-Ensure `MAINFRAME_ROOT` in your MCP config points to the correct directory:
+## 5. Understand the boundary
+
+The public package always exposes the brokered 26-tool stable-core surface.
+Broader internal registry tiers are not an installed-product feature.
+
+MAINFRAME validates and brokers calls made through this MCP server. It is not a
+kernel sandbox, container, VM, or blanket restriction on commands the agent can
+run through other tools. Keep Pi and other coding agents on least-privilege
+accounts, review requested writes, and protect credentials independently.
+
+## Candidate maintainer check
+
+Before publication, maintainers may build the candidate without touching the
+repository `dist/` directory:
 
 ```bash
-# Check if FUNCTIONS.json exists
-ls /home/gordontwatts/Documents/Projects/mainframe/FUNCTIONS.json
+candidate_dir="$(mktemp -d)"
+python3 .github/scripts/build-mcp-package.py \
+  --source mcp \
+  --runtime-archive dist/mainframe-10.2.0.tar.gz \
+  --output-dir "$candidate_dir"
 ```
 
-If not found, you may need to generate it:
+Direct wheel/sdist builds deliberately fail. The candidate builder binds both
+artifacts to the exact runtime archive before invoking the isolated backend.
+
+CI verifies wheel/sdist contents and metadata, rebuilds the wheel from the
+sdist, installs it non-editably into a fresh environment, exercises both console
+scripts and `python -I -m mainframe_mcp`, runs real stdio protocol calls against an
+exact extracted runtime, and tests hostile path/import conditions. These checks
+are candidate evidence; they do not publish the package or add it to MAINFRAME
+release assets.
+
+## Uninstall
+
+Use the same isolated installer that installed the adapter:
 
 ```bash
-cd /home/gordontwatts/Documents/Projects/mainframe
-./generate_functions_json.sh
+uv tool uninstall mainframe-mcp
+# or: pipx uninstall mainframe-mcp
 ```
 
-### Server Not Starting
-
-Check the error output and verify:
-
-1. Python 3.10+ is installed: `python3 --version`
-2. MCP SDK is installed: `pip show mcp`
-3. Server is executable: `ls -l mcp/mainframe-mcp-server`
-4. MAINFRAME_ROOT path is correct
-
-### Testing Manually
-
-```bash
-# Run server manually to see error output
-cd /home/gordontwatts/Documents/Projects/mainframe/mcp
-./mainframe-mcp-server
-```
-
-Press Ctrl+C to stop.
-
-## Deployment to ~/.mainframe
-
-If you want to deploy to standard MAINFRAME location:
-
-```bash
-# Copy MCP server to MAINFRAME installation
-cp -r /home/gordontwatts/Documents/Projects/mainframe/mcp ~/.mainframe/
-
-# Update Claude Code config to use new location
-# In ~/.claude/mcp.json:
-{
-  "mcpServers": {
-    "mainframe": {
-      "command": "~/.mainframe/mcp/mainframe-mcp-server",
-      "env": {
-        "MAINFRAME_ROOT": "~/.mainframe",
-        "MAINFRAME_MCP_TIER": "core"
-      }
-    }
-  }
-}
-```
-
-## Uninstallation
-
-To remove the MCP server:
-
-1. Remove from `~/.claude/mcp.json`
-2. Restart Claude Code
-3. Optionally remove files: `rm -rf /home/gordontwatts/Documents/Projects/mainframe/mcp`
+Then remove the Mainframe entry from the MCP host. Uninstalling the
+adapter does not remove the separately installed MAINFRAME runtime.

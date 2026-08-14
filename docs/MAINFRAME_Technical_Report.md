@@ -1,5 +1,13 @@
 # MAINFRAME: An AI-Native Runtime Layer for Bash-Mediated Agent-Operating System Interaction
 
+> **Historical research only — not current product evidence.**
+>
+> This January 2026 report is retained for repository provenance. Its benchmark
+> figures, function and dependency counts, token/productivity percentages, and
+> agent-correctness conclusions were not validated under the current
+> [claims policy](CLAIMS_AND_BENCHMARKS.md). Do not use them as release,
+> compatibility, or marketing claims.
+
 **Technical Scientific Report**
 
 **Version**: 1.0

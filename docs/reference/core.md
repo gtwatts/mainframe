@@ -49,15 +49,27 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 | `array_unique` | `array_unique "${arr[@]}"` | `array_unique a b a c` | `a b c` |
 | `array_sort` | `array_sort "${arr[@]}"` | `array_sort c a b` | `a b c` |
 | `array_reverse` | `array_reverse "${arr[@]}"` | `array_reverse a b c` | `c b a` |
-| `array_slice` | `array_slice start count "${arr[@]}"` | `array_slice 1 2 a b c d` | `b c` |
+| `array_slice` | `array_slice start inclusive_end "${arr[@]}"` | `array_slice 1 2 a b c d` | `b c` |
 | `array_sum` | `array_sum "${nums[@]}"` | `array_sum 1 2 3 4 5` | `15` |
 | `array_avg` | `array_avg "${nums[@]}"` | `array_avg 10 20 30` | `20` |
 | `array_min` | `array_min "${nums[@]}"` | `array_min 5 2 8` | `2` |
 | `array_max` | `array_max "${nums[@]}"` | `array_max 5 2 8` | `8` |
-| `array_remove` | `array_remove "val" "${arr[@]}"` | `array_remove "b" a b c` | `a c` |
-| `array_diff` | `array_diff "a b c" "b"` | `array_diff "a b c" "b"` | `a c` |
-| `array_intersect` | `array_intersect "a b" "b c"` | `array_intersect "a b" "b c"` | `b` |
+| `array_remove` | `array_remove array_name "val"` | `arr=(a b c); array_remove arr "b"; printf '%s\n' "${arr[@]}"` | `a c` |
+| `array_diff` | `array_diff left_array right_array` | `left=(a b c); right=(b); array_diff left right` | `a c` |
+| `array_intersect` | `array_intersect left_array right_array` | `left=(a b); right=(b c); array_intersect left right` | `b` |
 | `array_shuffle` | `array_shuffle "${arr[@]}"` | `array_shuffle a b c` | (random order) |
+
+The historical `array_*` names above use the canonical `pure-array.sh`
+contracts in every loader profile. Most are value-list APIs; `array_remove`
+mutates a named array, while `array_diff` and `array_intersect` take two array
+variable names as shown above.
+Named-array/callback variants use explicit `collection_*` names:
+`collection_count`, `collection_filter`,
+`collection_first`, `collection_intersect`, `collection_last`,
+`collection_length`, `collection_reverse`, `collection_slice`,
+`collection_sum`, and `collection_unique`. Bounds-checked named-array lookup
+is `safe_array_get`. These alternate contracts are intentionally not selected
+by inspecting ambient array or function names.
 
 ---
 

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-neutral-continuation-v1.json",
+  "title": "MAINFRAME bounded neutral continuation envelope",
+  "$comment": "The schema constrains only the envelope identity and bounded JSON shape. The offline receipt verifier enforces the 8192-byte canonical envelope ceiling, maximum nesting/value count, source-context equality, and rejection of absolute, home-relative, or private runtime path strings.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "payload"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "mainframe-agent-impact-neutral-continuation" },
+    "payload": { "$ref": "#/$defs/jsonObject" }
+  },
+  "$defs": {
+    "jsonValue": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        {
+          "type": "number",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "string",
+          "maxLength": 8192
+        },
+        {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/jsonValue" }
+        },
+        { "$ref": "#/$defs/jsonObject" }
+      ]
+    },
+    "jsonObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "maxProperties": 4096,
+      "patternProperties": {
+        "^[\\s\\S]{0,1024}$": { "$ref": "#/$defs/jsonValue" }
+      }
+    }
+  }
+}

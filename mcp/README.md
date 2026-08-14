@@ -1,194 +1,153 @@
-# MAINFRAME MCP Server
+# MAINFRAME MCP
 
-Exposes MAINFRAME v6.0's 4,000+ bash functions as MCP tools for AI agents.
+`mainframe-mcp` is the fail-closed MCP adapter for a matching MAINFRAME
+runtime. It gives Pi and other local coding agents a small, reviewed tool
+surface without putting the whole shell library behind MCP.
 
-## Key Features
+> **Unpublished candidate:** the Python package described here is the v10.2.0
+> source candidate. It is not published on PyPI and is not part of the current
+> public release assets. Do not use the registry install commands below until a
+> release announcement confirms that `mainframe-mcp==10.2.0` is published.
 
-- **4,000+ Functions**: Access to all MAINFRAME v6.0 libraries
-- **117 Libraries**: Complete coverage including Agent Working Memory (AWM)
-- **Tiered Access**: Core tier (~300 essential) or full tier (all functions)
-- **AWM Support**: Full support for Agent Working Memory functions
+## What the public command exposes
 
-## Installation
+The public `mainframe-mcp` and `mainframe-mcp-server` commands expose exactly
+the 26 reviewed `stable-core` tools. There is no public `core` or `full` mode,
+and no command-line acknowledgement that widens the tool set.
+
+Every stable-core call is authorized again and delegated to the selected
+runtime's bounded `mainframe invoke` broker. Unknown tools, external commands,
+and write-capable helpers such as `ensure_dir` and `atomic_write` are denied.
+Input schemas are closed and broker results are bounded and validated.
+
+This is an application-level safety boundary, **not an operating-system
+sandbox**. MAINFRAME does not confine the rest of an agent, replace macOS or
+Linux permissions, or make unrelated shell commands safe. Use normal host
+controls, least-privilege credentials, backups, and agent approval policies as
+well.
+
+## Runtime compatibility is exact
+
+The Python package is only the MCP adapter; it does not bundle a MAINFRAME
+runtime. Package v10.2.0 requires a MAINFRAME v10.2.0 runtime. Before opening
+stdio, the command validates an absolute runtime root, its critical layout,
+`VERSION`, `FUNCTIONS.json`, `MANIFEST.json`, and the release `SHA256SUMS`
+inventory. A missing, unsafe, modified, or version-mismatched runtime fails
+before any MCP frame is written to stdout.
+
+Use a verified release installation. The source-only
+`--allow-development-root` option requires an explicit `--mainframe-root` and
+is for maintainers testing a dirty checkout; it is not a production install
+mode.
+
+## Commands
+
+Both installed console names have the same behavior:
+
+```text
+mainframe-mcp
+mainframe-mcp-server
+```
+
+Useful preflight commands are:
 
 ```bash
-# Install MCP SDK
-pip install mcp
-
-# Make server executable
-chmod +x mainframe-mcp-server
+mainframe-mcp --version
+mainframe-mcp --mainframe-root /absolute/path/to/mainframe-10.2.0 --check
 ```
 
-## Usage
+`--check` emits one JSON object and exits. A normal no-argument invocation runs
+MCP over stdio; stdout is reserved for protocol frames and diagnostics go to
+stderr.
 
-### With Claude Code
+The public command ignores ambient `MAINFRAME_ROOT`; use an explicit absolute
+`--mainframe-root`, or omit it to use the validated managed Mainframe launcher.
+The legacy `MAINFRAME_MCP_TIER` variable is not a public policy control: its presence,
+including an empty value or `stable-core`, is rejected at startup.
 
-Add to your `~/.claude/mcp.json`:
+## Pi and stdio MCP hosts
 
-```json
-{
-  "mcpServers": {
-    "mainframe": {
-      "command": "~/.mainframe/mcp/mainframe-mcp-server",
-      "env": {
-        "MAINFRAME_ROOT": "~/.mainframe",
-        "MAINFRAME_MCP_TIER": "core"
-      }
-    }
-  }
-}
-```
-
-### Tiers
-
-- **core**: ~300 essential functions (json, validation, ensure, atomic, output, awm)
-- **full**: All 4,000+ functions (set MAINFRAME_MCP_TIER=full)
-
-## Tool Naming
-
-Functions are exposed with `mainframe_` prefix:
-- `json_object` → `mainframe_json_object`
-- `validate_path_safe` → `mainframe_validate_path_safe`
-- `ensure_dir` → `mainframe_ensure_dir`
-
-## Examples
-
-### JSON Operations
-
-```python
-# Create JSON object
-result = await call_tool("mainframe_json_object", {
-    "args": ["name=John", "age:number=30", "active:bool=true"]
-})
-# Output: {"name":"John","age":30,"active":true}
-
-# Parse JSON value
-result = await call_tool("mainframe_json_get", {
-    "args": ['{"name":"John"}', "name"]
-})
-# Output: John
-```
-
-### Validation
-
-```python
-# Validate email
-result = await call_tool("mainframe_validate_email", {
-    "args": ["user@example.com"]
-})
-
-# Validate path safety (prevent traversal attacks)
-result = await call_tool("mainframe_validate_path_safe", {
-    "args": ["/var/www", "../../../etc/passwd"]
-})
-```
-
-### File Operations
-
-```python
-# Ensure directory exists (idempotent)
-result = await call_tool("mainframe_ensure_dir", {
-    "args": ["/tmp/test"]
-})
-
-# Atomic file write
-result = await call_tool("mainframe_atomic_write", {
-    "args": ["/tmp/config.json", '{"key":"value"}']
-})
-```
-
-### String Operations
-
-```python
-# Trim whitespace
-result = await call_tool("mainframe_trim_string", {
-    "args": ["  hello  "]
-})
-# Output: hello
-
-# Convert to uppercase
-result = await call_tool("mainframe_to_upper", {
-    "args": ["hello"]
-})
-# Output: HELLO
-```
-
-### Array Operations
-
-```python
-# Array unique
-result = await call_tool("mainframe_array_unique", {
-    "args": ["a b c a b"]
-})
-# Output: a b c
-
-# Array join
-result = await call_tool("mainframe_array_join", {
-    "args": [",", "a b c"]
-})
-# Output: a,b,c
-```
-
-## Architecture
-
-```
-mainframe-mcp-server (executable)
-    ├── server.py (MCP protocol handler)
-    ├── tool_registry.py (FUNCTIONS.json parser)
-    └── executor.py (bash subprocess execution)
-```
-
-## Error Handling
-
-All tool calls return either:
-- **Success**: stdout from the bash function
-- **Error**: Error message prefixed with "Error: "
-
-## Security
-
-- All arguments are shell-escaped via `shlex.quote()`
-- Functions execute with 30-second timeout
-- Execution happens in subprocess with controlled environment
-
-## Development
-
-### Testing the Server
+Pi 0.84.1 does not have a repository-verified direct `mcpServers` configuration
+path. Use Mainframe's first-party Pi package for the hand-in-glove Pi
+integration:
 
 ```bash
-# Test with MCP inspector (if available)
-npx @modelcontextprotocol/inspector mcp/mainframe-mcp-server
-
-# Test manually
-python3 mcp/server.py
+mainframe pi status
+mainframe pi install --dry-run
+mainframe pi install --yes  # run yourself in an external terminal
 ```
 
-### Adding New Functions
+After a changed install, use `/reload` in Pi and run `/mainframe doctor`. See
+the root [Pi installation instructions](https://github.com/gtwatts/mainframe#make-mainframe-native-in-pi)
+for the lifecycle, backup, and restore contract.
 
-Functions are automatically discovered from `FUNCTIONS.json`. To add new tools:
+For a separately verified stdio MCP host, resolve `command -v mainframe-mcp`
+and configure that absolute command with arguments `--mainframe-root` and the
+absolute 10.2.0 runtime root. Use only configuration fields documented and
+tested by that host. The installed package command is the supported public
+launch boundary; source-checkout launchers are maintainer fixtures.
 
-1. Add function to MAINFRAME library
-2. Run `./generate_functions_json.sh` to update FUNCTIONS.json
-3. Restart MCP server
+## Future registry installation
 
-## Troubleshooting
-
-### "FUNCTIONS.json not found"
-
-Ensure `MAINFRAME_ROOT` environment variable points to your MAINFRAME installation:
+These examples become valid only after publication of the exact version:
 
 ```bash
-export MAINFRAME_ROOT=~/.mainframe
+# Ephemeral preflight with uvx
+uvx --from mainframe-mcp==10.2.0 \
+  mainframe-mcp --mainframe-root /absolute/path/to/mainframe-10.2.0 --check
+
+# Ephemeral preflight with pipx
+pipx run --spec mainframe-mcp==10.2.0 \
+  mainframe-mcp --mainframe-root /absolute/path/to/mainframe-10.2.0 --check
+
+# Persistent isolated install
+uv tool install mainframe-mcp==10.2.0
+# or: pipx install mainframe-mcp==10.2.0
 ```
 
-### "MCP SDK not installed"
+Pin the adapter and runtime to the same exact version. Do not substitute an
+unpinned `latest` install in agent configuration.
+
+## Stable-core tools
+
+MCP names add the `mainframe_` prefix to these reviewed exports:
+
+```text
+array_contains  array_join       is_empty          is_numeric
+json_array      json_escape      json_get          json_merge
+json_object     json_string      json_valid        output_json
+output_success  path_sanitize    to_lower          to_upper
+trim_left       trim_right       usop_error_validation
+validate_email  validate_int     validate_json     validate_path
+validate_regex  validate_semver  validate_url
+```
+
+The exact count and names are release canaries. A missing or additional tool is
+a startup/test failure, not a compatibility fallback.
+
+## Development verification
+
+Maintainers build the wheel and source distribution outside the checkout:
 
 ```bash
-pip install mcp
+tmp_dir="$(mktemp -d)"
+python3 .github/scripts/build-mcp-package.py \
+  --source mcp \
+  --runtime-archive dist/mainframe-10.2.0.tar.gz \
+  --output-dir "$tmp_dir"
 ```
 
-### Server Not Starting
+A direct `uv build mcp` intentionally fails: distributable artifacts must
+embed the digest of one exact runtime archive's internal `SHA256SUMS`.
+Editable source installs remain available for maintainer testing.
 
-Check logs and ensure:
-- Python 3.10+ is installed
-- `mainframe-mcp-server` is executable (`chmod +x`)
-- MAINFRAME v6.0 is properly installed at `$MAINFRAME_ROOT`
+The package acceptance suite builds from source and sdist, performs a fresh
+non-editable install, exercises both console names and `python -I -m
+mainframe_mcp`, and runs real MCP initialize/list/call traffic against an exact
+extracted runtime:
+
+```bash
+tests/bats/bin/bats tests/mcp_package.bats
+```
+
+See [INSTALL.md](INSTALL.md) for the release installation checklist.

@@ -1,0 +1,399 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/pi-cell-evidence/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "claim_scope",
+    "cell_id",
+    "mainframe",
+    "source",
+    "host",
+    "pi",
+    "node_runtime",
+    "runtime_proof",
+    "compatibility",
+    "producer",
+    "tests",
+    "artifacts",
+    "result",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "mainframe-pi-exact-candidate-cell-evidence" },
+    "claim_scope": { "const": "exact-candidate-single-cell-pi-integration-conformance-only" },
+    "cell_id": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+$" },
+    "mainframe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "archive_name", "archive_size", "archive_sha256"],
+      "properties": {
+        "version": { "$ref": "#/$defs/version" },
+        "archive_name": { "type": "string", "pattern": "^mainframe-[0-9]+\\.[0-9]+\\.[0-9]+\\.tar\\.gz$" },
+        "archive_size": { "type": "integer", "minimum": 1 },
+        "archive_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "ref",
+        "ref_sha",
+        "commit_sha",
+        "workflow_run_id",
+        "workflow_run_attempt",
+        "binding_mode",
+        "files"
+      ],
+      "properties": {
+        "repository": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+        "ref": { "type": "string", "pattern": "^refs/(?:heads|tags|pull)/[A-Za-z0-9][A-Za-z0-9._/-]*$" },
+        "ref_sha": { "$ref": "#/$defs/git_sha" },
+        "commit_sha": { "$ref": "#/$defs/git_sha" },
+        "workflow_run_id": { "type": "string", "pattern": "^[1-9][0-9]*$" },
+        "workflow_run_attempt": { "type": "integer", "minimum": 1 },
+        "binding_mode": { "const": "git-head-clean-tracked-files" },
+        "files": {
+          "type": "array",
+          "minItems": 10,
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/source_file" }
+        }
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observation_mode", "platform", "commands", "test_override"],
+      "properties": {
+        "observation_mode": { "type": "string", "pattern": "^(?:native|test-override)$" },
+        "platform": { "$ref": "#/$defs/platform" },
+        "commands": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["uname_system", "uname_machine", "getconf_long_bit", "getconf_gnu_libc_version"],
+          "properties": {
+            "uname_system": { "$ref": "#/$defs/nullable_string" },
+            "uname_machine": { "$ref": "#/$defs/nullable_string" },
+            "getconf_long_bit": { "$ref": "#/$defs/nullable_string" },
+            "getconf_gnu_libc_version": { "$ref": "#/$defs/nullable_string" }
+          }
+        },
+        "test_override": { "$ref": "#/$defs/nullable_platform_id" }
+      }
+    },
+    "pi": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "package",
+        "version",
+        "profile",
+        "npm_integrity",
+        "package_json_name",
+        "package_json_sha256",
+        "package_tree_sha256",
+        "runtime_root_name",
+        "runtime_tree_sha256",
+        "runtime_entry",
+        "integrity_input"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/token" },
+        "package": { "type": "string", "pattern": "^@[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+        "version": { "$ref": "#/$defs/version" },
+        "profile": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "npm_integrity": { "$ref": "#/$defs/npm_integrity" },
+        "package_json_name": { "const": "package.json" },
+        "package_json_sha256": { "$ref": "#/$defs/sha256" },
+        "package_tree_sha256": { "$ref": "#/$defs/sha256" },
+        "runtime_root_name": { "const": "node_modules" },
+        "runtime_tree_sha256": { "$ref": "#/$defs/sha256" },
+        "runtime_entry": { "const": ".bin/pi" },
+        "integrity_input": { "$ref": "#/$defs/binding_artifact" }
+      }
+    },
+    "node_runtime": { "$ref": "#/$defs/node_runtime_proof" },
+    "runtime_proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "pre_test_snapshot",
+        "pre_test",
+        "post_test",
+        "package_unchanged",
+        "runtime_unchanged",
+        "result"
+      ],
+      "properties": {
+        "algorithm": { "const": "MAINFRAME-PI-RUNTIME-TREE-SHA256-V1" },
+        "pre_test_snapshot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "file_sha256"],
+          "properties": {
+            "name": { "type": "string", "pattern": "^pi-runtime-pre-[A-Za-z0-9_.-]+-[A-Za-z0-9_.-]+\\.json$" },
+            "file_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "pre_test": { "$ref": "#/$defs/runtime_tree_digests" },
+        "post_test": { "$ref": "#/$defs/runtime_tree_digests" },
+        "package_unchanged": { "const": true },
+        "runtime_unchanged": { "const": true },
+        "result": { "const": "unchanged" }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifest_record_id", "platform_declared", "support", "runtime_state"],
+      "properties": {
+        "manifest_record_id": { "$ref": "#/$defs/token" },
+        "platform_declared": { "type": "boolean" },
+        "support": { "type": "string", "pattern": "^(?:certified|limited|unverified)$" },
+        "runtime_state": { "type": "string", "pattern": "^(?:READY|LIMITED|COMPATIBILITY_UNVERIFIED)$" }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_sha256", "config_sha256", "schema_sha256", "generator_sha256"],
+      "properties": {
+        "contract_sha256": { "$ref": "#/$defs/sha256" },
+        "config_sha256": { "$ref": "#/$defs/sha256" },
+        "schema_sha256": { "$ref": "#/$defs/sha256" },
+        "generator_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "tests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonicalization", "paths", "source_tree_sha256", "plan", "bats_core_commit", "cases"],
+      "properties": {
+        "canonicalization": { "const": "MAINFRAME-PACKAGE-TREE-SHA256-V1" },
+        "paths": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^tests/[A-Za-z0-9_.-]+\\.bats$" }
+        },
+        "source_tree_sha256": { "$ref": "#/$defs/sha256" },
+        "plan": { "const": 45 },
+        "bats_core_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "cases": {
+          "type": "array",
+          "minItems": 45,
+          "maxItems": 45,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/test_case" }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["archive_binding", "test_binding", "tap"],
+      "properties": {
+        "archive_binding": { "$ref": "#/$defs/binding_artifact" },
+        "test_binding": { "$ref": "#/$defs/binding_artifact" },
+        "tap": { "$ref": "#/$defs/tap_artifact" }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "plan", "ok", "executed", "not_ok", "skipped", "skip_details"],
+      "properties": {
+        "status": { "const": "pass" },
+        "plan": { "const": 45 },
+        "ok": { "const": 45 },
+        "executed": { "type": "integer", "minimum": 44, "maximum": 45 },
+        "not_ok": { "const": 0 },
+        "skipped": { "type": "integer", "minimum": 0, "maximum": 1 },
+        "skip_details": {
+          "type": "array",
+          "maxItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/skip_detail" }
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "git_sha": { "type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "token": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
+    "npm_integrity": { "type": "string", "pattern": "^sha512-[A-Za-z0-9+/]+={0,2}$" },
+    "nullable_string": {
+      "anyOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "null" }
+      ]
+    },
+    "nullable_platform_id": {
+      "anyOf": [
+        { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
+        { "type": "null" }
+      ]
+    },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "os", "arch", "system_libc"],
+      "properties": {
+        "id": { "$ref": "#/$defs/token" },
+        "os": { "type": "string", "pattern": "^(?:Darwin|Linux)$" },
+        "arch": { "type": "string", "pattern": "^(?:arm64|x86_64)$" },
+        "system_libc": { "type": "string", "pattern": "^(?:none|glibc)$" }
+      }
+    },
+    "source_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^[A-Za-z0-9._/-]+$" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "binding_artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "file_sha256", "binding_value"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
+        "file_sha256": { "$ref": "#/$defs/sha256" },
+        "binding_value": {
+          "anyOf": [
+            { "$ref": "#/$defs/sha256" },
+            { "$ref": "#/$defs/npm_integrity" }
+          ]
+        }
+      }
+    },
+    "runtime_tree_digests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["package_tree_sha256", "runtime_tree_sha256"],
+      "properties": {
+        "package_tree_sha256": { "$ref": "#/$defs/sha256" },
+        "runtime_tree_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "node_executable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "architectures",
+        "basename",
+        "format",
+        "mode",
+        "sha256",
+        "size_bytes",
+        "type"
+      ],
+      "properties": {
+        "architectures": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^(?:arm64|x86_64)$" }
+        },
+        "basename": { "const": "node" },
+        "format": { "type": "string", "pattern": "^(?:elf|mach-o|mach-o-universal)$" },
+        "mode": { "type": "string", "pattern": "^0[0-7]{3}$" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "size_bytes": { "type": "integer", "minimum": 20, "maximum": 536870912 },
+        "type": { "const": "file" }
+      }
+    },
+    "node_runtime_observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_arch", "observed_process_arch", "executable"],
+      "properties": {
+        "expected_arch": { "type": "string", "pattern": "^(?:arm64|x86_64)$" },
+        "observed_process_arch": { "type": "string", "pattern": "^(?:arm64|x86_64)$" },
+        "executable": { "$ref": "#/$defs/node_executable" }
+      }
+    },
+    "node_runtime_proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "pre_test_binding",
+        "pre_test",
+        "post_test",
+        "executable_unchanged",
+        "process_arch_unchanged",
+        "result"
+      ],
+      "properties": {
+        "algorithm": { "const": "MAINFRAME-NATIVE-EXECUTABLE-BINDING-V1" },
+        "pre_test_binding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "file_sha256"],
+          "properties": {
+            "name": { "type": "string", "pattern": "^pi-node-pre-[A-Za-z0-9_.-]+-[A-Za-z0-9_.-]+\\.json$" },
+            "file_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "pre_test": { "$ref": "#/$defs/node_runtime_observation" },
+        "post_test": { "$ref": "#/$defs/node_runtime_observation" },
+        "executable_unchanged": { "const": true },
+        "process_arch_unchanged": { "const": true },
+        "result": { "const": "unchanged" }
+      }
+    },
+    "tap_artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "file_sha256", "binding_value"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+\\.tap$" },
+        "file_sha256": { "$ref": "#/$defs/sha256" },
+        "binding_value": { "type": "null" }
+      }
+    },
+    "test_case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "source", "name"],
+      "properties": {
+        "number": { "type": "integer", "minimum": 1, "maximum": 45 },
+        "source": { "type": "string", "pattern": "^tests/[A-Za-z0-9_.-]+\\.bats$" },
+        "name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "skip_detail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "test", "reason"],
+      "properties": {
+        "number": { "type": "integer", "minimum": 1, "maximum": 45 },
+        "test": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

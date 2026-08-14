@@ -9,11 +9,9 @@
 # =============================================================================
 set -euo pipefail
 
-# Optionally source MAINFRAME for logging (non-critical, script works standalone)
-if [[ -f "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh" ]]; then
-    # shellcheck source=/dev/null
-    source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh" 2>/dev/null || true
-fi
+# This release-metadata generator must be independent of every installed or
+# inherited MAINFRAME runtime. Sourcing an ambient common.sh can replace helper
+# functions and make the same checkout generate different registry bytes.
 
 # =============================================================================
 # CONFIGURATION
@@ -24,7 +22,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LIB_DIR="$PROJECT_ROOT/lib"
 
 # Project version (from common.sh MAINFRAME_VERSION)
-PROJECT_VERSION="10.1.0"
+PROJECT_VERSION="10.2.0"
 
 # Output defaults
 OUTPUT_PATH="$PROJECT_ROOT/FUNCTIONS.json"
@@ -174,8 +172,13 @@ _json_escape() {
             $'\r') result+='\\r' ;;
             $'\t') result+='\\t' ;;
             *)
-                if [[ "$char" < $'\x20' ]]; then
-                    printf -v char '\\u%04x' "'$char"
+                # Compare by codepoint, not locale collation: macOS/BSD
+                # collation sorts some printable non-ASCII chars (e.g. —, ─)
+                # before 0x20, which corrupted them into \uXXXX escapes.
+                local ord
+                printf -v ord '%d' "'$char" 2>/dev/null || ord=32
+                if (( ord < 32 )); then
+                    printf -v char '\\u%04x' "$ord"
                 fi
                 result+="$char"
                 ;;
@@ -695,6 +698,7 @@ generate_json() {
     local generated
     generated="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     local -A categories_seen
+    local -A unique_names_seen
 
     # Collect all library files (excluding common.sh loader)
     local -a lib_files=()
@@ -707,11 +711,12 @@ generate_json() {
         lib_files+=("$f")
     done
 
-    # Sort library files
+    # Sort library files (LC_ALL=C: byte-order sort keeps regeneration
+    # deterministic across macOS/Linux locales)
     local -a sorted_files=()
     while IFS= read -r f; do
         sorted_files+=("$f")
-    done < <(printf '%s\n' "${lib_files[@]}" | sort)
+    done < <(printf '%s\n' "${lib_files[@]}" | LC_ALL=C sort)
     lib_files=("${sorted_files[@]}")
 
     # First pass: count totals and collect categories
@@ -733,6 +738,15 @@ generate_json() {
             total_libraries=$((total_libraries + 1))
             local cat="${LIB_CATEGORIES[$lib_name]:-other}"
             categories_seen["$cat"]=1
+
+            # Track unique function names (registrations may repeat a name
+            # across libraries; the unique-name count is the canonical
+            # product-state count reported by `mainframe count`). Uses the
+            # same end-anchored definition pattern as the counter above.
+            local fname
+            while IFS= read -r fname; do
+                [[ -n "$fname" ]] && unique_names_seen["$fname"]=1
+            done < <(grep -oE '^[a-zA-Z][a-zA-Z0-9_]*(::[a-zA-Z0-9_]+)*[[:space:]]*\(\)[[:space:]]*\{?[[:space:]]*$' "$lib_file" 2>/dev/null | sed 's/[[:space:]]*()[[:space:]]*{\?[[:space:]]*$//')
         fi
     done
 
@@ -747,6 +761,10 @@ generate_json() {
     categories_json+="]"
 
     # Start building JSON output with stats section
+    # Naming: 'registrations' counts every function definition (one name may
+    # be registered by several libraries); 'unique_functions' counts distinct
+    # names and is the canonical product-state count. 'total_functions' is
+    # retained for backward compatibility and equals 'registrations'.
     printf '{'
     _push_indent
     _nl
@@ -758,6 +776,12 @@ generate_json() {
     _nl
     printf '"stats":'; _sep; printf '{'
     _push_indent
+    _nl
+    printf '"unique_functions":'; _sep; printf '%d' "${#unique_names_seen[@]}"
+    printf ','
+    _nl
+    printf '"registrations":'; _sep; printf '%d' "$total_functions"
+    printf ','
     _nl
     printf '"total_functions":'; _sep; printf '%d' "$total_functions"
     printf ','

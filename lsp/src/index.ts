@@ -227,8 +227,8 @@ function getCurrentFunctionCall(
   const offset = document.offsetAt(position);
 
   // Search backwards for function name (simple heuristic)
-  let searchStart = Math.max(0, offset - 200);
-  let searchText = text.slice(searchStart, offset);
+  const searchStart = Math.max(0, offset - 200);
+  const searchText = text.slice(searchStart, offset);
 
   // Find last function-like word before cursor
   const matches = searchText.match(/\b([a-z_][a-z0-9_]*)\s+[^;\n]*$/i);

@@ -1,5 +1,10 @@
 # MAINFRAME v6.0 Pipeline Paradigms
 
+> **Historical v6 guide.** Counts, runtime requirements, and examples in this
+> document preserve an earlier product snapshot and are not current guarantees.
+> Use the root README, installation guide, and generated registry for supported
+> behavior.
+
 > "The power of the shell is in the pipe." - Doug McIlroy
 
 This document covers the lethal shell pipeline patterns available in MAINFRAME v6.0.

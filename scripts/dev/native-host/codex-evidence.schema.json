@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/native-host-codex-evidence-v1.json",
+  "title": "MAINFRAME Codex native-host execution certification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "certification",
+    "host",
+    "host_version",
+    "host_package_integrity",
+    "host_platform_package",
+    "host_platform_version",
+    "host_platform_package_integrity",
+    "host_package_tree_sha256",
+    "host_launcher_sha256",
+    "host_executable_sha256",
+    "mainframe_version",
+    "archive_sha256",
+    "archive_origin",
+    "hook_config_sha256",
+    "fixture_sha256",
+    "os",
+    "arch",
+    "system_libc",
+    "source_git_commit",
+    "source_git_dirty",
+    "credential_mode",
+    "provider_requests_per_run",
+    "provider_requests_total",
+    "control_executions",
+    "protected_executions",
+    "audit",
+    "certified_at"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "certification": { "const": "execution-certified" },
+    "host": { "const": "codex" },
+    "host_version": { "const": "0.146.0" },
+    "host_package_integrity": { "const": "sha512-yG3sPWNda/2YAIQIDq9MrrjoCTIQ7rxYM5IasrG3VBcuhCLTkgeg/JzqmJq1V98RE4MJ5jCxDXXQlOjrditFRw==" },
+    "host_platform_package": { "type": "string", "pattern": "^@openai/codex-(darwin|linux)-(arm64|x64)$" },
+    "host_platform_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+-(darwin|linux)-(arm64|x64)$" },
+    "host_platform_package_integrity": { "$ref": "#/$defs/npmIntegrity" },
+    "host_package_tree_sha256": { "$ref": "#/$defs/sha256" },
+    "host_launcher_sha256": { "const": "134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477" },
+    "host_executable_sha256": { "$ref": "#/$defs/sha256" },
+    "mainframe_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "archive_sha256": { "$ref": "#/$defs/sha256" },
+    "archive_origin": {
+      "anyOf": [
+        { "const": "workspace-build" },
+        { "const": "external-input" }
+      ]
+    },
+    "hook_config_sha256": { "$ref": "#/$defs/sha256" },
+    "fixture_sha256": { "const": "adb6f847dd47e9c8e765d36bfd348d0ea7c345fffcfcdbe660593ba92d75b77d" },
+    "os": {
+      "anyOf": [
+        { "const": "Darwin" },
+        { "const": "Linux" }
+      ]
+    },
+    "arch": {
+      "anyOf": [
+        { "const": "arm64" },
+        { "const": "aarch64" },
+        { "const": "x86_64" }
+      ]
+    },
+    "system_libc": {
+      "anyOf": [
+        { "const": "none" },
+        { "const": "glibc" },
+        { "const": "musl" }
+      ]
+    },
+    "source_git_commit": {
+      "anyOf": [
+        { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        { "const": "unknown" }
+      ]
+    },
+    "source_git_dirty": {
+      "anyOf": [
+        { "type": "boolean" },
+        { "type": "null" }
+      ]
+    },
+    "credential_mode": { "const": "codex-loopback-responses-no-external-credentials" },
+    "provider_requests_per_run": { "const": 2 },
+    "provider_requests_total": { "const": 4 },
+    "control_executions": { "const": 1 },
+    "protected_executions": { "const": 0 },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["host", "event", "tool", "risk", "rule", "decision", "records", "mode"],
+      "properties": {
+        "host": { "const": "codex" },
+        "event": { "const": "PreToolUse" },
+        "tool": { "const": "Bash" },
+        "risk": { "const": "high" },
+        "rule": { "const": "terraform-destroy" },
+        "decision": { "const": "deny" },
+        "records": { "const": 1 },
+        "mode": { "const": "600" }
+      }
+    },
+    "certified_at": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "anyOf": [
+        {
+          "properties": {
+            "os": { "const": "Darwin" },
+            "arch": { "const": "arm64" },
+            "system_libc": { "const": "none" },
+            "host_platform_package": { "const": "@openai/codex-darwin-arm64" },
+            "host_platform_version": { "const": "0.146.0-darwin-arm64" },
+            "host_platform_package_integrity": { "const": "sha512-nb61yX4r5L6Z0dlC4o3u0GAK1YCd4TUvjaB382bajDoh84V+uv2hTBIVZ++fgXWV9yoeuNrNnNcn7GoTGOe2Tg==" },
+            "host_package_tree_sha256": { "const": "a262d29e1dae17e6913b742a9d6b16ecf640cd66831100e4af2ee7e1ff40c99f" },
+            "host_executable_sha256": { "const": "ae1d3ffe6d48aec6a4dc3f50e7eb8e0d11962485a6a9406c5a7012139383da02" }
+          }
+        },
+        {
+          "properties": {
+            "os": { "const": "Darwin" },
+            "arch": { "const": "x86_64" },
+            "system_libc": { "const": "none" },
+            "host_platform_package": { "const": "@openai/codex-darwin-x64" },
+            "host_platform_version": { "const": "0.146.0-darwin-x64" },
+            "host_platform_package_integrity": { "const": "sha512-hTQR5jy/ObfTf1MDnuJCZJAe+SljKE8DDwQWN6lDFgjsPhMQz852U2tILt8Ei+G5GkQSzemHYKl2AYPwW0Y5xw==" },
+            "host_package_tree_sha256": { "const": "5c49a068bee5bf68ecdecf856eeef395bd9bf6e0691159843237fe50859590d2" },
+            "host_executable_sha256": { "const": "544e2df9e6f09b3f1ceb0405879c83dd099ec015aeed942bb091ff0f29f60dc2" }
+          }
+        },
+        {
+          "properties": {
+            "os": { "const": "Linux" },
+            "arch": { "const": "aarch64" },
+            "system_libc": {
+              "anyOf": [
+                { "const": "glibc" },
+                { "const": "musl" }
+              ]
+            },
+            "host_platform_package": { "const": "@openai/codex-linux-arm64" },
+            "host_platform_version": { "const": "0.146.0-linux-arm64" },
+            "host_platform_package_integrity": { "const": "sha512-qiYDxkkEFnXG7joadJW6Q+XcgyDXCpGdpa9nk/c+i0gEomur1j7bHvx12NfWWCF/y8Tqri6ay+FLuC2MjdehtA==" },
+            "host_package_tree_sha256": { "const": "2ad86aeb2a1954439ada85b1914ab953690d86f344e2afe328e3255a24422502" },
+            "host_executable_sha256": { "const": "cb5e8cb8a333a408ce6adbe0d4fad1845c69772c2216af7c1f88c98a11460dc6" }
+          }
+        },
+        {
+          "properties": {
+            "os": { "const": "Linux" },
+            "arch": { "const": "x86_64" },
+            "system_libc": {
+              "anyOf": [
+                { "const": "glibc" },
+                { "const": "musl" }
+              ]
+            },
+            "host_platform_package": { "const": "@openai/codex-linux-x64" },
+            "host_platform_version": { "const": "0.146.0-linux-x64" },
+            "host_platform_package_integrity": { "const": "sha512-fswvyGprAPCMiOEue/7MKMk7pCjh9kZIJfJX5i9atmfnmGYbYCcUhZsEH9LEP0+0t5xyPqDbfNXY7NSxIVuXxA==" },
+            "host_package_tree_sha256": { "const": "f52c7d5b545d38091e3acff5eb95bf426a67647d598b484f938411e2a2e9f21c" },
+            "host_executable_sha256": { "const": "2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04" }
+          }
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "npmIntegrity": { "type": "string", "pattern": "^sha512-[A-Za-z0-9+/]+={0,2}$" }
+  }
+}

@@ -4,8 +4,8 @@ MAINFRAME Utility Functions - Python wrappers for common utilities.
 Wraps functions from pure-util.sh, common.sh, datetime.sh, and crypto.sh.
 """
 
-from .core import call_function, MainframeFunctionError
-
+from .core import MainframeFunctionError
+from .core import _legacy_call_function as call_function
 
 # =============================================================================
 # UUID / RANDOM
@@ -197,7 +197,7 @@ def log_info(message: str) -> str:
     Example:
         log_info("Processing started")
     """
-    output, _ = call_function("log_info", message, capture_stderr=True)
+    output, _ = call_function("log::info", message, capture_stderr=True)
     return output
 
 
@@ -214,7 +214,7 @@ def log_warn(message: str) -> str:
     Example:
         log_warn("Disk space low")
     """
-    output, _ = call_function("log_warn", message, capture_stderr=True)
+    output, _ = call_function("log::warn", message, capture_stderr=True)
     return output
 
 
@@ -231,7 +231,7 @@ def log_error(message: str) -> str:
     Example:
         log_error("Connection failed")
     """
-    output, _ = call_function("log_error", message, capture_stderr=True)
+    output, _ = call_function("log::error", message, capture_stderr=True)
     return output
 
 

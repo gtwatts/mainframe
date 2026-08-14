@@ -1,435 +1,205 @@
-# MAINFRAME vs Alternatives: Feature Comparison
+# Why MAINFRAME
 
-> **Comprehensive comparison of MAINFRAME v6.0 against plain bash and Python for AI agent workflows**
+**Your coding agents may change. Your safety policy and working memory should
+not have to start over each time.**
 
-## Quick Comparison Matrix
+MAINFRAME is a user-owned local control layer for supported shell-capable
+coding agents. It adds durable handoffs, pre-execution shell guardrails,
+discoverable structured functions, and readiness evidence without replacing
+the agent, the user's Bash or zsh workflow, or the host's native controls.
 
-| Feature | MAINFRAME | Plain Bash | Python Script |
-|---------|-----------|------------|---------------|
-| **Setup Time** | 30 seconds | 0 | 2-5 minutes |
-| **Dependencies** | Zero | Zero | pip, venv, interpreter |
-| **Token Efficiency** | 33 tokens/task | 184 tokens/task | 80 tokens/task |
-| **First-Run Success** | 96% | 68% | 85% |
-| **Execution Speed** | 20-72x faster | Baseline | 5-10x slower |
-| **JSON Handling** | Native | Requires jq | Native |
-| **Structured Output** | USOP v3.0 | None | Manual |
-| **Path Traversal Safety** | Built-in | Manual | Manual |
-| **IDE/LSP Support** | Full | Basic | Full |
-| **Agent Working Memory** | Built-in (AWM) | None | Manual |
-| **Agent State Persistence** | Built-in | None | Manual |
-| **Execution Sandboxing** | Built-in | None | Needs containers |
-| **Task Graphs/DAGs** | Built-in | None | Needs library |
-| **Event/Hook System** | Built-in | None | Needs library |
-| **Testing/Mocking** | Built-in | None | Needs pytest |
-| **MCP Server** | Included | None | Needs implementation |
+The shortest mental model is:
 
----
+- **Seatbelt:** classify supported shell routes and deny configured destructive
+  patterns before they execute.
+- **Notebook:** preserve discoveries, checkpoints, progress, and bounded
+  handoffs outside an agent conversation.
+- **Toolbox:** let an agent search and invoke registered functions through a
+  small structured surface instead of continually rebuilding shell glue.
 
-## Detailed Breakdown
+MAINFRAME does not change a model's weights or reasoning ability. It improves
+the operating environment available to that model.
 
-### 1. Setup & Dependencies
+## The gap MAINFRAME fills
 
-**MAINFRAME:**
+Modern coding-agent hosts may already provide permissions, hooks, memory, or
+an operating-system sandbox. Those features remain valuable and should stay
+enabled. The practical problem is that their configuration, state, semantics,
+and evidence are specific to each host.
+
+MAINFRAME supplies one local layer the user can inspect and retain across the
+supported hosts:
+
+1. **A policy outside the prompt.** “Be careful” is advice. A supported native
+   pre-tool hook can make a configured denial before the shell action runs.
+2. **Memory outside the context window.** Agent Working Memory stores explicit
+   project discoveries and handoffs in private local state that a fresh
+   process can retrieve.
+3. **An interface outside ad hoc shell text.** Registry search, help,
+   structured results, and bounded invocation give agents a more predictable
+   substrate than inventing every operation from scratch.
+4. **Proof outside installation success.** Doctor, setup, protection status,
+   compatibility manifests, and exact-archive evidence distinguish “files are
+   present” from “this supported integration is ready.”
+
+## How the layers differ
+
+These layers solve different problems and are strongest together.
+
+| Layer | Primary job | Durable cross-session handoff | Semantic shell guardrail | Host isolation |
+|---|---|---:|---:|---:|
+| Plain Bash or zsh | Execute commands as the user | Manual | No | No |
+| Coding-agent native controls | Apply that host's permissions, hooks, memory, or sandbox | Host-specific | Host-specific | Host-specific |
+| MAINFRAME | Carry user-owned policy, AWM, structured tools, and evidence across supported hosts | Yes | On explicitly supported and activated routes | No |
+| Container, VM, or separate OS user | Bound filesystem, process, and network authority | No | No | Yes |
+
+MAINFRAME is defense in depth. Use a container, VM, restricted account, and the
+agent host's native sandbox when the workload needs an operating-system
+boundary. MAINFRAME is not a boundary against malicious code or another
+hostile process running as the same user.
+
+## What “safer” means
+
+For an explicitly onboarded, supported route, MAINFRAME can:
+
+- normalize and classify a shell action through one generated policy;
+- block configured high-risk and critical patterns before execution;
+- fail closed when the policy, protected Bash, or required dependency cannot
+  be authenticated;
+- require a human terminal for MAINFRAME and Pi lifecycle mutations;
+- preserve unrelated host configuration during activation and removal; and
+- record bounded decision metadata without putting raw command text into the
+  default Pi audit record.
+
+It does **not** mean that every dangerous command is detectable, every shell
+route is intercepted, a low-risk label proves a command is harmless, or a
+same-user hostile process is contained. The exact security boundary is in
+[SECURITY.md](../SECURITY.md).
+
+## What “better” means
+
+MAINFRAME does not claim that an underlying model becomes generally smarter,
+faster, or more accurate. It gives supported agents better operational
+conditions:
+
+- explicit discoveries and decisions survive context loss;
+- fresh sessions can resume from a bounded handoff;
+- long tasks can checkpoint progress instead of reconstructing it from chat;
+- registered functions provide inspectable help and structured output; and
+- the same project memory and policy concepts remain available when the user
+  changes supported agent hosts.
+
+The deterministic harness proves these mechanisms execute. A real-provider
+comparative study is still required before claiming a measured improvement in
+agent outcomes. See [Agent Impact Evaluation](AGENT_IMPACT_EVALUATION.md) and
+[Claims and Benchmarks](CLAIMS_AND_BENCHMARKS.md).
+
+## Pi: the native first-party experience
+
+Pi is MAINFRAME's most integrated current path. The first-party package adds a
+focused tool surface, the `mainframe` skill and slash command, Agent Working
+Memory, canonical Bash-policy classification, a protected Bash wrapper, and
+transactional lifecycle management.
+
+Start outside Pi with read-only diagnosis and a no-write preview:
+
 ```bash
-# One-time setup (30 seconds)
-git clone https://github.com/gtwatts/mainframe.git ~/.mainframe
-echo 'source "$HOME/.mainframe/lib/common.sh"' >> ~/.bashrc
-source ~/.bashrc
-# Done. 4,000+ functions available.
+mainframe pi status
+mainframe pi doctor
+mainframe pi install --dry-run
 ```
 
-**Plain Bash:**
+After reviewing the preview, a person may activate it from that external
+terminal:
+
 ```bash
-# No setup needed, but...
-# Every task requires writing from scratch
-# External tools (jq, yq, curl) may not be installed
+mainframe pi install --yes
 ```
 
-**Python:**
+Reload or restart Pi, then prove the live process rather than merely the files
+on disk:
+
+```text
+/mainframe doctor
+```
+
+External `mainframe pi doctor` never starts Pi and cannot claim that a running
+Pi process loaded the package. Compatibility is exact by MAINFRAME version, Pi
+package and version, and platform; unknown combinations remain unverified. See
+[Pi compatibility](COMPATIBILITY.md#pi-package) for the current
+matrix.
+
+## Other supported coding-agent hosts
+
+MAINFRAME also has explicit-consent project onboarding and native shell-policy
+adapters for OpenAI Codex, Claude Code, GitHub Copilot CLI, and Gemini CLI.
+Discovery does not select a host or modify the project:
+
 ```bash
-# Every project needs setup
-python3 -m venv .venv
-source .venv/bin/activate
-pip install requests pyyaml jsonschema  # 30+ MB
-# Create __init__.py, requirements.txt, setup.py...
+mainframe setup --project .
 ```
 
-**Winner: MAINFRAME** - Zero dependencies, instant availability, works everywhere bash 4.0+ exists. 4,000+ functions across 117 libraries.
+The report provides an exact dry-run command for each candidate. After a user
+chooses and onboards one host, readiness remains independently inspectable:
 
----
-
-### 2. JSON Operations
-
-**MAINFRAME:**
 ```bash
-# Create nested JSON with proper types
-json_object "name=John" "age:number=30" "active:bool=true" \
-  "address:object=$(json_object "city=NYC" "zip:number=10001")"
-
-# Parse JSON without jq
-json_get '{"user":{"name":"John"}}' "user.name"  # Returns: John
+mainframe protect status --project .
+mainframe launch HOST --project . --dry-run
 ```
 
-**Plain Bash:**
+Support is versioned and route-specific. A host name in the repository is not
+a universal claim about every client version, installation layout, platform,
+or tool route. See the [integration matrix](INTEGRATION_MATRIX.md).
+
+## A two-minute local evaluation
+
+Start with the commands that cannot write project or agent configuration:
+
 ```bash
-# Manual string escaping - error prone
-printf '{"name":"%s","age":%d}' "$(echo "$name" | sed 's/"/\\"/g')" "$age"
-
-# Or require jq (not always installed)
-echo "$json" | jq -r '.user.name'  # Fails if jq not present
+mainframe doctor
+mainframe setup --project .
+mainframe pi doctor                 # when Pi is installed
+mainframe protect status --project .
 ```
 
-**Python:**
-```python
-import json
-data = {"name": "John", "age": 30}
-print(json.dumps(data))
-# Clean, but requires Python interpreter
-```
+Then inspect the two mechanisms that distinguish MAINFRAME from a raw shell:
 
-**Winner: MAINFRAME** - Native JSON without external tools, proper type handling, no escaping bugs.
-
----
-
-### 3. Structured Output (USOP)
-
-**MAINFRAME:**
 ```bash
-export MAINFRAME_OUTPUT=json
+mainframe search 'create json object'
+mainframe help validate_path_safe
 
-# Every operation returns parseable JSON
-usop_success "file created" --hint "verify_file"
-# {"ok":true,"data":"file created","hint":"verify_file","meta":{"elapsed_ms":2}}
-
-usop_error "E_NOT_FOUND" "Config missing" --suggestion "run init"
-# {"ok":false,"error":{"code":"E_NOT_FOUND","msg":"Config missing","suggestion":"run init"}}
-
-# Progress for long operations
-usop_progress "Downloading" 45 100 "bytes"
-# {"ok":true,"type":"progress","current":45,"total":100,"unit":"bytes","percent":"45%"}
+sid=$(mainframe awm init evaluation --namespace local-demo)
+mainframe awm discovery --session "$sid" \
+  'MAINFRAME handoff evaluation started' --importance high
+mainframe awm summary --session "$sid"
 ```
 
-**Plain Bash:**
-```bash
-# No standard output format
-echo "file created"  # AI has to guess structure
-echo "Error: something failed"  # Unparseable
-```
+The AWM commands intentionally create private local MAINFRAME state; the
+doctor, setup, status, search, and help commands are inspection paths.
 
-**Python:**
-```python
-# Must define format manually
-import json
-print(json.dumps({"ok": True, "data": "file created"}))
-# Requires discipline to maintain consistency
-```
+## When MAINFRAME is a good fit
 
-**Winner: MAINFRAME** - USOP provides a protocol that AI agents can reliably parse.
+Use MAINFRAME when:
 
----
+- coding agents run commands on a real macOS or Linux workstation;
+- work spans long sessions, context resets, or multiple supported agents;
+- the user wants a reviewable policy in addition to a host's native controls;
+- predictable structured shell functions reduce repeated glue code; or
+- activation, readiness, and removal need explicit evidence.
 
-### 4. Path Safety & Security
+Use stronger isolation instead when:
 
-**MAINFRAME:**
-```bash
-# Built-in protection against directory traversal
-validate_path_safe "$user_input" "/safe/base" || die 1 "Attack blocked"
+- the repository or generated code may be malicious;
+- secrets or unrelated host data must be inaccessible by construction;
+- arbitrary child processes must be contained; or
+- the exact agent, version, platform, or execution route is not certified.
 
-# Safe filename sanitization
-safe_name=$(sanitize_filename "../../etc/passwd")  # Returns: etc_passwd
+## The product promise
 
-# Command injection prevention
-validate_command_safe "$cmd" || die 1 "Injection attempt"
-```
+The defensible promise is not “MAINFRAME makes agents safe.” It is:
 
-**Plain Bash:**
-```bash
-# Must implement manually (most don't)
-realpath "$user_input"  # Still allows traversal
-# No built-in sanitization
-```
+> **MAINFRAME helps users trust supported local coding agents with more work by
+> giving those agents guardrails, continuity, structured tools, and proof.**
 
-**Python:**
-```python
-import os.path
-# Manual implementation needed
-real_path = os.path.realpath(user_input)
-if not real_path.startswith(safe_base):
-    raise ValueError("Path traversal detected")
-# Requires awareness of the vulnerability
-```
-
-**Winner: MAINFRAME** - Security-by-default for all path operations.
-
----
-
-### 5. Agent Working Memory (AWM)
-
-**MAINFRAME:**
-```bash
-# Initialize a persistent memory session
-session_id=$(awm_init)
-
-# Store discoveries and state OUTSIDE the context window
-awm_discovery "API uses JWT authentication"
-awm_checkpoint "target_file" "/src/auth/login.ts"
-awm_log "info" "Starting security scan"
-awm_progress "scan" 45 100  # Track progress
-
-# Later, read back context-efficient summaries
-summary=$(awm_summary --tokens 2000)  # Compressed for context budget
-target=$(awm_get "target_file")
-
-# Sub-agent inheritance
-child_id=$(awm_init --parent "$session_id" --namespace "security")
-```
-
-**Plain Bash:**
-```bash
-# Manual file management
-echo "deploy_api" > /tmp/state/current_task
-# No atomic writes, no inheritance, no compression, no token budgeting
-```
-
-**Python:**
-```python
-import json
-import shelve
-
-with shelve.open('state') as db:
-    db['current_task'] = 'deploy_api'
-# Works, but requires explicit implementation
-# No context window awareness, no sub-agent support
-```
-
-**Winner: MAINFRAME** - Purpose-built Agent Working Memory with session persistence, sub-agent inheritance, automatic compression, and token budget awareness.
-
----
-
-### 6. Execution Sandboxing
-
-**MAINFRAME:**
-```bash
-# Enable sandbox with constraints
-sandbox_enable --root "/project" --timeout 300 --dry-run
-
-# Define access boundaries
-sandbox_allow_write "/project/output"
-sandbox_deny_write "/project/.env"
-sandbox_deny_network
-
-# Safe execution
-sandbox_exec rm -rf "$user_path"  # Blocked if outside sandbox
-sandbox_write "$file" "$content"  # Validated before write
-```
-
-**Plain Bash:**
-```bash
-# No built-in sandboxing
-# Must use external tools (firejail, bubblewrap, docker)
-# Complex to set up correctly
-```
-
-**Python:**
-```python
-# Requires containers or complex setup
-import subprocess
-subprocess.run(['docker', 'run', '--rm', '-v', '/safe:/safe', 'python', ...])
-# Heavy overhead
-```
-
-**Winner: MAINFRAME** - Application-level sandboxing without container overhead.
-
----
-
-### 7. Task DAG Execution
-
-**MAINFRAME:**
-```bash
-# Define tasks with dependencies
-task_define "build" --cmd "npm run build"
-task_define "test" --depends "build" --cmd "npm test"
-task_define "deploy" --depends "test" --cmd "deploy.sh"
-
-# Execute with automatic dependency resolution
-task_run_graph "deploy"
-# Runs: build -> test -> deploy (topological order)
-```
-
-**Plain Bash:**
-```bash
-# Must implement dependency logic manually
-# Or use make (different syntax, external tool)
-make deploy  # Requires Makefile
-```
-
-**Python:**
-```python
-# Requires additional libraries
-from prefect import task, flow
-# Or: pip install dask, luigi, airflow
-# Significant complexity
-```
-
-**Winner: MAINFRAME** - Native task graphs without external dependencies.
-
----
-
-### 8. Event/Hook System
-
-**MAINFRAME:**
-```bash
-# Register event handlers
-hook_on "file:changed" 'lint_file "$HOOK_PATH"'
-hook_on "task:complete" 'notify "Task $HOOK_TASK done"'
-hook_on "error:*" 'log_error "Error in $HOOK_SOURCE"'
-
-# Emit events
-event_emit "file:changed" --path "/src/index.ts"
-event_emit "task:complete" --task "deploy"
-```
-
-**Plain Bash:**
-```bash
-# No built-in event system
-# Must use trap (limited) or implement from scratch
-```
-
-**Python:**
-```python
-# Requires library
-from blinker import signal
-# Or: pip install PyDispatcher, events
-```
-
-**Winner: MAINFRAME** - Flexible event system for agent lifecycle management.
-
----
-
-### 9. Testing & Mocking
-
-**MAINFRAME:**
-```bash
-# Mock external commands
-mock_function "curl" 'echo "mocked response"'
-mock_function "date" 'echo "2024-01-15"'
-
-# Run tests with assertions
-assert_equals "$(my_function)" "expected"
-assert_contains "$output" "success"
-assert_file_exists "/path/to/file"
-assert_exit_code 0 my_command arg1
-
-# Cleanup
-mock_restore "curl"
-```
-
-**Plain Bash:**
-```bash
-# Must write custom test harness
-# Or use bats (external tool)
-# No built-in mocking
-```
-
-**Python:**
-```python
-# Requires pytest and mock
-import pytest
-from unittest.mock import patch
-
-@patch('requests.get')
-def test_api(mock_get):
-    mock_get.return_value.json.return_value = {"status": "ok"}
-    # ...
-```
-
-**Winner: Tie** - Both MAINFRAME and Python have testing capabilities; MAINFRAME's is built-in.
-
----
-
-### 10. LSP / IDE Support
-
-**MAINFRAME:**
-```
-- Smart completion for 4,000+ functions
-- Rich hover documentation with examples
-- Signature help as you type
-- Go-to-definition (jumps to library source)
-- Document symbols (outline of function usage)
-- Works with VS Code, Neovim, any LSP-compatible editor
-```
-
-**Plain Bash:**
-```
-- Basic syntax highlighting
-- Generic bash-language-server (limited)
-- No function-specific documentation
-```
-
-**Python:**
-```
-- Excellent LSP support (Pylance, Pyright)
-- Rich IDE integration
-- Type checking, refactoring, etc.
-```
-
-**Winner: Tie** - MAINFRAME now matches Python's LSP experience for bash functions.
-
----
-
-## Token Efficiency Comparison
-
-| Task | Plain Bash | Python | MAINFRAME | Savings |
-|------|------------|--------|-----------|---------|
-| Create JSON object | 180 tokens | 60 tokens | 25 tokens | 86% vs bash |
-| HTTP GET with retry | 280 tokens | 80 tokens | 50 tokens | 82% vs bash |
-| Parse CSV file | 200 tokens | 40 tokens | 40 tokens | 80% vs bash |
-| Validate user input | 220 tokens | 90 tokens | 35 tokens | 84% vs bash |
-| Date arithmetic | 150 tokens | 50 tokens | 30 tokens | 80% vs bash |
-| **Average** | **184 tokens** | **64 tokens** | **33 tokens** | **82% vs bash** |
-
----
-
-## When to Use Each
-
-### Use MAINFRAME When:
-- Building AI agents that interact with the OS through bash
-- You need zero-dependency solutions
-- Token efficiency is critical
-- You need structured output for AI parsing
-- Security and safety are priorities
-- Operating in constrained environments (containers, CI/CD)
-
-### Use Plain Bash When:
-- Writing simple one-off scripts
-- Maximum portability to non-bash shells matters
-- Learning bash fundamentals
-
-### Use Python When:
-- Complex data processing requiring NumPy/Pandas
-- Machine learning workflows
-- Web applications (Django, FastAPI)
-- When bash isn't available
-
----
-
-## Summary
-
-| Dimension | MAINFRAME Advantage |
-|-----------|---------------------|
-| **For AI Agents** | Purpose-built with USOP, Agent Working Memory (AWM), sandboxing |
-| **Setup** | 30 seconds, zero dependencies |
-| **Safety** | Path validation, injection prevention built-in |
-| **Efficiency** | 82% token reduction vs plain bash |
-| **Reliability** | 96% first-run success vs 68% for raw bash |
-| **Speed** | 20-72x faster than external tools |
-| **IDE Support** | Full LSP with completion, hover, signatures |
-| **Memory** | Persistent external memory survives context limits |
-
-**MAINFRAME v6.0: 4,000+ functions | 117 libraries | 6,500+ tests**
-
-**MAINFRAME is the runtime layer that makes bash safe, efficient, and AI-friendly.**
-
----
-
-*"Plain bash is a sharp knife. MAINFRAME is that knife with a handle."*
+Installation availability and public release status are intentionally stated
+in one place: [Install and prove it works](../README.md#install-and-prove-it-works).

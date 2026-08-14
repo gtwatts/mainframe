@@ -1,6 +1,10 @@
 # MAINFRAME - Bash Scripting Instructions
 
-> Add this to your `~/.claude/CLAUDE.md` to give Claude Code instant access to 4,458 bash functions.
+> This is a manual instruction template. Prefer the merge-safe, project-scoped
+> `mainframe onboard --host claude-code --project .` flow, which installs the
+> matching shell-policy hook and Agent Working Memory protocol after explicit
+> consent. Use `mainframe search` and `mainframe help` for the current function
+> surface rather than copying a static count.
 
 ## Bash Scripting with MAINFRAME
 
@@ -19,7 +23,9 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 # MAINFRAME_LAZY=1 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 ```
 
-This gives you access to **3,821+ pure bash functions** across **152 libraries** with zero external dependencies.
+This loads the registry-described MAINFRAME surface. The core runtime is Bash;
+the supported safety-ready installation requires `jq`, and optional
+integrations require the host commands they wrap.
 
 MAINFRAME also includes **Agent Working Memory (AWM)** - persistent memory that survives context limits.
 
@@ -205,32 +211,32 @@ health::serve 8081
 For long-running tasks or multi-turn sessions, use AWM to persist state outside the context window:
 
 ```bash
-# Start a persistent memory session
-session_id=$(awm_init)
+# Read bounded task context from the existing private project mapping.
+mainframe work "current task" --project . --tokens 1200
 
-# Store discoveries (survives context limits)
-awm_discovery "Auth uses JWT tokens"
-awm_checkpoint "api_url" "https://api.example.com"
-awm_log "info" "Starting task"
-awm_progress "scan" 5 100
+# Initialize or renew only after explicit human confirmation, then rerun work.
+mainframe awm project ensure --project . --discover-root
+mainframe awm project checkpoint --project . --discover-root \
+  current_phase implementation --importance high
+mainframe awm project discovery --project . --discover-root \
+  "Auth uses refresh tokens" --importance high
 
-# Resume in a new session
-awm_resume "$session_id"
-summary=$(awm_summary --tokens 2000)
-
-# Sub-agent inheritance
-child_id=$(awm_init --parent "$session_id")
+# Prepare a bounded handoff before compaction or delegation.
+mainframe awm project handoff prepare --project . --discover-root \
+  next-agent --tokens 1200 --format prompt
 ```
 
 ## Full Function Reference
 
-For complete function signatures and all 3,821+ functions:
+For current canonical function signatures:
 
 ```bash
-cat ~/.mainframe/CHEATSHEET.md
+mainframe search "json object"
+mainframe help json_object
 ```
 
-Or read it before writing complex bash logic.
+The generated `FUNCTIONS.json` registry is the machine-readable source of
+truth for counts, ownership, and metadata.
 
 ## Best Practices
 

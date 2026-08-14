@@ -37,11 +37,14 @@ mainframe quickref --search "hash"  # Search all functions
 
 ## Important Rules
 
-1. **Do not read MAINFRAME source** - use functions directly
-2. **Check individual category files** for exact signatures
-3. **Zero dependencies** - pure bash (openssl for HTTPS)
-4. **Bash 4.0+ required**
+1. Use `mainframe search` and `mainframe help` for the current canonical owner
+   and signature instead of relying on copied examples.
+2. Check individual category files for additional usage guidance.
+3. Bash 4.4+ is required. The supported safety-ready installation also
+   requires `jq`; optional integrations require the host commands they wrap.
+4. Treat the generated `FUNCTIONS.json` registry as the source of truth for
+   current function and library counts.
 
 ---
 
-*4,230+ functions | 120 libraries | Zero dependencies*
+*Current counts and ownership are generated in `FUNCTIONS.json`.*

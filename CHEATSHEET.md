@@ -341,8 +341,8 @@ awm_team_namespace                    # auto-set namespace to team-{name}
 
 1. **Do not read MAINFRAME source** - use functions directly
 2. **Check reference files** for exact signatures
-3. **Zero dependencies** - pure bash (openssl for HTTPS)
-4. **Bash 4.0+ required**
+3. **Check optional dependencies** - integrations may require the host tools they wrap
+4. **Bash 4.4+ required**
 
 ---
 
@@ -355,6 +355,6 @@ awm_team_namespace                    # auto-set namespace to team-{name}
 
 ---
 
-*3,821+ functions | 152 libraries | Zero dependencies | 20-72x faster*
+*Generated function registry | Bash core | Optional host-tool integrations*
 
 **YO JOE!**

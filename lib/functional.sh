@@ -13,6 +13,11 @@
 [[ -n "${_MAINFRAME_FUNCTIONAL_LOADED:-}" ]] && return 0
 readonly _MAINFRAME_FUNCTIONAL_LOADED=1
 
+# The core string predicates have one canonical implementation in pure-string.
+# Source that dependency explicitly so functional.sh remains safe to use on its
+# own without redefining public names based on loader order.
+source "${BASH_SOURCE[0]%/*}/pure-string.sh"
+
 # =============================================================================
 # COMMON PREDICATES
 # =============================================================================
@@ -45,18 +50,6 @@ is_negative() {
 # Usage: is_zero 0 && echo "yes"
 is_zero() {
     (($1 == 0))
-}
-
-# Check if string is empty
-# Usage: is_empty "" && echo "yes"
-is_empty() {
-    [[ -z "$1" ]]
-}
-
-# Check if string is not empty
-# Usage: is_not_empty "hello" && echo "yes"
-is_not_empty() {
-    [[ -n "$1" ]]
 }
 
 # Check if value is numeric

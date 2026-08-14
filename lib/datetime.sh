@@ -10,6 +10,12 @@
 
 # Prevent double-sourcing
 [[ -n "${_MAINFRAME_DATETIME_LOADED:-}" ]] && return 0
+
+# pure-util.sh owns the canonical dual-shape format_date implementation.
+# Load it explicitly so direct `source lib/datetime.sh` users receive the same
+# API as users loading through common.sh.
+source "${BASH_SOURCE[0]%/*}/pure-util.sh"
+
 readonly _MAINFRAME_DATETIME_LOADED=1
 
 # =============================================================================
@@ -267,13 +273,6 @@ format_epoch() {
 format_iso() {
     local epoch="${1:--1}"
     printf '%(%Y-%m-%dT%H:%M:%S%z)T\n' "$epoch"
-}
-
-# Format epoch as date (YYYY-MM-DD)
-# Usage: format_date "epoch"
-format_date() {
-    local epoch="${1:--1}"
-    printf '%(%Y-%m-%d)T\n' "$epoch"
 }
 
 # Format epoch as time (HH:MM:SS)

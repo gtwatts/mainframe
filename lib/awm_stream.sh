@@ -5,7 +5,6 @@
 
 # Prevent double-loading
 [[ -n "${_AWM_STREAM_LOADED:-}" ]] && return 0
-readonly _AWM_STREAM_LOADED=1
 
 # Portable SHA-256 digest (sha256sum -> shasum -> openssl fallback chain).
 # Shared micro-shim: the declare -F guard means it is defined once per
@@ -24,7 +23,13 @@ fi
 
 # Load dependencies
 # shellcheck source=./awm_storage.sh
-source "${BASH_SOURCE%/*}/awm_storage.sh" 2>/dev/null || source "$(dirname "$0")/awm_storage.sh"
+if declare -F lazy_load_library >/dev/null 2>&1; then
+    lazy_load_library awm_storage || return 1
+else
+    source "${BASH_SOURCE%/*}/awm_storage.sh" 2>/dev/null ||
+        source "$(dirname "$0")/awm_storage.sh" ||
+        return 1
+fi
 
 # =============================================================================
 # TOKEN BUDGET CONFIGURATION
@@ -697,10 +702,15 @@ awm_chunk_generic() {
 # COMPRESSION PIPELINE
 # =============================================================================
 
-# Compress content at specified level
-# Usage: awm_compress "content" level
+# Compress standalone content at the requested streaming level.
+#
+# The canonical awm_compress function belongs to lib/awm.sh and rotates the
+# active persistent session's logs.  Keep this older, pure content transform
+# available under an explicit module-qualified name so loading awm_stream never
+# changes the public AWM session contract.
+# Usage: awm_stream_compress "content" level
 # level: 1=light, 2=remove comments, 3=summarize, 4=key facts, 5=one-line
-awm_compress() {
+awm_stream_compress() {
     local content="$1"
     local level="${2:-1}"
 
@@ -1008,7 +1018,7 @@ MAINFRAME_AWM_STREAM_EXPORTS=(
     awm_chunk_prose
     awm_chunk_generic
     # Compression
-    awm_compress
+    awm_stream_compress
     # Observation Masking
     awm_mask_observations
     awm_unmask_observations
@@ -1019,3 +1029,8 @@ MAINFRAME_AWM_STREAM_EXPORTS=(
     awm_truncate
     awm_read_plan
 )
+
+# Mark the module loaded only after every dependency and definition succeeds.
+# A failed first load must remain retryable instead of leaving a partial module
+# that a lazy stub can recurse into.
+readonly _AWM_STREAM_LOADED=1

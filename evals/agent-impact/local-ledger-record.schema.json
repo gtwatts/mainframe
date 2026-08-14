@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-local-ledger-record-v1.json",
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "output": {"type": "object", "additionalProperties": false, "required": ["present", "size_bytes", "sha256"], "properties": {"present": {"type": "boolean"}, "size_bytes": {"type": "integer", "minimum": 0}, "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}}}
+  },
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "kind", "sequence", "previous_record_sha256", "study_id", "plan_id", "pair_id", "opaque_arm_id", "phase", "attempt", "transport_sha256", "request_sha256", "result_sha256", "stdout", "stderr", "status", "provider_requests", "pi_sessions", "network_requests", "record_sha256"],
+  "properties": {
+    "schema_version": {"const": 1}, "kind": {"const": "mainframe-agent-impact-local-attempt-ledger-record"},
+    "sequence": {"type": "integer", "minimum": 1, "maximum": 12}, "previous_record_sha256": {"$ref": "#/$defs/sha256"},
+    "study_id": {"const": "local-development-smoke-v1"}, "plan_id": {"type": "string", "pattern": "^plan-[0-9a-f]{16}$"},
+    "pair_id": {"type": "string", "pattern": "^pair-[0-9a-f]{16}$"}, "opaque_arm_id": {"type": "string", "pattern": "^arm-[0-9a-f]{16}$"},
+    "phase": {"enum": ["investigate", "implement"]}, "attempt": {"const": 1}, "transport_sha256": {"$ref": "#/$defs/sha256"},
+    "request_sha256": {"$ref": "#/$defs/sha256"}, "result_sha256": {"$ref": "#/$defs/sha256"}, "stdout": {"$ref": "#/$defs/output"}, "stderr": {"$ref": "#/$defs/output"},
+    "status": {"const": "completed"}, "provider_requests": {"const": 0}, "pi_sessions": {"const": 0}, "network_requests": {"const": 0}, "record_sha256": {"$ref": "#/$defs/sha256"}
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "kind": "mainframe-agent-impact-task",
+  "id": "conformance-001",
+  "title": "Repair the remaining-capacity calculation",
+  "category": "fresh-session-handoff",
+  "repository": "repository",
+  "phases": [
+    {
+      "id": "investigate",
+      "prompt": "investigate.md",
+      "workspace_edits": false
+    },
+    {
+      "id": "implement",
+      "prompt": "implement.md",
+      "workspace_edits": true
+    }
+  ],
+  "transition": {
+    "fresh_host_state": true,
+    "preserve_workspace": true,
+    "context_budget": {
+      "unit": "bytes-under-LC_ALL-C",
+      "maximum": 4096
+    },
+    "control": "native-bounded-handoff",
+    "treatment": "mainframe-awm-handoff"
+  },
+  "budgets": {
+    "wall_seconds_per_phase": 5,
+    "maximum_tool_calls_per_phase": 10
+  },
+  "grader": {
+    "command": "grade.py",
+    "maximum_score": 100
+  }
+}

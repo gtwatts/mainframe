@@ -1,135 +1,72 @@
-# MAINFRAME Bash Conventions
+<!-- GENERATED from skills/mainframe/SKILL.md by scripts/generate-host-adapters.sh — edit the source, not this file -->
 
-## Source MAINFRAME in Every Bash Script
+# MAINFRAME conventions
+
+
+# MAINFRAME — Standard Agent Skill
+
+MAINFRAME is an AI-native bash runtime: a generated registry of bash
+functions for safe, portable agent shell work, plus Agent Working Memory
+(AWM) for state that survives context compaction and agent handoffs.
+
+## Load
 
 ```bash
-#!/usr/bin/env bash
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 ```
 
-This gives access to 3,821+ pure bash functions across 152 libraries. Zero external dependencies required.
+If that file is missing, MAINFRAME is not installed — stop and say so
+instead of emulating it.
 
-## Preferred Functions Over External Tools
+## Discover before inventing
 
-When writing bash scripts, use MAINFRAME functions instead of external tools:
-
-- **JSON**: Use `json_object`, `json_array`, `json_get` instead of `jq`
-- **Strings**: Use `trim_string`, `replace_all`, `to_lower` instead of `sed`
-- **Arrays**: Use `array_join`, `array_unique`, `array_sort` instead of `awk`
-- **Files**: Use `read_file`, `file_head`, `file_tail` instead of `cat`/`head`/`tail`
-- **DateTime**: Use `now`, `now_iso`, `date_add` instead of `date` with format strings
-- **Hashing**: Use `sha256`, `md5`, `random_token` instead of `sha256sum`/`md5sum`
-- **Paths**: Use `path_join`, `path_normalize`, `path_is_safe` instead of manual concatenation
-- **Validation**: Use `validate_email`, `validate_url`, `validate_int` for input checking
-- **Sanitization**: Use `sanitize_html`, `sanitize_sql`, `sanitize_shell_arg` for security
-
-## JSON Generation Pattern
+Never rely on memorized function counts or signatures; query the live
+registry:
 
 ```bash
-# Object with typed fields
-json_object "name=John" "age:number=30" "active:bool=true"
-# {"name":"John","age":30,"active":true}
-
-# Array
-json_array "item1" "item2" "item3"
-# ["item1","item2","item3"]
-
-# Nested
-json_nested "user.address.city" "NYC"
-# {"user":{"address":{"city":"NYC"}}}
+mainframe count                 # current registry count (single count source)
+mainframe search <topic>        # find functions by topic
+mainframe quickref <library>    # functions in a library
+mainframe help <function>       # signature, params, examples
 ```
 
-## Error Handling Pattern
+## Core patterns
+
+| Need | Prefer |
+|---|---|
+| JSON output/parse | `json_object`, `json_array`, `json_get`, `json_valid` |
+| Input validation | `validate_email`, `validate_url`, `validate_path`, `validate_int` |
+| Safe file writes | `atomic_write`, `atomic_append`, `ensure_dir`, `ensure_file` |
+| Structured output | `output_json`, `usop_exec` |
+| Durable agent memory | `awm_init`, `awm_checkpoint`, `awm_context_for`, `awm_handoff_prepare` |
 
 ```bash
-validate_email "$email" || die 1 "Invalid email: $email"
-validate_path_safe "$path" "/allowed" || die 1 "Path traversal blocked"
-
-# With logging
-log_info "Processing $file..."
-success "Complete"
-failure "Error occurred"
-```
-
-## Script Template
-
-```bash
-#!/usr/bin/env bash
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 
-# Validate arguments
-[[ $# -lt 1 ]] && die 1 "Usage: $(path_base "$0") <input>"
-
-header "My Script"
-log_info "Starting at $(now_iso)"
-
-# ... logic ...
-
-success "Done in $(format_duration $SECONDS)"
+email="${1:-}"
+validate_email "$email" || { echo "invalid email" >&2; exit 1; }
+json_object "email=$email" "ok:bool=true"
 ```
 
-## Agent Working Memory (AWM)
-
-For AI agents that need persistent state across sessions:
+## Agent Working Memory quickstart
 
 ```bash
-# Initialize or resume session
-sid=$(awm_init "task-name")
-awm_resume "$sid"
-
-# Save and retrieve state
-awm_checkpoint "current_step" "3"
-step=$(awm_get "current_step" "1")
-
-# Track progress and discoveries
-awm_progress "processing" "50/100"
-awm_discovery "API rate limit is 100/min"
-
-# Generate summary for context injection
-summary=$(awm_summary)
+awm_init "task-name"                    # start/resume a session
+awm_checkpoint key value                # save state
+awm_context_for "next task description" # rebuild context later
+awm_handoff_prepare "what is next"      # package a handoff
 ```
 
-## Multi-Agent IPC
+## Safety rules
 
-For coordinating multiple agent instances:
+- MAINFRAME is a validation layer, not a sandbox — keep normal caution
+  with destructive commands.
+- Read/inspect before write/delete.
+- Require explicit human approval for destructive, irreversible,
+  externally visible, financial, publishing, or deployment actions.
+- Prefer structured output when another agent or program parses results.
 
-```bash
-# Register and discover agents
-agent_register "worker1" compute storage
-agents=$(agent_discover "compute")
+## References
 
-# Messaging
-agent_send "worker2" '{"task":"process"}'
-msg=$(agent_receive 10)
-
-# Work queues
-agent_work_queue "tasks"
-agent_work_push "tasks" '{"item":"data"}'
-item=$(agent_work_pop "tasks")
-
-# Synchronization
-agent_barrier "phase1" 3    # Wait for 3 agents
-agent_signal "ready"        # Signal event
-```
-
-## Key Function Categories
-
-- **Logging**: `log_info`, `log_warn`, `log_error`, `success`, `failure`, `header`
-- **Strings**: `trim_string`, `to_lower`, `to_upper`, `contains`, `starts_with`, `replace_all`
-- **Arrays**: `array_join`, `array_unique`, `array_sort`, `array_contains`, `array_sum`
-- **JSON**: `json_object`, `json_array`, `json_get`, `json_merge`, `json_pretty`
-- **Files**: `read_file`, `file_exists`, `file_lines`, `file_size`, `temp_file`
-- **DateTime**: `now`, `now_iso`, `date_add`, `date_subtract`, `format_relative`
-- **Validation**: `validate_email`, `validate_url`, `validate_int`, `validate_path_safe`
-- **Crypto**: `sha256`, `md5`, `base64_encode`, `random_token`, `uuid`
-- **Git**: `git_branch`, `git_is_dirty`, `git_commit_hash`, `git_summary`
-- **Process**: `proc_find_by_port`, `with_lock`, `retry`, `parallel`
-- **Async**: `parallel`, `parallel_limit`, `set_timeout`, `debounce`
-- **TypeScript**: `ts_file_imports`, `ts_import_graph`, `ts_breaking_changes`, `ts_import_cost`
-- **Python**: `py_file_imports`, `py_import_graph`, `py_parse_requirements`, `py_framework_detect`, `py_summary`
-- **AWM**: `awm_init`, `awm_checkpoint`, `awm_get`, `awm_discovery`, `awm_summary`
-- **Agent IPC**: `agent_register`, `agent_send`, `agent_receive`, `agent_work_queue`, `agent_barrier`
-
-## Reference
-
-Full function signatures: `~/.mainframe/CHEATSHEET.md` (3,821+ entries with examples)
+- `CHEATSHEET.md` — quick function reference
+- `docs/` — architecture, claims policy, canonical manifest design

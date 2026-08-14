@@ -50,6 +50,40 @@ teardown() {
 }
 
 # =============================================================================
+# PUBLIC API DEPRECATION WARNINGS
+# =============================================================================
+
+@test "mainframe_deprecated warns once per symbol and only on stderr" {
+    run bash --noprofile --norc -c '
+        source "$1/lib/compat.sh"
+        mainframe_deprecated old_api new_api 12.0.0
+        mainframe_deprecated old_api new_api 12.0.0
+    ' _ "$MAINFRAME_ROOT"
+
+    [[ "$status" -eq 0 ]]
+    [[ "${#lines[@]}" -eq 1 ]]
+    [[ "$output" == *"old_api is deprecated; use new_api"* ]]
+}
+
+@test "mainframe_deprecated warnings are suppressible" {
+    run env MAINFRAME_COMPAT_WARNINGS=0 MAINFRAME_ROOT="$MAINFRAME_ROOT" \
+        bash --noprofile --norc -c '
+            source "$MAINFRAME_ROOT/lib/compat.sh"
+            mainframe_deprecated old_api new_api 12.0.0
+        '
+
+    [[ "$status" -eq 0 ]]
+    [[ -z "$output" ]]
+}
+
+@test "mainframe_deprecated rejects unsafe symbol metadata" {
+    run mainframe_deprecated 'old;api' new_api 12.0.0
+
+    [[ "$status" -eq 2 ]]
+    [[ "$output" == *"invalid function name"* ]]
+}
+
+# =============================================================================
 # OS DETECTION TESTS
 # =============================================================================
 

@@ -1,0 +1,649 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-pi-ollama-preflight-receipt-v1.json",
+  "title": "MAINFRAME offline Pi and Ollama runtime-binding preflight receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "claim_scope",
+    "status",
+    "spec",
+    "arm_contract",
+    "runtime_binding",
+    "runtime",
+    "neutral_arm_contract",
+    "execution",
+    "non_claims"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "mainframe-agent-impact-pi-ollama-preflight-receipt" },
+    "claim_scope": { "const": "offline-pi-ollama-runtime-binding-and-neutral-arm-contract-preflight-only" },
+    "status": { "const": "offline-bindings-and-neutral-arm-contract-valid" },
+    "spec": { "$ref": "#/$defs/boundFile" },
+    "arm_contract": { "$ref": "#/$defs/boundFile" },
+    "runtime_binding": { "$ref": "#/$defs/runtimeBinding" },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "node", "mainframe", "pi", "ollama", "adapter", "protocol"],
+      "properties": {
+        "platform": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["operating_system", "architecture", "platform_tuple", "shell"],
+          "properties": {
+            "operating_system": { "enum": ["Darwin", "Linux"] },
+            "architecture": { "$ref": "#/$defs/architecture" },
+            "platform_tuple": { "$ref": "#/$defs/platformTuple" },
+            "shell": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "architecture", "executable", "binary_identity"],
+              "properties": {
+                "name": { "enum": ["bash", "zsh"] },
+                "architecture": { "$ref": "#/$defs/architecture" },
+                "executable": { "$ref": "#/$defs/boundFile" },
+                "binary_identity": { "$ref": "#/$defs/binaryIdentity" }
+              }
+            }
+          }
+        },
+        "node": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "architecture", "identity_source", "receipt_format", "executable", "install_receipt", "binary_identity"],
+          "properties": {
+            "version": { "$ref": "#/$defs/version" },
+            "architecture": { "$ref": "#/$defs/architecture" },
+            "identity_source": { "const": "homebrew-install-receipt-source-versions-stable-and-arch" },
+            "receipt_format": { "const": "homebrew-install-receipt-v1" },
+            "executable": { "$ref": "#/$defs/boundFile" },
+            "install_receipt": { "$ref": "#/$defs/boundFile" },
+            "binary_identity": { "$ref": "#/$defs/binaryIdentity" }
+          }
+        },
+        "mainframe": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "version",
+            "identity_source",
+            "version_file",
+            "install_receipt",
+            "install_receipt_format",
+            "archive",
+            "checksum_sidecar",
+            "archive_checksum_matches",
+            "installed_tree",
+            "pi_extension",
+            "pi_compatibility_manifest",
+            "pi_compatibility_certification_id",
+            "awm_protocol"
+          ],
+          "properties": {
+            "version": { "$ref": "#/$defs/version" },
+            "identity_source": { "const": "bound-version-file-and-release-install-receipt" },
+            "version_file": { "$ref": "#/$defs/boundFile" },
+            "install_receipt": { "$ref": "#/$defs/boundFile" },
+            "install_receipt_format": { "const": "mainframe-release-archive-install-receipt-v1" },
+            "archive": { "$ref": "#/$defs/boundFile" },
+            "checksum_sidecar": { "$ref": "#/$defs/boundFile" },
+            "archive_checksum_matches": { "const": true },
+            "installed_tree": { "$ref": "#/$defs/mainframeTree" },
+            "pi_extension": { "$ref": "#/$defs/boundFile" },
+            "pi_compatibility_manifest": { "$ref": "#/$defs/boundFile" },
+            "pi_compatibility_certification_id": { "$ref": "#/$defs/certificationId" },
+            "awm_protocol": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["transition_driver", "raw_schema", "receipt_schema", "neutral_continuation_schema"],
+              "properties": {
+                "transition_driver": { "$ref": "#/$defs/boundFile" },
+                "raw_schema": { "$ref": "#/$defs/boundFile" },
+                "receipt_schema": { "$ref": "#/$defs/boundFile" },
+                "neutral_continuation_schema": { "$ref": "#/$defs/boundFile" }
+              }
+            }
+          }
+        },
+        "pi": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "package_name",
+            "package_version",
+            "architecture",
+            "identity_source",
+            "executable",
+            "package_manifest",
+            "package_tree",
+            "extension_loader",
+            "compatibility"
+          ],
+          "properties": {
+            "package_name": { "$ref": "#/$defs/packageName" },
+            "package_version": { "$ref": "#/$defs/version" },
+            "architecture": { "$ref": "#/$defs/architecture" },
+            "identity_source": { "const": "bound-package-json-and-certified-platform-tuple-node-runtime-bound-separately" },
+            "executable": { "$ref": "#/$defs/boundFile" },
+            "package_manifest": { "$ref": "#/$defs/boundFile" },
+            "package_tree": { "$ref": "#/$defs/piTree" },
+            "extension_loader": { "$ref": "#/$defs/boundFile" },
+            "compatibility": { "$ref": "#/$defs/piCompatibility" }
+          }
+        },
+        "ollama": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "architecture", "identity_source", "receipt_format", "executable", "install_receipt", "binary_identity", "model"],
+          "properties": {
+            "version": { "$ref": "#/$defs/version" },
+            "architecture": { "$ref": "#/$defs/architecture" },
+            "identity_source": { "const": "homebrew-install-receipt-source-versions-stable-and-arch" },
+            "receipt_format": { "const": "homebrew-install-receipt-v1" },
+            "executable": { "$ref": "#/$defs/boundFile" },
+            "install_receipt": { "$ref": "#/$defs/boundFile" },
+            "binary_identity": { "$ref": "#/$defs/binaryIdentity" },
+            "model": { "$ref": "#/$defs/modelClosure" }
+          }
+        },
+        "adapter": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "adapter_id",
+            "adapter_version",
+            "provider",
+            "execution_status",
+            "invocation_supported",
+            "run_action_available",
+            "executable",
+            "manifest",
+            "request_schema",
+            "result_schema",
+            "arm_contract_schema"
+          ],
+          "properties": {
+            "adapter_id": { "const": "mainframe-pi-ollama-dormant-v1" },
+            "adapter_version": { "const": "1.0.0" },
+            "provider": { "const": "ollama" },
+            "execution_status": { "const": "not-implemented" },
+            "invocation_supported": { "const": false },
+            "run_action_available": { "const": false },
+            "executable": { "$ref": "#/$defs/boundFile" },
+            "manifest": { "$ref": "#/$defs/boundFile" },
+            "request_schema": { "$ref": "#/$defs/boundFile" },
+            "result_schema": { "$ref": "#/$defs/boundFile" },
+            "arm_contract_schema": { "$ref": "#/$defs/boundFile" }
+          }
+        },
+        "protocol": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["preflight_executable", "spec_schema", "receipt_schema"],
+          "properties": {
+            "preflight_executable": { "$ref": "#/$defs/boundFile" },
+            "spec_schema": { "$ref": "#/$defs/boundFile" },
+            "receipt_schema": { "$ref": "#/$defs/boundFile" }
+          }
+        }
+      }
+    },
+    "neutral_arm_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "study_id",
+        "pair_id",
+        "opaque_arm_ids",
+        "task_id",
+        "phases",
+        "runtime_binding",
+        "provider",
+        "budgets",
+        "environment_contract",
+        "adapter_boundary",
+        "contract_sha256",
+        "two_arm_parity"
+      ],
+      "properties": {
+        "study_id": { "$ref": "#/$defs/id" },
+        "pair_id": { "type": "string", "pattern": "^pair-[0-9a-f]{16}$" },
+        "opaque_arm_ids": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^arm-[0-9a-f]{16}$" }
+        },
+        "task_id": { "$ref": "#/$defs/id" },
+        "phases": { "const": ["investigate", "implement"] },
+        "runtime_binding": { "$ref": "#/$defs/runtimeBinding" },
+        "provider": { "$ref": "#/$defs/provider" },
+        "budgets": { "$ref": "#/$defs/armBudgets" },
+        "environment_contract": { "$ref": "#/$defs/environmentContract" },
+        "adapter_boundary": { "$ref": "#/$defs/adapterBoundary" },
+        "contract_sha256": { "$ref": "#/$defs/sha256" },
+        "two_arm_parity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["arm_count", "one_neutral_contract_applied_to_both_arms", "assignment_values_absent", "mechanism_values_absent", "rows"],
+          "properties": {
+            "arm_count": { "const": 2 },
+            "one_neutral_contract_applied_to_both_arms": { "const": true },
+            "assignment_values_absent": { "const": true },
+            "mechanism_values_absent": { "const": true },
+            "rows": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/armParityRow" }
+            }
+          }
+        }
+      }
+    },
+    "execution": { "$ref": "#/$defs/executionBoundary" },
+    "non_claims": { "$ref": "#/$defs/nonClaims" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,127}$" },
+    "certificationId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,255}$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "qualifiedSha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "version": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,255}$" },
+    "architecture": { "enum": ["arm64", "x86_64"] },
+    "platformTuple": { "type": "string", "pattern": "^(?:Darwin|Linux)-(?:arm64|x86_64)-(?:none|glibc|musl)$", "maxLength": 64 },
+    "packageName": { "type": "string", "pattern": "^(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$", "maxLength": 256 },
+    "boundFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "basename", "path_sha256", "size_bytes", "sha256", "mode", "owner_trust", "executable"],
+      "properties": {
+        "label": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._ +:/()-]{0,127}$" },
+        "basename": { "type": "string", "pattern": "^[^/\\r\\n\\t]+$", "maxLength": 255 },
+        "path_sha256": { "$ref": "#/$defs/sha256" },
+        "size_bytes": { "type": "integer", "minimum": 1, "maximum": 1099511627776 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "mode": { "type": "string", "pattern": "^0[0-7]{3}$" },
+        "owner_trust": { "const": "root-or-current-user" },
+        "executable": { "type": "boolean" }
+      }
+    },
+    "runtimeBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "domain_separator_hex", "canonicalization", "sha256", "projection_keys", "arm_contract_excluded"],
+      "properties": {
+        "algorithm": { "const": "canonical-runtime-projection-sha256-v1" },
+        "domain_separator_hex": { "const": "4d41494e4652414d452d4147454e542d494d504143542d52554e54494d452d50524f4a454354494f4e2d563100" },
+        "canonicalization": { "const": "utf8-json-sorted-keys-compact-ensure-ascii-lf-v1" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "projection_keys": { "const": ["schema_version", "kind", "claim_scope", "platform", "node", "mainframe", "pi", "ollama", "adapter", "protocol"] },
+        "arm_contract_excluded": { "const": true }
+      }
+    },
+    "binaryIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "observed_architectures", "selected_architecture", "source"],
+      "properties": {
+        "format": { "enum": ["elf", "mach-o", "mach-o-universal"] },
+        "observed_architectures": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/architecture" }
+        },
+        "selected_architecture": { "$ref": "#/$defs/architecture" },
+        "source": { "const": "same-descriptor-executable-header" }
+      }
+    },
+    "mainframeTree": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "sha256", "entry_count", "total_file_bytes", "root_path_sha256"],
+      "properties": {
+        "algorithm": { "const": "mainframe-package-tree-sha256-v1" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "entry_count": { "type": "integer", "minimum": 1, "maximum": 250000 },
+        "total_file_bytes": { "type": "integer", "minimum": 1, "maximum": 4294967296 },
+        "root_path_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "piTree": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "sha256", "entry_count", "total_file_bytes", "root_path_sha256", "root_mode"],
+      "properties": {
+        "algorithm": { "const": "mainframe-pi-runtime-tree-sha256-v1" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "entry_count": { "type": "integer", "minimum": 1, "maximum": 250000 },
+        "total_file_bytes": { "type": "integer", "minimum": 1, "maximum": 4294967296 },
+        "root_path_sha256": { "$ref": "#/$defs/sha256" },
+        "root_mode": { "type": "string", "pattern": "^0[0-7]{3}$" }
+      }
+    },
+    "piCompatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["integration", "certification_id", "mainframe_version", "package_name", "package_version", "certification_record_npm_integrity", "npm_integrity_observation", "platform_tuple", "support", "profile", "capabilities"],
+      "properties": {
+        "integration": { "const": "@gtwatts/mainframe-pi" },
+        "certification_id": { "$ref": "#/$defs/certificationId" },
+        "mainframe_version": { "$ref": "#/$defs/version" },
+        "package_name": { "$ref": "#/$defs/packageName" },
+        "package_version": { "$ref": "#/$defs/version" },
+        "certification_record_npm_integrity": { "type": "string", "pattern": "^sha512-[A-Za-z0-9+/]+={0,2}$", "maxLength": 256 },
+        "npm_integrity_observation": { "const": "certification-record-only-local-package-tree-bound-separately" },
+        "platform_tuple": { "$ref": "#/$defs/platformTuple" },
+        "support": { "const": "certified" },
+        "profile": { "const": "full" },
+        "capabilities": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["local_package_discovery", "prompt_hook", "seven_tool_surface", "agent_bash_gate", "tui_user_bash_gate", "rpc_user_bash_gate", "bash_and_zsh_callers"],
+          "properties": {
+            "local_package_discovery": { "const": "verified" },
+            "prompt_hook": { "const": "verified" },
+            "seven_tool_surface": { "const": "verified" },
+            "agent_bash_gate": { "const": "verified" },
+            "tui_user_bash_gate": { "const": "verified" },
+            "rpc_user_bash_gate": { "const": "verified" },
+            "bash_and_zsh_callers": { "const": "verified" }
+          }
+        }
+      }
+    },
+    "configDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "media_type", "size_bytes"],
+      "properties": {
+        "digest": { "$ref": "#/$defs/qualifiedSha256" },
+        "media_type": { "const": "application/vnd.docker.container.image.v1+json" },
+        "size_bytes": { "type": "integer", "minimum": 1, "maximum": 1099511627776 }
+      }
+    },
+    "layerDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "media_type", "size_bytes"],
+      "properties": {
+        "digest": { "$ref": "#/$defs/qualifiedSha256" },
+        "media_type": { "type": "string", "pattern": "^application/vnd\\.ollama\\.image\\.[A-Za-z0-9.+_-]+$", "maxLength": 256 },
+        "size_bytes": { "type": "integer", "minimum": 1, "maximum": 1099511627776 }
+      }
+    },
+    "configBlobReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ordinal", "role", "digest", "media_type", "size_bytes", "file"],
+      "properties": {
+        "ordinal": { "const": 0 },
+        "role": { "const": "config" },
+        "digest": { "$ref": "#/$defs/qualifiedSha256" },
+        "media_type": { "const": "application/vnd.docker.container.image.v1+json" },
+        "size_bytes": { "type": "integer", "minimum": 1, "maximum": 1099511627776 },
+        "file": { "$ref": "#/$defs/boundFile" }
+      }
+    },
+    "layerBlobReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ordinal", "role", "digest", "media_type", "size_bytes", "file"],
+      "properties": {
+        "ordinal": { "type": "integer", "minimum": 1, "maximum": 4095 },
+        "role": { "const": "layer" },
+        "digest": { "$ref": "#/$defs/qualifiedSha256" },
+        "media_type": { "type": "string", "pattern": "^application/vnd\\.ollama\\.image\\.[A-Za-z0-9.+_-]+$", "maxLength": 256 },
+        "size_bytes": { "type": "integer", "minimum": 1, "maximum": 1099511627776 },
+        "file": { "$ref": "#/$defs/boundFile" }
+      }
+    },
+    "modelClosure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "closure",
+        "manifest",
+        "manifest_schema_version",
+        "manifest_media_type",
+        "config_descriptor",
+        "ordered_layer_descriptors",
+        "ordered_rootfs_diff_ids",
+        "ordered_blob_files",
+        "template_contract",
+        "tool_contract",
+        "dependency_closure_algorithm",
+        "dependency_closure_domain_separator_hex",
+        "dependency_closure_canonicalization",
+        "dependency_closure_sha256"
+      ],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/:+-]*$", "maxLength": 256 },
+        "closure": { "const": "manifest-referenced-blobs-only-not-entire-store" },
+        "manifest": { "$ref": "#/$defs/boundFile" },
+        "manifest_schema_version": { "const": 2 },
+        "manifest_media_type": { "const": "application/vnd.docker.distribution.manifest.v2+json" },
+        "config_descriptor": { "$ref": "#/$defs/configDescriptor" },
+        "ordered_layer_descriptors": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 4095,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/layerDescriptor" },
+          "allOf": [
+            {
+              "contains": { "properties": { "media_type": { "const": "application/vnd.ollama.image.model" } }, "required": ["media_type"] },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": { "properties": { "media_type": { "const": "application/vnd.ollama.image.template" } }, "required": ["media_type"] },
+              "minContains": 1,
+              "maxContains": 1
+            }
+          ]
+        },
+        "ordered_rootfs_diff_ids": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 4095,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/qualifiedSha256" }
+        },
+        "ordered_blob_files": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 4096,
+          "uniqueItems": true,
+          "prefixItems": [{ "$ref": "#/$defs/configBlobReceipt" }],
+          "items": { "$ref": "#/$defs/layerBlobReceipt" }
+        },
+        "template_contract": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["layer_ordinal", "digest", "media_type", "required_markers", "observed_markers"],
+          "properties": {
+            "layer_ordinal": { "type": "integer", "minimum": 0, "maximum": 4094 },
+            "digest": { "$ref": "#/$defs/qualifiedSha256" },
+            "media_type": { "const": "application/vnd.ollama.image.template" },
+            "required_markers": { "const": [".Tools", ".ToolCalls"] },
+            "observed_markers": { "const": [".Tools", ".ToolCalls"] }
+          }
+        },
+        "tool_contract": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "native_tool_channel", "exactly_one_model_layer", "exactly_one_template_layer"],
+          "properties": {
+            "mode": { "const": "native-tools-required" },
+            "native_tool_channel": { "const": "ollama-template-tools-and-toolcalls-markers" },
+            "exactly_one_model_layer": { "const": true },
+            "exactly_one_template_layer": { "const": true }
+          }
+        },
+        "dependency_closure_algorithm": { "const": "canonical-ollama-manifest-dependency-closure-sha256-v1" },
+        "dependency_closure_domain_separator_hex": { "const": "4d41494e4652414d452d4f4c4c414d412d4d414e49464553542d444550454e44454e43592d434c4f535552452d563100" },
+        "dependency_closure_canonicalization": { "const": "utf8-json-sorted-keys-compact-ensure-ascii-lf-v1" },
+        "dependency_closure_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "model"],
+      "properties": {
+        "name": { "const": "ollama" },
+        "model": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/:+-]*$", "maxLength": 256, "not": { "enum": ["control", "mainframe-awm-handoff", "native-bounded-handoff", "treatment"] } }
+      }
+    },
+    "armBudgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wall_seconds_per_phase", "maximum_tool_calls_per_phase", "maximum_context_bytes"],
+      "properties": {
+        "wall_seconds_per_phase": { "type": "integer", "minimum": 1, "maximum": 3600 },
+        "maximum_tool_calls_per_phase": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "maximum_context_bytes": { "type": "integer", "minimum": 1, "maximum": 1048576 }
+      }
+    },
+    "environmentContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fresh_per_phase", "allowed_environment_names"],
+      "properties": {
+        "fresh_per_phase": { "const": true },
+        "allowed_environment_names": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" }
+        }
+      }
+    },
+    "adapterBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assignment_visibility",
+        "mechanism_transition_owner",
+        "scoring_owner",
+        "same_adapter_executable_both_arms",
+        "same_provider_model_both_arms",
+        "same_phase_budgets_both_arms",
+        "request_parity_fields",
+        "forbidden_request_fields",
+        "forbidden_request_string_values",
+        "neutrality_validation"
+      ],
+      "properties": {
+        "assignment_visibility": { "const": "opaque-arm-identities-only" },
+        "mechanism_transition_owner": { "const": "harness" },
+        "scoring_owner": { "const": "harness" },
+        "same_adapter_executable_both_arms": { "const": true },
+        "same_provider_model_both_arms": { "const": true },
+        "same_phase_budgets_both_arms": { "const": true },
+        "request_parity_fields": { "const": ["budgets", "environment_contract", "phase", "provider", "task_id"] },
+        "forbidden_request_fields": { "const": ["arm_mode", "assignment", "control", "mechanism", "treatment"] },
+        "forbidden_request_string_values": { "const": ["control", "mainframe-awm-handoff", "native-bounded-handoff", "treatment"] },
+        "neutrality_validation": { "const": "recursive-exact-key-and-exact-string-value-rejection" }
+      }
+    },
+    "armParityRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["opaque_arm_id", "runtime_binding_sha256", "provider", "budgets", "environment_contract", "request_parity_fields"],
+      "properties": {
+        "opaque_arm_id": { "type": "string", "pattern": "^arm-[0-9a-f]{16}$" },
+        "runtime_binding_sha256": { "$ref": "#/$defs/sha256" },
+        "provider": { "$ref": "#/$defs/provider" },
+        "budgets": { "$ref": "#/$defs/armBudgets" },
+        "environment_contract": { "$ref": "#/$defs/environmentContract" },
+        "request_parity_fields": { "const": ["budgets", "environment_contract", "phase", "provider", "task_id"] }
+      }
+    },
+    "executionBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "offline_only",
+        "actions_available",
+        "run_action_available",
+        "processes_started_by_preflight",
+        "child_processes_started_after_preflight_entry",
+        "existing_machine_processes",
+        "machine_process_state_observed",
+        "network_requests_by_preflight",
+        "shell_processes_started_by_preflight",
+        "node_processes_started_by_preflight",
+        "pi_processes_started_by_preflight",
+        "ollama_processes_started_by_preflight",
+        "provider_requests_by_preflight",
+        "prepare_action_files_created",
+        "verify_action_files_created"
+      ],
+      "properties": {
+        "offline_only": { "const": true },
+        "actions_available": { "const": ["prepare", "verify"] },
+        "run_action_available": { "const": false },
+        "processes_started_by_preflight": { "const": 0 },
+        "child_processes_started_after_preflight_entry": { "const": 0 },
+        "existing_machine_processes": { "const": "not-inspected" },
+        "machine_process_state_observed": { "const": false },
+        "network_requests_by_preflight": { "const": 0 },
+        "shell_processes_started_by_preflight": { "const": 0 },
+        "node_processes_started_by_preflight": { "const": 0 },
+        "pi_processes_started_by_preflight": { "const": 0 },
+        "ollama_processes_started_by_preflight": { "const": 0 },
+        "provider_requests_by_preflight": { "const": 0 },
+        "prepare_action_files_created": { "const": 1 },
+        "verify_action_files_created": { "const": 0 }
+      }
+    },
+    "nonClaims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shell_runtime_executed",
+        "node_runtime_executed",
+        "pi_runtime_executed",
+        "ollama_runtime_executed",
+        "ollama_service_reachable",
+        "model_loaded",
+        "provider_inference",
+        "agent_sessions",
+        "neutral_arm_runtime_parity_executed",
+        "mainframe_awm_transition_executed",
+        "agent_impact_measured",
+        "machine_safety_established",
+        "entire_ollama_store_closed",
+        "live_study_evidence_eligible"
+      ],
+      "properties": {
+        "shell_runtime_executed": { "const": false },
+        "node_runtime_executed": { "const": false },
+        "pi_runtime_executed": { "const": false },
+        "ollama_runtime_executed": { "const": false },
+        "ollama_service_reachable": { "const": "not-inspected" },
+        "model_loaded": { "const": false },
+        "provider_inference": { "const": false },
+        "agent_sessions": { "const": 0 },
+        "neutral_arm_runtime_parity_executed": { "const": false },
+        "mainframe_awm_transition_executed": { "const": false },
+        "agent_impact_measured": { "const": false },
+        "machine_safety_established": { "const": false },
+        "entire_ollama_store_closed": { "const": false },
+        "live_study_evidence_eligible": { "const": false }
+      }
+    }
+  }
+}

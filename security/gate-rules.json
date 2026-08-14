@@ -1,177 +1,280 @@
 {
-  "version": "10.1.0",
-  "generated": "2026-07-21T11:39:11Z",
+  "version": "10.2.0",
+  "generated": "2026-08-10T00:12:57Z",
   "source": "lib/agent_safety.sh (_agent_gate_match)",
+  "normalizer": {
+    "contract": "executable-marker-v1",
+    "module": "security/gate-normalizer.mjs",
+    "normalize_export": "normalizeGateCommand",
+    "classify_export": "classifyGateCommand",
+    "marker": "\u001e",
+    "rule_input_field": "input",
+    "inputs": [
+      "raw",
+      "normalized",
+      "normalized-both",
+      "flat"
+    ],
+    "sha256": "32e300f32f1ca283a13bb9914fab5fa9a7037ad2dd290db891f1e9e92006abe5"
+  },
   "rules": [
     {
       "tier": "critical",
+      "id": "unsupported-control-byte",
+      "input": "raw",
+      "js": "[\\x00-\\x08\\x0b-\\x1f\\x7f]"
+    },
+    {
+      "tier": "critical",
+      "id": "dynamic-executable-word",
+      "input": "normalized-both",
+      "js": "\\x1e[^\\s;&|()]*(?:\\$|`|\\*|\\?|\\[|\\]|\\{|\\})[^\\s;&|()]*"
+    },
+    {
+      "tier": "critical",
+      "id": "shell-eval",
+      "input": "normalized-both",
+      "js": "\\x1eeval(?=[\\s;&|()]|$)"
+    },
+    {
+      "tier": "critical",
+      "id": "dynamic-shell-expansion",
+      "input": "raw",
+      "js": "(?:^(?:(?:\\\\[\\s\\S])|'[^']*'|[^'\\\\])*?(?:\\$\\(|`)|^(?:(?:\\\\[\\s\\S])|'[^']*'|\\\"(?:\\\\.|[^\\\"\\\\])*\\\"|[^'\\\"\\\\])*?[<>]\\()"
+    },
+    {
+      "tier": "critical",
+      "id": "inline-git-alias",
+      "input": "normalized",
+      "js": "\\x1emainframe-inline-git-alias([\\s]|$)"
+    },
+    {
+      "tier": "critical",
       "id": "recursive-force-rm",
-      "js": "(^|[[:space:]&|;|(|)])rm\\s+([^-;|&]*-([a-zA-Z]*[rR][a-zA-Z]*f|[a-zA-Z]*f[a-zA-Z]*[rR])[a-zA-Z]*|[^-;|&]*-[a-zA-Z]*[rR]\\s+-[a-zA-Z]*f|[^-;|&]*--recursive[^\\s]*\\s+--force)"
+      "input": "normalized",
+      "js": "\\x1erm(?=\\s)(?=(?:\\s+(?!--(?:\\s|$))[^;\\s|&()]+)*\\s+(?:--recursive|-[A-Za-z]*[rR][A-Za-z]*)(?=\\s|$))(?=(?:\\s+(?!--(?:\\s|$))[^;\\s|&()]+)*\\s+(?:--force|-[A-Za-z]*f[A-Za-z]*)(?=\\s|$))"
     },
     {
       "tier": "critical",
       "id": "sudo-rm",
-      "js": "(^|[[:space:]&|;|(|)])sudo\\s+rm(\\s|$)"
+      "input": "normalized",
+      "js": "\\x1esudo[\\s]+\\x1erm([\\s]|$)"
     },
     {
       "tier": "critical",
       "id": "filesystem-format",
-      "js": "(^|[[:space:]&|;|(|)])(mkfs|mkfs\\.[a-z0-9]+|newfs|mkswap)(\\s|$)"
+      "input": "normalized",
+      "js": "\\x1e(mkfs|mkfs\\.[a-z0-9]+|newfs|mkswap)([\\s]|$)"
     },
     {
       "tier": "critical",
       "id": "dd-raw-disk-write",
-      "js": "(^|[[:space:]&|;|(|)])dd\\s.*of=/dev/"
+      "input": "normalized",
+      "js": "\\x1edd[\\s][^\\x1e]*of=/dev/"
     },
     {
       "tier": "critical",
       "id": "diskutil-erase",
-      "js": "(^|[[:space:]&|;|(|)])diskutil\\s+(erase|partition|unmountDisk|apfs)"
-    },
-    {
-      "tier": "critical",
-      "id": "raw-device-redirect",
-      "js": ">\\s*/dev/(sd|disk|rdisk|nvme)"
-    },
-    {
-      "tier": "high",
-      "id": "chmod-recursive-777",
-      "js": "(^|[[:space:]&|;|(|)])chmod\\s+(-[a-zA-Z]*R[a-zA-Z]*\\s+)*777(\\s|$)"
-    },
-    {
-      "tier": "high",
-      "id": "chown-recursive",
-      "js": "(^|[[:space:]&|;|(|)])chown\\s+-[a-zA-Z]*R"
-    },
-    {
-      "tier": "high",
-      "id": "git-clean-destructive",
-      "js": "(^|[[:space:]&|;|(|)])git\\s+clean\\s.*-[a-zA-Z]*[fxd]"
-    },
-    {
-      "tier": "high",
-      "id": "git-reset-hard",
-      "js": "(^|[[:space:]&|;|(|)])git\\s+reset\\s+--hard(\\s|$)"
-    },
-    {
-      "tier": "high",
-      "id": "docker-system-prune",
-      "js": "(^|[[:space:]&|;|(|)])docker\\s+system\\s+prune.*(-a|--all|--volumes)"
-    },
-    {
-      "tier": "high",
-      "id": "kubectl-delete",
-      "js": "(^|[[:space:]&|;|(|)])kubectl\\s+delete(\\s|$)"
-    },
-    {
-      "tier": "high",
-      "id": "terraform-destroy",
-      "js": "(^|[[:space:]&|;|(|)])(terraform|tofu)\\s+destroy(\\s|$)"
-    },
-    {
-      "tier": "high",
-      "id": "s3-recursive-delete",
-      "js": "(^|[[:space:]&|;|(|)])aws\\s+s3\\s+rm.*--recursive"
-    },
-    {
-      "tier": "high",
-      "id": "find-delete",
-      "js": "(^|[[:space:]&|;|(|)])find\\s.*-delete(\\s|$)"
-    },
-    {
-      "tier": "high",
-      "id": "xargs-rm-pipeline",
-      "js": "\\|\\s*xargs\\s.*rm(\\s|$)"
-    },
-    {
-      "tier": "high",
-      "id": "rsync-delete",
-      "js": "(^|[[:space:]&|;|(|)])rsync\\s.*--delete"
-    },
-    {
-      "tier": "high",
-      "id": "download-piped-to-shell",
-      "js": "(curl|wget)\\s.*\\|\\s*(sudo\\s+)?(bash|sh|zsh)(\\s|$)"
-    },
-    {
-      "tier": "high",
-      "id": "git-push-mirror",
-      "js": "(^|[[:space:]&|;|(|)])git\\s+push\\s.*--mirror"
-    },
-    {
-      "tier": "high",
-      "id": "kill-all-processes",
-      "js": "(^|[[:space:]&|;|(|)])kill\\s+(-9|-KILL)\\s+-1(\\s|$)"
-    },
-    {
-      "tier": "high",
-      "id": "rm-recursive",
-      "js": "(^|[[:space:]&|;|(|)])rm\\s+([^-;|&]*-[a-zA-Z]*[rR][a-zA-Z]*(\\s|$)|[^-;|&]*--recursive(\\s|$))"
-    },
-    {
-      "tier": "high",
-      "id": "find-exec-shell",
-      "js": "(^|[[:space:]&|;|(|)])find\\s.*-exec\\s+(sh|bash|dash|zsh|rm)(\\s|$)"
-    },
-    {
-      "tier": "high",
-      "id": "python-rmtree",
-      "js": "(^|[[:space:]&|;|(|)])python[0-9.]*\\s.*(rmtree|os\\.remove|os\\.unlink|os\\.rmdir|\\.unlink\\()"
-    },
-    {
-      "tier": "high",
-      "id": "perl-unlink",
-      "js": "(^|[[:space:]&|;|(|)])perl\\s.*(unlink|rmtree)"
-    },
-    {
-      "tier": "high",
-      "id": "ruby-rmrf",
-      "js": "(^|[[:space:]&|;|(|)])ruby\\s.*(rm_rf|rmtree|FileUtils)"
-    },
-    {
-      "tier": "high",
-      "id": "node-rmsync",
-      "js": "(^|[[:space:]&|;|(|)])node\\s.*(rmSync|unlinkSync|fs\\.rm)"
-    },
-    {
-      "tier": "medium",
-      "id": "git-push-force",
-      "js": "(^|[[:space:]&|;|(|)])git\\s+push\\s.*(--force|-f)(\\s|$)"
-    },
-    {
-      "tier": "medium",
-      "id": "truncate-resize",
-      "js": "(^|[[:space:]&|;|(|)])truncate\\s+(-s|--size)\\s"
-    },
-    {
-      "tier": "medium",
-      "id": "git-worktree-reset",
-      "js": "(^|[[:space:]&|;|(|)])git\\s+(checkout|restore)\\s+(--\\s+)?\\.(\\s|$)"
-    },
-    {
-      "tier": "medium",
-      "id": "killall",
-      "js": "(^|[[:space:]&|;|(|)])killall(\\s|$)"
-    },
-    {
-      "tier": "medium",
-      "id": "npm-publish",
-      "js": "(^|[[:space:]&|;|(|)])npm\\s+publish(\\s|$)"
-    },
-    {
-      "tier": "medium",
-      "id": "crontab-remove",
-      "js": "(^|[[:space:]&|;|(|)])crontab\\s+-r(\\s|$)"
-    },
-    {
-      "tier": "medium",
-      "id": "launchctl-mutate",
-      "js": "(^|[[:space:]&|;|(|)])launchctl\\s+(load|unload|remove|kickstart)(\\s|$)"
+      "input": "normalized",
+      "js": "\\x1ediskutil[\\s]+(erase|partition|unmountdisk|apfs)"
     },
     {
       "tier": "critical",
       "id": "fork-bomb",
-      "js": ":\\(\\)\\{ :\\|:& \\};:|:\\(\\) \\{:\\|:&\\};:"
+      "input": "normalized",
+      "js": "\\x1e:\\(\\)\\{[\\s]+\\x1e:\\|\\x1e:&[\\s]+\\};\\x1e:|\\x1e:\\(\\)[\\s]+\\x1e\\{:\\|\\x1e:&\\};\\x1e:"
+    },
+    {
+      "tier": "critical",
+      "id": "raw-device-redirect",
+      "input": "normalized",
+      "js": "\\x1emainframe-raw-device-redirect([\\s]|$)"
+    },
+    {
+      "tier": "high",
+      "id": "rm-recursive",
+      "input": "normalized",
+      "js": "\\x1erm(?=\\s)(?=(?:\\s+(?!--(?:\\s|$))[^;\\s|&()]+)*\\s+(?:--recursive|-[A-Za-z]*[rR][A-Za-z]*)(?=\\s|$))"
+    },
+    {
+      "tier": "high",
+      "id": "chmod-recursive-777",
+      "input": "normalized",
+      "js": "\\x1echmod[\\s]+(([^\\x1e]*[\\s])?(--recursive|-[a-zA-Z]*[rR][a-zA-Z]*)[\\s]+([^\\x1e]*[\\s])?777([\\s]|$)|([^\\x1e]*[\\s])?777[\\s]+([^\\x1e]*[\\s])?(--recursive|-[a-zA-Z]*[rR][a-zA-Z]*)([\\s]|$))"
+    },
+    {
+      "tier": "high",
+      "id": "chown-recursive",
+      "input": "normalized",
+      "js": "\\x1echown[\\s]+([^\\x1e]*[\\s])?(--recursive|-[a-zA-Z]*[rR][a-zA-Z]*)([\\s]|$)"
+    },
+    {
+      "tier": "high",
+      "id": "git-clean-destructive",
+      "input": "normalized",
+      "js": "\\x1egit[\\s]+clean[\\s]+([^\\x1e]*[\\s])?-[a-zA-Z]*[fxd][a-zA-Z]*([\\s]|$)"
+    },
+    {
+      "tier": "high",
+      "id": "git-reset-hard",
+      "input": "normalized",
+      "js": "\\x1egit[\\s]+reset[\\s]+--hard([\\s]|$)"
+    },
+    {
+      "tier": "high",
+      "id": "docker-system-prune",
+      "input": "normalized",
+      "js": "\\x1edocker[\\s]+system[\\s]+prune[^\\x1e]*(-a|--all|--volumes)"
+    },
+    {
+      "tier": "high",
+      "id": "kubectl-delete",
+      "input": "normalized",
+      "js": "\\x1ekubectl[\\s]+delete([\\s]|$)"
+    },
+    {
+      "tier": "high",
+      "id": "terraform-destroy",
+      "input": "normalized",
+      "js": "\\x1e(terraform|tofu)[\\s]+destroy([\\s]|$)"
+    },
+    {
+      "tier": "high",
+      "id": "s3-recursive-delete",
+      "input": "normalized",
+      "js": "\\x1eaws[\\s]+s3[\\s]+rm[^\\x1e]*--recursive"
+    },
+    {
+      "tier": "high",
+      "id": "find-delete",
+      "input": "normalized",
+      "js": "\\x1efind[\\s][^\\x1e]*-delete([\\s]|$)"
+    },
+    {
+      "tier": "high",
+      "id": "xargs-rm-pipeline",
+      "input": "normalized",
+      "js": "\\|[\\s]*\\x1exargs[\\s][^\\x1e]*rm([\\s]|$)"
+    },
+    {
+      "tier": "high",
+      "id": "rsync-delete",
+      "input": "normalized",
+      "js": "\\x1ersync[\\s][^\\x1e]*--delete"
+    },
+    {
+      "tier": "high",
+      "id": "opaque-pipe-to-shell",
+      "input": "normalized",
+      "js": "\\|[\\s]*(\\x1e(sudo|env|nice|command|nohup|time)[\\s]*)*\\x1e(bash|sh|dash|zsh)([\\s]|$)"
+    },
+    {
+      "tier": "high",
+      "id": "git-push-mirror",
+      "input": "normalized",
+      "js": "\\x1egit[\\s]+push[\\s][^\\x1e]*--mirror"
+    },
+    {
+      "tier": "high",
+      "id": "kill-all-processes",
+      "input": "normalized",
+      "js": "\\x1ekill[\\s]+(-9|-kill)[\\s]+-1([\\s]|$)"
+    },
+    {
+      "tier": "high",
+      "id": "find-exec-shell",
+      "input": "normalized",
+      "js": "\\x1efind[\\s][^\\x1e]*-exec[\\s]+\\x1e(sh|bash|dash|zsh|rm)([\\s]|$)"
+    },
+    {
+      "tier": "high",
+      "id": "python-rmtree",
+      "input": "normalized",
+      "js": "\\x1epython[0-9.]*[\\s][^\\x1e]*(rmtree|os\\.remove|os\\.unlink|os\\.rmdir|\\.unlink\\()"
+    },
+    {
+      "tier": "high",
+      "id": "perl-unlink",
+      "input": "normalized",
+      "js": "\\x1eperl[\\s][^\\x1e]*(unlink|rmtree)"
+    },
+    {
+      "tier": "high",
+      "id": "ruby-rmrf",
+      "input": "normalized",
+      "js": "\\x1eruby[\\s][^\\x1e]*(rm_rf|rmtree|fileutils)"
+    },
+    {
+      "tier": "high",
+      "id": "node-rmsync",
+      "input": "normalized",
+      "js": "\\x1enode[\\s][^\\x1e]*(rmsync|unlinksync|fs\\.rm)"
+    },
+    {
+      "tier": "high",
+      "id": "mainframe-project-memory-initialization",
+      "input": "normalized",
+      "js": "\\x1emainframe[\\s]+awm[\\s]+(project[\\s]+ensure([\\s]|$)|init[\\s][^\\x1e]*--namespace(=|[\\s]+)projects([\\s]|$))|\\x1eawm_project_ensure([\\s]|$)|\\x1eawm_init[\\s][^\\x1e]*--namespace(=|[\\s]+)projects([\\s]|$)"
+    },
+    {
+      "tier": "high",
+      "id": "mainframe-project-memory-close",
+      "input": "normalized",
+      "js": "\\x1emainframe[\\s]+awm[\\s]+project[\\s]+close([\\s]|$)"
+    },
+    {
+      "tier": "high",
+      "id": "mainframe-explicit-confirmation",
+      "input": "normalized",
+      "js": "\\x1emainframe[\\s][^\\x1e]*--yes([\\s]|$)"
+    },
+    {
+      "tier": "high",
+      "id": "mainframe-runtime-mutation",
+      "input": "normalized",
+      "js": "(?:\\x1emainframe\\s+update(?=[\\s;&|()]|$)|\\x1emainframe\\s+upgrade(?![^\\x1e]*?(?:^|\\s)--dry-run(?=[\\s;&|()]|$))(?=[\\s;&|()]|$)|\\x1emainframe\\s+uninstall(?![^\\x1e]*?(?:^|\\s)--dry-run(?=[\\s;&|()]|$))(?=[\\s;&|()]|$)|\\x1ebrew\\s+(?:upgrade|uninstall)(?=[\\s;&|()]|$)(?=[^\\x1e]*(?:^|\\s)(?:gtwatts/mainframe/mainframe|mainframe)(?=[\\s;&|()]|$)))"
+    },
+    {
+      "tier": "medium",
+      "id": "git-push-force",
+      "input": "normalized",
+      "js": "\\x1egit[\\s]+push[\\s][^\\x1e]*(--force|-f)([\\s]|$)"
+    },
+    {
+      "tier": "medium",
+      "id": "truncate-resize",
+      "input": "normalized",
+      "js": "\\x1etruncate[\\s]+(-s|--size)[\\s]"
+    },
+    {
+      "tier": "medium",
+      "id": "git-worktree-reset",
+      "input": "normalized",
+      "js": "\\x1egit[\\s]+(checkout|restore)[\\s]+(--[\\s]+)?\\.([\\s]|$)"
+    },
+    {
+      "tier": "medium",
+      "id": "killall",
+      "input": "normalized",
+      "js": "\\x1ekillall([\\s]|$)"
+    },
+    {
+      "tier": "medium",
+      "id": "npm-publish",
+      "input": "normalized",
+      "js": "\\x1enpm[\\s]+publish([\\s]|$)"
+    },
+    {
+      "tier": "medium",
+      "id": "crontab-remove",
+      "input": "normalized",
+      "js": "\\x1ecrontab[\\s]+-r([\\s]|$)"
+    },
+    {
+      "tier": "medium",
+      "id": "launchctl-mutate",
+      "input": "normalized",
+      "js": "\\x1elaunchctl[\\s]+(load|unload|remove|kickstart)([\\s]|$)"
     }
   ]
 }

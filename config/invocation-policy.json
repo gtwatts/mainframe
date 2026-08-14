@@ -1,0 +1,925 @@
+{
+  "schema_version": 1,
+  "description": "Reviewed, fail-closed invocation contracts for the stable-core profile. Only canonical IDs listed here are broker-invocable.",
+  "profile": "stable-core",
+  "exports": {
+    "mf:data:json:json_array": {
+      "contract_status": "reviewed",
+      "result": { "kind": "stdout" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "items",
+            "mode": "spread"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:data:json:json_escape": {
+      "contract_status": "reviewed",
+      "result": { "kind": "stdout" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "str": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "str"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "str",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:data:json:json_get": {
+      "contract_status": "reviewed",
+      "result": { "kind": "stdout" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "json": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "json",
+          "key"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "json",
+            "mode": "scalar"
+          },
+          {
+            "field": "key",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:data:json:json_merge": {
+      "contract_status": "reviewed",
+      "result": { "kind": "stdout" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "objects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "objects",
+            "mode": "spread"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:data:json:json_object": {
+      "contract_status": "reviewed",
+      "result": { "kind": "stdout" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "pairs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "pairs",
+            "mode": "spread"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:data:json:json_string": {
+      "contract_status": "reviewed",
+      "result": { "kind": "stdout" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "value",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:data:json:json_valid": {
+      "contract_status": "reviewed",
+      "result": { "kind": "exit" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "json": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "json"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "json",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:data:pure-array:array_contains": {
+      "contract_status": "reviewed",
+      "result": { "kind": "exit" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "needle": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          }
+        },
+        "required": [
+          "needle"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "needle",
+            "mode": "scalar"
+          },
+          {
+            "field": "items",
+            "mode": "spread"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:data:pure-array:array_join": {
+      "contract_status": "reviewed",
+      "result": { "kind": "stdout" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "delimiter": {
+            "type": "string",
+            "default": ","
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "delimiter",
+            "mode": "scalar"
+          },
+          {
+            "field": "items",
+            "mode": "spread"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:std:functional:is_numeric": {
+      "contract_status": "reviewed",
+      "result": { "kind": "exit" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "value",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:std:output:output_json": {
+      "contract_status": "reviewed",
+      "result": { "kind": "stdout" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "json": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "json"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "json",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:std:output:output_success": {
+      "contract_status": "reviewed",
+      "result": { "kind": "stdout" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "string"
+          },
+          "hint": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "data",
+            "mode": "scalar"
+          },
+          {
+            "field": "hint",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:std:output:usop_error_validation": {
+      "contract_status": "reviewed",
+      "result": { "kind": "stdout" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "expected": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "value",
+          "expected"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "field",
+            "mode": "scalar"
+          },
+          {
+            "field": "value",
+            "mode": "scalar"
+          },
+          {
+            "field": "expected",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:std:path:path_sanitize": {
+      "contract_status": "reviewed",
+      "result": { "kind": "stdout" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "replacement": {
+            "type": "string",
+            "default": "_"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "name",
+            "mode": "scalar"
+          },
+          {
+            "field": "replacement",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:std:pure-string:is_empty": {
+      "contract_status": "reviewed",
+      "result": { "kind": "exit" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "value",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:std:pure-string:to_lower": {
+      "contract_status": "reviewed",
+      "result": { "kind": "stdout" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "value",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:std:pure-string:to_upper": {
+      "contract_status": "reviewed",
+      "result": { "kind": "stdout" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "value",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:std:pure-string:trim_left": {
+      "contract_status": "reviewed",
+      "result": { "kind": "stdout" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "value",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:std:pure-string:trim_right": {
+      "contract_status": "reviewed",
+      "result": { "kind": "stdout" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "value",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:std:validation:validate_email": {
+      "contract_status": "reviewed",
+      "result": { "kind": "exit" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "email",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:std:validation:validate_int": {
+      "contract_status": "reviewed",
+      "result": { "kind": "exit" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "min": {
+            "type": "string",
+            "default": ""
+          },
+          "max": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "value",
+            "mode": "scalar"
+          },
+          {
+            "field": "min",
+            "mode": "scalar"
+          },
+          {
+            "field": "max",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:std:validation:validate_json": {
+      "contract_status": "reviewed",
+      "result": { "kind": "exit" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "json": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "json"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "json",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:std:validation:validate_path": {
+      "contract_status": "reviewed",
+      "result": { "kind": "exit" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "file",
+              "dir",
+              "any"
+            ],
+            "default": "any"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "path",
+            "mode": "scalar"
+          },
+          {
+            "field": "type",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "read"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:std:validation:validate_regex": {
+      "contract_status": "reviewed",
+      "result": { "kind": "exit" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "pattern"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "value",
+            "mode": "scalar"
+          },
+          {
+            "field": "pattern",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:std:validation:validate_semver": {
+      "contract_status": "reviewed",
+      "result": { "kind": "exit" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "version",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    },
+    "mf:std:validation:validate_url": {
+      "contract_status": "reviewed",
+      "result": { "kind": "exit" },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "schemes": {
+            "type": "string",
+            "default": "http,https"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "additionalProperties": false
+      },
+      "call_shape": {
+        "kind": "argv",
+        "arguments": [
+          {
+            "field": "url",
+            "mode": "scalar"
+          },
+          {
+            "field": "schemes",
+            "mode": "scalar"
+          }
+        ]
+      },
+      "effects": [
+        "pure"
+      ],
+      "capabilities": [],
+      "timeout_ms": 5000,
+      "output_limit": 65536
+    }
+  }
+}

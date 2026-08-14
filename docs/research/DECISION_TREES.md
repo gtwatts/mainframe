@@ -322,12 +322,12 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 | Remove duplicates | `array_unique "${arr[@]}"` | arrays |
 | Sort array | `array_sort "${arr[@]}"` | arrays |
 | Reverse array | `array_reverse "${arr[@]}"` | arrays |
-| Slice array | `array_slice start count "${arr[@]}"` | arrays |
+| Slice array | `array_slice start inclusive_end "${arr[@]}"` | arrays |
 | Sum numeric array | `array_sum "${nums[@]}"` | arrays |
 | Get min/max | `array_min`, `array_max` | arrays |
-| Remove element | `array_remove "val" "${arr[@]}"` | arrays |
-| Array difference | `array_diff "a b c" "b"` | arrays |
-| Array intersection | `array_intersect "a b" "b c"` | arrays |
+| Remove element | `array_remove arr "val"` | arrays |
+| Array difference | `left=(a b c); right=(b); array_diff left right` | arrays |
+| Array intersection | `left=(a b); right=(b c); array_intersect left right` | arrays |
 
 ---
 

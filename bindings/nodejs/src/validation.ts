@@ -5,7 +5,10 @@
  * Calls validation.sh functions: validate_email, validate_url, sanitize_html, etc.
  */
 
-import { callFunction, callFunctionRaw } from "./core.js";
+import {
+  callLegacyFixedFunction as callFunction,
+  callLegacyFixedFunctionRaw as callFunctionRaw,
+} from "./internal/legacy.js";
 
 // =============================================================================
 // Type Validation

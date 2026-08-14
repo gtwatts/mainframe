@@ -1,0 +1,539 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/native-awm-chain-evidence-v1.json",
+  "title": "MAINFRAME four-host native AWM-chain execution certification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "certification",
+    "mainframe",
+    "platform",
+    "execution_boundaries",
+    "awm",
+    "hosts",
+    "negative_probe",
+    "evidence_hygiene",
+    "certified_at"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "certification": { "const": "native-awm-chain-execution-certified" },
+    "mainframe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "archive_sha256",
+        "archive_origin",
+        "archive_checksum_records",
+        "installation_count",
+        "install_mode",
+        "installed_runtime_tree_sha256",
+        "installed_launcher_sha256",
+        "installed_runtime_read_only"
+      ],
+      "properties": {
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "archive_sha256": { "$ref": "#/$defs/sha256" },
+        "archive_origin": {
+          "anyOf": [
+            { "const": "workspace-build" },
+            { "const": "external-input" }
+          ]
+        },
+        "archive_checksum_records": { "const": 1 },
+        "installation_count": { "const": 1 },
+        "install_mode": { "const": "safe-extract-single-private-install" },
+        "installed_runtime_tree_sha256": { "$ref": "#/$defs/sha256" },
+        "installed_launcher_sha256": { "$ref": "#/$defs/sha256" },
+        "installed_runtime_read_only": { "const": true }
+      }
+    },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os", "arch", "libc", "system_libc"],
+      "properties": {
+        "os": {
+          "anyOf": [
+            { "const": "Darwin" },
+            { "const": "Linux" }
+          ]
+        },
+        "arch": {
+          "anyOf": [
+            { "const": "arm64" },
+            { "const": "aarch64" },
+            { "const": "x86_64" }
+          ]
+        },
+        "libc": {
+          "anyOf": [
+            { "const": "none" },
+            { "const": "glibc" },
+            { "const": "musl" }
+          ]
+        },
+        "system_libc": {
+          "anyOf": [
+            { "const": "none" },
+            { "const": "glibc" },
+            { "const": "musl" }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "anyOf": [
+            {
+              "properties": {
+                "os": { "const": "Darwin" },
+                "libc": { "const": "none" },
+                "system_libc": { "const": "none" }
+              }
+            },
+            {
+              "properties": {
+                "os": { "const": "Linux" },
+                "libc": { "const": "glibc" },
+                "system_libc": { "const": "glibc" }
+              }
+            },
+            {
+              "properties": {
+                "os": { "const": "Linux" },
+                "libc": { "const": "musl" },
+                "system_libc": { "const": "musl" }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "execution_boundaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shared_project",
+        "shared_awm_root",
+        "shared_awm_session",
+        "same_uid",
+        "shared_tmpdir",
+        "separate_home",
+        "separate_xdg_config",
+        "separate_xdg_state",
+        "separate_xdg_cache",
+        "fresh_separate_host_state",
+        "os_process_isolation",
+        "container_isolation",
+        "isolation_scope"
+      ],
+      "properties": {
+        "shared_project": { "const": true },
+        "shared_awm_root": { "const": true },
+        "shared_awm_session": { "const": true },
+        "same_uid": { "const": true },
+        "shared_tmpdir": { "const": true },
+        "separate_home": { "const": true },
+        "separate_xdg_config": { "const": true },
+        "separate_xdg_state": { "const": true },
+        "separate_xdg_cache": { "const": true },
+        "fresh_separate_host_state": { "const": true },
+        "os_process_isolation": { "const": false },
+        "container_isolation": { "const": false },
+        "isolation_scope": { "const": "fresh-filesystem-host-state-not-os-sandbox" }
+      }
+    },
+    "awm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backend",
+        "schema_version",
+        "root_scope",
+        "root_mode",
+        "session_id",
+        "namespace",
+        "shared_session",
+        "seed_bits",
+        "seed_source",
+        "seed_exposure",
+        "checkpoint_count",
+        "chain_length",
+        "final_key",
+        "final_context_sha256",
+        "final_handoff_sha256",
+        "private_artifact_mode",
+        "private_modes_verified",
+        "context_proof",
+        "handoff_proof"
+      ],
+      "properties": {
+        "backend": { "const": "file" },
+        "schema_version": { "const": 2 },
+        "root_scope": { "const": "private-project-local" },
+        "root_mode": { "const": "700" },
+        "session_id": { "type": "string", "pattern": "^[0-9a-f]{12}$" },
+        "namespace": { "const": "native-awm-cert" },
+        "shared_session": { "const": true },
+        "seed_bits": { "const": 256 },
+        "seed_source": { "const": "kernel-csprng" },
+        "seed_exposure": { "const": "harness-private-awm-and-loopback-guard-memory-only" },
+        "checkpoint_count": { "const": 5 },
+        "chain_length": { "const": 4 },
+        "final_key": { "const": "chain.claude" },
+        "final_context_sha256": { "$ref": "#/$defs/sha256" },
+        "final_handoff_sha256": { "$ref": "#/$defs/sha256" },
+        "private_artifact_mode": { "const": "600" },
+        "private_modes_verified": { "const": true },
+        "context_proof": { "$ref": "#/$defs/contextProof" },
+        "handoff_proof": { "$ref": "#/$defs/handoffProof" }
+      }
+    },
+    "hosts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gemini", "codex", "copilot", "claude"],
+      "properties": {
+        "gemini": {
+          "allOf": [
+            { "$ref": "#/$defs/hostProof" },
+            {
+              "properties": {
+                "host": { "const": "gemini" },
+                "position": { "const": 1 },
+                "version": { "const": "0.53.1" },
+                "package": { "const": "@google/gemini-cli" },
+                "read_key": { "const": "chain.seed" },
+                "write_key": { "const": "chain.gemini" },
+                "provider_call_id": { "const": "mainframe-gemini-awm-chain" },
+                "provider_mode": { "const": "first-party-fake-responses" },
+                "provider_request_guard_mode": { "const": "not-applicable-first-party-fake-responses" },
+                "provider_request_hygiene_checks": { "const": 0 },
+                "event": { "const": "BeforeTool" },
+                "tool": { "const": "run_shell_command" },
+                "checkpoint_source_agent": { "const": "gemini" }
+              }
+            }
+          ]
+        },
+        "codex": {
+          "allOf": [
+            { "$ref": "#/$defs/hostProof" },
+            {
+              "properties": {
+                "host": { "const": "codex" },
+                "position": { "const": 2 },
+                "version": { "const": "0.146.0" },
+                "package": { "const": "@openai/codex" },
+                "read_key": { "const": "chain.gemini" },
+                "write_key": { "const": "chain.codex" },
+                "provider_call_id": { "const": "mainframe-codex-awm-chain" },
+                "provider_mode": { "const": "loopback-responses-no-credentials" },
+                "provider_request_guard_mode": { "const": "reject-awm-values-and-root-no-request-persistence" },
+                "provider_request_hygiene_checks": { "const": 2 },
+                "event": { "const": "PreToolUse" },
+                "tool": { "const": "Bash" },
+                "checkpoint_source_agent": { "const": "codex" }
+              }
+            }
+          ]
+        },
+        "copilot": {
+          "allOf": [
+            { "$ref": "#/$defs/hostProof" },
+            {
+              "properties": {
+                "host": { "const": "copilot" },
+                "position": { "const": 3 },
+                "version": { "const": "1.0.78" },
+                "package": { "const": "@github/copilot" },
+                "read_key": { "const": "chain.codex" },
+                "write_key": { "const": "chain.copilot" },
+                "provider_call_id": { "const": "mainframe-copilot-awm-chain" },
+                "provider_mode": { "const": "loopback-chat-completions-no-credentials" },
+                "provider_request_guard_mode": { "const": "reject-awm-values-and-root-no-request-persistence" },
+                "provider_request_hygiene_checks": { "const": 2 },
+                "event": { "const": "PreToolUse" },
+                "tool": { "const": "bash" },
+                "checkpoint_source_agent": { "const": "copilot" }
+              }
+            }
+          ]
+        },
+        "claude": {
+          "allOf": [
+            { "$ref": "#/$defs/hostProof" },
+            {
+              "properties": {
+                "host": { "const": "claude" },
+                "position": { "const": 4 },
+                "version": { "const": "2.1.220" },
+                "package": { "const": "@anthropic-ai/claude-code" },
+                "read_key": { "const": "chain.copilot" },
+                "write_key": { "const": "chain.claude" },
+                "provider_call_id": { "const": "mainframe-claude-awm-chain" },
+                "provider_mode": { "const": "loopback-messages-synthetic-placeholder" },
+                "provider_request_guard_mode": { "const": "reject-awm-values-and-root-no-request-persistence" },
+                "provider_request_hygiene_checks": { "const": 2 },
+                "event": { "const": "PreToolUse" },
+                "tool": { "const": "Bash" },
+                "checkpoint_source_agent": { "const": "claude" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "negative_probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executed",
+        "positive_certificate_binding",
+        "standalone_mode",
+        "standalone_mode_emits_evidence",
+        "run_order",
+        "host",
+        "read_key",
+        "write_key",
+        "provider_call_id",
+        "provider_command_sha256",
+        "provider_requests",
+        "provider_status",
+        "provider_request_hygiene_verified",
+        "missing_predecessor_marker",
+        "missing_predecessor_marker_seen",
+        "tool_exit_code",
+        "tool_result_nonzero",
+        "event",
+        "tool",
+        "gateway_risk",
+        "gateway_rule",
+        "gateway_decision",
+        "gateway_records",
+        "gateway_observation_scope",
+        "gateway_command_correlation_available",
+        "checkpoint_written",
+        "scratch_mode",
+        "scratch_empty",
+        "later_hosts_started_before_rejection",
+        "fresh_separate_host_state",
+        "server_state_sha256"
+      ],
+      "properties": {
+        "executed": { "const": true },
+        "positive_certificate_binding": { "const": true },
+        "standalone_mode": { "const": "--negative-wrong-predecessor" },
+        "standalone_mode_emits_evidence": { "const": false },
+        "run_order": { "const": "after-gemini-before-positive-codex" },
+        "host": { "const": "codex" },
+        "read_key": { "const": "chain.missing" },
+        "write_key": { "const": "chain.codex" },
+        "provider_call_id": { "const": "mainframe-codex-awm-chain" },
+        "provider_command_sha256": { "$ref": "#/$defs/sha256" },
+        "provider_requests": { "const": 2 },
+        "provider_status": { "const": "expected-missing-predecessor" },
+        "provider_request_hygiene_verified": { "const": true },
+        "missing_predecessor_marker": { "const": "MAINFRAME_AWM_MISSING_PREDECESSOR" },
+        "missing_predecessor_marker_seen": { "const": true },
+        "tool_exit_code": { "const": 42 },
+        "tool_result_nonzero": { "const": true },
+        "event": { "const": "PreToolUse" },
+        "tool": { "const": "Bash" },
+        "gateway_risk": { "const": "low" },
+        "gateway_rule": { "const": "none" },
+        "gateway_decision": { "const": "allow" },
+        "gateway_records": { "const": 1 },
+        "gateway_observation_scope": { "const": "host-event-tool-policy-tuple-only" },
+        "gateway_command_correlation_available": { "const": false },
+        "checkpoint_written": { "const": false },
+        "scratch_mode": { "const": "600" },
+        "scratch_empty": { "const": true },
+        "later_hosts_started_before_rejection": { "const": false },
+        "fresh_separate_host_state": { "const": true },
+        "server_state_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "evidence_hygiene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_seed_embedded",
+        "checkpoint_values_embedded",
+        "credentials_embedded",
+        "absolute_home_paths_embedded",
+        "provider_requests_embedded",
+        "private_run_artifacts_embedded",
+        "loopback_requests_persisted",
+        "loopback_private_values_observed",
+        "loopback_awm_root_observed",
+        "loopback_disposable_paths_may_be_observed"
+      ],
+      "properties": {
+        "raw_seed_embedded": { "const": false },
+        "checkpoint_values_embedded": { "const": false },
+        "credentials_embedded": { "const": false },
+        "absolute_home_paths_embedded": { "const": false },
+        "provider_requests_embedded": { "const": false },
+        "private_run_artifacts_embedded": { "const": false },
+        "loopback_requests_persisted": { "const": false },
+        "loopback_private_values_observed": { "const": false },
+        "loopback_awm_root_observed": { "const": false },
+        "loopback_disposable_paths_may_be_observed": { "const": true }
+      }
+    },
+    "certified_at": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "npmIntegrity": { "type": "string", "pattern": "^sha512-[A-Za-z0-9+/]+={0,2}$" },
+    "contextProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "budget_unit",
+        "requested_tokens",
+        "bytes_per_token",
+        "max_bytes",
+        "actual_bytes",
+        "actual_tokens",
+        "truncated",
+        "provenance_session_verified",
+        "source_agent",
+        "final_value_included"
+      ],
+      "properties": {
+        "budget_unit": { "const": "bytes-under-LC_ALL-C" },
+        "requested_tokens": { "const": 4096 },
+        "bytes_per_token": { "const": 4 },
+        "max_bytes": { "const": 16384 },
+        "actual_bytes": { "type": "integer", "minimum": 1, "maximum": 16384 },
+        "actual_tokens": { "type": "integer", "minimum": 1, "maximum": 4096 },
+        "truncated": { "const": false },
+        "provenance_session_verified": { "const": true },
+        "source_agent": { "const": "harness" },
+        "final_value_included": { "const": true }
+      }
+    },
+    "handoffProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "budget_unit",
+        "requested_tokens",
+        "bytes_per_token",
+        "max_bytes",
+        "actual_bytes",
+        "actual_tokens",
+        "truncated",
+        "provenance_session_verified",
+        "parent_agent",
+        "nested_context_actual_bytes",
+        "nested_context_actual_tokens",
+        "nested_context_truncated",
+        "nested_context_verified",
+        "final_value_included",
+        "persisted_byte_equal"
+      ],
+      "properties": {
+        "budget_unit": { "const": "bytes-under-LC_ALL-C" },
+        "requested_tokens": { "const": 4096 },
+        "bytes_per_token": { "const": 4 },
+        "max_bytes": { "const": 16384 },
+        "actual_bytes": { "type": "integer", "minimum": 1, "maximum": 16384 },
+        "actual_tokens": { "type": "integer", "minimum": 1, "maximum": 4096 },
+        "truncated": { "const": false },
+        "provenance_session_verified": { "const": true },
+        "parent_agent": { "const": "harness" },
+        "nested_context_actual_bytes": {
+          "type": "integer", "minimum": 1, "maximum": 16384
+        },
+        "nested_context_actual_tokens": {
+          "type": "integer", "minimum": 1, "maximum": 4096
+        },
+        "nested_context_truncated": { "const": false },
+        "nested_context_verified": { "const": true },
+        "final_value_included": { "const": true },
+        "persisted_byte_equal": { "const": true }
+      }
+    },
+    "hostProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "host",
+        "position",
+        "version",
+        "version_command_verified",
+        "package",
+        "package_integrity",
+        "platform_package",
+        "platform_package_integrity",
+        "runtime_tree_sha256",
+        "executable_sha256",
+        "fixture_sha256",
+        "read_key",
+        "write_key",
+        "provider_call_id",
+        "provider_command_sha256",
+        "provider_mode",
+        "provider_requests",
+        "provider_request_guard_mode",
+        "provider_request_hygiene_checks",
+        "user_credentials_supplied",
+        "fresh_separate_host_state",
+        "tool_calls",
+        "event",
+        "tool",
+        "gateway_risk",
+        "gateway_rule",
+        "gateway_decision",
+        "gateway_records",
+        "gateway_observation_scope",
+        "gateway_command_correlation_available",
+        "audit_mode",
+        "checkpoint_source_agent",
+        "checkpoint_importance",
+        "success_marker_seen"
+      ],
+      "properties": {
+        "host": { "type": "string", "minLength": 1 },
+        "position": { "type": "integer" },
+        "version": { "type": "string", "minLength": 1 },
+        "version_command_verified": { "const": true },
+        "package": { "type": "string", "minLength": 1 },
+        "package_integrity": { "$ref": "#/$defs/npmIntegrity" },
+        "platform_package": { "type": "string", "minLength": 1 },
+        "platform_package_integrity": { "$ref": "#/$defs/npmIntegrity" },
+        "runtime_tree_sha256": { "$ref": "#/$defs/sha256" },
+        "executable_sha256": { "$ref": "#/$defs/sha256" },
+        "fixture_sha256": { "$ref": "#/$defs/sha256" },
+        "read_key": { "type": "string", "pattern": "^chain\\.[a-z]+$" },
+        "write_key": { "type": "string", "pattern": "^chain\\.[a-z]+$" },
+        "provider_call_id": { "type": "string", "pattern": "^mainframe-[a-z]+-awm-chain$" },
+        "provider_command_sha256": { "$ref": "#/$defs/sha256" },
+        "provider_mode": { "type": "string", "minLength": 1 },
+        "provider_requests": { "const": 2 },
+        "provider_request_guard_mode": { "type": "string", "minLength": 1 },
+        "provider_request_hygiene_checks": { "type": "integer" },
+        "user_credentials_supplied": { "const": false },
+        "fresh_separate_host_state": { "const": true },
+        "tool_calls": { "const": 1 },
+        "event": { "type": "string", "minLength": 1 },
+        "tool": { "type": "string", "minLength": 1 },
+        "gateway_risk": { "const": "low" },
+        "gateway_rule": { "const": "none" },
+        "gateway_decision": { "const": "allow" },
+        "gateway_records": { "const": 1 },
+        "gateway_observation_scope": { "const": "host-event-tool-policy-tuple-only" },
+        "gateway_command_correlation_available": { "const": false },
+        "audit_mode": { "const": "600" },
+        "checkpoint_source_agent": { "type": "string", "pattern": "^(gemini|codex|copilot|claude)$" },
+        "checkpoint_importance": { "const": "high" },
+        "success_marker_seen": { "const": true }
+      }
+    }
+  }
+}

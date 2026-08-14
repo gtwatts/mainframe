@@ -11,12 +11,12 @@ load '../test_helper'
 setup() {
     # Create isolated test environment
     TEST_BASE=$(mktemp -d)
-    export MAINFRAME_ROOT="${MAINFRAME_ROOT:-$BATS_TEST_DIRNAME/../..}"
+    export MAINFRAME_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd -P)"
     export MCP_TEST_DIR="$TEST_BASE"
     export MAINFRAME_QUIET=1
     
     # Check if MCP server dependencies are available
-    if [[ ! -f "$MAINFRAME_ROOT/mcp/server.py" ]]; then
+    if [[ ! -f "$MAINFRAME_ROOT/mcp/src/mainframe_mcp/server.py" ]]; then
         skip "MCP server not found"
     fi
     
@@ -43,9 +43,9 @@ teardown() {
 
 @test "MCP server starts and responds to initialization" {
     # Verify MCP server files exist
-    [ -f "$MAINFRAME_ROOT/mcp/server.py" ]
-    [ -f "$MAINFRAME_ROOT/mcp/tool_registry.py" ]
-    [ -f "$MAINFRAME_ROOT/mcp/executor.py" ]
+    [ -f "$MAINFRAME_ROOT/mcp/src/mainframe_mcp/server.py" ]
+    [ -f "$MAINFRAME_ROOT/mcp/src/mainframe_mcp/tool_registry.py" ]
+    [ -f "$MAINFRAME_ROOT/mcp/src/mainframe_mcp/executor.py" ]
     
     # Verify FUNCTIONS.json exists (required by MCP server)
     [ -f "$MAINFRAME_ROOT/FUNCTIONS.json" ]
@@ -59,10 +59,10 @@ teardown() {
     # Test the tool registry directly
     run python3 -c "
 import sys
-sys.path.insert(0, '$MAINFRAME_ROOT/mcp')
-from tool_registry import ToolRegistry
+sys.path.insert(0, '$MAINFRAME_ROOT/mcp/src')
+from mainframe_mcp.tool_registry import ToolRegistry
 
-registry = ToolRegistry()
+registry = ToolRegistry(mainframe_root='$MAINFRAME_ROOT')
 if registry.load():
     if len(registry.functions) > 0:
         print(f'Loaded {len(registry.functions)} functions')
@@ -83,11 +83,11 @@ else:
     run python3 -c "
 import sys
 import json
-sys.path.insert(0, '$MAINFRAME_ROOT/mcp')
-from executor import BashExecutor
+sys.path.insert(0, '$MAINFRAME_ROOT/mcp/src')
+from mainframe_mcp.executor import BashExecutor
 
-executor = BashExecutor()
-result = executor.execute('json_parse', {'json': '{\"test\": \"value\"}'})
+executor = BashExecutor(mainframe_root='$MAINFRAME_ROOT')
+result = executor.execute('json_parse', ['{\"test\": \"value\"}'])
 success, stdout, stderr = result
 
 if success and 'test' in stdout:
@@ -104,11 +104,11 @@ else:
 @test "MCP executor handles invalid function gracefully" {
     run python3 -c "
 import sys
-sys.path.insert(0, '$MAINFRAME_ROOT/mcp')
-from executor import BashExecutor
+sys.path.insert(0, '$MAINFRAME_ROOT/mcp/src')
+from mainframe_mcp.executor import BashExecutor
 
-executor = BashExecutor()
-result = executor.execute('nonexistent_function_xyz', {})
+executor = BashExecutor(mainframe_root='$MAINFRAME_ROOT')
+result = executor.execute('nonexistent_function_xyz', [])
 success, stdout, stderr = result
 
 if not success:
@@ -126,10 +126,10 @@ else:
     run python3 -c "
 import sys
 import json
-sys.path.insert(0, '$MAINFRAME_ROOT/mcp')
-from tool_registry import ToolRegistry
+sys.path.insert(0, '$MAINFRAME_ROOT/mcp/src')
+from mainframe_mcp.tool_registry import ToolRegistry
 
-registry = ToolRegistry()
+registry = ToolRegistry(mainframe_root='$MAINFRAME_ROOT')
 if not registry.load():
     print('Failed to load functions')
     sys.exit(1)
@@ -155,19 +155,24 @@ sys.exit(0)
     [[ "$output" == *"SUCCESS"* ]]
 }
 
-@test "MCP executor validates required parameters" {
+@test "MCP argument boundary validates required parameters" {
     run python3 -c "
 import sys
-sys.path.insert(0, '$MAINFRAME_ROOT/mcp')
-from executor import BashExecutor
+sys.path.insert(0, '$MAINFRAME_ROOT/mcp/src')
+from mainframe_mcp.authorization import AuthorizationError, prepare_invocation_arguments
+from mainframe_mcp.tool_registry import ToolRegistry
 
-executor = BashExecutor()
-result = executor.execute('json_get', {})
-success, stdout, stderr = result
+registry = ToolRegistry(mainframe_root='$MAINFRAME_ROOT')
+func = registry.get_function('json_get')
 
-print(f'Result: success={success}, stderr={stderr}')
-print('SUCCESS: Handled missing parameters')
-sys.exit(0)
+try:
+    prepare_invocation_arguments(func, {})
+except AuthorizationError:
+    print('SUCCESS: Handled missing parameters')
+    sys.exit(0)
+
+print('FAILED: Missing parameters reached the executor')
+sys.exit(1)
 "
     [ "$status" -eq 0 ]
 }
@@ -177,12 +182,13 @@ sys.exit(0)
     run python3 -c "
 import sys
 import json
-sys.path.insert(0, '$MAINFRAME_ROOT/mcp')
-from tool_registry import ToolRegistry
-from executor import BashExecutor
+sys.path.insert(0, '$MAINFRAME_ROOT/mcp/src')
+from mainframe_mcp.tool_registry import ToolRegistry
+from mainframe_mcp.executor import BashExecutor
+from mainframe_mcp.authorization import prepare_invocation_arguments
 
-registry = ToolRegistry()
-executor = BashExecutor()
+registry = ToolRegistry(mainframe_root='$MAINFRAME_ROOT')
+executor = BashExecutor(mainframe_root='$MAINFRAME_ROOT')
 
 if not registry.load():
     print('Failed to load functions')
@@ -198,7 +204,9 @@ passed = 0
 failed = 0
 
 for func_name, params in test_cases:
-    result = executor.execute(func_name, params)
+    func = registry.get_function(func_name)
+    argv = prepare_invocation_arguments(func, params)
+    result = executor.execute(func_name, argv)
     success, stdout, stderr = result
     if success:
         passed += 1
@@ -222,11 +230,11 @@ else:
 @test "MCP error handling: invalid JSON input" {
     run python3 -c "
 import sys
-sys.path.insert(0, '$MAINFRAME_ROOT/mcp')
-from executor import BashExecutor
+sys.path.insert(0, '$MAINFRAME_ROOT/mcp/src')
+from mainframe_mcp.executor import BashExecutor
 
-executor = BashExecutor()
-result = executor.execute('json_parse', {'json': 'not valid json {{{'})
+executor = BashExecutor(mainframe_root='$MAINFRAME_ROOT')
+result = executor.execute('json_parse', ['not valid json {{{'])
 success, stdout, stderr = result
 
 print(f'Handled invalid JSON: success={success}')
@@ -240,21 +248,21 @@ sys.exit(0)
 @test "MCP tool registry filters by tier correctly" {
     run python3 -c "
 import sys
-sys.path.insert(0, '$MAINFRAME_ROOT/mcp')
-from tool_registry import ToolRegistry
+sys.path.insert(0, '$MAINFRAME_ROOT/mcp/src')
+from mainframe_mcp.tool_registry import ToolRegistry
 
-registry = ToolRegistry()
+registry = ToolRegistry(mainframe_root='$MAINFRAME_ROOT')
 if not registry.load():
     print('Failed to load functions')
     sys.exit(1)
 
+stable_tools = registry.generate_all_tools(tier='stable-core')
 core_tools = registry.generate_all_tools(tier='core')
-standard_tools = registry.generate_all_tools(tier='standard')
-extended_tools = registry.generate_all_tools(tier='extended')
+full_tools = registry.generate_all_tools(tier='full')
 
-print(f'Core: {len(core_tools)}, Standard: {len(standard_tools)}, Extended: {len(extended_tools)}')
+print(f'Stable: {len(stable_tools)}, Core: {len(core_tools)}, Full: {len(full_tools)}')
 
-if len(core_tools) <= len(standard_tools) <= len(extended_tools):
+if len(stable_tools) <= len(core_tools) <= len(full_tools):
     print('SUCCESS: Tier filtering works correctly')
     sys.exit(0)
 else:
@@ -269,11 +277,11 @@ else:
     run python3 -c "
 import sys
 import json
-sys.path.insert(0, '$MAINFRAME_ROOT/mcp')
-from executor import BashExecutor
+sys.path.insert(0, '$MAINFRAME_ROOT/mcp/src')
+from mainframe_mcp.executor import BashExecutor
 
-executor = BashExecutor()
-result = executor.execute('json_object', {'key': 'test_key', 'value': 'test_value'})
+executor = BashExecutor(mainframe_root='$MAINFRAME_ROOT')
+result = executor.execute('json_object', ['test_key=test_value'])
 success, stdout, stderr = result
 
 print(f'Success: {success}')

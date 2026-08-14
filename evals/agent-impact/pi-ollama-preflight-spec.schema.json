@@ -1,0 +1,339 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-pi-ollama-preflight-spec-v1.json",
+  "title": "MAINFRAME offline Pi and Ollama runtime-binding preflight specification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "claim_scope",
+    "runtime_binding_algorithm",
+    "arm_contract",
+    "platform",
+    "node",
+    "mainframe",
+    "pi",
+    "ollama",
+    "adapter",
+    "protocol"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "mainframe-agent-impact-pi-ollama-preflight-spec" },
+    "claim_scope": { "const": "offline-pi-ollama-runtime-binding-and-neutral-arm-contract-preflight-only" },
+    "runtime_binding_algorithm": {
+      "const": "canonical-runtime-projection-sha256-v1",
+      "$comment": "Hash bytes are hex-domain 4d41494e4652414d452d4147454e542d494d504143542d52554e54494d452d50524f4a454354494f4e2d563100 followed by the projection object containing exactly schema_version, kind, claim_scope, platform, node, mainframe, pi, ollama, adapter, protocol, encoded as UTF-8 JSON with sorted keys, compact comma/colon separators, ensure_ascii=true, allow_nan=false, and one trailing LF. The arm_contract member and runtime_binding_algorithm member are excluded."
+    },
+    "arm_contract": { "$ref": "#/$defs/fileBinding" },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operating_system", "architecture", "platform_tuple", "shell"],
+      "properties": {
+        "operating_system": { "enum": ["Darwin", "Linux"] },
+        "architecture": { "$ref": "#/$defs/architecture" },
+        "platform_tuple": { "$ref": "#/$defs/platformTuple" },
+        "shell": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "architecture", "executable"],
+          "properties": {
+            "name": { "enum": ["bash", "zsh"] },
+            "architecture": { "$ref": "#/$defs/architecture" },
+            "executable": { "$ref": "#/$defs/fileBinding" }
+          }
+        }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "architecture", "executable", "install_receipt", "receipt_format"],
+      "properties": {
+        "version": { "$ref": "#/$defs/version" },
+        "architecture": { "$ref": "#/$defs/architecture" },
+        "executable": { "$ref": "#/$defs/fileBinding" },
+        "install_receipt": { "$ref": "#/$defs/fileBinding" },
+        "receipt_format": { "const": "homebrew-install-receipt-v1" }
+      }
+    },
+    "mainframe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "version_file",
+        "install_receipt",
+        "install_receipt_format",
+        "archive",
+        "checksum_sidecar",
+        "installed_tree",
+        "pi_extension",
+        "pi_compatibility_manifest",
+        "pi_compatibility_certification_id",
+        "awm_protocol"
+      ],
+      "properties": {
+        "version": { "$ref": "#/$defs/version" },
+        "version_file": { "$ref": "#/$defs/fileBinding" },
+        "install_receipt": { "$ref": "#/$defs/fileBinding" },
+        "install_receipt_format": { "const": "mainframe-release-archive-install-receipt-v1" },
+        "archive": { "$ref": "#/$defs/fileBinding" },
+        "checksum_sidecar": { "$ref": "#/$defs/fileBinding" },
+        "installed_tree": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["root", "algorithm", "sha256"],
+          "properties": {
+            "root": { "$ref": "#/$defs/absolutePath" },
+            "algorithm": { "const": "mainframe-package-tree-sha256-v1" },
+            "sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "pi_extension": { "$ref": "#/$defs/fileBinding" },
+        "pi_compatibility_manifest": { "$ref": "#/$defs/fileBinding" },
+        "pi_compatibility_certification_id": { "$ref": "#/$defs/certificationId" },
+        "awm_protocol": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["transition_driver", "raw_schema", "receipt_schema", "neutral_continuation_schema"],
+          "properties": {
+            "transition_driver": { "$ref": "#/$defs/fileBinding" },
+            "raw_schema": { "$ref": "#/$defs/fileBinding" },
+            "receipt_schema": { "$ref": "#/$defs/fileBinding" },
+            "neutral_continuation_schema": { "$ref": "#/$defs/fileBinding" }
+          }
+        }
+      }
+    },
+    "pi": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package_name",
+        "package_version",
+        "architecture",
+        "executable",
+        "package_manifest",
+        "package_tree",
+        "extension_loader"
+      ],
+      "properties": {
+        "package_name": { "$ref": "#/$defs/packageName" },
+        "package_version": { "$ref": "#/$defs/version" },
+        "architecture": { "$ref": "#/$defs/architecture" },
+        "executable": { "$ref": "#/$defs/fileBinding" },
+        "package_manifest": { "$ref": "#/$defs/fileBinding" },
+        "package_tree": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["root", "algorithm", "sha256"],
+          "properties": {
+            "root": { "$ref": "#/$defs/absolutePath" },
+            "algorithm": { "const": "mainframe-pi-runtime-tree-sha256-v1" },
+            "sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "extension_loader": { "$ref": "#/$defs/fileBinding" }
+      }
+    },
+    "ollama": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "architecture", "executable", "install_receipt", "receipt_format", "model"],
+      "properties": {
+        "version": { "$ref": "#/$defs/version" },
+        "architecture": { "$ref": "#/$defs/architecture" },
+        "executable": { "$ref": "#/$defs/fileBinding" },
+        "install_receipt": { "$ref": "#/$defs/fileBinding" },
+        "receipt_format": { "const": "homebrew-install-receipt-v1" },
+        "model": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "closure",
+            "manifest",
+            "manifest_media_type",
+            "config_descriptor",
+            "ordered_layer_descriptors",
+            "ordered_rootfs_diff_ids",
+            "ordered_blobs",
+            "template_contract",
+            "tool_contract",
+            "dependency_closure_algorithm",
+            "dependency_closure_domain_separator_hex",
+            "dependency_closure_canonicalization",
+            "dependency_closure_sha256"
+          ],
+          "properties": {
+            "name": { "$ref": "#/$defs/modelName" },
+            "closure": { "const": "manifest-referenced-blobs-only-not-entire-store" },
+            "manifest": { "$ref": "#/$defs/fileBinding" },
+            "manifest_media_type": { "const": "application/vnd.docker.distribution.manifest.v2+json" },
+            "config_descriptor": { "$ref": "#/$defs/configDescriptor" },
+            "ordered_layer_descriptors": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 4095,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/layerDescriptor" },
+              "allOf": [
+                {
+                  "contains": { "properties": { "media_type": { "const": "application/vnd.ollama.image.model" } }, "required": ["media_type"] },
+                  "minContains": 1,
+                  "maxContains": 1
+                },
+                {
+                  "contains": { "properties": { "media_type": { "const": "application/vnd.ollama.image.template" } }, "required": ["media_type"] },
+                  "minContains": 1,
+                  "maxContains": 1
+                }
+              ]
+            },
+            "ordered_rootfs_diff_ids": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 4095,
+              "items": { "$ref": "#/$defs/qualifiedSha256" }
+            },
+            "ordered_blobs": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 4096,
+              "uniqueItems": true,
+              "prefixItems": [{ "$ref": "#/$defs/configBlob" }],
+              "items": { "$ref": "#/$defs/layerBlob" }
+            },
+            "template_contract": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["digest", "media_type", "required_markers"],
+              "properties": {
+                "digest": { "$ref": "#/$defs/qualifiedSha256" },
+                "media_type": { "const": "application/vnd.ollama.image.template" },
+                "required_markers": { "const": [".Tools", ".ToolCalls"] }
+              }
+            },
+            "tool_contract": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["mode", "native_tool_channel"],
+              "properties": {
+                "mode": { "const": "native-tools-required" },
+                "native_tool_channel": { "const": "ollama-template-tools-and-toolcalls-markers" }
+              }
+            },
+            "dependency_closure_algorithm": {
+              "const": "canonical-ollama-manifest-dependency-closure-sha256-v1",
+              "$comment": "Hash the declared config_descriptor, ordered_layer_descriptors, and ordered_rootfs_diff_ids as an exact three-key projection. Prefix the canonical JSON bytes with dependency_closure_domain_separator_hex. ordered_blobs must equal config followed by every layer with identical descriptor fields; duplicate digests are forbidden; config rootfs.diff_ids must equal the ordered layer digests; native-tools-required admits exactly one model layer and one template layer."
+            },
+            "dependency_closure_domain_separator_hex": { "const": "4d41494e4652414d452d4f4c4c414d412d4d414e49464553542d444550454e44454e43592d434c4f535552452d563100" },
+            "dependency_closure_canonicalization": { "const": "utf8-json-sorted-keys-compact-ensure-ascii-lf-v1" },
+            "dependency_closure_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        }
+      }
+    },
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executable",
+        "manifest",
+        "request_schema",
+        "result_schema",
+        "arm_contract_schema",
+        "expected_adapter_id",
+        "expected_adapter_version"
+      ],
+      "properties": {
+        "executable": { "$ref": "#/$defs/fileBinding" },
+        "manifest": { "$ref": "#/$defs/fileBinding" },
+        "request_schema": { "$ref": "#/$defs/fileBinding" },
+        "result_schema": { "$ref": "#/$defs/fileBinding" },
+        "arm_contract_schema": { "$ref": "#/$defs/fileBinding" },
+        "expected_adapter_id": { "const": "mainframe-pi-ollama-dormant-v1" },
+        "expected_adapter_version": { "const": "1.0.0" }
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preflight_executable", "spec_schema", "receipt_schema"],
+      "properties": {
+        "preflight_executable": { "$ref": "#/$defs/fileBinding" },
+        "spec_schema": { "$ref": "#/$defs/fileBinding" },
+        "receipt_schema": { "$ref": "#/$defs/fileBinding" }
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,127}$" },
+    "certificationId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,255}$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "qualifiedSha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "version": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,255}$" },
+    "architecture": { "enum": ["arm64", "x86_64"] },
+    "platformTuple": { "type": "string", "pattern": "^(?:Darwin|Linux)-(?:arm64|x86_64)-(?:none|glibc|musl)$", "maxLength": 64 },
+    "packageName": { "type": "string", "pattern": "^(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$", "maxLength": 256 },
+    "modelName": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/:+-]*$", "maxLength": 256 },
+    "absolutePath": { "type": "string", "pattern": "^/(?!.*//)(?!.*(?:/\\.\\.?)(?:/|$))[^/\\u0000-\\u001f\\u007f]+(?:/[^/\\u0000-\\u001f\\u007f]+)*$", "maxLength": 4096 },
+    "fileBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "size_bytes"],
+      "properties": {
+        "path": { "$ref": "#/$defs/absolutePath" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "size_bytes": { "type": "integer", "minimum": 1, "maximum": 1099511627776 }
+      }
+    },
+    "configDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "media_type", "size_bytes"],
+      "properties": {
+        "digest": { "$ref": "#/$defs/qualifiedSha256" },
+        "media_type": { "const": "application/vnd.docker.container.image.v1+json" },
+        "size_bytes": { "type": "integer", "minimum": 1, "maximum": 1099511627776 }
+      }
+    },
+    "layerDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "media_type", "size_bytes"],
+      "properties": {
+        "digest": { "$ref": "#/$defs/qualifiedSha256" },
+        "media_type": { "type": "string", "pattern": "^application/vnd\\.ollama\\.image\\.[A-Za-z0-9.+_-]+$", "maxLength": 256 },
+        "size_bytes": { "type": "integer", "minimum": 1, "maximum": 1099511627776 }
+      }
+    },
+    "configBlob": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "digest", "media_type", "path", "size_bytes"],
+      "properties": {
+        "role": { "const": "config" },
+        "digest": { "$ref": "#/$defs/qualifiedSha256" },
+        "media_type": { "const": "application/vnd.docker.container.image.v1+json" },
+        "path": { "$ref": "#/$defs/absolutePath" },
+        "size_bytes": { "type": "integer", "minimum": 1, "maximum": 1099511627776 }
+      }
+    },
+    "layerBlob": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "digest", "media_type", "path", "size_bytes"],
+      "properties": {
+        "role": { "const": "layer" },
+        "digest": { "$ref": "#/$defs/qualifiedSha256" },
+        "media_type": { "type": "string", "pattern": "^application/vnd\\.ollama\\.image\\.[A-Za-z0-9.+_-]+$", "maxLength": 256 },
+        "path": { "$ref": "#/$defs/absolutePath" },
+        "size_bytes": { "type": "integer", "minimum": 1, "maximum": 1099511627776 }
+      }
+    }
+  }
+}

@@ -1,23 +1,33 @@
 # mainframe-bash
 
-Node.js/Bun bindings for the MAINFRAME pure bash function library. Provides TypeScript wrappers for JSON generation, validation, and utility functions.
+Node.js/Bun bindings for MAINFRAME. Agent-controlled function calls route
+through the reviewed canonical stable-core broker; trusted application code can
+opt into an explicitly unbrokered Bash escape hatch.
 
 ## Installation
 
-```bash
-# Using Bun (recommended)
-bun add mainframe-bash
+The Node.js binding is currently distributed from this repository, not the public npm registry.
 
-# Using npm
-npm install mainframe-bash
+```bash
+# Build from a MAINFRAME checkout
+cd bindings/nodejs
+bun install
+bun run build
+
+# Add the local package to another project
+bun add /path/to/mainframe/bindings/nodejs
 ```
 
-**Prerequisite:** MAINFRAME must be installed at `~/.mainframe` or `MAINFRAME_ROOT` must be set.
+**Prerequisites:** MAINFRAME must have a managed `~/.local/bin/mainframe`
+launcher, be installed at `~/.mainframe`, or
+`MAINFRAME_ROOT` must point to a MAINFRAME checkout, and Bash 4.4+ must be
+installed at a supported absolute location. On macOS, Homebrew normally places
+it at `/opt/homebrew/bin/bash` (Apple Silicon) or `/usr/local/bin/bash` (Intel).
 
 ## Quick Start
 
 ```typescript
-import { jsonObject, validateEmail, uuid, sanitizeHtml } from 'mainframe-bash'
+import { jsonObject, validateEmail } from 'mainframe-bash'
 
 // Generate JSON
 const user = jsonObject({ name: "John", age: 30, active: true })
@@ -28,14 +38,12 @@ if (validateEmail("user@example.com")) {
   console.log("Valid email!")
 }
 
-// Generate UUID
-const id = uuid()
-// 550e8400-e29b-41d4-a716-446655440000
-
-// Sanitize HTML
-const safe = sanitizeHtml('<script>alert("xss")</script>')
-// &lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;
 ```
+
+The package retains its broader typed wrapper surface for source compatibility,
+but a wrapper now succeeds only when its underlying function has a reviewed
+stable-core contract. Unreviewed utility and sanitizer wrappers fail closed
+until their contracts are promoted.
 
 ## API Reference
 
@@ -244,9 +252,10 @@ import {
   verifyInstallation,  // Verify MAINFRAME is installed
 
   // Low-level execution
-  execBash,            // Execute bash script
-  callFunction,        // Call MAINFRAME function
-  callFunctionRaw,     // Call function, return raw output
+  invokeCanonical,     // Invoke a reviewed canonical stable-core export
+  callFunction,        // Resolve a reviewed stable-core Bash name
+  callFunctionRaw,     // Brokered call, return decoded stdout
+  execBash,            // Explicit trusted-code/unbrokered escape hatch
 } from 'mainframe-bash'
 
 // Check installation
@@ -259,14 +268,47 @@ setConfig({
   outputMode: "json",    // Use USOP JSON output
 })
 
-// Execute custom bash
+// Execute application-owned Bash. Never pass agent/model/user-generated text.
 const result = execBash('echo "hello"')
 // { stdout: "hello\n", stderr: "", exitCode: 0 }
 
-// Call any MAINFRAME function
+// Resolve a reviewed stable-core name through MANIFEST.json and its call_shape
 const data = callFunctionRaw("json_object", ["name=test", "count:number=42"])
 // {"name":"test","count":42}
+
+// Or use the canonical, structured API directly
+const invocation = invokeCanonical("mf:data:json:json_object", {
+  pairs: ["name=test", "count:number=42"],
+})
+console.log(invocation.stdout)
 ```
+
+`callFunction` and `callFunctionRaw` are deny-by-default adapters. They accept
+only exports with a reviewed `stable-core` invocation contract, map positional
+arguments through that contract, and execute `mainframe invoke` with JSON over
+stdin. Unknown names, unreviewed functions, shell builtins, and external
+executables such as `id`, `printf`, and `printenv` fail without shell lookup.
+The broker validates capabilities, confines time and output, records an audit
+entry, and returns a strictly checked `broker-json-v1` envelope.
+
+Without an explicit root, broker calls resolve the managed
+`~/.local/bin/mainframe` target before a legacy `~/.mainframe` tree. An explicit
+`MAINFRAME_ROOT` or `setConfig({ mainframeRoot })` is authoritative and fails
+closed when invalid. `BrokerInvokeOptions.env` supplies child-process variables
+only: any `MAINFRAME_ROOT` entry there is overwritten with the already selected
+root and cannot redirect the manifest or broker executable.
+
+The fixed-name typed convenience modules (`json`, `validation`, and `utils`)
+retain legacy behavior through an internal, quote-safe protected-Bash adapter.
+That adapter is not exported from the package entry point, but these convenience
+wrappers are still **unbrokered compatibility surfaces**: they do not provide
+broker policy, confinement, contract review, or canonical invocation auditing.
+Do not pass agent-, model-, or otherwise untrusted input to them until the
+underlying function has a reviewed contract and the wrapper is migrated.
+
+Use `invokeCanonical`, `callFunction`, or `callFunctionRaw` for agent-controlled
+work. `execBash` remains available only for trusted application-owned scripts
+and is likewise outside the broker safety boundary.
 
 ## Configuration
 
@@ -274,7 +316,8 @@ const data = callFunctionRaw("json_object", ["name=test", "count:number=42"])
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MAINFRAME_ROOT` | Path to MAINFRAME installation | `~/.mainframe` |
+| `MAINFRAME_ROOT` | Authoritative path to MAINFRAME installation | Managed launcher target, then `~/.mainframe` |
+| `MAINFRAME_BASH` | Intentional absolute path to a trusted Bash 4.4+ executable | First compatible fixed location |
 | `MAINFRAME_OUTPUT` | Output mode (raw/json/minimal/debug) | `raw` |
 
 ### Programmatic Configuration
@@ -286,9 +329,26 @@ setConfig({
   mainframeRoot: "/opt/mainframe",  // Custom installation path
   outputMode: "json",                // Use USOP JSON envelope
   timeout: 60000,                    // 60 second timeout
-  shell: "/bin/bash",                // Shell to use
+  shell: "/opt/homebrew/bin/bash",   // Intentional absolute Bash 4.4+ path
 })
 ```
+
+The binding performs no subprocess work merely by being imported. On the first
+configuration read or trusted `execBash` execution, it checks an absolute
+`MAINFRAME_BASH` when set; otherwise it checks fixed Homebrew, Linuxbrew,
+MacPorts, Nix, and system locations. It never searches `PATH` for the
+interpreter. Bare and relative environment or `setConfig({ shell })` values are
+rejected without execution. A compatible interpreter is stored and reused by
+its canonical absolute path, so a per-call `PATH` cannot swap it.
+
+An explicit `MAINFRAME_BASH` or `setConfig({ shell })` value must resolve to a
+known system/package-manager layout, be owned by root or the current user, and
+have safe mode bits before its Bash 4.4+ probe runs. Temporary or arbitrary
+absolute executables are rejected. `setConfig` validates the full proposed
+update before changing the active configuration. Each execution path also removes passive code-loader
+variables such as `BASH_ENV`, exported Bash functions, `LD_*`/`DYLD_*`, and
+language startup-option variables from the child environment, even when they
+are supplied through per-call options.
 
 ## TypeScript Types
 
@@ -299,6 +359,8 @@ import type {
   MainframeConfig,    // Configuration options
   MainframeResult,    // Function call result
   UsopEnvelope,       // USOP JSON envelope
+  BrokerEnvelopeV1,  // Canonical broker wire envelope
+  BrokerInvocationResult, // Envelope plus decoded stdout/stderr
   JsonValueType,      // JSON value types
   TypedEntry,         // Typed JSON entry
   ValidationResult,   // Validation with error
@@ -326,7 +388,7 @@ bun run build:types
 
 - Node.js 18+ or Bun 1.0+
 - MAINFRAME installed at `~/.mainframe` or `MAINFRAME_ROOT` set
-- Bash 4.0+
+- Bash 4.4+
 
 ## License
 

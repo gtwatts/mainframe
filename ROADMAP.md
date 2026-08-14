@@ -4,11 +4,36 @@
 
 This roadmap outlines planned features and improvements for MAINFRAME. Items are organized by priority and status.
 
-**Current Stats**: 6,200+ functions | 177 libraries | 11,300+ tests | Pure Bash + Bindings
+**Current version**: see `VERSION`.
+
+**Current inventory**: see generated `FUNCTIONS.json`.
+**Current validation**: see `docs/INTEGRATION_MATRIX.md` and GitHub Actions
+
+**Strategic direction and release gates**: see
+[`docs/A_PLUS_PLUS_PLAN.md`](docs/A_PLUS_PLUS_PLAN.md). This roadmap tracks
+individual work items; the strategic plan defines the product contract,
+architecture, phased sequence, compatibility program, and measurable A++
+exit criteria.
 
 ---
 
 ## In Progress
+
+### Public API ownership and compatibility
+
+- [x] Freeze the exact legacy function-collision inventory in CI.
+- [x] Publish canonical-owner, alias, deprecation, and removal rules.
+- [x] Complete the first compatibility-safe tranche (97 duplicate names to 90).
+- [x] Resolve the 11-function array family with canonical value-list names,
+  explicit named-array alternatives, and loader-matrix coverage (90 to 79).
+- [x] Resolve the three-function AWM family with the durable facade as the
+  canonical API and explicit stream/protocol-v4 alternatives (79 to 76).
+- [ ] Make every remaining public function resolve to one behavior across the
+  default, selective, full-profile, lazy, and `mainframe_load_all` loaders.
+- [ ] Migrate the remaining agent, stream, OpenTelemetry, and resilience collision
+  families with contract-specific dispatchers or module-prefixed names.
+- [ ] Generate canonical ownership and alias metadata once, then make CLI,
+  registry, completion, MCP, LSP, and language bindings consume it.
 
 ### V10.1 - Enhanced AI Integration (Current)
 
@@ -39,9 +64,10 @@ This roadmap outlines planned features and improvements for MAINFRAME. Items are
   - [x] `ext/aws.sh` - AWS CLI wrapper with structured output (10 functions)
   - [x] `ext/gcp.sh` - GCP CLI wrapper with gsutil fallback (10 functions)
   - [x] All USOP-compliant with comprehensive tests
-- [x] **Language Bindings** (`bindings/`)
-  - [x] Python package (`pip install mainframe-bash`) - 126 tests
-  - [x] Node.js/Bun package (`npm install mainframe-bash`) - 142 tests
+- [ ] **Language Bindings** (`bindings/`)
+  - [x] Python binding source and local test suite
+  - [x] Node.js/Bun binding source and local test suite
+  - [ ] Publish and verify packages in public registries
   - [x] Subprocess wrapper pattern with USOP JSON parsing
   - [x] Full type hints (Python) and TypeScript definitions
 - [x] **Property-Based Testing** (`lib/proptest.sh`) - 67 tests
@@ -170,7 +196,7 @@ This roadmap outlines planned features and improvements for MAINFRAME. Items are
 - [x] **11,825 lines** of new V10 code
 - [x] **~289 new functions** across 12 libraries
 - [x] Full USOP compliance
-- [x] Zero external dependencies (pure bash)
+- [x] Pure-Bash fallback paths for the V10 additions; enhanced backends remain optional
 - [x] Comprehensive test coverage
 
 ### v7.2 - Multi-Agent Team Orchestration

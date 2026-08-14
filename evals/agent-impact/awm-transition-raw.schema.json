@@ -1,0 +1,887 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-awm-transition-raw-v1.json",
+  "title": "MAINFRAME private Pi AWM transition record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "claim_scope",
+    "binding",
+    "runtime_expected",
+    "budget",
+    "fixture",
+    "request",
+    "environment",
+    "runtime_observed",
+    "paths",
+    "snapshots",
+    "sequence",
+    "handoff",
+    "non_claims"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "mainframe-agent-impact-pi-awm-transition-private-record" },
+    "claim_scope": { "const": "synthetic-treatment-investigate-awm-mechanism-conformance-only" },
+    "binding": { "$ref": "#/$defs/binding" },
+    "runtime_expected": { "$ref": "#/$defs/runtimeExpected" },
+    "budget": { "$ref": "#/$defs/budget" },
+    "fixture": { "$ref": "#/$defs/fixture" },
+    "request": { "$ref": "#/$defs/request" },
+    "environment": { "$ref": "#/$defs/environment" },
+    "runtime_observed": { "$ref": "#/$defs/runtimeObserved" },
+    "paths": { "$ref": "#/$defs/paths" },
+    "snapshots": { "$ref": "#/$defs/snapshots" },
+    "sequence": { "$ref": "#/$defs/sequence" },
+    "handoff": { "$ref": "#/$defs/handoff" },
+    "non_claims": { "$ref": "#/$defs/nonClaims" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9][a-z0-9-]{0,127}$"
+    },
+    "pairId": {
+      "type": "string",
+      "minLength": 21,
+      "maxLength": 21,
+      "pattern": "^pair-[0-9a-f]{16}$"
+    },
+    "armId": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 20,
+      "pattern": "^arm-[0-9a-f]{16}$"
+    },
+    "mode": {
+      "type": "string",
+      "minLength": 4,
+      "maxLength": 4,
+      "pattern": "^[0-7]{4}$"
+    },
+    "absolutePath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 32768,
+      "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*//)(?!.*\\/$)(?!.*\\\\)/[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32768,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\)[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "npmPackage": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16384,
+      "pattern": "^(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,255}$"
+    },
+    "sessionId": {
+      "type": "string",
+      "minLength": 12,
+      "maxLength": 12,
+      "pattern": "^[0-9a-f]{12}$"
+    },
+    "handoffId": {
+      "type": "string",
+      "minLength": 11,
+      "maxLength": 16384,
+      "pattern": "^handoff_[0-9]+_[A-Za-z0-9_-]+$"
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preregistration_sha256",
+        "randomization_context_sha256",
+        "assignment_commitment_sha256",
+        "study_id",
+        "pair_id",
+        "task_id",
+        "replicate",
+        "instance_sha256",
+        "opaque_arm_id",
+        "arm_mode",
+        "phase"
+      ],
+      "properties": {
+        "preregistration_sha256": { "$ref": "#/$defs/sha256" },
+        "randomization_context_sha256": { "$ref": "#/$defs/sha256" },
+        "assignment_commitment_sha256": { "$ref": "#/$defs/sha256" },
+        "study_id": { "$ref": "#/$defs/id" },
+        "pair_id": { "$ref": "#/$defs/pairId" },
+        "task_id": { "$ref": "#/$defs/id" },
+        "replicate": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "instance_sha256": { "$ref": "#/$defs/sha256" },
+        "opaque_arm_id": { "$ref": "#/$defs/armId" },
+        "arm_mode": { "const": "treatment" },
+        "phase": { "const": "investigate" }
+      }
+    },
+    "runtimeExpected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mainframe_archive_sha256",
+        "installed_tree_algorithm",
+        "installed_tree_sha256",
+        "pi_package",
+        "pi_version",
+        "pi_executable_sha256",
+        "pi_loader_sha256",
+        "pi_extension_sha256",
+        "transition_driver_sha256",
+        "node_executable_sha256",
+        "node_version"
+      ],
+      "properties": {
+        "mainframe_archive_sha256": { "$ref": "#/$defs/sha256" },
+        "installed_tree_algorithm": { "const": "mainframe-package-tree-sha256-v1" },
+        "installed_tree_sha256": { "$ref": "#/$defs/sha256" },
+        "pi_package": { "$ref": "#/$defs/npmPackage" },
+        "pi_version": { "$ref": "#/$defs/version" },
+        "pi_executable_sha256": { "$ref": "#/$defs/sha256" },
+        "pi_loader_sha256": { "$ref": "#/$defs/sha256" },
+        "pi_extension_sha256": { "$ref": "#/$defs/sha256" },
+        "transition_driver_sha256": { "$ref": "#/$defs/sha256" },
+        "node_executable_sha256": { "$ref": "#/$defs/sha256" },
+        "node_version": { "$ref": "#/$defs/version" }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximum_context_bytes", "tool_timeout_ms"],
+      "properties": {
+        "maximum_context_bytes": { "const": 8192 },
+        "tool_timeout_ms": { "type": "integer", "minimum": 1000, "maximum": 300000 }
+      }
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "session_name",
+        "namespace",
+        "checkpoint_key",
+        "checkpoint_value",
+        "checkpoint_importance",
+        "handoff_target"
+      ],
+      "properties": {
+        "session_name": { "const": "pi-impact-handoff" },
+        "namespace": { "const": "pi-impact-test" },
+        "checkpoint_key": { "const": "implementation-root-cause" },
+        "checkpoint_value": { "const": "subtract used capacity from total capacity" },
+        "checkpoint_importance": { "const": "critical" },
+        "handoff_target": { "const": "implementer" }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "file_sha256", "canonical_sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/absolutePath" },
+        "file_sha256": { "$ref": "#/$defs/sha256" },
+        "canonical_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed_names", "values", "isolated_paths"],
+      "properties": {
+        "allowed_names": {
+          "type": "array",
+          "minItems": 15,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "oneOf": [
+            {
+              "const": [
+                "CI",
+                "HOME",
+                "LANG",
+                "LC_ALL",
+                "LOGNAME",
+                "MAINFRAME_EVAL_PROTOCOL",
+                "NO_COLOR",
+                "PATH",
+                "PI_CODING_AGENT_DIR",
+                "PI_OFFLINE",
+                "TMPDIR",
+                "USER",
+                "XDG_CACHE_HOME",
+                "XDG_CONFIG_HOME",
+                "XDG_STATE_HOME"
+              ]
+            },
+            {
+              "const": [
+                "CI",
+                "HOME",
+                "LANG",
+                "LC_ALL",
+                "LOGNAME",
+                "MAINFRAME_EVAL_PROTOCOL",
+                "NO_COLOR",
+                "PATH",
+                "PI_CODING_AGENT_DIR",
+                "PI_OFFLINE",
+                "TMPDIR",
+                "USER",
+                "XDG_CACHE_HOME",
+                "XDG_CONFIG_HOME",
+                "XDG_STATE_HOME",
+                "__CF_USER_TEXT_ENCODING"
+              ]
+            }
+          ]
+        },
+        "values": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "USER",
+            "LOGNAME",
+            "PI_OFFLINE",
+            "PATH",
+            "LC_ALL",
+            "LANG",
+            "NO_COLOR",
+            "CI",
+            "MAINFRAME_EVAL_PROTOCOL",
+            "__CF_USER_TEXT_ENCODING"
+          ],
+          "properties": {
+            "USER": { "const": "mainframe-eval" },
+            "LOGNAME": { "const": "mainframe-eval" },
+            "PI_OFFLINE": { "const": "1" },
+            "PATH": { "const": "/opt/homebrew/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:/opt/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" },
+            "LC_ALL": { "const": "C" },
+            "LANG": { "const": "C" },
+            "NO_COLOR": { "const": "1" },
+            "CI": { "const": "1" },
+            "MAINFRAME_EVAL_PROTOCOL": { "const": "1" },
+            "__CF_USER_TEXT_ENCODING": {
+              "oneOf": [
+                { "type": "null" },
+                {
+                  "type": "string",
+                  "minLength": 11,
+                  "maxLength": 64,
+                  "pattern": "^0x[0-9A-Fa-f]+:0x[0-9A-Fa-f]+:0x[0-9A-Fa-f]+$"
+                }
+              ]
+            }
+          }
+        },
+        "isolated_paths": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["HOME", "PI_CODING_AGENT_DIR", "TMPDIR", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"],
+          "properties": {
+            "HOME": { "$ref": "#/$defs/absolutePath" },
+            "PI_CODING_AGENT_DIR": { "$ref": "#/$defs/absolutePath" },
+            "TMPDIR": { "$ref": "#/$defs/absolutePath" },
+            "XDG_CONFIG_HOME": { "$ref": "#/$defs/absolutePath" },
+            "XDG_STATE_HOME": { "$ref": "#/$defs/absolutePath" },
+            "XDG_CACHE_HOME": { "$ref": "#/$defs/absolutePath" }
+          }
+        }
+      }
+    },
+    "runtimeObserved": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mainframe_archive_sha256",
+        "mainframe_version",
+        "installed_tree_algorithm",
+        "installed_tree_sha256",
+        "pi_package",
+        "pi_version",
+        "pi_executable",
+        "pi_executable_sha256",
+        "pi_package_manifest_sha256",
+        "pi_loader",
+        "pi_loader_sha256",
+        "pi_extension",
+        "pi_extension_sha256",
+        "transition_driver",
+        "transition_driver_sha256",
+        "node_executable",
+        "node_executable_sha256",
+        "node_version",
+        "bash_executable",
+        "bash_executable_sha256",
+        "bash_version",
+        "registered_tools",
+        "loaded_mainframe_awm",
+        "network_api_guards",
+        "provider_adapter_loaded",
+        "provider_inference_requests"
+      ],
+      "properties": {
+        "mainframe_archive_sha256": { "$ref": "#/$defs/sha256" },
+        "mainframe_version": { "$ref": "#/$defs/version" },
+        "installed_tree_algorithm": { "const": "mainframe-package-tree-sha256-v1" },
+        "installed_tree_sha256": { "$ref": "#/$defs/sha256" },
+        "pi_package": { "$ref": "#/$defs/npmPackage" },
+        "pi_version": { "$ref": "#/$defs/version" },
+        "pi_executable": { "$ref": "#/$defs/absolutePath" },
+        "pi_executable_sha256": { "$ref": "#/$defs/sha256" },
+        "pi_package_manifest_sha256": { "$ref": "#/$defs/sha256" },
+        "pi_loader": { "$ref": "#/$defs/absolutePath" },
+        "pi_loader_sha256": { "$ref": "#/$defs/sha256" },
+        "pi_extension": { "$ref": "#/$defs/absolutePath" },
+        "pi_extension_sha256": { "$ref": "#/$defs/sha256" },
+        "transition_driver": { "$ref": "#/$defs/absolutePath" },
+        "transition_driver_sha256": { "$ref": "#/$defs/sha256" },
+        "node_executable": { "$ref": "#/$defs/absolutePath" },
+        "node_executable_sha256": { "$ref": "#/$defs/sha256" },
+        "node_version": { "$ref": "#/$defs/version" },
+        "bash_executable": { "$ref": "#/$defs/absolutePath" },
+        "bash_executable_sha256": { "$ref": "#/$defs/sha256" },
+        "bash_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+():-]{0,255}$"
+        },
+        "registered_tools": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "const": [
+            "mainframe_awm",
+            "mainframe_bash_safety_check",
+            "mainframe_exec",
+            "mainframe_help",
+            "mainframe_install_commands",
+            "mainframe_search",
+            "mainframe_status"
+          ]
+        },
+        "loaded_mainframe_awm": { "const": true },
+        "network_api_guards": {
+          "type": "array",
+          "minItems": 8,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9_:$./-]+$"
+          }
+        },
+        "provider_adapter_loaded": { "const": false },
+        "provider_inference_requests": { "const": 0 }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mainframe_root", "pi_bin", "node_bin", "workspace", "awm_root", "tmp_root"],
+      "properties": {
+        "mainframe_root": { "$ref": "#/$defs/absolutePath" },
+        "pi_bin": { "$ref": "#/$defs/absolutePath" },
+        "node_bin": { "$ref": "#/$defs/absolutePath" },
+        "workspace": { "$ref": "#/$defs/absolutePath" },
+        "awm_root": { "$ref": "#/$defs/absolutePath" },
+        "tmp_root": { "$ref": "#/$defs/absolutePath" }
+      }
+    },
+    "directoryEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "type", "mode"],
+      "properties": {
+        "path": { "$ref": "#/$defs/relativePath" },
+        "type": { "const": "directory" },
+        "mode": { "$ref": "#/$defs/mode" }
+      }
+    },
+    "fileEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "type", "mode", "size_bytes", "sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/relativePath" },
+        "type": { "const": "file" },
+        "mode": { "$ref": "#/$defs/mode" },
+        "size_bytes": { "type": "integer", "minimum": 0, "maximum": 134217728 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "privateDirectoryEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "type", "mode"],
+      "properties": {
+        "path": { "$ref": "#/$defs/relativePath" },
+        "type": { "const": "directory" },
+        "mode": { "const": "0700" }
+      }
+    },
+    "privateFileEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "type", "mode", "size_bytes", "sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/relativePath" },
+        "type": { "const": "file" },
+        "mode": { "const": "0600" },
+        "size_bytes": { "type": "integer", "minimum": 0, "maximum": 134217728 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "present",
+        "root_mode",
+        "entry_count",
+        "file_count",
+        "directory_count",
+        "total_file_bytes",
+        "tree_sha256",
+        "entries"
+      ],
+      "properties": {
+        "algorithm": { "const": "mainframe-agent-impact-private-tree-sha256-v1" },
+        "present": { "type": "boolean" },
+        "root_mode": {
+          "oneOf": [
+            { "$ref": "#/$defs/mode" },
+            { "type": "null" }
+          ]
+        },
+        "entry_count": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "file_count": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "directory_count": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "total_file_bytes": { "type": "integer", "minimum": 0, "maximum": 1073741824 },
+        "tree_sha256": { "$ref": "#/$defs/sha256" },
+        "entries": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/directoryEntry" },
+              { "$ref": "#/$defs/fileEntry" }
+            ]
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "present": { "const": false } },
+            "required": ["present"]
+          },
+          "then": {
+            "properties": {
+              "root_mode": { "const": null },
+              "entry_count": { "const": 0 },
+              "file_count": { "const": 0 },
+              "directory_count": { "const": 0 },
+              "total_file_bytes": { "const": 0 },
+              "entries": { "const": [] }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "present": { "const": true } },
+            "required": ["present"]
+          },
+          "then": {
+            "properties": { "root_mode": { "$ref": "#/$defs/mode" } }
+          }
+        }
+      ]
+    },
+    "presentSnapshot": {
+      "allOf": [
+        { "$ref": "#/$defs/snapshot" },
+        { "properties": { "present": { "const": true } } }
+      ]
+    },
+    "emptyPrivateSnapshot": {
+      "allOf": [
+        { "$ref": "#/$defs/snapshot" },
+        {
+          "properties": {
+            "present": { "const": true },
+            "root_mode": { "const": "0700" },
+            "entry_count": { "const": 0 },
+            "file_count": { "const": 0 },
+            "directory_count": { "const": 0 },
+            "total_file_bytes": { "const": 0 },
+            "entries": { "const": [] }
+          }
+        }
+      ]
+    },
+    "absentSnapshot": {
+      "allOf": [
+        { "$ref": "#/$defs/snapshot" },
+        { "properties": { "present": { "const": false } } }
+      ]
+    },
+    "privateAwmSnapshot": {
+      "allOf": [
+        { "$ref": "#/$defs/snapshot" },
+        {
+          "properties": {
+            "present": { "const": true },
+            "root_mode": { "const": "0700" },
+            "entry_count": { "type": "integer", "minimum": 1, "maximum": 100000 },
+            "entries": {
+              "items": {
+                "oneOf": [
+                  { "$ref": "#/$defs/privateDirectoryEntry" },
+                  { "$ref": "#/$defs/privateFileEntry" }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "packageSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "sha256", "entry_count"],
+      "properties": {
+        "algorithm": { "const": "mainframe-package-tree-sha256-v1" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "entry_count": { "type": "integer", "minimum": 1, "maximum": 100000 }
+      }
+    },
+    "snapshots": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "installed_before",
+        "installed_after",
+        "installed_package_before",
+        "installed_package_after",
+        "workspace_before",
+        "workspace_after",
+        "awm_before",
+        "awm_after_init",
+        "awm_after_checkpoint",
+        "awm_after_handoff",
+        "tmp_before",
+        "tmp_after",
+        "installed_unchanged",
+        "workspace_unchanged"
+      ],
+      "properties": {
+        "installed_before": { "$ref": "#/$defs/presentSnapshot" },
+        "installed_after": { "$ref": "#/$defs/presentSnapshot" },
+        "installed_package_before": { "$ref": "#/$defs/packageSnapshot" },
+        "installed_package_after": { "$ref": "#/$defs/packageSnapshot" },
+        "workspace_before": { "$ref": "#/$defs/emptyPrivateSnapshot" },
+        "workspace_after": { "$ref": "#/$defs/emptyPrivateSnapshot" },
+        "awm_before": { "$ref": "#/$defs/absentSnapshot" },
+        "awm_after_init": { "$ref": "#/$defs/privateAwmSnapshot" },
+        "awm_after_checkpoint": { "$ref": "#/$defs/privateAwmSnapshot" },
+        "awm_after_handoff": { "$ref": "#/$defs/privateAwmSnapshot" },
+        "tmp_before": { "$ref": "#/$defs/emptyPrivateSnapshot" },
+        "tmp_after": { "$ref": "#/$defs/presentSnapshot" },
+        "installed_unchanged": { "const": true },
+        "workspace_unchanged": { "const": true }
+      }
+    },
+    "initParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "timeoutMs", "action", "name", "namespace", "model"],
+      "properties": {
+        "root": { "$ref": "#/$defs/absolutePath" },
+        "timeoutMs": { "type": "integer", "minimum": 1000, "maximum": 300000 },
+        "action": { "const": "init" },
+        "name": { "const": "pi-impact-handoff" },
+        "namespace": { "const": "pi-impact-test" },
+        "model": { "const": "fixture-no-provider" }
+      }
+    },
+    "checkpointParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "timeoutMs", "action", "session", "key", "value", "importance"],
+      "properties": {
+        "root": { "$ref": "#/$defs/absolutePath" },
+        "timeoutMs": { "type": "integer", "minimum": 1000, "maximum": 300000 },
+        "action": { "const": "checkpoint" },
+        "session": { "$ref": "#/$defs/sessionId" },
+        "key": { "const": "implementation-root-cause" },
+        "value": { "const": "subtract used capacity from total capacity" },
+        "importance": { "const": "critical" }
+      }
+    },
+    "handoffParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "timeoutMs", "action", "session", "message", "tokens"],
+      "properties": {
+        "root": { "$ref": "#/$defs/absolutePath" },
+        "timeoutMs": { "type": "integer", "minimum": 1000, "maximum": 300000 },
+        "action": { "const": "handoff_prepare" },
+        "session": { "$ref": "#/$defs/sessionId" },
+        "message": { "const": "implementer" },
+        "tokens": { "const": 2048 }
+      }
+    },
+    "processResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "signal", "stdout", "stderr", "timedOut", "command", "args"],
+      "properties": {
+        "code": { "const": 0 },
+        "signal": { "const": null },
+        "stdout": { "type": "string", "maxLength": 32768 },
+        "stderr": { "const": "" },
+        "timedOut": { "const": false },
+        "command": { "$ref": "#/$defs/absolutePath" },
+        "args": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "prefixItems": [
+            { "const": "--noprofile" },
+            { "const": "--norc" },
+            { "const": "-p" },
+            { "const": "-c" },
+            { "type": "string", "minLength": 1, "maxLength": 32768 }
+          ],
+          "items": false
+        }
+      }
+    },
+    "streamBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["size_bytes", "sha256"],
+      "properties": {
+        "size_bytes": { "type": "integer", "minimum": 0, "maximum": 1048576 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "emptyStreamBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["size_bytes", "sha256"],
+      "properties": {
+        "size_bytes": { "const": 0 },
+        "sha256": { "const": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }
+      }
+    },
+    "operationRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "action",
+        "call_id",
+        "previous_record_sha256",
+        "tool_params",
+        "awm_before_sha256",
+        "awm_after_sha256",
+        "process_result",
+        "stdout_binding",
+        "stderr_binding",
+        "record_sha256"
+      ],
+      "properties": {
+        "index": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "action": { "enum": ["init", "checkpoint", "handoff_prepare"] },
+        "call_id": {
+          "type": "string",
+          "minLength": 31,
+          "maxLength": 48,
+          "pattern": "^arm-[0-9a-f]{16}-awm-[1-3]-(?:init|checkpoint|handoff_prepare)$"
+        },
+        "previous_record_sha256": { "$ref": "#/$defs/sha256" },
+        "tool_params": {
+          "oneOf": [
+            { "$ref": "#/$defs/initParams" },
+            { "$ref": "#/$defs/checkpointParams" },
+            { "$ref": "#/$defs/handoffParams" }
+          ]
+        },
+        "awm_before_sha256": { "$ref": "#/$defs/sha256" },
+        "awm_after_sha256": { "$ref": "#/$defs/sha256" },
+        "process_result": { "$ref": "#/$defs/processResult" },
+        "stdout_binding": { "$ref": "#/$defs/streamBinding" },
+        "stderr_binding": { "$ref": "#/$defs/emptyStreamBinding" },
+        "record_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "sequence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "genesis_sha256", "record_count", "head_sha256", "records"],
+      "properties": {
+        "algorithm": { "const": "sha256-canonical-json-previous-record-v1" },
+        "genesis_sha256": { "const": "0000000000000000000000000000000000000000000000000000000000000000" },
+        "record_count": { "const": 3 },
+        "head_sha256": { "$ref": "#/$defs/sha256" },
+        "records": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "prefixItems": [
+            {
+              "allOf": [
+                { "$ref": "#/$defs/operationRecord" },
+                {
+                  "properties": {
+                    "index": { "const": 1 },
+                    "action": { "const": "init" },
+                    "call_id": { "type": "string", "minLength": 31, "maxLength": 31, "pattern": "^arm-[0-9a-f]{16}-awm-1-init$" },
+                    "previous_record_sha256": { "const": "0000000000000000000000000000000000000000000000000000000000000000" },
+                    "tool_params": { "$ref": "#/$defs/initParams" },
+                    "process_result": {
+                      "properties": {
+                        "stdout": { "type": "string", "minLength": 12, "maxLength": 12, "pattern": "^[0-9a-f]{12}$" }
+                      }
+                    },
+                    "stdout_binding": {
+                      "properties": {
+                        "size_bytes": { "const": 12 }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/operationRecord" },
+                {
+                  "properties": {
+                    "index": { "const": 2 },
+                    "action": { "const": "checkpoint" },
+                    "call_id": { "type": "string", "minLength": 37, "maxLength": 37, "pattern": "^arm-[0-9a-f]{16}-awm-2-checkpoint$" },
+                    "tool_params": { "$ref": "#/$defs/checkpointParams" },
+                    "process_result": {
+                      "properties": {
+                        "stdout": { "const": "" }
+                      }
+                    },
+                    "stdout_binding": { "$ref": "#/$defs/emptyStreamBinding" }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/operationRecord" },
+                {
+                  "properties": {
+                    "index": { "const": 3 },
+                    "action": { "const": "handoff_prepare" },
+                    "call_id": { "type": "string", "minLength": 42, "maxLength": 42, "pattern": "^arm-[0-9a-f]{16}-awm-3-handoff_prepare$" },
+                    "tool_params": { "$ref": "#/$defs/handoffParams" },
+                    "process_result": {
+                      "properties": {
+                        "stdout": { "type": "string", "minLength": 1, "maxLength": 8192 }
+                      }
+                    },
+                    "stdout_binding": {
+                      "properties": {
+                        "size_bytes": { "type": "integer", "minimum": 1, "maximum": 8192 }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": false
+        }
+      }
+    },
+    "handoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "session_id",
+        "handoff_id",
+        "persisted_path",
+        "emitted_size_bytes",
+        "emitted_sha256",
+        "emitted_raw_utf8",
+        "persisted_size_bytes",
+        "persisted_sha256",
+        "persisted_raw_utf8",
+        "emitted_equals_persisted",
+        "maximum_context_bytes"
+      ],
+      "properties": {
+        "session_id": { "$ref": "#/$defs/sessionId" },
+        "handoff_id": { "$ref": "#/$defs/handoffId" },
+        "persisted_path": { "$ref": "#/$defs/absolutePath" },
+        "emitted_size_bytes": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "emitted_sha256": { "$ref": "#/$defs/sha256" },
+        "emitted_raw_utf8": { "type": "string", "minLength": 1, "maxLength": 8192 },
+        "persisted_size_bytes": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "persisted_sha256": { "$ref": "#/$defs/sha256" },
+        "persisted_raw_utf8": { "type": "string", "minLength": 1, "maxLength": 8192 },
+        "emitted_equals_persisted": { "const": true },
+        "maximum_context_bytes": { "const": 8192 }
+      }
+    },
+    "nonClaims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "real_provider_inference",
+        "live_agent_sessions",
+        "agent_quality",
+        "comparative_agent_performance",
+        "developer_productivity",
+        "machine_safety",
+        "network_containment"
+      ],
+      "properties": {
+        "real_provider_inference": { "const": "not-run" },
+        "live_agent_sessions": { "const": 0 },
+        "agent_quality": { "const": "not-measured" },
+        "comparative_agent_performance": { "const": "not-measured" },
+        "developer_productivity": { "const": "not-measured" },
+        "machine_safety": { "const": "not-established" },
+        "network_containment": { "const": "best-effort-node-api-guards-not-os-isolation" }
+      }
+    }
+  }
+}

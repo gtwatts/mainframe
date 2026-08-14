@@ -533,11 +533,35 @@ lazy_memory_usage() {
 # This registers which functions belong to which libraries
 # Usage: lazy_init_manifests
 lazy_init_manifests() {
+    # The durable session facade owns the historical public AWM names in every
+    # loader.  Older stream/protocol contracts remain reachable through
+    # explicit module-qualified names.
+    lazy_register "awm" \
+        awm_compress awm_handoff_prepare awm_handoff_accept
+
+    lazy_register "awm_stream" awm_stream_compress
+
+    lazy_register "awm_protocol" \
+        awm_protocol_handoff_prepare awm_protocol_handoff_accept
+
+    # Canonical value-list array API. These names are owned by pure-array in
+    # every loader; collection/safe variants use explicit module prefixes.
+    lazy_register "pure-array" \
+        array_count array_filter array_first array_get array_intersect \
+        array_last array_length array_reverse array_slice array_sum array_unique
+
+    lazy_register "collection" \
+        collection_count collection_filter collection_first collection_intersect \
+        collection_last collection_length collection_reverse collection_slice \
+        collection_sum collection_unique
+
+    lazy_register "safe" safe_array_get
+
     # DateTime functions
     lazy_register "datetime" \
         now now_ms now_iso now_rfc2822 \
         parse_iso parse_date parse_datetime \
-        format_epoch format_iso format_date format_time format_datetime format_relative \
+        format_epoch format_iso format_time format_datetime format_relative \
         date_add date_subtract date_diff date_diff_human \
         year month day hour minute second day_of_week day_of_year week_of_year \
         is_leap_year is_before is_after is_same_day is_weekend is_weekday \
@@ -615,9 +639,17 @@ lazy_init_manifests() {
         path_to_unix path_to_windows path_style \
         path_quote path_is_safe path_ensure_dir path_sanitize \
         path_expand_tilde path_common_prefix \
-        path_is_absolute path_is_relative path_has_parent_ref path_is_hidden \
+        path_has_parent_ref path_is_hidden \
         path_equals path_depth path_split \
         path_unique path_resolve
+
+    # Owner-parity: these colliding names are owned by pure-file/pure-util
+    # per MANIFEST.json name_index (see scripts/check-owner-parity.py).
+    lazy_register "pure-file" \
+        path_is_absolute path_is_relative
+
+    lazy_register "pure-util" \
+        format_date
 
     # Environment functions
     lazy_register "env" \

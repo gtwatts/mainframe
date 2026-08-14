@@ -1,0 +1,37 @@
+{
+  "generated": "20260801T015745Z",
+  "environment": {
+    "os": "Darwin arm64",
+    "bash": "5.3.15(1)-release",
+    "mainframe_version": "10.1.0",
+    "token_cost": "not-measured (no LLM in loop)",
+    "limitations": "local single-host run; corpus is small and synthetic"
+  },
+  "evals": [
+    {
+      "name": "policy-enforcement",
+      "description": "destructive-command gate vs labeled corpus",
+      "success_rate": 1.0,
+      "cases": 12,
+      "correct": 12,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "latency_ms": 230,
+      "limitations": "12-case synthetic corpus; measures classification, not prevention"
+    },
+    {
+      "name": "compaction-recovery",
+      "description": "AWM nonce recovered from an env-scrubbed new session",
+      "success_rate": 1.0,
+      "verdict": "PASS",
+      "false_positives": 0,
+      "false_negatives": 0,
+      "latency_ms": 711,
+      "limitations": "same-host file backend; does not measure LLM context rebuild quality"
+    }
+  ],
+  "not_automated": [
+    "parent-to-subagent handoff",
+    "cross-host handoff (requires live hosts)"
+  ]
+}

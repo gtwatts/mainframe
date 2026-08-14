@@ -117,53 +117,53 @@ split_chars() {
 }
 
 # =============================================================================
-# array_filter TESTS
+# collection_filter TESTS
 # =============================================================================
 
-@test "array_filter keeps only even numbers" {
+@test "collection_filter keeps only even numbers" {
     local arr=(1 2 3 4 5 6)
     local result
-    array_filter arr is_even result
+    collection_filter arr is_even result
     [ "${#result[@]}" -eq 3 ]
     [ "${result[0]}" = "2" ]
     [ "${result[1]}" = "4" ]
     [ "${result[2]}" = "6" ]
 }
 
-@test "array_filter with no matches returns empty" {
+@test "collection_filter with no matches returns empty" {
     local arr=(1 3 5 7)
     local result
-    array_filter arr is_even result
+    collection_filter arr is_even result
     [ "${#result[@]}" -eq 0 ]
 }
 
-@test "array_filter with all matches returns all" {
+@test "collection_filter with all matches returns all" {
     local arr=(2 4 6 8)
     local result
-    array_filter arr is_even result
+    collection_filter arr is_even result
     [ "${#result[@]}" -eq 4 ]
 }
 
-@test "array_filter with empty array returns empty" {
+@test "collection_filter with empty array returns empty" {
     local arr=()
     local result
-    array_filter arr is_even result
+    collection_filter arr is_even result
     [ "${#result[@]}" -eq 0 ]
 }
 
-@test "array_filter with string predicate" {
+@test "collection_filter with string predicate" {
     local arr=(apple apricot banana cherry)
     local result
-    array_filter arr starts_with_a result
+    collection_filter arr starts_with_a result
     [ "${#result[@]}" -eq 2 ]
     [ "${result[0]}" = "apple" ]
     [ "${result[1]}" = "apricot" ]
 }
 
-@test "array_filter fails with invalid predicate" {
+@test "collection_filter fails with invalid predicate" {
     local arr=(1 2 3)
     local result
-    run array_filter arr nonexistent_predicate result
+    run collection_filter arr nonexistent_predicate result
     [ "$status" -ne 0 ]
 }
 
@@ -495,30 +495,30 @@ split_chars() {
 }
 
 # =============================================================================
-# array_slice TESTS
+# collection_slice TESTS
 # =============================================================================
 
-@test "array_slice extracts middle section" {
+@test "collection_slice extracts middle section" {
     local arr=(a b c d e)
     local result
-    array_slice 1 4 arr result
+    collection_slice 1 4 arr result
     [ "${#result[@]}" -eq 3 ]
     [ "${result[0]}" = "b" ]
     [ "${result[1]}" = "c" ]
     [ "${result[2]}" = "d" ]
 }
 
-@test "array_slice with end > length" {
+@test "collection_slice with end > length" {
     local arr=(a b c)
     local result
-    array_slice 1 10 arr result
+    collection_slice 1 10 arr result
     [ "${#result[@]}" -eq 2 ]
 }
 
-@test "array_slice with start=end returns empty" {
+@test "collection_slice with start=end returns empty" {
     local arr=(a b c)
     local result
-    array_slice 2 2 arr result
+    collection_slice 2 2 arr result
     [ "${#result[@]}" -eq 0 ]
 }
 
@@ -626,20 +626,20 @@ split_chars() {
 }
 
 # =============================================================================
-# array_count TESTS
+# collection_count TESTS
 # =============================================================================
 
-@test "array_count counts matching elements" {
+@test "collection_count counts matching elements" {
     local arr=(1 2 3 4 5 6)
     local result
-    result=$(array_count arr is_even)
+    result=$(collection_count arr is_even)
     [ "$result" = "3" ]
 }
 
-@test "array_count with no matches" {
+@test "collection_count with no matches" {
     local arr=(1 3 5)
     local result
-    result=$(array_count arr is_even)
+    result=$(collection_count arr is_even)
     [ "$result" = "0" ]
 }
 
@@ -783,20 +783,20 @@ split_chars() {
 }
 
 # =============================================================================
-# array_sum / array_product TESTS
+# collection_sum / array_product TESTS
 # =============================================================================
 
-@test "array_sum calculates sum" {
+@test "collection_sum calculates sum" {
     local arr=(1 2 3 4 5)
     local result
-    result=$(array_sum arr)
+    result=$(collection_sum arr)
     [ "$result" = "15" ]
 }
 
-@test "array_sum with empty array returns 0" {
+@test "collection_sum with empty array returns 0" {
     local arr=()
     local result
-    result=$(array_sum arr)
+    result=$(collection_sum arr)
     [ "$result" = "0" ]
 }
 
@@ -840,20 +840,20 @@ split_chars() {
 }
 
 # =============================================================================
-# array_unique TESTS
+# collection_unique TESTS
 # =============================================================================
 
-@test "array_unique removes duplicates" {
+@test "collection_unique removes duplicates" {
     local arr=(1 2 2 3 1 4)
     local result
-    array_unique arr result
+    collection_unique arr result
     [ "${#result[@]}" -eq 4 ]
 }
 
-@test "array_unique preserves order" {
+@test "collection_unique preserves order" {
     local arr=(1 2 2 3 1 4)
     local result
-    array_unique arr result
+    collection_unique arr result
     [ "${result[0]}" = "1" ]
     [ "${result[1]}" = "2" ]
     [ "${result[2]}" = "3" ]
@@ -874,21 +874,21 @@ split_chars() {
 # SET OPERATIONS TESTS
 # =============================================================================
 
-@test "array_intersect finds common elements" {
+@test "collection_intersect finds common elements" {
     local a=(1 2 3 4)
     local b=(3 4 5 6)
     local result
-    array_intersect a b result
+    collection_intersect a b result
     [ "${#result[@]}" -eq 2 ]
     [ "${result[0]}" = "3" ]
     [ "${result[1]}" = "4" ]
 }
 
-@test "array_intersect with no common elements" {
+@test "collection_intersect with no common elements" {
     local a=(1 2)
     local b=(3 4)
     local result
-    array_intersect a b result
+    collection_intersect a b result
     [ "${#result[@]}" -eq 0 ]
 }
 
@@ -914,37 +914,37 @@ split_chars() {
 # CONVENIENCE FUNCTION TESTS
 # =============================================================================
 
-@test "array_reverse reverses order" {
+@test "collection_reverse reverses order" {
     local arr=(1 2 3 4 5)
     local result
-    array_reverse arr result
+    collection_reverse arr result
     [ "${result[0]}" = "5" ]
     [ "${result[4]}" = "1" ]
 }
 
-@test "array_first returns first element" {
+@test "collection_first returns first element" {
     local arr=(a b c)
     local result
-    result=$(array_first arr)
+    result=$(collection_first arr)
     [ "$result" = "a" ]
 }
 
-@test "array_first with empty array returns 1" {
+@test "collection_first with empty array returns 1" {
     local arr=()
-    run array_first arr
+    run collection_first arr
     [ "$status" -eq 1 ]
 }
 
-@test "array_last returns last element" {
+@test "collection_last returns last element" {
     local arr=(a b c)
     local result
-    result=$(array_last arr)
+    result=$(collection_last arr)
     [ "$result" = "c" ]
 }
 
-@test "array_last with empty array returns 1" {
+@test "collection_last with empty array returns 1" {
     local arr=()
-    run array_last arr
+    run collection_last arr
     [ "$status" -eq 1 ]
 }
 
@@ -972,17 +972,17 @@ split_chars() {
     [ "$status" -eq 1 ]
 }
 
-@test "array_length returns correct count" {
+@test "collection_length returns correct count" {
     local arr=(a b c d e)
     local result
-    result=$(array_length arr)
+    result=$(collection_length arr)
     [ "$result" = "5" ]
 }
 
-@test "array_length of empty array is 0" {
+@test "collection_length of empty array is 0" {
     local arr=()
     local result
-    result=$(array_length arr)
+    result=$(collection_length arr)
     [ "$result" = "0" ]
 }
 
@@ -998,4 +998,3 @@ split_chars() {
     array_map arr nonexistent_function result 2>/dev/null || true
     COLLECTION_CONTRACTS=1
 }
-

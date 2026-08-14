@@ -1,6 +1,11 @@
 # AWM v2: Infinite Agent Memory Architecture
 
-> **Version**: 2.0 | **Status**: Design | **Author**: MAINFRAME Team
+> **Version**: 2.0 | **Status**: Historical design | **Author**: MAINFRAME Team
+>
+> The current public AWM facade is documented in
+> [`../reference/awm.md`](../reference/awm.md). The examples below retain the
+> protocol-v4 architecture but use its explicit compatibility names where its
+> data model differs from the durable facade.
 
 ## Executive Summary
 
@@ -231,7 +236,7 @@ awm_chunk_semantic "content" max_tokens    # Use embedding similarity (if Chroma
 
 ```bash
 # Progressive compression stages
-awm_compress "content" level               # level: 1-5 (1=light, 5=aggressive)
+awm_stream_compress "content" level        # level: 1-5 (1=light, 5=aggressive)
 
 # Level 1: Remove whitespace, normalize
 # Level 2: Remove comments, docstrings
@@ -320,7 +325,7 @@ awm_context_set "contextId"                # Set contextId for session
 
 ```bash
 # Prepare handoff package for sub-agent
-awm_handoff_prepare "target_agent" [max_tokens]
+awm_protocol_handoff_prepare "target_agent" [max_tokens]
 # Returns:
 {
     "type": "handoff",
@@ -334,7 +339,7 @@ awm_handoff_prepare "target_agent" [max_tokens]
 }
 
 # Accept handoff and initialize
-awm_handoff_accept "handoff_package"       # Sets up child session
+awm_protocol_handoff_accept "handoff_package" # Sets up protocol-v4 child state
 
 # Report back to parent
 awm_handoff_complete "result_summary"      # Sends completion to parent
@@ -527,7 +532,7 @@ result=$(web_search "topic")
 awm_discovery "Found: key insight from research"
 
 # Hand off to writer
-handoff=$(awm_handoff_prepare "writer_01" 32000)
+handoff=$(awm_protocol_handoff_prepare "writer_01" 32000)
 awm_send "writer_01" "handoff" "$handoff"
 
 # Wait for completion
@@ -540,7 +545,7 @@ source lib/common.sh
 
 # Accept handoff
 msg=$(awm_receive)
-awm_handoff_accept "$(echo "$msg" | jq -r '.payload')"
+awm_protocol_handoff_accept "$(echo "$msg" | jq -r '.payload')"
 
 # Write using inherited discoveries
 # (discoveries automatically available via awm_get)

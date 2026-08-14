@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "integration": "@gtwatts/mainframe-pi",
+  "mainframe_version": "10.2.0",
+  "unknown_policy": {
+    "support": "unverified",
+    "ready": false
+  },
+  "runtime_verification_command": "/mainframe doctor",
+  "required_surface": {
+    "extension": "./skills/pi/extensions/mainframe.ts",
+    "skill": "./skills/pi",
+    "command": "mainframe",
+    "hooks": [
+      "before_agent_start",
+      "tool_call",
+      "user_bash"
+    ],
+    "caller_shells": [
+      "bash",
+      "zsh"
+    ],
+    "tools": [
+      "mainframe_awm",
+      "mainframe_bash_safety_check",
+      "mainframe_exec",
+      "mainframe_help",
+      "mainframe_install_commands",
+      "mainframe_search",
+      "mainframe_status"
+    ]
+  },
+  "certifications": [
+    {
+      "id": "pi-0.84.1-darwin-arm64-full",
+      "mainframe_version": "10.2.0",
+      "package": "@earendil-works/pi-coding-agent",
+      "version": "0.84.1",
+      "npm_integrity": "sha512-ncAqFrG+iybuPGOhMiZoEHkEzTpJgz3guYD32pD+M7ucc0WeHmauP6wa7qwP8V/KWvsZDVNa5XGsdZ7fkC7w7A==",
+      "platforms": [
+        "Darwin-arm64-none"
+      ],
+      "support": "certified",
+      "profile": "full",
+      "evidence_date": "2026-08-09",
+      "evidence": [
+        "tests/pi_integration.bats"
+      ],
+      "capabilities": {
+        "local_package_discovery": "verified",
+        "prompt_hook": "verified",
+        "seven_tool_surface": "verified",
+        "agent_bash_gate": "verified",
+        "tui_user_bash_gate": "verified",
+        "rpc_user_bash_gate": "verified",
+        "bash_and_zsh_callers": "verified"
+      },
+      "limitations": []
+    },
+    {
+      "id": "pi-0.73.1-darwin-arm64-legacy-rpc-limited",
+      "mainframe_version": "10.2.0",
+      "package": "@mariozechner/pi-coding-agent",
+      "version": "0.73.1",
+      "npm_integrity": "sha512-gXQh3SaZmWTfVMc4Ao5+LGbVeKvzyO7tolok0nLsZgq9nGjZx/EEU3NM8C+qUnB4Nvs2rswG5qOVgLzQkq0fHQ==",
+      "platforms": [
+        "Darwin-arm64-none"
+      ],
+      "support": "limited",
+      "profile": "legacy-rpc-limited",
+      "evidence_date": "2026-08-09",
+      "evidence": [
+        "tests/pi_integration.bats"
+      ],
+      "capabilities": {
+        "local_package_discovery": "verified",
+        "prompt_hook": "verified",
+        "seven_tool_surface": "verified",
+        "agent_bash_gate": "verified",
+        "tui_user_bash_gate": "verified",
+        "rpc_user_bash_gate": "not-observable",
+        "bash_and_zsh_callers": "verified-except-rpc-user-bash"
+      },
+      "limitations": [
+        "This Pi version does not emit the user_bash extension event for the client-side RPC bash command, so MAINFRAME cannot gate that one legacy RPC route."
+      ]
+    }
+  ]
+}

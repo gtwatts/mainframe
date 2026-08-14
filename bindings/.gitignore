@@ -1,7 +1,6 @@
 # Node.js
 nodejs/node_modules/
 nodejs/dist/
-nodejs/bun.lock
 nodejs/*.tsbuildinfo
 
 # Python

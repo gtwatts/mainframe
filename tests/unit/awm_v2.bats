@@ -212,17 +212,17 @@ function three() {
     [ "$count" -ge 1 ]
 }
 
-@test "awm_compress level 1 normalizes whitespace" {
+@test "awm_stream_compress level 1 normalizes whitespace" {
     local text="  lots   of    spaces   "
-    result=$(awm_compress "$text" 1)
+    result=$(awm_stream_compress "$text" 1)
     [ "$result" = "lots of spaces" ]
 }
 
-@test "awm_compress level 5 produces summary" {
+@test "awm_stream_compress level 5 produces summary" {
     local text="Line 1
 Line 2
 Line 3"
-    result=$(awm_compress "$text" 5)
+    result=$(awm_stream_compress "$text" 5)
     [[ "$result" == *"Compressed:"* ]]
 }
 
@@ -291,11 +291,11 @@ Line 3"
     [ "$count" -ge 1 ]
 }
 
-@test "awm_handoff_prepare creates valid handoff package" {
+@test "awm_protocol_handoff_prepare creates valid protocol-v4 handoff package" {
     awm_agent_register "parent_agent"
     awm_budget_init
 
-    handoff=$(awm_handoff_prepare "child_agent" 32000)
+    handoff=$(awm_protocol_handoff_prepare "child_agent" 32000)
 
     [ "$(echo "$handoff" | jq -r '.type')" = "handoff" ]
     [ "$(echo "$handoff" | jq -r '.parent_agent')" = "parent_agent" ]
@@ -303,14 +303,14 @@ Line 3"
     [ "$(echo "$handoff" | jq -r '.budget_remaining')" -gt 0 ]
 }
 
-@test "awm_handoff_accept initializes from handoff" {
+@test "awm_protocol_handoff_accept initializes from protocol-v4 handoff" {
     awm_agent_register "parent"
     awm_budget_init
 
-    handoff=$(awm_handoff_prepare "child" 32000)
+    handoff=$(awm_protocol_handoff_prepare "child" 32000)
 
     awm_agent_register "child"
-    awm_handoff_accept "$handoff"
+    awm_protocol_handoff_accept "$handoff"
 
     ctx=$(awm_context_get)
     [[ "$ctx" == ctx_* ]]
@@ -445,11 +445,11 @@ Line 3"
     awm_store_push "session:parent:discoveries" '"Important finding"'
 
     # Prepare handoff
-    handoff=$(awm_handoff_prepare "child" 50000)
+    handoff=$(awm_protocol_handoff_prepare "child" 50000)
 
     # Child agent
     awm_agent_register "child" "execute"
-    awm_handoff_accept "$handoff"
+    awm_protocol_handoff_accept "$handoff"
 
     # Verify child got context
     ctx=$(awm_context_get)

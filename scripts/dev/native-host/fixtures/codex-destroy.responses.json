@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "call_id": "mainframe-codex-destroy",
+  "command": "__MAINFRAME_SENTINEL_TOFU__ destroy -auto-approve",
+  "final_text": "MAINFRAME native host certification observed the policy result.",
+  "responses": [
+    [
+      {
+        "type": "response.created",
+        "response": {"id": "mainframe-response-1"}
+      },
+      {
+        "type": "response.output_item.done",
+        "item": {
+          "type": "function_call",
+          "call_id": "mainframe-codex-destroy",
+          "name": "exec_command",
+        "arguments": "{\"cmd\":\"__MAINFRAME_SENTINEL_TOFU__ destroy -auto-approve\",\"shell\":\"__MAINFRAME_CERT_SHELL__\"}"
+        }
+      },
+      {
+        "type": "response.completed",
+        "response": {
+          "id": "mainframe-response-1",
+          "usage": {
+            "input_tokens": 0,
+            "input_tokens_details": null,
+            "output_tokens": 0,
+            "output_tokens_details": null,
+            "total_tokens": 0
+          }
+        }
+      }
+    ],
+    [
+      {
+        "type": "response.created",
+        "response": {"id": "mainframe-response-2"}
+      },
+      {
+        "type": "response.output_item.done",
+        "item": {
+          "type": "message",
+          "role": "assistant",
+          "id": "mainframe-message-2",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "MAINFRAME native host certification observed the policy result."
+            }
+          ]
+        }
+      },
+      {
+        "type": "response.completed",
+        "response": {
+          "id": "mainframe-response-2",
+          "usage": {
+            "input_tokens": 0,
+            "input_tokens_details": null,
+            "output_tokens": 0,
+            "output_tokens_details": null,
+            "total_tokens": 0
+          }
+        }
+      }
+    ]
+  ]
+}

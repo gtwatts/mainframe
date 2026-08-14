@@ -1,0 +1,312 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/installed-awm-handoff-evidence-v1.json",
+  "title": "MAINFRAME installed-candidate AWM handoff mechanism evidence",
+  "$comment": "This closed public projection intentionally contains no filesystem paths, prompts, continuations, handoffs, process output, credentials, opaque randomized arm IDs, hidden assignment records, or private runtime state. Its reviewed control and treatment mechanism labels are public. Cross-field digest equality and exact reproduction are enforced by the certifier verifier.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "claim_scope",
+    "status",
+    "candidate",
+    "platform",
+    "shell",
+    "protocol",
+    "mechanism",
+    "parity",
+    "integrity",
+    "execution",
+    "non_claims"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "mainframe-installed-awm-handoff-evidence" },
+    "claim_scope": {
+      "const": "installed-candidate-awm-handoff-mechanism-conformance-only"
+    },
+    "status": { "const": "passed" },
+    "candidate": { "$ref": "#/$defs/candidate" },
+    "platform": { "$ref": "#/$defs/platform" },
+    "shell": { "$ref": "#/$defs/shell" },
+    "protocol": { "$ref": "#/$defs/protocol" },
+    "mechanism": { "$ref": "#/$defs/mechanism" },
+    "parity": { "$ref": "#/$defs/parity" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "execution": { "$ref": "#/$defs/execution" },
+    "non_claims": { "$ref": "#/$defs/nonClaims" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 64,
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"
+    },
+    "bashVersion": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 128,
+      "pattern": "^[0-9]+\\.[0-9]+(?:\\.[0-9]+)?\\([0-9]+\\)-[A-Za-z0-9._+-]+$"
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "archive_sha256",
+        "checksum_sha256",
+        "installed_tree_algorithm",
+        "installed_tree_sha256",
+        "installed_payload",
+        "install_receipt_verified"
+      ],
+      "properties": {
+        "version": { "$ref": "#/$defs/version" },
+        "archive_sha256": { "$ref": "#/$defs/sha256" },
+        "checksum_sha256": { "$ref": "#/$defs/sha256" },
+        "installed_tree_algorithm": {
+          "const": "mainframe-package-tree-sha256-v1"
+        },
+        "installed_tree_sha256": { "$ref": "#/$defs/sha256" },
+        "installed_payload": {
+          "const": "authenticated-release-files-private-staging"
+        },
+        "install_receipt_verified": { "const": true }
+      }
+    },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "os", "architecture", "system_libc"],
+      "properties": {
+        "id": {
+          "enum": [
+            "Darwin-arm64-none",
+            "Darwin-x86_64-none",
+            "Linux-x86_64-glibc"
+          ]
+        },
+        "os": { "enum": ["Darwin", "Linux"] },
+        "architecture": { "enum": ["arm64", "x86_64"] },
+        "system_libc": { "enum": ["none", "glibc"] }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "id": { "const": "Darwin-arm64-none" },
+            "os": { "const": "Darwin" },
+            "architecture": { "const": "arm64" },
+            "system_libc": { "const": "none" }
+          }
+        },
+        {
+          "properties": {
+            "id": { "const": "Darwin-x86_64-none" },
+            "os": { "const": "Darwin" },
+            "architecture": { "const": "x86_64" },
+            "system_libc": { "const": "none" }
+          }
+        },
+        {
+          "properties": {
+            "id": { "const": "Linux-x86_64-glibc" },
+            "os": { "const": "Linux" },
+            "architecture": { "const": "x86_64" },
+            "system_libc": { "const": "glibc" }
+          }
+        }
+      ]
+    },
+    "shell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "executable_sha256",
+        "version",
+        "runtime_bash",
+        "fresh_login_shell_count",
+        "distinct_processes",
+        "isolated_profile_discovery"
+      ],
+      "properties": {
+        "name": { "enum": ["bash", "zsh"] },
+        "executable_sha256": { "$ref": "#/$defs/sha256" },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._+():,-]{0,255}$"
+        },
+        "runtime_bash": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["executable_sha256", "version"],
+          "properties": {
+            "executable_sha256": { "$ref": "#/$defs/sha256" },
+            "version": { "$ref": "#/$defs/bashVersion" }
+          }
+        },
+        "fresh_login_shell_count": { "const": 4 },
+        "distinct_processes": { "const": true },
+        "isolated_profile_discovery": { "const": true }
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "certifier_sha256",
+        "private_schema_sha256",
+        "evidence_schema_sha256",
+        "neutral_continuation_schema_sha256",
+        "task_bundle_sha256",
+        "fake_transport_sha256",
+        "grader_sha256",
+        "maximum_continuation_bytes"
+      ],
+      "properties": {
+        "certifier_sha256": { "$ref": "#/$defs/sha256" },
+        "private_schema_sha256": { "$ref": "#/$defs/sha256" },
+        "evidence_schema_sha256": { "$ref": "#/$defs/sha256" },
+        "neutral_continuation_schema_sha256": { "$ref": "#/$defs/sha256" },
+        "task_bundle_sha256": { "$ref": "#/$defs/sha256" },
+        "fake_transport_sha256": { "$ref": "#/$defs/sha256" },
+        "grader_sha256": { "$ref": "#/$defs/sha256" },
+        "maximum_continuation_bytes": { "const": 4096 }
+      }
+    },
+    "mechanism": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "control",
+        "treatment",
+        "mainframe_runtime_exercised",
+        "mainframe_awm_exercised",
+        "source_fact_occurrences_control",
+        "source_fact_occurrences_treatment",
+        "neutral_envelopes_equal"
+      ],
+      "properties": {
+        "control": { "const": "native-bounded-continuation" },
+        "treatment": { "const": "installed-mainframe-project-awm-handoff" },
+        "mainframe_runtime_exercised": { "const": true },
+        "mainframe_awm_exercised": { "const": true },
+        "source_fact_occurrences_control": { "const": 1 },
+        "source_fact_occurrences_treatment": { "const": 1 },
+        "neutral_envelopes_equal": { "const": true }
+      }
+    },
+    "parity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "control_score",
+        "treatment_score",
+        "maximum_score",
+        "control_tests_passed",
+        "treatment_tests_passed",
+        "tests_total",
+        "score_delta",
+        "outcome",
+        "control_final_tree_sha256",
+        "treatment_final_tree_sha256",
+        "final_trees_equal"
+      ],
+      "properties": {
+        "control_score": { "const": 100 },
+        "treatment_score": { "const": 100 },
+        "maximum_score": { "const": 100 },
+        "control_tests_passed": { "const": 4 },
+        "treatment_tests_passed": { "const": 4 },
+        "tests_total": { "const": 4 },
+        "score_delta": { "const": 0 },
+        "outcome": { "const": "tie" },
+        "control_final_tree_sha256": { "$ref": "#/$defs/sha256" },
+        "treatment_final_tree_sha256": { "$ref": "#/$defs/sha256" },
+        "final_trees_equal": { "const": true }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "initial_workspaces_equal",
+        "investigation_workspace_unchanged",
+        "installed_payload_unchanged",
+        "private_evidence_reproduced",
+        "verification_bound_artifacts_unchanged",
+        "poison_path_marker_absent",
+        "public_paths_embedded"
+      ],
+      "properties": {
+        "initial_workspaces_equal": { "const": true },
+        "investigation_workspace_unchanged": { "const": true },
+        "installed_payload_unchanged": { "const": true },
+        "private_evidence_reproduced": { "const": true },
+        "verification_bound_artifacts_unchanged": { "const": true },
+        "poison_path_marker_absent": { "const": true },
+        "public_paths_embedded": { "const": false }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "certifier_started_live_agent_sessions",
+        "certifier_started_provider_sessions",
+        "certifier_issued_provider_requests",
+        "certifier_started_pi_sessions",
+        "certifier_started_ollama_sessions",
+        "certifier_network_api_calls",
+        "host_activation_performed",
+        "external_publication_performed"
+      ],
+      "properties": {
+        "certifier_started_live_agent_sessions": { "const": 0 },
+        "certifier_started_provider_sessions": { "const": 0 },
+        "certifier_issued_provider_requests": { "const": 0 },
+        "certifier_started_pi_sessions": { "const": 0 },
+        "certifier_started_ollama_sessions": { "const": 0 },
+        "certifier_network_api_calls": { "const": 0 },
+        "host_activation_performed": { "const": false },
+        "external_publication_performed": { "const": false }
+      }
+    },
+    "nonClaims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mainframe_benefit",
+        "agent_quality",
+        "developer_productivity",
+        "comparative_agent_performance",
+        "real_provider_inference",
+        "network_containment",
+        "host_runtime_trust",
+        "same_local_account_isolation",
+        "generalization"
+      ],
+      "properties": {
+        "mainframe_benefit": { "const": "not-measured" },
+        "agent_quality": { "const": "not-measured" },
+        "developer_productivity": { "const": "not-measured" },
+        "comparative_agent_performance": { "const": "not-measured" },
+        "real_provider_inference": { "const": "not-run" },
+        "network_containment": { "const": "not-established" },
+        "host_runtime_trust": { "const": "not-established" },
+        "same_local_account_isolation": { "const": "not-established" },
+        "generalization": { "const": "not-established" }
+      }
+    }
+  }
+}

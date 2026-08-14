@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-task-v1.json",
+  "title": "MAINFRAME Agent Impact Protocol task",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "id",
+    "title",
+    "category",
+    "repository",
+    "phases",
+    "transition",
+    "budgets",
+    "grader"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "mainframe-agent-impact-task" },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "title": { "type": "string", "minLength": 1 },
+    "category": { "const": "fresh-session-handoff" },
+    "repository": { "type": "string", "const": "repository" },
+    "phases": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "prompt", "workspace_edits"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "prompt": { "type": "string", "pattern": "^[A-Za-z0-9._-]+\\.md$" },
+          "workspace_edits": { "type": "boolean" }
+        }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fresh_host_state",
+        "preserve_workspace",
+        "context_budget",
+        "control",
+        "treatment"
+      ],
+      "properties": {
+        "fresh_host_state": { "const": true },
+        "preserve_workspace": { "const": true },
+        "context_budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["unit", "maximum"],
+          "properties": {
+            "unit": { "const": "bytes-under-LC_ALL-C" },
+            "maximum": { "type": "integer", "minimum": 1, "maximum": 65536 }
+          }
+        },
+        "control": { "const": "native-bounded-handoff" },
+        "treatment": { "const": "mainframe-awm-handoff" }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wall_seconds_per_phase", "maximum_tool_calls_per_phase"],
+      "properties": {
+        "wall_seconds_per_phase": { "type": "number", "minimum": 0.1, "maximum": 7200 },
+        "maximum_tool_calls_per_phase": { "type": "integer", "minimum": 1, "maximum": 1000 }
+      }
+    },
+    "grader": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "maximum_score"],
+      "properties": {
+        "command": { "type": "string", "pattern": "^[A-Za-z0-9._-]+\\.py$" },
+        "maximum_score": { "type": "integer", "minimum": 1, "maximum": 1000000 }
+      }
+    }
+  }
+}

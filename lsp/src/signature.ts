@@ -84,7 +84,7 @@ export class SignatureHelpProvider {
     const params: string[] = [];
 
     // Match parameter patterns like "url", "[options]", "<required>"
-    const matches = signature.matchAll(/[<\[]([a-zA-Z0-9_-]+)[\]>]/g);
+    const matches = signature.matchAll(/[<[]([a-zA-Z0-9_-]+)[\]>]/g);
     for (const match of matches) {
       params.push(match[1]);
     }

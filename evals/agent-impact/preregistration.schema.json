@@ -1,0 +1,582 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-preregistration-v2.json",
+  "title": "MAINFRAME agent impact no-run preregistration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "study_id",
+    "title",
+    "claim_scope",
+    "execution_status",
+    "non_claims",
+    "design",
+    "bindings",
+    "randomization_context_sha256",
+    "seed_commitment_sha256",
+    "assignment_commitment_sha256",
+    "planned_pair_count",
+    "pairs"
+  ],
+  "properties": {
+    "schema_version": { "const": 2 },
+    "kind": { "const": "mainframe-agent-impact-preregistration" },
+    "study_id": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/id" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 1024 },
+    "claim_scope": { "const": "preregistered-live-study-not-run" },
+    "execution_status": { "const": "not-run" },
+    "non_claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "real_provider_inference",
+        "agent_quality",
+        "developer_productivity",
+        "safety_improvement",
+        "live_agent_sessions"
+      ],
+      "properties": {
+        "real_provider_inference": { "const": "not-run" },
+        "agent_quality": { "const": "not-measured" },
+        "developer_productivity": { "const": "not-measured" },
+        "safety_improvement": { "const": "not-measured" },
+        "live_agent_sessions": { "const": 0 }
+      }
+    },
+    "design": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hypothesis",
+        "stage",
+        "task_classes",
+        "replicates_per_task",
+        "container_image_digest",
+        "host_environment",
+        "provider",
+        "budgets",
+        "endpoint",
+        "statistics",
+        "exclusions",
+        "stopping",
+        "publication"
+      ],
+      "properties": {
+        "hypothesis": {
+          "const": "A bounded MAINFRAME AWM handoff improves a fresh implementation session's hidden grader score relative to an equally bounded native/manual handoff for a pinned provider, model, and fixed coding-task suite."
+        },
+        "stage": { "enum": ["pilot", "confirmatory"] },
+        "task_classes": {
+          "const": [
+            "nested-configuration-precedence-and-falsy-merge",
+            "checkpoint-after-commit-idempotency",
+            "safe-manifest-include"
+          ]
+        },
+        "replicates_per_task": {
+          "type": "integer",
+          "minimum": 6,
+          "maximum": 1000,
+          "multipleOf": 2
+        },
+        "container_image_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "host_environment": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/hostEnvironment" },
+        "provider": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/provider" },
+        "budgets": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/budgets" },
+        "endpoint": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/endpoint" },
+        "statistics": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/statistics" },
+        "exclusions": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/exclusions" },
+        "stopping": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/stopping" },
+        "publication": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/publication" }
+      }
+    },
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "study_spec",
+        "corpus",
+        "planned_runner",
+        "mainframe_release",
+        "policies",
+        "preregistration_protocol"
+      ],
+      "properties": {
+        "study_spec": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "mode", "sha256"],
+          "properties": {
+            "path": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/relativePath" },
+            "mode": { "$ref": "#/$defs/mode" },
+            "sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "corpus": { "$ref": "#/$defs/corpusBinding" },
+        "planned_runner": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "runner_id",
+            "runner_version",
+            "executable_path",
+            "executable_mode",
+            "executable_sha256",
+            "manifest_path",
+            "manifest_mode",
+            "manifest_sha256",
+            "adapter",
+            "permitted_environment_names"
+          ],
+          "properties": {
+            "runner_id": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/id" },
+            "runner_version": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,255}$"
+            },
+            "executable_path": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/relativePath" },
+            "executable_mode": { "$ref": "#/$defs/mode" },
+            "executable_sha256": { "$ref": "#/$defs/sha256" },
+            "manifest_path": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/relativePath" },
+            "manifest_mode": { "$ref": "#/$defs/mode" },
+            "manifest_sha256": { "$ref": "#/$defs/sha256" },
+            "adapter": { "$ref": "#/$defs/adapterBinding" },
+            "permitted_environment_names": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 64,
+              "uniqueItems": true,
+              "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" }
+            }
+          }
+        },
+        "mainframe_release": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "archive_path",
+            "archive_mode",
+            "archive_sha256",
+            "checksum_sidecar_path",
+            "checksum_sidecar_mode",
+            "checksum_sidecar_sha256",
+            "installed_tree_algorithm",
+            "installed_tree_sha256"
+          ],
+          "properties": {
+            "archive_path": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/relativePath" },
+            "archive_mode": { "$ref": "#/$defs/mode" },
+            "archive_sha256": { "$ref": "#/$defs/sha256" },
+            "checksum_sidecar_path": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/relativePath" },
+            "checksum_sidecar_mode": { "$ref": "#/$defs/mode" },
+            "checksum_sidecar_sha256": { "$ref": "#/$defs/sha256" },
+            "installed_tree_algorithm": { "const": "mainframe-package-tree-sha256-v1" },
+            "installed_tree_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "policies": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["isolation", "provider_proxy", "awm_mechanism_contract"],
+          "properties": {
+            "isolation": { "$ref": "#/$defs/isolationPolicyBinding" },
+            "provider_proxy": { "$ref": "#/$defs/providerProxyPolicyBinding" },
+            "awm_mechanism_contract": { "$ref": "#/$defs/awmPolicyBinding" }
+          }
+        },
+        "preregistration_protocol": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/fileBinding" }
+        }
+      }
+    },
+    "randomization_context_sha256": { "$ref": "#/$defs/sha256" },
+    "seed_commitment_sha256": { "$ref": "#/$defs/sha256" },
+    "assignment_commitment_sha256": { "$ref": "#/$defs/sha256" },
+    "planned_pair_count": { "type": "integer", "minimum": 18, "maximum": 1000000 },
+    "pairs": {
+      "type": "array",
+      "minItems": 18,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/pair" }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "design": { "properties": { "stage": { "const": "pilot" } } }
+        }
+      },
+      "then": {
+        "properties": {
+          "design": {
+            "properties": {
+              "replicates_per_task": { "const": 6 },
+              "stopping": {
+                "properties": {
+                  "minimum_valid_pairs": { "const": 18 },
+                  "maximum_planned_pairs": { "const": 18 }
+                }
+              }
+            }
+          },
+          "planned_pair_count": { "const": 18 },
+          "pairs": { "minItems": 18, "maxItems": 18 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "design": { "properties": { "stage": { "const": "confirmatory" } } }
+        }
+      },
+      "then": {
+        "properties": {
+          "design": { "properties": { "replicates_per_task": { "enum": [12, 20] } } }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "design": {
+            "properties": {
+              "stage": { "const": "confirmatory" },
+              "replicates_per_task": { "const": 12 }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "design": {
+            "properties": {
+              "stopping": {
+                "properties": {
+                  "minimum_valid_pairs": { "const": 36 },
+                  "maximum_planned_pairs": { "const": 36 }
+                }
+              }
+            }
+          },
+          "planned_pair_count": { "const": 36 },
+          "pairs": { "minItems": 36, "maxItems": 36 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "design": {
+            "properties": {
+              "stage": { "const": "confirmatory" },
+              "replicates_per_task": { "const": 20 }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "design": {
+            "properties": {
+              "stopping": {
+                "properties": {
+                  "minimum_valid_pairs": { "const": 60 },
+                  "maximum_planned_pairs": { "const": 60 }
+                }
+              }
+            }
+          },
+          "planned_pair_count": { "const": 60 },
+          "pairs": { "minItems": 60, "maxItems": 60 }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "mode": { "type": "string", "pattern": "^[0-7]{4}$" },
+    "fileBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "mode", "sha256"],
+      "properties": {
+        "path": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/relativePath" },
+        "mode": { "$ref": "#/$defs/mode" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "isolationPolicyBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "mode",
+        "sha256",
+        "schema_version",
+        "kind",
+        "contract_id",
+        "controls"
+      ],
+      "properties": {
+        "path": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/relativePath" },
+        "mode": { "$ref": "#/$defs/mode" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "schema_version": { "const": 1 },
+        "kind": { "const": "mainframe-agent-impact-isolation-policy" },
+        "contract_id": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/id" },
+        "controls": {
+          "const": {
+            "boundary": "fresh-container-vm-or-separate-os-user",
+            "task_source": "byte-identical-read-only",
+            "workspace": "private-writable-per-arm",
+            "fresh_state": [
+              "cache",
+              "configuration",
+              "home",
+              "process",
+              "provider-session",
+              "temporary-directory",
+              "xdg"
+            ],
+            "hidden_inputs": "not-mounted-or-readable",
+            "cross_arm_state": "none",
+            "resource_termination": "whole-workload-before-grading",
+            "network_egress": "default-deny-provider-proxy-only",
+            "grader": "outside-agent-boundary-network-denied-after-stop"
+          }
+        }
+      }
+    },
+    "providerProxyPolicyBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "mode",
+        "sha256",
+        "schema_version",
+        "kind",
+        "contract_id",
+        "controls"
+      ],
+      "properties": {
+        "path": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/relativePath" },
+        "mode": { "$ref": "#/$defs/mode" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "schema_version": { "const": 1 },
+        "kind": { "const": "mainframe-agent-impact-provider-proxy-policy" },
+        "contract_id": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/id" },
+        "controls": {
+          "const": {
+            "credentials": "outside-agent-environment",
+            "network_route": "sole-provider-egress-route",
+            "request_scope": [
+              "arm",
+              "model",
+              "pair",
+              "parameters",
+              "phase",
+              "provider",
+              "study"
+            ],
+            "unregistered_invocation": "reject",
+            "duplicate_invocation": "reject",
+            "call_and_token_policy": "enforce-where-provider-supports",
+            "audit_record": "credential-free-append-only",
+            "direct_provider_access": "invalidates-run"
+          }
+        }
+      }
+    },
+    "awmPolicyBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "mode",
+        "sha256",
+        "schema_version",
+        "kind",
+        "contract_id",
+        "controls"
+      ],
+      "properties": {
+        "path": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/relativePath" },
+        "mode": { "$ref": "#/$defs/mode" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "schema_version": { "const": 1 },
+        "kind": { "const": "mainframe-agent-impact-awm-mechanism-contract" },
+        "contract_id": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/id" },
+        "controls": {
+          "const": {
+            "control_comparator": "native-bounded-handoff",
+            "treatment_intervention": "mainframe-awm-handoff",
+            "writes": "recorded",
+            "state_receipts": "before-and-after-each-phase",
+            "export": "bounded-read-only-neutral-continuation-envelope",
+            "context_limit_unit": "bytes-under-LC_ALL-C",
+            "executable_binding": "release-and-installed-tree",
+            "arm_label_assertion": "insufficient-proof"
+          }
+        }
+      }
+    },
+    "adapterBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "provider",
+        "executable_path",
+        "executable_mode",
+        "executable_sha256",
+        "request_schema_path",
+        "request_schema_mode",
+        "request_schema_sha256",
+        "result_schema_path",
+        "result_schema_mode",
+        "result_schema_sha256"
+      ],
+      "properties": {
+        "id": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/id" },
+        "version": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,255}$"
+        },
+        "provider": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,255}$"
+        },
+        "executable_path": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/relativePath" },
+        "executable_mode": { "$ref": "#/$defs/mode" },
+        "executable_sha256": { "$ref": "#/$defs/sha256" },
+        "request_schema_path": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/relativePath" },
+        "request_schema_mode": { "$ref": "#/$defs/mode" },
+        "request_schema_sha256": { "$ref": "#/$defs/sha256" },
+        "result_schema_path": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/relativePath" },
+        "result_schema_mode": { "$ref": "#/$defs/mode" },
+        "result_schema_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "promptBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "mode", "sha256"],
+      "properties": {
+        "path": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/relativePath" },
+        "mode": { "$ref": "#/$defs/mode" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "taskBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_path",
+        "task_mode",
+        "task_sha256",
+        "task_id",
+        "prompt_files",
+        "repository_path",
+        "repository_tree_sha256",
+        "grader_path",
+        "grader_mode",
+        "grader_sha256",
+        "task_bundle_sha256"
+      ],
+      "properties": {
+        "task_path": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/relativePath" },
+        "task_mode": { "$ref": "#/$defs/mode" },
+        "task_sha256": { "$ref": "#/$defs/sha256" },
+        "task_id": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/id" },
+        "prompt_files": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/promptBinding" }
+        },
+        "repository_path": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/relativePath" },
+        "repository_tree_sha256": { "$ref": "#/$defs/sha256" },
+        "grader_path": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/relativePath" },
+        "grader_mode": { "$ref": "#/$defs/mode" },
+        "grader_sha256": { "$ref": "#/$defs/sha256" },
+        "task_bundle_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "corpusBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol_version",
+        "suite_path",
+        "suite_mode",
+        "suite_id",
+        "suite_sha256",
+        "schemas",
+        "tasks",
+        "corpus_sha256"
+      ],
+      "properties": {
+        "protocol_version": { "const": 1 },
+        "suite_path": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/relativePath" },
+        "suite_mode": { "$ref": "#/$defs/mode" },
+        "suite_id": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/id" },
+        "suite_sha256": { "$ref": "#/$defs/sha256" },
+        "schemas": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/fileBinding" }
+        },
+        "tasks": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/taskBinding" }
+        },
+        "corpus_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "pair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pair_id",
+        "task_id",
+        "replicate",
+        "instance_sha256",
+        "opaque_arm_order",
+        "budgets"
+      ],
+      "properties": {
+        "pair_id": { "type": "string", "pattern": "^pair-[0-9a-f]{16}$" },
+        "task_id": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/id" },
+        "replicate": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "instance_sha256": { "$ref": "#/$defs/sha256" },
+        "opaque_arm_order": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^arm-[0-9a-f]{16}$" }
+        },
+        "budgets": { "$ref": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json#/$defs/budgets" }
+      }
+    }
+  }
+}

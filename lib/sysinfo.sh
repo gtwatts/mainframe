@@ -439,6 +439,7 @@ sysinfo_oneliner() {
 
 # @idempotent Check if running as root
 # @return 0 if root, 1 if not
+# Check whether the current effective user is root
 is_root() {
     [[ "${EUID:-$(id -u)}" -eq 0 ]]
 }

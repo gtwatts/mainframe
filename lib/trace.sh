@@ -396,6 +396,7 @@ _trace_install_debug_trap() {
         original_cmd="${original_cmd% DEBUG}"
         original_cmd="${original_cmd#\'}"
         original_cmd="${original_cmd%\'}"
+        # shellcheck disable=SC2064  # Preserve the current local command in the deferred trap.
         trap "${original_cmd}; _trace_debug_handler" DEBUG
     else
         trap '_trace_debug_handler' DEBUG

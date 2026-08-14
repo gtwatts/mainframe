@@ -1,0 +1,136 @@
+class Mainframe < Formula
+  desc "Safer shell runtime and durable memory for coding agents"
+  homepage "https://github.com/gtwatts/mainframe"
+  url "https://github.com/gtwatts/mainframe/releases/download/v@VERSION@/mainframe-@VERSION@.tar.gz"
+  sha256 "@SHA256@"
+  license "MIT"
+
+  depends_on "bash"
+  depends_on "jq"
+  depends_on "python@3.14"
+
+  def install
+    libexec.install Dir["*"]
+
+    # Linuxbrew uses a cooperative umask, while the reproducible release tar
+    # deliberately omits directory members. Normalize every materialized
+    # package directory before MAINFRAME treats the keg as trusted input.
+    libexec.find do |path|
+      path.chmod 0755 if path.directory? && !path.symlink?
+    end
+
+    # Homebrew otherwise moves README, CHANGELOG, and LICENSE out of libexec as
+    # metafiles. Seed the conventional keg-level license while retaining the
+    # archive's complete relative layout and embedded checksum inventory.
+    cp libexec/"LICENSE", prefix/"LICENSE"
+
+    # MAINFRAME scripts use /usr/bin/env bash. Keep the Homebrew Bash first for
+    # the CLI and every child hook instead of falling back to macOS Bash 3.2.
+    runtime_env = {
+      PATH:                            "#{formula_opt_bin("bash")}:#{formula_opt_bin("jq")}:$PATH",
+      MAINFRAME_INSTALL_METHOD:        "homebrew",
+      MAINFRAME_HOMEBREW_BASH_OPT_BIN: formula_opt_bin("bash").to_s,
+      MAINFRAME_HOMEBREW_JQ_OPT_BIN:   formula_opt_bin("jq").to_s,
+      MAINFRAME_HOMEBREW_OPT_BIN:      opt_bin.to_s,
+      MAINFRAME_HOMEBREW_OPT_LIBEXEC:  opt_libexec.to_s,
+      MAINFRAME_PI_LIFECYCLE_REQUIRED: "1",
+    }
+    (bin/"mainframe").write_env_script libexec/"bin/mainframe", runtime_env
+
+    # Preserve the exact release payload in libexec so its embedded checksum
+    # inventory remains useful, then install relocatable completion copies.
+    bash_completion.mkpath
+    zsh_completion.mkpath
+    cp libexec/"completions/mainframe.bash", bash_completion/"mainframe"
+    cp libexec/"completions/mainframe.zsh", zsh_completion/"_mainframe"
+    inreplace bash_completion/"mainframe", "$HOME/.mainframe", opt_libexec
+    inreplace zsh_completion/"_mainframe", "$HOME/.mainframe", opt_libexec
+  end
+
+  def caveats
+    <<~EOS
+      Start with read-only discovery in the project where you use coding agents:
+        cd /path/to/project
+        #{opt_bin}/mainframe setup --project .
+
+      If you use Pi, inspect its exact version/platform compatibility without
+      starting Pi or changing its settings:
+        #{opt_bin}/mainframe pi doctor
+
+      Before uninstalling, deactivate MAINFRAME in every onboarded project so
+      a host is not left with a fail-closed hook that points into the removed keg:
+        cd /path/to/project
+        #{opt_bin}/mainframe deactivate HOST --project . --enforce
+
+      If Mainframe is attached to Pi, detach it too:
+        #{opt_bin}/mainframe pi remove --dry-run
+        #{opt_bin}/mainframe pi remove --yes
+
+      After project deactivation and Pi detach:
+        brew uninstall gtwatts/mainframe/mainframe
+
+      Homebrew Formulae do not provide an uninstall-preflight hook. Running
+      brew uninstall directly cannot verify either cleanup and can strand a
+      project hook or leave the Pi package path dangling.
+    EOS
+  end
+
+  test do
+    ENV.prepend_path "PATH", bin
+    assert_path_exists libexec/"README.md"
+    assert_path_exists libexec/"CHANGELOG.md"
+    assert_path_exists libexec/"LICENSE"
+    libexec.find do |path|
+      next unless path.directory?
+      next if path.symlink?
+
+      assert_equal 0, path.stat.mode & 07022, path.to_s
+    end
+    assert_match "Status: All checks passed!", shell_output("#{bin}/mainframe doctor")
+
+    session = shell_output("#{bin}/mainframe awm init homebrew-formula --namespace package").strip
+    system bin/"mainframe", "awm", "checkpoint", "--session", session,
+           "package_manager", "homebrew", "--importance", "high"
+    assert_match "homebrew",
+                 shell_output("#{bin}/mainframe awm get --session #{session} package_manager")
+
+    payload = <<~JSON
+      {"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"terraform destroy -auto-approve"}}
+    JSON
+    assert_match "terraform-destroy",
+                 pipe_output("#{bin}/mainframe agent-hook --format claude 2>&1", payload, 2)
+
+    assert_match "brew upgrade gtwatts/mainframe/mainframe",
+                 shell_output("#{bin}/mainframe update 2>&1", 1)
+
+    project = testpath/"protected-project"
+    project.mkpath
+    system bin/"mainframe", "activate", "gemini", "--project", project, "--enforce"
+    status = shell_output("#{bin}/mainframe protect status gemini --project #{project}")
+    assert_match "hook-bootstrap", status
+    assert_match "gateway-bash", status
+    assert_match "agent-gateway", status
+    assert_match "Static readiness: READY", status
+
+    first_use_home = testpath/"fresh-home"
+    first_use_project = testpath/"fresh-project"
+    first_use_home.mkpath
+    first_use_project.mkpath
+    setup = shell_output("env HOME=#{first_use_home} #{bin}/mainframe setup --project #{first_use_project}")
+    assert_match "Mode: discovery only (strictly read-only)", setup
+    assert_match "Pi integration (user package; separate from project hooks)", setup
+    # Keep the command's fail-closed exit status observable without asking
+    # shell_output to discard its diagnostics on an unexpected status.
+    pi_doctor_probe = shell_output(
+      "env HOME=#{first_use_home} #{bin}/mainframe pi doctor --json 2>&1; " \
+      "printf '\\nMAINFRAME_PI_DOCTOR_EXIT=%s\\n' $?",
+    )
+    pi_doctor_status = pi_doctor_probe.lines.pop
+    assert_equal "MAINFRAME_PI_DOCTOR_EXIT=2\n", pi_doctor_status, pi_doctor_probe
+    pi_doctor = pi_doctor_probe.lines.join
+    assert_match '"ready":false', pi_doctor
+    assert_match '"executed":false', pi_doctor
+    assert_empty first_use_home.children
+    assert_empty first_use_project.children
+  end
+end

@@ -103,15 +103,23 @@ mainframe_ai_discovery_setup_universal() {
     # Write capabilities file
     _mainframe_generate_capabilities_file > "$discovery_dir/mainframe.md"
 
-    # Create marker file for quick detection
+    # Create marker file for quick detection.
+    # Counts come from the registry (single count source, WS4); when jq is
+    # unavailable the fields are omitted rather than hardcoded stale claims.
+    local mf_version mf_functions mf_libraries counts_json=""
+    mf_version=$(cat "$MAINFRAME_ROOT/VERSION" 2>/dev/null || echo "unknown")
+    if command -v jq &>/dev/null && [[ -f "$MAINFRAME_ROOT/FUNCTIONS.json" ]]; then
+        mf_functions=$(jq -r '.stats.unique_functions // empty' "$MAINFRAME_ROOT/FUNCTIONS.json")
+        mf_libraries=$(jq -r '.stats.total_libraries // empty' "$MAINFRAME_ROOT/FUNCTIONS.json")
+        [[ -n "$mf_functions" ]] && counts_json="$(printf ',\n    "registry_functions": %s' "$mf_functions")"
+        [[ -n "$mf_libraries" ]] && counts_json="$counts_json$(printf ',\n    "libraries": %s' "$mf_libraries")"
+    fi
     cat > "$discovery_dir/mainframe.json" << EOF
 {
     "name": "mainframe",
-    "version": "6.0",
+    "version": "$mf_version",
     "type": "bash-library",
-    "root": "$MAINFRAME_ROOT",
-    "functions": 4000,
-    "libraries": 117,
+    "root": "$MAINFRAME_ROOT"$counts_json,
     "cheatsheet": "$MAINFRAME_ROOT/CHEATSHEET.md",
     "source_line": "source \"\${MAINFRAME_ROOT:-\$HOME/.mainframe}/lib/common.sh\""
 }

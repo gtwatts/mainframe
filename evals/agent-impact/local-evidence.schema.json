@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-local-evidence-v1.json",
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "file": {"type": "object", "additionalProperties": false, "required": ["size_bytes", "sha256"], "properties": {"size_bytes": {"type": "integer", "minimum": 0}, "sha256": {"$ref": "#/$defs/sha256"}}},
+    "output": {"type": "object", "additionalProperties": false, "required": ["present", "size_bytes", "sha256"], "properties": {"present": {"type": "boolean"}, "size_bytes": {"type": "integer", "minimum": 0}, "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}}},
+    "snapshot": {"type": "object", "additionalProperties": false, "required": ["tree_sha256", "size_bytes", "sha256"], "properties": {"tree_sha256": {"$ref": "#/$defs/sha256"}, "size_bytes": {"type": "integer", "minimum": 1}, "sha256": {"$ref": "#/$defs/sha256"}}},
+    "usage": {"type": "object", "additionalProperties": false, "required": ["input_tokens", "input_tokens_reason", "output_tokens", "output_tokens_reason"], "properties": {"input_tokens": {"const": null}, "input_tokens_reason": {"const": "deterministic-fake-transport-no-provider-usage"}, "output_tokens": {"const": null}, "output_tokens_reason": {"const": "deterministic-fake-transport-no-provider-usage"}}},
+    "phase": {"type": "object", "additionalProperties": false, "required": ["phase", "status", "fresh_state_id", "fresh_state_per_phase", "assignment_not_in_request_or_environment", "request", "result", "stdout", "stderr", "continuation", "usage", "tool_calls", "provider_requests", "pi_sessions", "network_requests", "ledger_sequence", "ledger_record_sha256"], "properties": {"phase": {"enum": ["investigate", "implement"]}, "status": {"const": "completed"}, "fresh_state_id": {"$ref": "#/$defs/sha256"}, "fresh_state_per_phase": {"const": true}, "assignment_not_in_request_or_environment": {"const": true}, "request": {"$ref": "#/$defs/file"}, "result": {"$ref": "#/$defs/file"}, "stdout": {"$ref": "#/$defs/output"}, "stderr": {"$ref": "#/$defs/output"}, "continuation": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/file"}]}, "usage": {"$ref": "#/$defs/usage"}, "tool_calls": {"type": "integer", "minimum": 0, "maximum": 10}, "provider_requests": {"const": 0}, "pi_sessions": {"const": 0}, "network_requests": {"const": 0}, "ledger_sequence": {"type": "integer", "minimum": 1, "maximum": 12}, "ledger_record_sha256": {"$ref": "#/$defs/sha256"}}},
+    "transition": {"type": "object", "additionalProperties": false, "required": ["mechanism", "synthetic_fixture", "mainframe_runtime_exercised", "mainframe_awm_exercised", "continuation", "receipt", "operation_count"], "properties": {"mechanism": {"enum": ["native-bounded-continuation", "awm-shaped-fixture-transition"]}, "synthetic_fixture": {"const": true}, "mainframe_runtime_exercised": {"const": false}, "mainframe_awm_exercised": {"const": false}, "continuation": {"$ref": "#/$defs/file"}, "receipt": {"$ref": "#/$defs/file"}, "operation_count": {"type": "integer", "minimum": 2, "maximum": 3}}},
+    "grade": {"type": "object", "additionalProperties": false, "required": ["score", "maximum_score", "normalized_score", "solved", "tests_passed", "tests_total", "grader_sha256", "grader_outside_workspace", "stdout", "stderr"], "properties": {"score": {"const": 100}, "maximum_score": {"const": 100}, "normalized_score": {"const": 1.0}, "solved": {"const": true}, "tests_passed": {"const": 4}, "tests_total": {"const": 4}, "grader_sha256": {"$ref": "#/$defs/sha256"}, "grader_outside_workspace": {"const": true}, "stdout": {"$ref": "#/$defs/output"}, "stderr": {"$ref": "#/$defs/output"}}},
+    "budgets": {"type": "object", "additionalProperties": false, "required": ["wall_seconds_per_phase", "maximum_tool_calls_per_phase", "maximum_continuation_bytes"], "properties": {"wall_seconds_per_phase": {"const": 5}, "maximum_tool_calls_per_phase": {"const": 10}, "maximum_continuation_bytes": {"const": 4096}}},
+    "arm": {"type": "object", "additionalProperties": false, "required": ["opaque_arm_id", "revealed_mode", "initial_snapshot", "after_investigate_snapshot", "final_snapshot", "equal_planned_budgets", "fresh_process_per_phase", "transition", "phases", "grade"], "properties": {"opaque_arm_id": {"type": "string", "pattern": "^arm-[0-9a-f]{16}$"}, "revealed_mode": {"enum": ["control", "treatment"]}, "initial_snapshot": {"$ref": "#/$defs/snapshot"}, "after_investigate_snapshot": {"$ref": "#/$defs/snapshot"}, "final_snapshot": {"$ref": "#/$defs/snapshot"}, "equal_planned_budgets": {"const": true}, "fresh_process_per_phase": {"const": true}, "transition": {"$ref": "#/$defs/transition"}, "phases": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/phase"}}, "grade": {"$ref": "#/$defs/grade"}}},
+    "pair": {"type": "object", "additionalProperties": false, "required": ["pair_id", "task_id", "replicate", "repository_tree_sha256", "planned_budgets", "arms"], "properties": {"pair_id": {"type": "string", "pattern": "^pair-[0-9a-f]{16}$"}, "task_id": {"const": "local-001"}, "replicate": {"type": "integer", "minimum": 1, "maximum": 3}, "repository_tree_sha256": {"$ref": "#/$defs/sha256"}, "planned_budgets": {"$ref": "#/$defs/budgets"}, "arms": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/arm"}}}}
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "claim_scope", "protocol", "runtime", "execution", "ledger", "pairs", "aggregate", "statistics", "non_claims", "limitations"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "kind": {"const": "mainframe-agent-impact-local-evidence"},
+    "claim_scope": {"const": "local-development-smoke-protocol-conformance-only"},
+    "protocol": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "study_id", "study_sha256", "task_bundle_sha256", "repository_tree_sha256", "protocol_inputs_sha256", "planned_harness_basename", "planned_harness_sha256", "plan_id", "plan_sha256", "assignment_commitment_sha256", "assignment_reveal_sha256", "assignment_reveal_embedded_in_local_evidence", "external_publication", "private_reveal_available_to_harness"],
+      "properties": {
+        "version": {"const": "local-development-smoke-v1"}, "study_id": {"const": "local-development-smoke-v1"},
+        "study_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "task_bundle_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "repository_tree_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "protocol_inputs_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "planned_harness_basename": {"const": "agent-impact-local.py"}, "planned_harness_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "plan_id": {"type": "string", "pattern": "^plan-[0-9a-f]{16}$"}, "plan_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "assignment_commitment_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "assignment_reveal_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "assignment_reveal_embedded_in_local_evidence": {"const": true}, "external_publication": {"const": "not-performed"}, "private_reveal_available_to_harness": {"const": true}
+      }
+    },
+    "runtime": {
+      "type": "object", "additionalProperties": false,
+      "required": ["harness_basename", "harness_sha256", "transport_basename", "transport_sha256", "records_sha256", "raw_run_bundle_sha256", "platform", "python_version", "mainframe_runtime_exercised", "mainframe_awm_exercised", "pi_runtime_exercised", "ollama_runtime_exercised"],
+      "properties": {
+        "harness_basename": {"const": "agent-impact-local.py"}, "harness_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "transport_basename": {"const": "local-fake-transport.py"}, "transport_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "records_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "raw_run_bundle_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "platform": {"type": "string", "minLength": 1}, "python_version": {"type": "string", "minLength": 1},
+        "mainframe_runtime_exercised": {"const": false}, "mainframe_awm_exercised": {"const": false}, "pi_runtime_exercised": {"const": false}, "ollama_runtime_exercised": {"const": false}
+      }
+    },
+    "execution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mode", "fake_behavior", "designed_future_boundary", "assignment_not_in_request_or_environment", "mechanism_transition_outside_adapter", "fresh_home_xdg_tmp_process_per_phase", "strict_environment_allowlist", "attempt_count", "pair_count", "live_agent_sessions", "pi_sessions", "provider_sessions", "provider_requests", "network_requests", "actual_provider", "actual_model"],
+      "properties": {
+        "mode": {"const": "deterministic-fake-transport-only"}, "fake_behavior": {"enum": ["normal", "orphan-on-success"]}, "designed_future_boundary": {"const": "pi-plus-ollama-local-adapter"}, "assignment_not_in_request_or_environment": {"const": true}, "mechanism_transition_outside_adapter": {"const": true}, "fresh_home_xdg_tmp_process_per_phase": {"const": true},
+        "strict_environment_allowlist": {"const": ["CI", "HOME", "LANG", "LC_ALL", "LOGNAME", "MAINFRAME_LOCAL_PROTOCOL", "NO_COLOR", "PATH", "PYTHONDONTWRITEBYTECODE", "TMPDIR", "USER", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "__CF_USER_TEXT_ENCODING"]},
+        "attempt_count": {"const": 12}, "pair_count": {"const": 3}, "live_agent_sessions": {"const": 0}, "pi_sessions": {"const": 0}, "provider_sessions": {"const": 0}, "provider_requests": {"const": 0}, "network_requests": {"const": 0}, "actual_provider": {"const": null}, "actual_model": {"const": null}
+      }
+    },
+    "ledger": {
+      "type": "object", "additionalProperties": false,
+      "required": ["entry_count", "head_sha256", "size_bytes", "sha256"],
+      "properties": {"entry_count": {"const": 12}, "head_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "size_bytes": {"type": "integer", "minimum": 1}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+    },
+    "pairs": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/pair"}},
+    "aggregate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["pair_count", "valid_pair_count", "invalid_pair_count", "control_solved_count", "treatment_solved_count", "control_mean_normalized_score", "treatment_mean_normalized_score", "paired_mean_normalized_score_delta", "treatment_wins", "ties", "treatment_losses"],
+      "properties": {"pair_count": {"const": 3}, "valid_pair_count": {"const": 3}, "invalid_pair_count": {"const": 0}, "control_solved_count": {"const": 3}, "treatment_solved_count": {"const": 3}, "control_mean_normalized_score": {"const": 1.0}, "treatment_mean_normalized_score": {"const": 1.0}, "paired_mean_normalized_score_delta": {"const": 0.0}, "treatment_wins": {"const": 0}, "ties": {"const": 3}, "treatment_losses": {"const": 0}}
+    },
+    "statistics": {
+      "type": "object", "additionalProperties": false,
+      "required": ["primary", "secondary"],
+      "properties": {
+        "primary": {"type": "object", "additionalProperties": false, "required": ["estimator", "value", "exact_sign_flip", "bootstrap"], "properties": {"estimator": {"const": "paired-mean-normalized-score-delta"}, "value": {"const": 0.0}, "exact_sign_flip": {"type": "object", "additionalProperties": false, "required": ["two_sided", "assignments_enumerated", "extreme_assignments", "p_value"], "properties": {"two_sided": {"const": true}, "assignments_enumerated": {"const": 8}, "extreme_assignments": {"const": 8}, "p_value": {"const": 1.0}}}, "bootstrap": {"type": "object", "additionalProperties": false, "required": ["algorithm", "seed", "resamples", "confidence_level", "lower", "upper"], "properties": {"algorithm": {"const": "sha256-counter-prng-v1"}, "seed": {"const": "local-development-smoke-v1"}, "resamples": {"const": 1000}, "confidence_level": {"const": 0.95}, "lower": {"const": 0.0}, "upper": {"const": 0.0}}}}},
+        "secondary": {"type": "object", "additionalProperties": false, "required": ["test", "control_only_solves", "treatment_only_solves", "discordant_pairs", "p_value"], "properties": {"test": {"const": "two-sided-exact-mcnemar"}, "control_only_solves": {"const": 0}, "treatment_only_solves": {"const": 0}, "discordant_pairs": {"const": 0}, "p_value": {"const": 1.0}}}
+      }
+    },
+    "non_claims": {
+      "const": {"real_provider_inference": "not-run", "agent_quality": "not-measured", "productivity": "not-measured", "comparative_agent_performance": "not-measured", "mainframe_benefit": "not-measured", "live_agent_sessions": 0}
+    },
+    "limitations": {
+      "const": {"deterministic_fake_transport": true, "single_toy_task": true, "same_uid_execution": true, "os_isolation": "not-provided", "network_denial": "not-enforced-by-os-sandbox", "grader_isolation": "path-separated-same-uid-not-adversarial", "assignment_blinding": "request-and-environment-omission-only-same-uid-not-adversarial", "treatment_receipt": "awm-shaped-synthetic-fixture-not-mainframe-awm", "generalization": "not-established", "pi_ollama": "design-boundary-only-not-executed"}
+    }
+  }
+}

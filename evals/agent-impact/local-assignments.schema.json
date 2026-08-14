@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-local-assignments-v1.json",
+  "$defs": {
+    "arm": {
+      "type": "object", "additionalProperties": false,
+      "required": ["opaque_arm_id", "mode"],
+      "properties": {"opaque_arm_id": {"type": "string", "pattern": "^arm-[0-9a-f]{16}$"}, "mode": {"enum": ["control", "treatment"]}}
+    },
+    "row": {
+      "type": "object", "additionalProperties": false,
+      "required": ["pair_id", "opaque_arms"],
+      "properties": {"pair_id": {"type": "string", "pattern": "^pair-[0-9a-f]{16}$"}, "opaque_arms": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/arm"}}}
+    }
+  },
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "kind", "study_id", "plan_id", "assignments"],
+  "properties": {
+    "schema_version": {"const": 1}, "kind": {"const": "mainframe-agent-impact-local-assignments"},
+    "study_id": {"const": "local-development-smoke-v1"}, "plan_id": {"type": "string", "pattern": "^plan-[0-9a-f]{16}$"},
+    "assignments": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/row"}}
+  }
+}
