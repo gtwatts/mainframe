@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:5a787cff-5595-55e9-a522-70c02cb551ed",
+  "serialNumber": "urn:uuid:2222a401-5682-5a77-be6d-f26beaa1f7ca",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-08-14T15:07:23Z",
+    "timestamp": "2026-08-15T17:52:15Z",
     "component": {
       "type": "library",
       "bom-ref": "mainframe@10.2.0",
@@ -152,7 +152,7 @@
     {"type": "file", "name": "evals/agent-impact/runner-request.schema.json", "hashes": [{"alg": "SHA-256", "content": "d372147ad9df70286602ae49811e916762e5e54c2f3efd9d4145cab0bcc2d051"}], "properties": [{"name": "size", "value": "2093"}]},
     {"type": "file", "name": "evals/agent-impact/runner-result.schema.json", "hashes": [{"alg": "SHA-256", "content": "f8dadd12ff0b95d61ba5d5bd73a5c5de2c42cf3eafaa3e2216711f3be46d06b6"}], "properties": [{"name": "size", "value": "1253"}]},
     {"type": "file", "name": "evals/agent-impact/runners/fake-runner.py", "hashes": [{"alg": "SHA-256", "content": "53ef860371a1fb98305cfae64d8212d99e01f54daec2252efeb0128fd6d0880b"}], "properties": [{"name": "size", "value": "3987"}]},
-    {"type": "file", "name": "evals/agent-impact/runners/local-fake-transport.py", "hashes": [{"alg": "SHA-256", "content": "b745c4f50501108abc8b28d5135d0eb9ead34a8fd8d0677ad7194603b5572de5"}], "properties": [{"name": "size", "value": "5411"}]},
+    {"type": "file", "name": "evals/agent-impact/runners/local-fake-transport.py", "hashes": [{"alg": "SHA-256", "content": "18a96c792033580fe3b9b1d8ada9faff198a55ae9961739a17d17f073fc24394"}], "properties": [{"name": "size", "value": "5797"}]},
     {"type": "file", "name": "evals/agent-impact/runners/pi-awm-transition-driver.mjs", "hashes": [{"alg": "SHA-256", "content": "d4b778e1c94bf37f1b05a82f50db1242a753a802d3842cef90e1aaf5b062813d"}], "properties": [{"name": "size", "value": "43430"}]},
     {"type": "file", "name": "evals/agent-impact/runners/pi-ollama-adapter.manifest.json", "hashes": [{"alg": "SHA-256", "content": "7acdd79937cc2bb6881917a04c6710eed0818b1329a181d681164d887a3e3cdf"}], "properties": [{"name": "size", "value": "809"}]},
     {"type": "file", "name": "evals/agent-impact/runners/pi-ollama-adapter.py", "hashes": [{"alg": "SHA-256", "content": "825e4448097f5d43c4068d5ec033165e88a8d0ac33312f413d54e748f09920e6"}], "properties": [{"name": "size", "value": "568"}]},

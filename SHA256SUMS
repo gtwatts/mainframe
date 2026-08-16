@@ -1,4 +1,4 @@
-# MAINFRAME 10.2.0 release checksums (source date 2026-08-14)
+# MAINFRAME 10.2.0 release checksums (source date 2026-08-15)
 # Every listed file is required; missing files are verification failures.
 4cdbcc6276f70bdf8bb77b0bcfe0ed3c122446cccc985c355498b10681d38e2b  CHANGELOG.md
 7af9e1a1dd7a01b791bf939c08dad0d752d5fd370e74e1495d5c85987dbfb7f3  CHEATSHEET.md
@@ -134,7 +134,7 @@ d7cdc6620b9cf4ec4e19386f614bd5dcbdc062ba4f0198a236f5735fc6c48db5  evals/agent-im
 d372147ad9df70286602ae49811e916762e5e54c2f3efd9d4145cab0bcc2d051  evals/agent-impact/runner-request.schema.json
 f8dadd12ff0b95d61ba5d5bd73a5c5de2c42cf3eafaa3e2216711f3be46d06b6  evals/agent-impact/runner-result.schema.json
 53ef860371a1fb98305cfae64d8212d99e01f54daec2252efeb0128fd6d0880b  evals/agent-impact/runners/fake-runner.py
-b745c4f50501108abc8b28d5135d0eb9ead34a8fd8d0677ad7194603b5572de5  evals/agent-impact/runners/local-fake-transport.py
+18a96c792033580fe3b9b1d8ada9faff198a55ae9961739a17d17f073fc24394  evals/agent-impact/runners/local-fake-transport.py
 d4b778e1c94bf37f1b05a82f50db1242a753a802d3842cef90e1aaf5b062813d  evals/agent-impact/runners/pi-awm-transition-driver.mjs
 7acdd79937cc2bb6881917a04c6710eed0818b1329a181d681164d887a3e3cdf  evals/agent-impact/runners/pi-ollama-adapter.manifest.json
 825e4448097f5d43c4068d5ec033165e88a8d0ac33312f413d54e748f09920e6  evals/agent-impact/runners/pi-ollama-adapter.py

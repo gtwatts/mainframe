@@ -96,10 +96,15 @@ def main() -> int:
     if behavior == "orphan-on-success":
         assert marker is not None
         mutation = workspace / "config_merge.py"
+        # The harness wins only if its SIGTERM grace (0.15s) plus SIGKILL lands
+        # before this child wakes. Keep the delayed write far beyond that kill
+        # window so loaded CI runners (observed: macOS matrix stalls >0.3s)
+        # cannot flip the race. tests/agent_impact_local.bats observes only
+        # after this delay, so the marker and mutation assertions stay live.
         code = (
             "import pathlib,signal,time;"
             "signal.signal(signal.SIGTERM,signal.SIG_IGN);"
-            "time.sleep(0.5);"
+            "time.sleep(2);"
             "pathlib.Path({!r}).write_text('survived',encoding='utf-8');"
             "pathlib.Path({!r}).write_text('mutated',encoding='utf-8')"
         ).format(str(marker), str(mutation))

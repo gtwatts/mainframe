@@ -316,7 +316,9 @@ sha256_file() {
     prepare_local "$TEST_DIR/orphan" orphan-seed
     run run_local "$TEST_DIR/orphan" --fake-behavior orphan-on-success
     [[ "$status" -eq 0 ]]
-    sleep 0.8
+    # Observe past the orphan's delayed write (2s in the transport) so an
+    # escaped child would be caught here; the harness must have killed it.
+    sleep 2.6
     [[ ! -e "$TEST_DIR/orphan/run/.orphan-survived.marker" ]]
     run grep -R -F 'mutated' "$TEST_DIR/orphan/run" \
         --include='config_merge.py'
