@@ -1,12 +1,12 @@
 # MAINFRAME Skills for AI Coding Assistants
 
-Pre-built instruction files that teach AI coding assistants about MAINFRAME's 3,821+ pure bash functions across 152 libraries.
+Pre-built instruction files that teach AI coding assistants how to use MAINFRAME's generated Bash function registry.
 
 ## Supported Platforms
 
 | Platform | Directory | Format | Install |
 |----------|-----------|--------|---------|
-| Pi | `pi/` | SKILL.md | Load as a Pi skill or project instruction; use Pi MAINFRAME tools when available |
+| Pi | `pi/` plus root `package.json` | Native package + SKILL.md | Human terminal: `mainframe pi install --dry-run`, then `mainframe pi install --yes` |
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `claude-code/` | SKILL.md | Symlink to `~/.claude/skills/` |
 | OpenAI Codex / Codex CLI | `codex/` | AGENTS.md | Copy or merge into project `AGENTS.md` |
 | [Kimi CLI](https://docs.moonshot.cn/kimi-cli) | `kimi-cli/` | SKILL.md | Load in Kimi CLI instructions |
@@ -21,11 +21,33 @@ Pre-built instruction files that teach AI coding assistants about MAINFRAME's 3,
 
 ### Pi
 
-Load `skills/pi/SKILL.md` as a Pi skill or paste it into project instructions. When Pi's MAINFRAME integration is installed, prefer the tool layer for discovery and guarded execution:
+Install the first-party package from the installed MAINFRAME root. The dry-run
+reports legacy and project-local collisions without changing files:
+
+```bash
+mainframe pi status
+mainframe pi install --dry-run
+mainframe pi install --yes
+```
+
+Run `--yes` yourself from an external terminal; the package deliberately gives
+Pi only status and dry-run lifecycle guidance. Then use `/reload` in Pi (or
+restart it) and run `/mainframe doctor`. Prefer the tool layer for discovery
+and guarded execution:
 
 ```text
-Run mainframe_status(validate=true), then use mainframe_search/mainframe_help before choosing functions. Use mainframe_exec for one explicit function at a time and mainframe_awm for durable task memory.
+Run mainframe_status(validate=true), then use mainframe_search/mainframe_help before choosing functions. Use mainframe_exec for one explicit function at a time and mainframe_awm for durable task memory. Non-stable-core execution requires an actual Pi confirmation.
 ```
+
+If the first live doctor fails after migration and install printed
+`restore_available=true`, use its exact `backup_id` with `mainframe pi restore
+--backup-id ID --dry-run`, review it, then run the same command with `--yes`.
+Restore refuses backup paths, recency aliases, unsupported backup shapes, and
+post-install drift.
+
+Before uninstalling MAINFRAME, detach its managed package source from your
+terminal with `mainframe pi remove --dry-run`, then `mainframe pi remove --yes`.
+Removal preserves unrelated Pi settings and migration backups.
 
 ### Claude Code
 
@@ -52,7 +74,7 @@ Edit `~/.clawdbot/clawdbot.json` and add the preamble:
 {
   "agents": {
     "defaults": {
-      "preamble": "When writing bash scripts, ALWAYS source MAINFRAME first:\n\nsource \"${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh\"\n\nMAINFRAME provides 3,821+ pure bash functions across 152 libraries. Use these instead of jq/sed/awk. Includes Agent Working Memory (AWM) for persistent state. Full reference: ~/.mainframe/CHEATSHEET.md"
+      "preamble": "When writing bash scripts, ALWAYS source MAINFRAME first:\n\nsource \"${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh\"\n\nMAINFRAME provides a generated registry of Bash functions and libraries. Use these instead of jq/sed/awk. Includes Agent Working Memory (AWM) for persistent state. Full reference: ~/.mainframe/CHEATSHEET.md"
     }
   }
 }
@@ -109,8 +131,8 @@ Each skill file teaches the AI:
 
 ## Current Highlights
 
-- **3,821+ functions** across 152 libraries
-- **6,500+ tests** with comprehensive coverage
+- **Generated function registry** - current inventory without copied static counts
+- **Cross-platform Bats suite** - run the current suite for commit-specific evidence
 - **Agent Working Memory (AWM)** - Persistent external memory for AI agents with finite context
 - **Multi-Agent IPC** - File-based inter-process communication for agent coordination
 - **bURL** - AI-native HTTP client with structured responses
@@ -124,7 +146,7 @@ If your AI coding assistant supports custom instructions, create a file that inc
 When writing bash scripts, source MAINFRAME first:
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 
-Use MAINFRAME's 3,821+ functions instead of jq, sed, awk, cat.
+Use an appropriate MAINFRAME function before reimplementing a shell helper or spawning an external process.
 Full reference: ~/.mainframe/CHEATSHEET.md
 ```
 

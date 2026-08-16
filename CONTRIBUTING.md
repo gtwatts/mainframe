@@ -2,8 +2,8 @@
 
 ```
 +============================================================================+
-|  BUILDING THE AI-NATIVE BASH RUNTIME                                       |
-|  4,000+ functions | 117 libraries | 6,500+ tests                           |
+|  BUILDING PERSISTENT MEMORY AND SAFER SHELL TOOLS FOR AI AGENTS             |
+|  Generated registry | Cross-platform tests | Evidence before claims         |
 |  Every contribution makes AI agents safer and more accurate                |
 +============================================================================+
 ```
@@ -20,14 +20,12 @@ Every function you contribute helps AI agents:
 - Save tokens (one function call vs. 15 lines of fragile bash)
 - Maintain persistent memory across sessions (Agent Working Memory)
 
-## Quick Stats
+## Current project facts
 
-| Metric | Count |
-|--------|-------|
-| Libraries | 117 |
-| Functions | 4,000+ |
-| Tests | 6,500+ |
-| Bash Version | 4.0+ |
+- `VERSION` is the product-version source.
+- `FUNCTIONS.json` is the generated function and library inventory.
+- `./tests/run_bats_suite.sh --scope all` is the supported Bash suite.
+- Bash 4.4+ is required.
 
 ## Code of Conduct
 
@@ -62,7 +60,7 @@ New function ideas are welcome! Please include:
 3. **Write tests first** (BATS tests in `tests/unit/`)
 4. **Follow the style guide** (below)
 5. **Run ShellCheck** (`shellcheck lib/your_library.sh`)
-6. **Run tests locally** (`./tests/bats/bin/bats tests/unit/`)
+6. **Run tests locally** (`./tests/run_bats_suite.sh --scope all`)
 7. **Submit PR** with the template filled out
 
 ## Style Guide
@@ -82,6 +80,32 @@ TrimString()    # No camelCase
 trim-string()   # No hyphens in function names
 ts()            # Too short, unclear
 ```
+
+### Public API Compatibility
+
+Read [Public API Compatibility](docs/API_COMPATIBILITY.md) before adding,
+renaming, or deprecating a public function.
+
+- Every public name has one canonical defining library. Never rely on loader
+  order to select an implementation.
+- Prefix library-specific functions with the module name. Reserve unprefixed
+  names for established core primitives.
+- Preserve multiple historical call shapes under one name only when dispatch
+  is deterministic and every form has regression coverage.
+- Deprecated names are wrappers around the canonical function. They preserve
+  arguments, output, and status, warn once to stderr, and honor
+  `MAINFRAME_COMPAT_WARNINGS=0`.
+- A deprecated function remains for at least two documented releases and is
+  not removed before the next major release.
+- Annotate aliases with `@deprecated:`, `@alias-for:`, and `@remove:` in
+  addition to the normal `@since:` metadata.
+- Add source-level public functions to `MAINFRAME_<MODULE>_EXPORTS`.
+  Membership declares public API; it does not by itself require `export -f`.
+  Export a function to child Bash processes only when subprocess propagation
+  is intentional and tested.
+- The public-name collision set is a ratchet: a contribution may resolve an
+  existing collision but must not add a new one or change the canonical owner
+  across supported loader modes.
 
 ### Function Structure
 
@@ -116,12 +140,13 @@ function_name() {
     # Return structured output
     output_success "$result"
 }
-export -f function_name
+# Add function_name to MAINFRAME_<MODULE>_EXPORTS below. Use export -f only
+# when child Bash processes are part of the documented API.
 ```
 
 ### Pure Bash Requirements
 
-MAINFRAME prioritizes **pure bash** solutions:
+MAINFRAME prioritizes **Bash implementations for core primitives**:
 
 ```bash
 # GOOD - Pure bash (faster, no dependencies)
@@ -135,10 +160,10 @@ to_lower() {
 }
 ```
 
-Only use external tools when:
-1. Pure bash is impossible (e.g., HTTPS requires openssl)
-2. Performance difference is >10x
-3. It's clearly documented and optional
+External commands are acceptable for explicit integrations when:
+1. The library's purpose is to wrap that host tool.
+2. A Bash implementation would be incomplete or unsafe.
+3. The requirement and failure behavior are documented and tested.
 
 ### Safety Requirements
 
@@ -160,10 +185,13 @@ agent_safe_exec() {
     command "$cmd" "$@"
 }
 
-# BAD - Injection risk
+# BAD - unvalidated dynamic execution
 run_command() {
     eval "$1"  # NEVER DO THIS
 }
+
+# Reviewed dynamic execution is an exception. It must validate its input,
+# document why safer dispatch is insufficient, and appear in the eval audit.
 ```
 
 ### Idempotency
@@ -411,10 +439,12 @@ Before submitting, verify:
 - [ ] ShellCheck passes with no warnings
 - [ ] All tests pass (`./tests/run_bats_suite.sh --scope all`)
 - [ ] New functions have BATS tests
-- [ ] Functions are exported (`export -f function_name`)
+- [ ] Public functions are listed in `MAINFRAME_<MODULE>_EXPORTS`
+- [ ] No new public-name collision or loader-order-dependent owner is introduced
+- [ ] Aliases include migration annotations, warning coverage, and a removal floor
 - [ ] CHEATSHEET.md updated (for new public functions)
 - [ ] No `eval` used (or justified and security-reviewed)
-- [ ] Works on Bash 4.0+
+- [ ] Works on Bash 4.4+
 - [ ] Works on both Linux and macOS (if applicable)
 
 ## Questions?

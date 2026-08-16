@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-local-runner-result-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "status", "continuation_relative_path", "usage", "tool_calls", "observed_environment_names", "provider_requests", "pi_sessions", "network_requests"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "kind": {"const": "mainframe-agent-impact-local-runner-result"},
+    "status": {"enum": ["completed", "agent_failure"]},
+    "continuation_relative_path": {"type": ["string", "null"]},
+    "usage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["input_tokens", "input_tokens_reason", "output_tokens", "output_tokens_reason"],
+      "properties": {
+        "input_tokens": {"const": null},
+        "input_tokens_reason": {"const": "deterministic-fake-transport-no-provider-usage"},
+        "output_tokens": {"const": null},
+        "output_tokens_reason": {"const": "deterministic-fake-transport-no-provider-usage"}
+      }
+    },
+    "tool_calls": {"type": "integer", "minimum": 0, "maximum": 10},
+    "observed_environment_names": {"const": ["CI", "HOME", "LANG", "LC_ALL", "LOGNAME", "MAINFRAME_LOCAL_PROTOCOL", "NO_COLOR", "PATH", "PYTHONDONTWRITEBYTECODE", "TMPDIR", "USER", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "__CF_USER_TEXT_ENCODING"]},
+    "provider_requests": {"const": 0},
+    "pi_sessions": {"const": 0},
+    "network_requests": {"const": 0}
+  }
+}

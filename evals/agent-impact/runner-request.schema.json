@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-runner-request-v1.json",
+  "title": "MAINFRAME Agent Impact Protocol runner request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "pair_id",
+    "opaque_arm_id",
+    "arm_mode",
+    "task_id",
+    "phase",
+    "workspace",
+    "prompt_path",
+    "context_path",
+    "artifact_dir",
+    "result_path",
+    "budgets",
+    "environment_contract"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "mainframe-agent-impact-run-request" },
+    "pair_id": { "type": "string", "pattern": "^pair-[0-9a-f]{16}$" },
+    "opaque_arm_id": { "type": "string", "pattern": "^arm-[0-9a-f]{16}$" },
+    "arm_mode": { "enum": ["control", "treatment"] },
+    "task_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "phase": { "enum": ["investigate", "implement"] },
+    "workspace": { "type": "string", "minLength": 1 },
+    "prompt_path": { "type": "string", "minLength": 1 },
+    "context_path": { "type": ["string", "null"] },
+    "artifact_dir": { "type": "string", "minLength": 1 },
+    "result_path": { "type": "string", "minLength": 1 },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wall_seconds", "maximum_tool_calls", "maximum_context_bytes"],
+      "properties": {
+        "wall_seconds": { "type": "number", "minimum": 0.1 },
+        "maximum_tool_calls": { "type": "integer", "minimum": 1 },
+        "maximum_context_bytes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "environment_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fresh_host_state", "allowed_environment_names"],
+      "properties": {
+        "fresh_host_state": { "const": true },
+        "allowed_environment_names": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$" }
+        }
+      }
+    }
+  }
+}

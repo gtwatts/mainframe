@@ -444,6 +444,44 @@ json_get() {
     return 1
 }
 
+# Set a top-level key in a JSON object to a simple value (string, number,
+# bool, null). Same documented contract as json_get: top-level keys only,
+# simple values only; nested objects/arrays are out of scope.
+# Usage: json_set <json> <key> <value>
+json_set() {
+    local json="$1"
+    local key="$2"
+    local value="$3"
+
+    # Encode the value as JSON: numbers/bool/null verbatim, strings escaped
+    local jval
+    if [[ "$value" =~ ^-?[0-9]+(\.[0-9]+)?$ || "$value" == "true" || "$value" == "false" || "$value" == "null" ]]; then
+        jval="$value"
+    else
+        jval="\"$(json_escape "$value")\""
+    fi
+
+    # Replace an existing top-level key's string value
+    if [[ "$json" =~ ^(.*\"$key\"[[:space:]]*:[[:space:]]*)\"([^\"]*)\"(.*)$ ]]; then
+        printf '%s%s%s' "${BASH_REMATCH[1]}" "$jval" "${BASH_REMATCH[3]}"
+        return 0
+    fi
+
+    # Replace an existing top-level key's scalar value
+    if [[ "$json" =~ ^(.*\"$key\"[[:space:]]*:[[:space:]]*)(-?[0-9.]+|true|false|null)(.*)$ ]]; then
+        printf '%s%s%s' "${BASH_REMATCH[1]}" "$jval" "${BASH_REMATCH[3]}"
+        return 0
+    fi
+
+    # Key absent: append before the closing brace (handles empty objects)
+    local body="${json%\}}"
+    if [[ "$body" =~ \{[[:space:]]*$ ]]; then
+        printf '%s\"%s\":%s}' "$body" "$key" "$jval"
+    else
+        printf '%s,\"%s\":%s}' "$body" "$key" "$jval"
+    fi
+}
+
 # Extract all keys (simple, top-level only)
 # Usage: json_keys '{"a":1,"b":2}'
 json_keys() {

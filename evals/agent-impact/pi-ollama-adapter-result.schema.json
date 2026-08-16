@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-pi-ollama-adapter-result-v1.json",
+  "title": "MAINFRAME Pi and Ollama adapter result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "status_class", "status", "actual_provider", "actual_model", "provider_request_id", "usage", "tool_calls", "outputs"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "mainframe-agent-impact-pi-ollama-adapter-result" },
+    "status_class": { "enum": ["agent-outcome", "infrastructure-outcome"] },
+    "status": { "enum": ["completed", "agent_failure", "provider_refusal", "context_exhaustion", "launch_failure", "transport_failure", "malformed_result", "identity_mismatch"] },
+    "actual_provider": { "const": "ollama" },
+    "actual_model": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "provider_request_id": { "type": ["string", "null"], "maxLength": 512 },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_tokens", "input_tokens_reason", "output_tokens", "output_tokens_reason"],
+      "properties": {
+        "input_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "input_tokens_reason": { "type": ["string", "null"], "maxLength": 512 },
+        "output_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "output_tokens_reason": { "type": ["string", "null"], "maxLength": 512 }
+      }
+    },
+    "tool_calls": { "type": "integer", "minimum": 0, "maximum": 1000 },
+    "outputs": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["relative_path", "size_bytes", "sha256"],
+        "properties": {
+          "relative_path": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\r\\n\\t]+$", "maxLength": 4096 },
+          "size_bytes": { "type": "integer", "minimum": 0, "maximum": 1073741824 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "status_class": { "const": "agent-outcome" },
+        "status": { "enum": ["completed", "agent_failure", "provider_refusal", "context_exhaustion"] }
+      }
+    },
+    {
+      "properties": {
+        "status_class": { "const": "infrastructure-outcome" },
+        "status": { "enum": ["launch_failure", "transport_failure", "malformed_result", "identity_mismatch"] }
+      }
+    }
+  ]
+}

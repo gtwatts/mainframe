@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-local-private-records-v1.json",
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "file": {"type": "object", "additionalProperties": false, "required": ["size_bytes", "sha256"], "properties": {"size_bytes": {"type": "integer", "minimum": 0}, "sha256": {"$ref": "#/$defs/sha256"}}},
+    "output": {"type": "object", "additionalProperties": false, "required": ["present", "size_bytes", "sha256"], "properties": {"present": {"type": "boolean"}, "size_bytes": {"type": "integer", "minimum": 0}, "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}}},
+    "snapshot": {"type": "object", "additionalProperties": false, "required": ["tree_sha256", "size_bytes", "sha256"], "properties": {"tree_sha256": {"$ref": "#/$defs/sha256"}, "size_bytes": {"type": "integer", "minimum": 1}, "sha256": {"$ref": "#/$defs/sha256"}}},
+    "usage": {"type": "object", "additionalProperties": false, "required": ["input_tokens", "input_tokens_reason", "output_tokens", "output_tokens_reason"], "properties": {"input_tokens": {"const": null}, "input_tokens_reason": {"const": "deterministic-fake-transport-no-provider-usage"}, "output_tokens": {"const": null}, "output_tokens_reason": {"const": "deterministic-fake-transport-no-provider-usage"}}},
+    "phase": {
+      "type": "object", "additionalProperties": false,
+      "required": ["phase", "status", "fresh_state_id", "fresh_state_per_phase", "assignment_not_in_request_or_environment", "request", "result", "stdout", "stderr", "continuation", "usage", "tool_calls", "provider_requests", "pi_sessions", "network_requests", "ledger_sequence", "ledger_record_sha256"],
+      "properties": {
+        "phase": {"enum": ["investigate", "implement"]}, "status": {"const": "completed"}, "fresh_state_id": {"$ref": "#/$defs/sha256"}, "fresh_state_per_phase": {"const": true}, "assignment_not_in_request_or_environment": {"const": true},
+        "request": {"$ref": "#/$defs/file"}, "result": {"$ref": "#/$defs/file"}, "stdout": {"$ref": "#/$defs/output"}, "stderr": {"$ref": "#/$defs/output"}, "continuation": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/file"}]}, "usage": {"$ref": "#/$defs/usage"},
+        "tool_calls": {"type": "integer", "minimum": 0, "maximum": 10}, "provider_requests": {"const": 0}, "pi_sessions": {"const": 0}, "network_requests": {"const": 0}, "ledger_sequence": {"type": "integer", "minimum": 1, "maximum": 12}, "ledger_record_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "transition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mechanism", "synthetic_fixture", "mainframe_runtime_exercised", "mainframe_awm_exercised", "continuation", "receipt", "operation_count"],
+      "properties": {"mechanism": {"enum": ["native-bounded-continuation", "awm-shaped-fixture-transition"]}, "synthetic_fixture": {"const": true}, "mainframe_runtime_exercised": {"const": false}, "mainframe_awm_exercised": {"const": false}, "continuation": {"$ref": "#/$defs/file"}, "receipt": {"$ref": "#/$defs/file"}, "operation_count": {"type": "integer", "minimum": 2, "maximum": 3}}
+    },
+    "grade": {
+      "type": "object", "additionalProperties": false,
+      "required": ["score", "maximum_score", "normalized_score", "solved", "tests_passed", "tests_total", "grader_sha256", "grader_outside_workspace", "stdout", "stderr"],
+      "properties": {"score": {"const": 100}, "maximum_score": {"const": 100}, "normalized_score": {"const": 1.0}, "solved": {"const": true}, "tests_passed": {"const": 4}, "tests_total": {"const": 4}, "grader_sha256": {"$ref": "#/$defs/sha256"}, "grader_outside_workspace": {"const": true}, "stdout": {"$ref": "#/$defs/output"}, "stderr": {"$ref": "#/$defs/output"}}
+    },
+    "arm": {
+      "type": "object", "additionalProperties": false,
+      "required": ["opaque_arm_id", "revealed_mode", "initial_snapshot", "after_investigate_snapshot", "final_snapshot", "equal_planned_budgets", "fresh_process_per_phase", "transition", "phases", "grade"],
+      "properties": {"opaque_arm_id": {"type": "string", "pattern": "^arm-[0-9a-f]{16}$"}, "revealed_mode": {"enum": ["control", "treatment"]}, "initial_snapshot": {"$ref": "#/$defs/snapshot"}, "after_investigate_snapshot": {"$ref": "#/$defs/snapshot"}, "final_snapshot": {"$ref": "#/$defs/snapshot"}, "equal_planned_budgets": {"const": true}, "fresh_process_per_phase": {"const": true}, "transition": {"$ref": "#/$defs/transition"}, "phases": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/phase"}}, "grade": {"$ref": "#/$defs/grade"}}
+    },
+    "pair": {
+      "type": "object", "additionalProperties": false,
+      "required": ["pair_id", "task_id", "replicate", "repository_tree_sha256", "planned_budgets", "arms"],
+      "properties": {"pair_id": {"type": "string", "pattern": "^pair-[0-9a-f]{16}$"}, "task_id": {"const": "local-001"}, "replicate": {"type": "integer", "minimum": 1, "maximum": 3}, "repository_tree_sha256": {"$ref": "#/$defs/sha256"}, "planned_budgets": {"type": "object"}, "arms": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/arm"}}}
+    }
+  },
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "kind", "study_id", "plan_id", "platform", "python_version", "fake_behavior", "allowed_environment_names", "transport_sha256", "ledger", "pairs"],
+  "properties": {
+    "schema_version": {"const": 1}, "kind": {"const": "mainframe-agent-impact-local-private-records"}, "study_id": {"const": "local-development-smoke-v1"}, "plan_id": {"type": "string", "pattern": "^plan-[0-9a-f]{16}$"},
+    "platform": {"type": "string", "minLength": 1}, "python_version": {"type": "string", "minLength": 1}, "fake_behavior": {"enum": ["normal", "orphan-on-success"]},
+    "allowed_environment_names": {"const": ["CI", "HOME", "LANG", "LC_ALL", "LOGNAME", "MAINFRAME_LOCAL_PROTOCOL", "NO_COLOR", "PATH", "PYTHONDONTWRITEBYTECODE", "TMPDIR", "USER", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "__CF_USER_TEXT_ENCODING"]}, "transport_sha256": {"$ref": "#/$defs/sha256"},
+    "ledger": {"type": "object", "additionalProperties": false, "required": ["entry_count", "head_sha256", "size_bytes", "sha256"], "properties": {"entry_count": {"const": 12}, "head_sha256": {"$ref": "#/$defs/sha256"}, "size_bytes": {"type": "integer", "minimum": 1}, "sha256": {"$ref": "#/$defs/sha256"}}},
+    "pairs": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/pair"}}
+  }
+}

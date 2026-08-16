@@ -5,13 +5,24 @@
 
 # Prevent double-loading
 [[ -n "${_AWM_PROTOCOL_LOADED:-}" ]] && return 0
-readonly _AWM_PROTOCOL_LOADED=1
 
 # Load dependencies
 # shellcheck source=./awm_storage.sh
-source "${BASH_SOURCE%/*}/awm_storage.sh" 2>/dev/null || source "$(dirname "$0")/awm_storage.sh"
+if declare -F lazy_load_library >/dev/null 2>&1; then
+    lazy_load_library awm_storage || return 1
+else
+    source "${BASH_SOURCE%/*}/awm_storage.sh" 2>/dev/null ||
+        source "$(dirname "$0")/awm_storage.sh" ||
+        return 1
+fi
 # shellcheck source=./awm_stream.sh
-source "${BASH_SOURCE%/*}/awm_stream.sh" 2>/dev/null || source "$(dirname "$0")/awm_stream.sh"
+if declare -F lazy_load_library >/dev/null 2>&1; then
+    lazy_load_library awm_stream || return 1
+else
+    source "${BASH_SOURCE%/*}/awm_stream.sh" 2>/dev/null ||
+        source "$(dirname "$0")/awm_stream.sh" ||
+        return 1
+fi
 
 # =============================================================================
 # PROTOCOL CONSTANTS
@@ -479,10 +490,14 @@ awm_subscribe() {
 # HANDOFF PROTOCOL
 # =============================================================================
 
-# Prepare handoff package for sub-agent
-# Usage: awm_handoff_prepare "target_agent" [max_tokens]
+# Prepare a legacy protocol-v4 handoff package for a sub-agent.
+#
+# The canonical awm_handoff_prepare function belongs to lib/awm.sh.  This
+# protocol-specific contract remains available under an explicit name so
+# loading awm_protocol cannot replace the durable public handoff format.
+# Usage: awm_protocol_handoff_prepare "target_agent" [max_tokens]
 # Returns: JSON handoff package
-awm_handoff_prepare() {
+awm_protocol_handoff_prepare() {
     local target="$1"
     local max_tokens="${2:-32000}"
 
@@ -544,10 +559,10 @@ awm_handoff_prepare() {
     echo "$handoff"
 }
 
-# Accept handoff and initialize
-# Usage: awm_handoff_accept "handoff_json"
+# Accept and initialize a legacy protocol-v4 handoff.
+# Usage: awm_protocol_handoff_accept "handoff_json"
 # Returns: 0 on success
-awm_handoff_accept() {
+awm_protocol_handoff_accept() {
     local handoff="$1"
 
     # Validate handoff structure
@@ -787,3 +802,24 @@ awm_respond() {
 
     awm_send "$from" "$AWM_MSG_RESPONSE" "$payload" "$context_id"
 }
+
+# =============================================================================
+# MODULE EXPORTS
+# =============================================================================
+
+MAINFRAME_AWM_PROTOCOL_EXPORTS=(
+    awm_agent_register awm_agent_status_set awm_agent_card awm_agent_status
+    awm_agent_find awm_agent_list awm_agent_unregister
+    awm_context_new awm_context_get awm_context_set
+    awm_message_create awm_send awm_broadcast awm_broadcast_discovery
+    awm_receive awm_peek awm_inbox_count awm_subscribe
+    awm_protocol_handoff_prepare awm_protocol_handoff_accept
+    awm_handoff_complete awm_heartbeat awm_heartbeat_start
+    awm_message_format awm_message_history awm_inbox_clear
+    awm_request awm_respond
+)
+
+# Commit the load guard only after the complete protocol surface exists. This
+# keeps a dependency failure retryable and prevents a surviving lazy stub from
+# calling itself through a falsely loaded module.
+readonly _AWM_PROTOCOL_LOADED=1

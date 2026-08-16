@@ -332,6 +332,34 @@ mock_response() {
     [[ "$result" =~ "X-Custom" ]]
 }
 
+@test "http_headers: dispatches URL targets to netscan_http_headers" {
+    netscan_http_headers() {
+        printf 'network:%s:%s' "$1" "$2"
+    }
+
+    result=$(http_headers "https://example.test/health" 7)
+    [[ "$result" == "network:https://example.test/health:7" ]]
+
+    result=$(http_headers "localhost:8080" 3)
+    [[ "$result" == "network:localhost:8080:3" ]]
+}
+
+@test "http_headers: treats multiline HTTP responses as response payloads" {
+    netscan_http_headers() {
+        printf 'unexpected network dispatch'
+        return 1
+    }
+
+    response=$'HTTP/1.1 302 Found\r\nLocation: https://example.test/next\r\n\r\n'
+    result=$(http_headers "$response")
+    [[ "$result" == "Location: https://example.test/next" ]]
+}
+
+@test "http_headers: rejects empty input" {
+    run http_headers ""
+    [[ "$status" -eq 1 ]]
+}
+
 @test "_http_parse_response: sets global variables" {
     response=$(mock_response 201 '{"created":true}')
     _http_parse_response "$response"

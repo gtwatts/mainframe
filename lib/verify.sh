@@ -164,39 +164,39 @@ _verify_check_typos() {
     first_word=$(_verify_extract_cmd "$cmd")
     
     case "$first_word" in
-        sl) echo "$(_verify_build_issue typo error "Possible typo: 'sl' -> did you mean 'ls'?")" ;;
-        ks) echo "$(_verify_build_issue typo error "Possible typo: 'ks' -> did you mean 'ls'?")" ;;
-        gti) echo "$(_verify_build_issue typo error "Possible typo: 'gti' -> did you mean 'git'?")" ;;
-        gir) echo "$(_verify_build_issue typo error "Possible typo: 'gir' -> did you mean 'git'?")" ;;
-        mav) echo "$(_verify_build_issue typo error "Possible typo: 'mav' -> did you mean 'mv'?")" ;;
-        vm) echo "$(_verify_build_issue typo error "Possible typo: 'vm' -> did you mean 'mv'?")" ;;
-        graep) echo "$(_verify_build_issue typo error "Possible typo: 'graep' -> did you mean 'grep'?")" ;;
-        grp) echo "$(_verify_build_issue typo error "Possible typo: 'grp' -> did you mean 'grep'?")" ;;
-        gerp) echo "$(_verify_build_issue typo error "Possible typo: 'gerp' -> did you mean 'grep'?")" ;;
-        grpe) echo "$(_verify_build_issue typo error "Possible typo: 'grpe' -> did you mean 'grep'?")" ;;
-        mikdir) echo "$(_verify_build_issue typo error "Possible typo: 'mikdir' -> did you mean 'mkdir'?")" ;;
-        mkdri) echo "$(_verify_build_issue typo error "Possible typo: 'mkdri' -> did you mean 'mkdir'?")" ;;
-        touc) echo "$(_verify_build_issue typo error "Possible typo: 'touc' -> did you mean 'touch'?")" ;;
-        tuch) echo "$(_verify_build_issue typo error "Possible typo: 'tuch' -> did you mean 'touch'?")" ;;
-        chmd) echo "$(_verify_build_issue typo error "Possible typo: 'chmd' -> did you mean 'chmod'?")" ;;
-        chomd) echo "$(_verify_build_issue typo error "Possible typo: 'chomd' -> did you mean 'chmod'?")" ;;
-        chwon) echo "$(_verify_build_issue typo error "Possible typo: 'chwon' -> did you mean 'chown'?")" ;;
-        pyhton) echo "$(_verify_build_issue typo error "Possible typo: 'pyhton' -> did you mean 'python'?")" ;;
-        pyton) echo "$(_verify_build_issue typo error "Possible typo: 'pyton' -> did you mean 'python'?")" ;;
-        piton) echo "$(_verify_build_issue typo error "Possible typo: 'piton' -> did you mean 'python'?")" ;;
-        doker) echo "$(_verify_build_issue typo error "Possible typo: 'doker' -> did you mean 'docker'?")" ;;
-        dcoker) echo "$(_verify_build_issue typo error "Possible typo: 'dcoker' -> did you mean 'docker'?")" ;;
-        sduo) echo "$(_verify_build_issue typo error "Possible typo: 'sduo' -> did you mean 'sudo'?")" ;;
-        suso) echo "$(_verify_build_issue typo error "Possible typo: 'suso' -> did you mean 'sudo'?")" ;;
-        sudp) echo "$(_verify_build_issue typo error "Possible typo: 'sudp' -> did you mean 'sudo'?")" ;;
-        eho) echo "$(_verify_build_issue typo error "Possible typo: 'eho' -> did you mean 'echo'?")" ;;
-        ecoh) echo "$(_verify_build_issue typo error "Possible typo: 'ecoh' -> did you mean 'echo'?")" ;;
-        ehco) echo "$(_verify_build_issue typo error "Possible typo: 'ehco' -> did you mean 'echo'?")" ;;
-        exot) echo "$(_verify_build_issue typo error "Possible typo: 'exot' -> did you mean 'exit'?")" ;;
-        exti) echo "$(_verify_build_issue typo error "Possible typo: 'exti' -> did you mean 'exit'?")" ;;
-        clera) echo "$(_verify_build_issue typo error "Possible typo: 'clera' -> did you mean 'clear'?")" ;;
-        claer) echo "$(_verify_build_issue typo error "Possible typo: 'claer' -> did you mean 'clear'?")" ;;
-        cd..) echo "$(_verify_build_issue typo error "Possible typo: 'cd..' -> did you mean 'cd ..'?")" ;;
+        sl) _verify_build_issue typo error "Possible typo: 'sl' -> did you mean 'ls'?" ;;
+        ks) _verify_build_issue typo error "Possible typo: 'ks' -> did you mean 'ls'?" ;;
+        gti) _verify_build_issue typo error "Possible typo: 'gti' -> did you mean 'git'?" ;;
+        gir) _verify_build_issue typo error "Possible typo: 'gir' -> did you mean 'git'?" ;;
+        mav) _verify_build_issue typo error "Possible typo: 'mav' -> did you mean 'mv'?" ;;
+        vm) _verify_build_issue typo error "Possible typo: 'vm' -> did you mean 'mv'?" ;;
+        graep) _verify_build_issue typo error "Possible typo: 'graep' -> did you mean 'grep'?" ;;
+        grp) _verify_build_issue typo error "Possible typo: 'grp' -> did you mean 'grep'?" ;;
+        gerp) _verify_build_issue typo error "Possible typo: 'gerp' -> did you mean 'grep'?" ;;
+        grpe) _verify_build_issue typo error "Possible typo: 'grpe' -> did you mean 'grep'?" ;;
+        mikdir) _verify_build_issue typo error "Possible typo: 'mikdir' -> did you mean 'mkdir'?" ;;
+        mkdri) _verify_build_issue typo error "Possible typo: 'mkdri' -> did you mean 'mkdir'?" ;;
+        touc) _verify_build_issue typo error "Possible typo: 'touc' -> did you mean 'touch'?" ;;
+        tuch) _verify_build_issue typo error "Possible typo: 'tuch' -> did you mean 'touch'?" ;;
+        chmd) _verify_build_issue typo error "Possible typo: 'chmd' -> did you mean 'chmod'?" ;;
+        chomd) _verify_build_issue typo error "Possible typo: 'chomd' -> did you mean 'chmod'?" ;;
+        chwon) _verify_build_issue typo error "Possible typo: 'chwon' -> did you mean 'chown'?" ;;
+        pyhton) _verify_build_issue typo error "Possible typo: 'pyhton' -> did you mean 'python'?" ;;
+        pyton) _verify_build_issue typo error "Possible typo: 'pyton' -> did you mean 'python'?" ;;
+        piton) _verify_build_issue typo error "Possible typo: 'piton' -> did you mean 'python'?" ;;
+        doker) _verify_build_issue typo error "Possible typo: 'doker' -> did you mean 'docker'?" ;;
+        dcoker) _verify_build_issue typo error "Possible typo: 'dcoker' -> did you mean 'docker'?" ;;
+        sduo) _verify_build_issue typo error "Possible typo: 'sduo' -> did you mean 'sudo'?" ;;
+        suso) _verify_build_issue typo error "Possible typo: 'suso' -> did you mean 'sudo'?" ;;
+        sudp) _verify_build_issue typo error "Possible typo: 'sudp' -> did you mean 'sudo'?" ;;
+        eho) _verify_build_issue typo error "Possible typo: 'eho' -> did you mean 'echo'?" ;;
+        ecoh) _verify_build_issue typo error "Possible typo: 'ecoh' -> did you mean 'echo'?" ;;
+        ehco) _verify_build_issue typo error "Possible typo: 'ehco' -> did you mean 'echo'?" ;;
+        exot) _verify_build_issue typo error "Possible typo: 'exot' -> did you mean 'exit'?" ;;
+        exti) _verify_build_issue typo error "Possible typo: 'exti' -> did you mean 'exit'?" ;;
+        clera) _verify_build_issue typo error "Possible typo: 'clera' -> did you mean 'clear'?" ;;
+        claer) _verify_build_issue typo error "Possible typo: 'claer' -> did you mean 'clear'?" ;;
+        cd..) _verify_build_issue typo error "Possible typo: 'cd..' -> did you mean 'cd ..'?" ;;
     esac
 }
 
@@ -207,6 +207,7 @@ _verify_check_typos() {
 _verify_check_dangerous() {
     local cmd="$1"
     local issues=""
+    local guarded_rm_re='\[\[.*-n.*\]\].*&&.*rm'
     
     # rm -rf /
     if [[ "$cmd" =~ rm[[:space:]]+-[a-zA-Z]*f[[:space:]]+/(dev/)?([sh]da?[0-9]*)?[[:space:]]*$ ]]; then
@@ -215,7 +216,7 @@ _verify_check_dangerous() {
     
     # rm -rf with variable that might be empty
     if [[ "$cmd" =~ rm[[:space:]]+-[a-zA-Z]*f[[:space:]]+.*\$[A-Za-z_] ]]; then
-        if [[ ! "$cmd" =~ \[\[.*-n.*\]\].*&&.*rm ]]; then
+        if [[ ! "$cmd" =~ $guarded_rm_re ]]; then
             issues="${issues:+$issues,}$(_verify_build_issue dangerous critical "rm -rf with variable without guard")"
         fi
     fi
@@ -296,23 +297,23 @@ _verify_check_command_exists() {
     
     # Skip special constructs
     [[ "$cmd_name" =~ = ]] && return
-    [[ "$cmd_name" == if ]] && return
-    [[ "$cmd_name" == then ]] && return
-    [[ "$cmd_name" == else ]] && return
-    [[ "$cmd_name" == elif ]] && return
-    [[ "$cmd_name" == fi ]] && return
-    [[ "$cmd_name" == for ]] && return
-    [[ "$cmd_name" == while ]] && return
-    [[ "$cmd_name" == do ]] && return
-    [[ "$cmd_name" == done ]] && return
-    [[ "$cmd_name" == case ]] && return
-    [[ "$cmd_name" == esac ]] && return
-    [[ "$cmd_name" == function ]] && return
+    [[ "$cmd_name" == "if" ]] && return
+    [[ "$cmd_name" == "then" ]] && return
+    [[ "$cmd_name" == "else" ]] && return
+    [[ "$cmd_name" == "elif" ]] && return
+    [[ "$cmd_name" == "fi" ]] && return
+    [[ "$cmd_name" == "for" ]] && return
+    [[ "$cmd_name" == "while" ]] && return
+    [[ "$cmd_name" == "do" ]] && return
+    [[ "$cmd_name" == "done" ]] && return
+    [[ "$cmd_name" == "case" ]] && return
+    [[ "$cmd_name" == "esac" ]] && return
+    [[ "$cmd_name" == "function" ]] && return
     [[ "$cmd_name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*= ]] && return
     [[ "$cmd_name" =~ / ]] && return
     
     if ! _verify_cmd_exists "$cmd_name" 2>/dev/null; then
-        echo "$(_verify_build_issue syntax error "Command not found: $cmd_name")"
+        _verify_build_issue syntax error "Command not found: $cmd_name"
     fi
 }
 
@@ -730,6 +731,7 @@ verify_suggest_fix() {
         "$fixes" "$confidence" "$elapsed" "$(_verify_now_ms)"
 }
 
+# Verify installation integrity and repair detected issues
 verify_and_heal() {
     local start_time=$(_verify_now_ms)
     local cmd="$1"

@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "block_tier": "high",
+  "cases": [
+    {
+      "id": "critical-recursive-force-rm",
+      "command": "rm -rf /tmp/mainframe-offline-nonexistent-fixture",
+      "expected": {
+        "risk": "critical",
+        "rule": "recursive-force-rm",
+        "blocked": true
+      }
+    },
+    {
+      "id": "critical-sudo-rm",
+      "command": "sudo rm /tmp/mainframe-offline-protected-fixture",
+      "expected": {
+        "risk": "critical",
+        "rule": "sudo-rm",
+        "blocked": true
+      }
+    },
+    {
+      "id": "critical-filesystem-format",
+      "command": "mkfs.ext4 /dev/mainframe-offline-nonexistent",
+      "expected": {
+        "risk": "critical",
+        "rule": "filesystem-format",
+        "blocked": true
+      }
+    },
+    {
+      "id": "high-git-clean",
+      "command": "git clean -fdx",
+      "expected": {
+        "risk": "high",
+        "rule": "git-clean-destructive",
+        "blocked": true
+      }
+    },
+    {
+      "id": "high-git-reset-hard",
+      "command": "git reset --hard HEAD~3",
+      "expected": {
+        "risk": "high",
+        "rule": "git-reset-hard",
+        "blocked": true
+      }
+    },
+    {
+      "id": "high-docker-prune",
+      "command": "docker system prune -a --dry-run",
+      "expected": {
+        "risk": "high",
+        "rule": "docker-system-prune",
+        "blocked": true
+      }
+    },
+    {
+      "id": "medium-git-push-force",
+      "command": "git push --force origin main",
+      "expected": {
+        "risk": "medium",
+        "rule": "git-push-force",
+        "blocked": false
+      }
+    },
+    {
+      "id": "medium-npm-publish",
+      "command": "npm publish",
+      "expected": {
+        "risk": "medium",
+        "rule": "npm-publish",
+        "blocked": false
+      }
+    },
+    {
+      "id": "low-list-directory",
+      "command": "ls -la",
+      "expected": {
+        "risk": "low",
+        "rule": "none",
+        "blocked": false
+      }
+    },
+    {
+      "id": "low-print-directory",
+      "command": "pwd",
+      "expected": {
+        "risk": "low",
+        "rule": "none",
+        "blocked": false
+      }
+    },
+    {
+      "id": "low-echo",
+      "command": "echo hello",
+      "expected": {
+        "risk": "low",
+        "rule": "none",
+        "blocked": false
+      }
+    },
+    {
+      "id": "low-grep",
+      "command": "grep foo bar.txt",
+      "expected": {
+        "risk": "low",
+        "rule": "none",
+        "blocked": false
+      }
+    }
+  ]
+}

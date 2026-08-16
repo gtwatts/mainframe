@@ -535,6 +535,7 @@ registry_list_by_library() {
 # @example: registry_search "json"
 # @category: registry
 # @since: v1.0
+# Search registry functions by description keyword (prints matching function names)
 registry_search() {
     local pattern="$1"
 
@@ -923,6 +924,7 @@ registry_list_categories() {
 # @example: registry_list_libraries
 # @category: registry
 # @since: v1.0
+# List all libraries in the registry (one library name per line)
 registry_list_libraries() {
     printf '['
     local first=true

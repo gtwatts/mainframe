@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "kind": "mainframe-agent-impact-local-task",
+  "id": "local-001",
+  "title": "Preserve nested configuration precedence and falsy values",
+  "repository": "repository",
+  "phases": [
+    {
+      "id": "investigate",
+      "prompt": "investigate.md",
+      "workspace_edits": false
+    },
+    {
+      "id": "implement",
+      "prompt": "implement.md",
+      "workspace_edits": true
+    }
+  ],
+  "grader": {
+    "command": "grade.py",
+    "maximum_score": 100
+  }
+}

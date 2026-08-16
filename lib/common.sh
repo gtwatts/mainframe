@@ -63,7 +63,7 @@ _mainframe_load_config
 # CONSTANTS
 # =============================================================================
 
-readonly MAINFRAME_VERSION="10.1.0"
+readonly MAINFRAME_VERSION="10.2.0"
 readonly MAINFRAME_NAME="mainframe"
 export MAINFRAME_VERSION MAINFRAME_NAME
 
@@ -861,6 +861,13 @@ if [[ -n "${MAINFRAME_PROFILE:-}" && -z "${MAINFRAME_LIBS:-}" ]]; then
     esac
 fi
 
+# Command entry points may provide a cheap default without masking a profile or
+# library selection loaded from the user's config file. Explicit MAINFRAME_LIBS,
+# MAINFRAME_PROFILE, and lazy mode all remain authoritative.
+if [[ -z "${MAINFRAME_LIBS:-}" && -n "${MAINFRAME_DEFAULT_LIBS:-}" && "${MAINFRAME_LAZY:-0}" != "1" ]]; then
+    MAINFRAME_LIBS="$MAINFRAME_DEFAULT_LIBS"
+fi
+
 # --- Enhanced Lazy Loading (Function-Level) ----------------------------------
 # When MAINFRAME_LAZY=1, uses stub functions that load libraries on first call.
 # This provides maximum efficiency for AI agents that only need specific functions.
@@ -1275,8 +1282,14 @@ BASHER_COMMON_EXPORTS=(
     is_valid_json is_valid_email is_valid_url
     # Strings
     trim lowercase uppercase contains starts_with ends_with random_string
-    # Arrays
+    # Arrays (canonical value-list API from pure-array.sh)
     array_contains array_join
+    array_count array_filter array_first array_get array_intersect
+    array_last array_length array_reverse array_slice array_sum array_unique
+    # Explicit named-array alternatives from collection.sh
+    collection_count collection_filter collection_first collection_intersect
+    collection_last collection_length collection_reverse collection_slice
+    collection_sum collection_unique
     # Files
     temp_file temp_dir abs_path file_ext file_name
     # Input
@@ -1421,7 +1434,7 @@ BASHER_COMMON_EXPORTS=(
     run_with_timeout timeout_cmd
     lint_script check_syntax lint_scripts
     enable_error_context disable_error_context
-    default require_var array_get safe_math
+    default require_var safe_array_get safe_math
     # Process Substitution (from procsub.sh) - subshell variable preservation
     read_lines_from for_each_line diff_commands capture_output
     process_file tee_to_var
@@ -1532,6 +1545,7 @@ BASHER_COMMON_EXPORTS=(
     awm_init awm_resume awm_close awm_namespace
     awm_checkpoint awm_log awm_progress awm_discovery
     awm_get awm_recent awm_summary awm_context_for
+    awm_handoff_prepare awm_handoff_accept
     awm_compress awm_export awm_inherit
     awm_token_estimate awm_estimate_read
     awm_list awm_cleanup awm_check_limits
@@ -1560,7 +1574,10 @@ BASHER_COMMON_EXPORTS=(
     awm_estimate_tokens awm_estimate_file_tokens awm_detect_content_type
     awm_pointer_create awm_pointer_resolve awm_pointer_exists awm_pointer_meta
     awm_wrap_result awm_chunk awm_summarize_chunks
+    awm_stream_compress
     awm_truncate awm_read_plan
+    # Explicit legacy protocol-v4 handoff compatibility API
+    awm_protocol_handoff_prepare awm_protocol_handoff_accept
     # Structured Logging (from structured_log.sh) - JSON-structured logging for observability
     slog_init slog_debug slog_info slog_warn slog_error slog_fatal
     slog_set_level slog_set_output slog_with_context slog_clear_context

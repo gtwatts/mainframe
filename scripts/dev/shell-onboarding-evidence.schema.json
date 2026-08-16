@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/shell-onboarding-evidence-v1.json",
+  "title": "MAINFRAME fresh-shell onboarding certification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "certification",
+    "version",
+    "archive_sha256",
+    "host",
+    "shell",
+    "os",
+    "arch",
+    "system_libc",
+    "installed_payload",
+    "runtime_load",
+    "private_paths_embedded"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "certification": { "const": "shell-onboarding-certified" },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "archive_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "host": {
+      "anyOf": [
+        { "const": "codex" },
+        { "const": "claude-code" },
+        { "const": "copilot" },
+        { "const": "gemini" }
+      ]
+    },
+    "shell": {
+      "anyOf": [
+        { "const": "bash" },
+        { "const": "zsh" }
+      ]
+    },
+    "os": {
+      "anyOf": [
+        { "const": "Darwin" },
+        { "const": "Linux" }
+      ]
+    },
+    "arch": {
+      "anyOf": [
+        { "const": "arm64" },
+        { "const": "aarch64" },
+        { "const": "x86_64" }
+      ]
+    },
+    "system_libc": {
+      "anyOf": [
+        { "const": "none" },
+        { "const": "glibc" },
+        { "const": "musl" }
+      ]
+    },
+    "installed_payload": { "const": "exact" },
+    "runtime_load": { "const": "unverified" },
+    "private_paths_embedded": { "const": false }
+  },
+  "allOf": [
+    {
+      "anyOf": [
+        {
+          "properties": {
+            "os": { "const": "Darwin" },
+            "system_libc": { "const": "none" }
+          }
+        },
+        {
+          "properties": {
+            "os": { "const": "Linux" },
+            "system_libc": {
+              "anyOf": [
+                { "const": "glibc" },
+                { "const": "musl" }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

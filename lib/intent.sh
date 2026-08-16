@@ -1889,7 +1889,7 @@ intent_batch_verify() {
         printf '    Critical: %d\n' "$critical_count"
     fi
 
-    return $max_risk
+    return "$max_risk"
 }
 
 # =============================================================================

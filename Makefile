@@ -16,6 +16,10 @@ DEMOS_DIR := $(ROOT_DIR)/demos
 BATS := $(TESTS_DIR)/bats/bin/bats
 TEST_RUNNER := $(TESTS_DIR)/run_bats_suite.sh
 BATS_TEST_SHELL := $(shell if [ -x /opt/homebrew/bin/bash ]; then printf '/opt/homebrew/bin/bash'; elif [ -x /usr/local/bin/bash ]; then printf '/usr/local/bin/bash'; else command -v bash; fi)
+BATS_CORE_COMMIT := eb7f42f8d608ac693d7a4b67474f6714ea68cfc5
+BATS_SUPPORT_COMMIT := 24a72e14349690bcbf7c151b9d2d1cdd32d36eb1
+BATS_ASSERT_COMMIT := f1e9280eaae8f86cbe278a687e6ba755bc802c1a
+BATS_FILE_COMMIT := 13ad5e2ffcc360281432db3d43a306f7b3667d60
 SHELLCHECK := shellcheck
 VHS := vhs
 
@@ -52,18 +56,32 @@ setup: ## Set up development environment
 .PHONY: test-deps
 test-deps: ## Install test dependencies (BATS)
 	@printf "$(BLUE)Installing BATS...$(NC)\n"
-	@if [ ! -d "$(TESTS_DIR)/bats" ]; then \
-		git clone https://github.com/bats-core/bats-core.git $(TESTS_DIR)/bats; \
-	fi
-	@if [ ! -d "$(TESTS_DIR)/bats-support" ]; then \
-		git clone https://github.com/bats-core/bats-support.git $(TESTS_DIR)/bats-support; \
-	fi
-	@if [ ! -d "$(TESTS_DIR)/bats-assert" ]; then \
-		git clone https://github.com/bats-core/bats-assert.git $(TESTS_DIR)/bats-assert; \
-	fi
-	@if [ ! -d "$(TESTS_DIR)/bats-file" ]; then \
-		git clone https://github.com/bats-core/bats-file.git $(TESTS_DIR)/bats-file; \
-	fi
+	@set -euo pipefail; \
+	ensure_dep() { \
+		local url="$$1" path="$$2" commit="$$3" current fresh=false; \
+		if [[ ! -e "$$path" ]]; then \
+			git clone --no-checkout --filter=blob:none "$$url" "$$path"; \
+			fresh=true; \
+		elif [[ ! -d "$$path/.git" ]]; then \
+			printf 'Refusing non-Git test dependency path: %s\n' "$$path" >&2; \
+			return 1; \
+		fi; \
+		if [[ "$$fresh" != "true" && -n "$$(git -C "$$path" status --porcelain)" ]]; then \
+			printf 'Refusing modified test dependency; review or replace: %s\n' "$$path" >&2; \
+			return 1; \
+		fi; \
+		if ! git -C "$$path" cat-file -e "$$commit^{commit}" 2>/dev/null; then \
+			git -C "$$path" fetch --force --tags origin; \
+		fi; \
+		git -C "$$path" checkout --detach "$$commit"; \
+		current="$$(git -C "$$path" rev-parse HEAD)"; \
+		[[ "$$current" == "$$commit" ]] || return 1; \
+		[[ -z "$$(git -C "$$path" status --porcelain)" ]] || return 1; \
+	}; \
+	ensure_dep https://github.com/bats-core/bats-core.git "$(TESTS_DIR)/bats" "$(BATS_CORE_COMMIT)"; \
+	ensure_dep https://github.com/bats-core/bats-support.git "$(TESTS_DIR)/bats-support" "$(BATS_SUPPORT_COMMIT)"; \
+	ensure_dep https://github.com/bats-core/bats-assert.git "$(TESTS_DIR)/bats-assert" "$(BATS_ASSERT_COMMIT)"; \
+	ensure_dep https://github.com/bats-core/bats-file.git "$(TESTS_DIR)/bats-file" "$(BATS_FILE_COMMIT)"
 	@printf "$(GREEN)Done!$(NC)\n"
 
 # =============================================================================
@@ -71,7 +89,7 @@ test-deps: ## Install test dependencies (BATS)
 # =============================================================================
 
 .PHONY: lint
-lint: lint-lib lint-scripts lint-hooks ## Run all linters
+lint: lint-lib lint-scripts lint-hooks check-exports ## Run all linters
 
 .PHONY: lint-lib
 lint-lib: ## Lint library files
@@ -90,6 +108,10 @@ lint-hooks: ## Lint hook files
 	@printf "$(BLUE)Linting hooks...$(NC)\n"
 	@find hooks -name '*.sh' -type f | xargs $(SHELLCHECK) -x 2>/dev/null || true
 	@printf "$(GREEN)Done!$(NC)\n"
+
+.PHONY: check-exports
+check-exports: ## Enforce the exact top-level function export policy
+	@python3 $(SCRIPTS_DIR)/check-function-exports.py --check
 
 # =============================================================================
 # TESTING
@@ -161,10 +183,19 @@ build: lint test ## Build for release (lint + test)
 	@printf "$(GREEN)Build complete!$(NC)\n"
 
 .PHONY: release
-release: build ## Create a release
-	@printf "$(BLUE)Creating release...$(NC)\n"
-	@./scripts/dev/release.sh
-	@printf "$(GREEN)Done!$(NC)\n"
+release: build ## Validate and prepare tracked release metadata only
+	@printf "$(BLUE)Preparing tracked release metadata...$(NC)\n"
+	@./scripts/dev/release.sh --prepare
+	@printf "$(GREEN)Release metadata is current; no package was assembled or published.$(NC)\n"
+
+.PHONY: release-candidate
+release-candidate: ## Prepare, test, assemble, and verify a coherent local release candidate
+	@printf "$(BLUE)Preparing tracked release metadata before testing...$(NC)\n"
+	@./scripts/dev/release.sh --prepare
+	@$(MAKE) build
+	@printf "$(BLUE)Assembling the local release candidate...$(NC)\n"
+	@$(BATS_TEST_SHELL) ./scripts/dev/release-candidate.sh --prepare
+	@printf "$(GREEN)Local release candidate is coherent; nothing was published.$(NC)\n"
 
 .PHONY: changelog
 changelog: ## Generate changelog
@@ -212,9 +243,17 @@ clean-all: clean ## Clean everything including dependencies
 # =============================================================================
 
 .PHONY: install
-install: ## Install basher locally
+install: ## Install MAINFRAME locally
 	@./install.sh
 
 .PHONY: uninstall
-uninstall: ## Uninstall basher
+uninstall: ## Uninstall MAINFRAME recoverably (installation is backed up)
 	@./uninstall.sh
+
+.PHONY: uninstall-dry-run
+uninstall-dry-run: ## Preview the exact MAINFRAME files an uninstall would change
+	@./uninstall.sh --dry-run
+
+.PHONY: uninstall-purge
+uninstall-purge: ## Irreversibly uninstall MAINFRAME after ownership checks
+	@./uninstall.sh --purge

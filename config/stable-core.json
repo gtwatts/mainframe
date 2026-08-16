@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "description": "MAINFRAME stable kernel and stable public-core export set (A++ Phase 0 deliverable 5). Frozen: additions, removals, or owner changes require an explicit policy update per docs/STABLE_CORE.md.",
+  "kernel": {
+    "files": [
+      "lib/common.sh",
+      "lib/output.sh",
+      "lib/errors.sh",
+      "lib/hints.sh",
+      "lib/ansi.sh"
+    ],
+    "contract": "The bootstrap kernel loads libraries, resolves the manifest, renders output, and enforces policy. It must not contain network clients, package managers, domain-specific helpers, or caller-controlled dynamic evaluation."
+  },
+  "mcp": {
+    "default_tier": "stable-core",
+    "max_default_tools": 32,
+    "default_effect_contract": "read-pure-only",
+    "excluded_unbrokered_exports": [
+      "usop_exec",
+      "ensure_dir",
+      "ensure_file",
+      "atomic_write",
+      "atomic_append",
+      "atomic_replace"
+    ]
+  },
+  "exports": [
+    "json_get",
+    "json_object",
+    "json_array",
+    "json_escape",
+    "json_string",
+    "json_merge",
+    "json_valid",
+    "validate_email",
+    "validate_url",
+    "validate_path",
+    "validate_json",
+    "validate_int",
+    "validate_regex",
+    "validate_semver",
+    "trim_left",
+    "trim_right",
+    "to_upper",
+    "to_lower",
+    "is_empty",
+    "is_numeric",
+    "array_join",
+    "array_contains",
+    "output_success",
+    "output_json",
+    "path_sanitize",
+    "usop_error_validation"
+  ]
+}

@@ -10,8 +10,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MAINFRAME_ROOT="${MAINFRAME_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
-# Source libraries
-source "$MAINFRAME_ROOT/lib/common.sh"
+# Source the pure/core surface under test. A full common.sh load intentionally
+# includes higher-tier libraries with overlapping legacy APIs, which would make
+# this benchmark measure whichever implementation happened to load last.
+_BENCHMARK_MAINFRAME_LIBS_WAS_SET="${MAINFRAME_LIBS+x}"
+_BENCHMARK_MAINFRAME_LIBS="${MAINFRAME_LIBS-}"
+MAINFRAME_LIBS=core source "$MAINFRAME_ROOT/lib/common.sh"
+if [[ -n "$_BENCHMARK_MAINFRAME_LIBS_WAS_SET" ]]; then
+    MAINFRAME_LIBS="$_BENCHMARK_MAINFRAME_LIBS"
+else
+    unset MAINFRAME_LIBS
+fi
 source "$MAINFRAME_ROOT/lib/pure-string.sh"
 source "$MAINFRAME_ROOT/lib/pure-array.sh"
 source "$MAINFRAME_ROOT/lib/pure-util.sh"
@@ -25,8 +34,25 @@ source "$MAINFRAME_ROOT/lib/async.sh"
 # BENCHMARK UTILITIES
 # =============================================================================
 
-ITERATIONS=1000
+ITERATIONS="${ITERATIONS:-1000}"
 RESULTS=()
+BENCHMARK_TEMP_FILE="$(mktemp "${TMPDIR:-/tmp}/mainframe-benchmark.XXXXXX")"
+export BENCHMARK_TEMP_FILE
+trap 'rm -f -- "$BENCHMARK_TEMP_FILE"' EXIT INT TERM
+
+capture_command() {
+    local output_var="$1"
+    local cmd="$2"
+    local captured status
+
+    set +e
+    captured=$(eval "$cmd" 2>&1)
+    status=$?
+    set -e
+
+    printf -v "$output_var" '%s' "$captured"
+    return "$status"
+}
 
 benchmark() {
     local name="$1"
@@ -48,9 +74,35 @@ compare() {
     local name="$1"
     local external_cmd="$2"
     local mainframe_cmd="$3"
-    local ext_time mf_time speedup
+    local expected="${4-}"
+    local ext_output mf_output ext_time mf_time speedup
 
     printf '\n%b=== %s ===%b\n' "$CLR_BOLD$CLR_CYAN" "$name" "$CLR_RESET"
+
+    if ! capture_command ext_output "$external_cmd"; then
+        printf 'Benchmark setup failed for external command: %s\n%s\n' \
+            "$external_cmd" "$ext_output" >&2
+        return 1
+    fi
+
+    if ! capture_command mf_output "$mainframe_cmd"; then
+        printf 'Benchmark setup failed for MAINFRAME command: %s\n%s\n' \
+            "$mainframe_cmd" "$mf_output" >&2
+        return 1
+    fi
+
+    if [[ -n "${4+x}" ]]; then
+        if [[ "$ext_output" != "$expected" ]]; then
+            printf 'External command produced an unexpected result.\nExpected: <%s>\nActual:   <%s>\n' \
+                "$expected" "$ext_output" >&2
+            return 1
+        fi
+        if [[ "$mf_output" != "$expected" ]]; then
+            printf 'MAINFRAME command produced an unexpected result.\nExpected: <%s>\nActual:   <%s>\n' \
+                "$expected" "$mf_output" >&2
+            return 1
+        fi
+    fi
 
     # External tool
     start=$(date +%s%N)
@@ -68,16 +120,21 @@ compare() {
     end=$(date +%s%N)
     mf_time=$(( (end - start) / 1000000 ))
 
-    # Calculate speedup
-    if [[ $mf_time -gt 0 ]]; then
-        speedup=$(echo "scale=1; $ext_time / $mf_time" | bc)
-    else
-        speedup="INF"
-    fi
-
     printf 'External tool: %d ms\n' "$ext_time"
     printf 'MAINFRAME:     %d ms\n' "$mf_time"
-    printf '%bSpeedup: %sx faster%b\n' "$CLR_GREEN$CLR_BOLD" "$speedup" "$CLR_RESET"
+
+    # Report the measured direction honestly; not every pure Bash operation is
+    # faster than a shell builtin or external implementation.
+    if [[ $mf_time -eq 0 || $ext_time -eq 0 ]]; then
+        printf 'Performance ratio unavailable at this iteration count\n'
+    elif [[ $ext_time -ge $mf_time ]]; then
+        speedup=$((ext_time * 10 / mf_time))
+        printf 'MAINFRAME speedup: %d.%dx\n' "$((speedup / 10))" "$((speedup % 10))"
+    else
+        speedup=$((mf_time * 10 / ext_time))
+        printf 'MAINFRAME slowdown: %d.%dx\n' "$((speedup / 10))" "$((speedup % 10))"
+    fi
+
 }
 
 header "MAINFRAME SUPERPOWER BENCHMARKS"
@@ -92,17 +149,20 @@ subheader "String Operations"
 # Trim whitespace
 compare "Trim Whitespace" \
     'echo "  hello world  " | sed "s/^[[:space:]]*//;s/[[:space:]]*$//"' \
-    'trim_string "  hello world  "'
+    'trim_string "  hello world  "' \
+    'hello world'
 
 # Lowercase
 compare "Lowercase Conversion" \
     'echo "HELLO WORLD" | tr "[:upper:]" "[:lower:]"' \
-    'to_lower "HELLO WORLD"'
+    'to_lower "HELLO WORLD"' \
+    'hello world'
 
 # String replacement
 compare "String Replace All" \
     'echo "hello world hello" | sed "s/hello/hi/g"' \
-    'replace_all "hello world hello" "hello" "hi"'
+    'replace_all "hello world hello" "hello" "hi"' \
+    'hi world hi'
 
 # =============================================================================
 # BENCHMARK 2: ARRAY OPERATIONS
@@ -113,12 +173,14 @@ subheader "Array Operations"
 # Array unique
 compare "Array Unique" \
     'echo -e "a\nb\na\nc\nb" | sort -u' \
-    'array_unique "a" "b" "a" "c" "b"'
+    'array_unique "a" "b" "a" "c" "b"' \
+    $'a\nb\nc'
 
 # Array join
 compare "Array Join" \
     'arr=("a" "b" "c"); (IFS=,; echo "${arr[*]}")' \
-    'array_join "," "a" "b" "c"'
+    'array_join "," "a" "b" "c"' \
+    'a,b,c'
 
 # =============================================================================
 # BENCHMARK 3: JSON GENERATION
@@ -129,12 +191,14 @@ subheader "JSON Generation"
 # Simple object - external requires jq or complex escaping
 compare "JSON Object Creation" \
     'printf "{\"name\":\"John\",\"age\":30}"' \
-    'json_object name="John" age:number=30'
+    'json_object name="John" age:number=30' \
+    '{"name":"John","age":30}'
 
 # JSON array
 compare "JSON Array Creation" \
     'printf "[\"a\",\"b\",\"c\"]"' \
-    'json_array "a" "b" "c"'
+    'json_array "a" "b" "c"' \
+    '["a","b","c"]'
 
 # =============================================================================
 # BENCHMARK 4: FILE OPERATIONS
@@ -143,21 +207,22 @@ compare "JSON Array Creation" \
 subheader "File Operations"
 
 # Create test file
-echo -e "line1\nline2\nline3\nline4\nline5" > /tmp/benchmark_test.txt
+printf 'line1\nline2\nline3\nline4\nline5\n' > "$BENCHMARK_TEMP_FILE"
 
 compare "Read File Head (3 lines)" \
-    'head -3 /tmp/benchmark_test.txt' \
-    'file_head 3 /tmp/benchmark_test.txt'
+    'head -3 "$BENCHMARK_TEMP_FILE"' \
+    'file_head 3 "$BENCHMARK_TEMP_FILE"' \
+    $'line1\nline2\nline3'
 
 compare "Count Lines" \
-    'wc -l < /tmp/benchmark_test.txt' \
-    'file_lines /tmp/benchmark_test.txt'
+    'lines=$(wc -l < "$BENCHMARK_TEMP_FILE"); printf "%d" "$lines"' \
+    'file_lines "$BENCHMARK_TEMP_FILE"' \
+    '5'
 
 compare "Get Basename" \
     'basename /path/to/some/file.txt' \
-    'path_basename /path/to/some/file.txt'
-
-rm /tmp/benchmark_test.txt
+    'path_basename /path/to/some/file.txt' \
+    'file.txt'
 
 # =============================================================================
 # BENCHMARK 5: UTILITY FUNCTIONS
@@ -174,10 +239,10 @@ compare "Get Epoch" \
     'epoch'
 
 # =============================================================================
-# CAPABILITY MULTIPLIER CALCULATION
+# BENCHMARK PROFILE SUMMARY
 # =============================================================================
 
-header "CAPABILITY MULTIPLIER SUMMARY"
+header "BENCHMARK PROFILE SUMMARY"
 
 # Count functions available
 string_funcs=$(grep -c '^[a-z_]*()' "$MAINFRAME_ROOT/lib/pure-string.sh" 2>/dev/null || echo 0)
@@ -192,7 +257,7 @@ common_funcs=$(grep -c '^[a-z_]*()' "$MAINFRAME_ROOT/lib/common.sh" 2>/dev/null 
 
 total_funcs=$((string_funcs + array_funcs + util_funcs + file_funcs + json_funcs + semver_funcs + ansi_funcs + async_funcs + common_funcs))
 
-printf '\n%bFunction Count by Library:%b\n' "$CLR_BOLD" "$CLR_RESET"
+printf '\n%bFunction definitions scanned in this profile:%b\n' "$CLR_BOLD" "$CLR_RESET"
 printf '  pure-string.sh:  %3d functions\n' "$string_funcs"
 printf '  pure-array.sh:   %3d functions\n' "$array_funcs"
 printf '  pure-util.sh:    %3d functions\n' "$util_funcs"
@@ -203,34 +268,10 @@ printf '  ansi.sh:         %3d functions\n' "$ansi_funcs"
 printf '  async.sh:        %3d functions\n' "$async_funcs"
 printf '  common.sh:       %3d functions\n' "$common_funcs"
 printf '  %b─────────────────────────%b\n' "$CLR_DIM" "$CLR_RESET"
-printf '  %bTOTAL:           %3d functions%b\n' "$CLR_GREEN$CLR_BOLD" "$total_funcs" "$CLR_RESET"
+printf '  %bTOTAL:           %3d definitions%b\n' "$CLR_GREEN$CLR_BOLD" "$total_funcs" "$CLR_RESET"
 
-# Lines of code saved calculation
-# Average function = 10 lines, each saves writing it
-loc_saved=$((total_funcs * 10))
+printf '\nThe per-operation results above are the evidence. This script does not\n'
+printf 'calculate an aggregate capability, productivity, or performance multiplier.\n'
+printf 'Definition counts include internal helpers and are not the product registry.\n\n'
 
-printf '\n%bPower Multipliers:%b\n' "$CLR_BOLD" "$CLR_RESET"
-printf '  Functions available instantly: %b%dx%b (vs writing from scratch)\n' "$CLR_GREEN" "$total_funcs" "$CLR_RESET"
-printf '  Lines of code saved:           %b~%d lines%b\n' "$CLR_GREEN" "$loc_saved" "$CLR_RESET"
-printf '  External tool dependencies:    %b0%b (pure bash)\n' "$CLR_GREEN" "$CLR_RESET"
-printf '  Average speedup vs sed/awk:    %b2-10x faster%b\n' "$CLR_GREEN" "$CLR_RESET"
-
-# Capability categories
-printf '\n%bCapability Categories Added:%b\n' "$CLR_BOLD" "$CLR_RESET"
-printf '  [x] String manipulation (no sed/awk)\n'
-printf '  [x] Array operations (no external tools)\n'
-printf '  [x] File operations (no cat/head/tail)\n'
-printf '  [x] JSON generation (no jq)\n'
-printf '  [x] Semantic versioning\n'
-printf '  [x] Terminal colors & UI\n'
-printf '  [x] Async/parallel execution\n'
-printf '  [x] Input validation\n'
-printf '  [x] Error handling patterns\n'
-printf '  [x] Testing infrastructure\n'
-
-printf '\n%b════════════════════════════════════════════════════════════%b\n' "$CLR_CYAN" "$CLR_RESET"
-printf '%b MAINFRAME SUPERPOWER MULTIPLIER: %d+ CAPABILITIES %b\n' "$CLR_BOLD$CLR_GREEN" "$total_funcs" "$CLR_RESET"
-printf '%b One "source common.sh" = Instant access to all functions %b\n' "$CLR_DIM" "$CLR_RESET"
-printf '%b════════════════════════════════════════════════════════════%b\n\n' "$CLR_CYAN" "$CLR_RESET"
-
-success "YO JOE! Benchmarks complete."
+success "Benchmarks completed successfully."

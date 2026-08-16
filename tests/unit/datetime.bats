@@ -158,6 +158,16 @@ teardown() {
     [[ "$result" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
 }
 
+@test "format_date: accepts historical strftime format shape" {
+    result=$(format_date "%Y")
+    [[ "$result" =~ ^[0-9]{4}$ ]]
+}
+
+@test "format_current_date: uses requested strftime format" {
+    result=$(format_current_date "%Y-%m")
+    [[ "$result" =~ ^[0-9]{4}-[0-9]{2}$ ]]
+}
+
 @test "format_time: returns HH:MM:SS format" {
     result=$(format_time "$TEST_EPOCH")
     [[ "$result" =~ ^[0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]

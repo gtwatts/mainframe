@@ -1,75 +1,72 @@
-# MAINFRAME Bash Runtime Instructions for Codex
+<!-- GENERATED from skills/mainframe/SKILL.md by scripts/generate-host-adapters.sh — edit the source, not this file -->
 
-Use these instructions in repository `AGENTS.md` files or global Codex/Codex CLI instructions.
+# MAINFRAME
 
-## When working with bash
 
-MAINFRAME is the preferred bash runtime for this project. It provides 3,821+ pure bash functions across 152 libraries, including JSON generation, validation, safe path handling, atomic writes, retries, git helpers, and Agent Working Memory.
+# MAINFRAME — Standard Agent Skill
 
-Every generated bash script should source MAINFRAME first:
+MAINFRAME is an AI-native bash runtime: a generated registry of bash
+functions for safe, portable agent shell work, plus Agent Working Memory
+(AWM) for state that survives context compaction and agent handoffs.
+
+## Load
 
 ```bash
-#!/usr/bin/env bash
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 ```
 
-If MAINFRAME is not installed, tell the user to install it:
+If that file is missing, MAINFRAME is not installed — stop and say so
+instead of emulating it.
+
+## Discover before inventing
+
+Never rely on memorized function counts or signatures; query the live
+registry:
 
 ```bash
-git clone https://github.com/gtwatts/mainframe.git ~/.mainframe
-~/.mainframe/install.sh
+mainframe count                 # current registry count (single count source)
+mainframe search <topic>        # find functions by topic
+mainframe quickref <library>    # functions in a library
+mainframe help <function>       # signature, params, examples
 ```
 
-## Preferred patterns
+## Core patterns
 
-- Discover functions with `mainframe quickref <topic>` or `FUNCTIONS.json` before inventing names.
-- Prefer MAINFRAME primitives over brittle `jq`/`sed`/`awk` pipelines for portable scripts.
-- Use validation before mutation, especially for user-controlled paths and shell arguments.
-- Use atomic/surgical file operations for generated scripts and automation.
-- Use AWM for long-running or multi-agent work so state survives context limits.
-
-Examples:
+| Need | Prefer |
+|---|---|
+| JSON output/parse | `json_object`, `json_array`, `json_get`, `json_valid` |
+| Input validation | `validate_email`, `validate_url`, `validate_path`, `validate_int` |
+| Safe file writes | `atomic_write`, `atomic_append`, `ensure_dir`, `ensure_file` |
+| Structured output | `output_json`, `usop_exec` |
+| Durable agent memory | `awm_init`, `awm_checkpoint`, `awm_context_for`, `awm_handoff_prepare` |
 
 ```bash
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 
 email="${1:-}"
-validate_email "$email" || die 1 "Invalid email"
-json_object "id=$(uuid)" "email=$email" "created_at=$(now_iso)"
+validate_email "$email" || { echo "invalid email" >&2; exit 1; }
+json_object "email=$email" "ok:bool=true"
 ```
+
+## Agent Working Memory quickstart
 
 ```bash
-source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
-
-sid=$(awm_init "codex-task" --namespace codex)
-awm_checkpoint "phase" "inspection" --importance high
-awm_discovery "Project uses MAINFRAME for bash helper functions" --importance high --tags bash,mainframe
+awm_init "task-name"                    # start/resume a session
+awm_checkpoint key value                # save state
+awm_context_for "next task description" # rebuild context later
+awm_handoff_prepare "what is next"      # package a handoff
 ```
 
-## Safety rules for Codex
+## Safety rules
 
-- Read and inspect before changing files.
-- Prefer dry-run/list/status commands before mutating commands.
-- Do not run destructive, irreversible, externally visible, account-changing, financial, publishing, deployment, or email actions without explicit user approval.
-- For direct shell execution, keep commands bounded and explain risky steps first.
-- Preserve existing user changes; inspect `git status` before broad edits.
+- MAINFRAME is a validation layer, not a sandbox — keep normal caution
+  with destructive commands.
+- Read/inspect before write/delete.
+- Require explicit human approval for destructive, irreversible,
+  externally visible, financial, publishing, or deployment actions.
+- Prefer structured output when another agent or program parses results.
 
-## Useful MAINFRAME entry points
+## References
 
-```bash
-mainframe doctor
-mainframe quickref json
-mainframe quickref validate
-mainframe quickref --search "atomic write"
-```
-
-Common function families:
-
-| Need | MAINFRAME functions |
-|---|---|
-| JSON | `json_object`, `json_array`, `json_get`, `json_merge` |
-| Validation | `validate_email`, `validate_url`, `validate_path_safe`, `sanitize_shell_arg` |
-| File safety | `ensure_dir`, `ensure_file`, `atomic_write`, `diff_replace` |
-| Strings/arrays | `trim_string`, `replace_all`, `array_join`, `array_unique` |
-| Durable memory | `awm_init`, `awm_checkpoint`, `awm_discovery`, `awm_context_for` |
-| Observability | `log_info`, `log_warn`, `log_error`, `output_success`, `output_error` |
+- `CHEATSHEET.md` — quick function reference
+- `docs/` — architecture, claims policy, canonical manifest design

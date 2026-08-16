@@ -2,16 +2,14 @@
 Tests for mainframe_bash.json_funcs module.
 """
 
-import pytest
-
 from mainframe_bash.json_funcs import (
-    json_object,
     json_array,
-    json_string,
     json_escape,
-    json_value,
     json_merge,
+    json_object,
     json_pretty,
+    json_string,
+    json_value,
 )
 
 
@@ -110,6 +108,14 @@ class TestJsonString:
         """Should escape backslashes."""
         s = json_string("path\\to\\file")
         assert "\\\\" in s
+
+    def test_command_substitution_is_quoted_data(self, tmp_path):
+        """Typed compatibility arguments must never become shell source."""
+        marker = tmp_path / "injection-ran"
+        value = f"$(/usr/bin/touch {marker})"
+
+        assert "$(/usr/bin/touch" in json_string(value)
+        assert not marker.exists()
 
 
 class TestJsonEscape:

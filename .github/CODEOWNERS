@@ -1,0 +1,14 @@
+# Default ownership
+* @gtwatts
+
+# Trust and release boundaries
+/.github/workflows/ @gtwatts
+/install.sh @gtwatts
+/get-mainframe.sh @gtwatts
+/mainframe @gtwatts
+/bin/mainframe @gtwatts
+/lib/common.sh @gtwatts
+/lib/agent_safety.sh @gtwatts
+/security/ @gtwatts
+/SECURITY.md @gtwatts
+/scripts/dev/ @gtwatts

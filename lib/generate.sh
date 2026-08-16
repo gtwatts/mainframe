@@ -54,6 +54,7 @@ declare -gA _GENERATE_TEMPLATES=(
 
     ["file_operation"]='${name}() {
     local file="$1"
+    local input="$file"
     local target="${2:-}"
     
     # Safety check: file must exist
@@ -70,6 +71,7 @@ declare -gA _GENERATE_TEMPLATES=(
 
     ["directory_operation"]='${name}() {
     local dir="${1:-.}"
+    local input="$dir"
     
     # Safety check: directory must exist
     [[ ! -d "$dir" ]] && {
@@ -85,10 +87,12 @@ declare -gA _GENERATE_TEMPLATES=(
 
     ["batch_processing"]='${name}() {
     local -a items=("$@")
+    local input=""
     local result=0
     
     # Process each item
     for item in "${items[@]}"; do
+        input="$item"
         ${logic}
         result=$?
         [[ $result -ne 0 ]] && break
@@ -99,6 +103,7 @@ declare -gA _GENERATE_TEMPLATES=(
 
     ["with_backup"]='${name}() {
     local target="$1"
+    local input="$target"
     local backup_suffix=".bak.$(date +%Y%m%d_%H%M%S)"
     
     # Safety: create backup
@@ -122,6 +127,7 @@ declare -gA _GENERATE_TEMPLATES=(
     ["standard"]='${name}() {
     local arg1="$1"
     local arg2="${2:-}"
+    local input="$arg1"
     
     # Validate inputs
     [[ -z "$arg1" ]] && {
@@ -154,8 +160,38 @@ declare -gA _GENERATE_PATTERNS=(
     ["bulk"]='batch_processing'
     ["for each"]='batch_processing'
     ["directory"]='directory_operation'
+    ["directories"]='directory_operation'
     ["folder"]='directory_operation'
+    ["folders"]='directory_operation'
     ["file"]='file_operation'
+    ["files"]='file_operation'
+)
+
+# Match specific, safety-bearing templates before general action verbs. Bash
+# does not guarantee associative-array iteration order, so keep precedence
+# explicit for descriptions that contain more than one pattern.
+declare -ga _GENERATE_PATTERN_ORDER=(
+    "backup"
+    "safe_"
+    "batch"
+    "bulk"
+    "for each"
+    "validate"
+    "check"
+    "verify"
+    "is_"
+    "has_"
+    "directory"
+    "directories"
+    "folder"
+    "folders"
+    "file"
+    "files"
+    "process"
+    "transform"
+    "convert"
+    "parse"
+    "format"
 )
 
 # =============================================================================
@@ -238,11 +274,29 @@ _generate_to_function_name() {
 
 # Detect template category from description
 _generate_detect_template() {
-    local description="${1,,}"
+    local description="${1,,}" pattern
+    local prefix_description token_description
     local category="standard"
 
-    for pattern in "${!_GENERATE_PATTERNS[@]}"; do
-        if [[ "$description" == *"$pattern"* ]]; then
+    # Keep an underscore-aware view for explicit prefixes such as is_/has_,
+    # and a tokenized view for ordinary words in generated-style descriptions
+    # such as count_lines_in_file. Ordinary words must never match substrings
+    # such as file in profile.
+    prefix_description="${description//[![:alnum:]_]/ }"
+    while [[ "$prefix_description" == *"  "* ]]; do
+        prefix_description="${prefix_description//  / }"
+    done
+    prefix_description=" $prefix_description "
+
+    token_description="${prefix_description//_/ }"
+    while [[ "$token_description" == *"  "* ]]; do
+        token_description="${token_description//  / }"
+    done
+    token_description=" $token_description "
+
+    for pattern in "${_GENERATE_PATTERN_ORDER[@]}"; do
+        if [[ "$pattern" == *_ && "$prefix_description" == *" $pattern"* ]] ||
+           [[ "$pattern" != *_ && "$token_description" == *" $pattern "* ]]; then
             category="${_GENERATE_PATTERNS[$pattern]}"
             break
         fi
@@ -253,79 +307,95 @@ _generate_detect_template() {
 
 # Generate logic from description
 _generate_logic_from_description() {
-    local description="${1,,}"
+    local raw_description="${1,,}"
+    local description="$raw_description"
     local logic=""
 
+    # Match complete natural-language tokens and phrases. Without padded token
+    # boundaries, a phrase such as "profile is empty" also contains
+    # "file is empty" and can select the wrong, path-sensitive validator.
+    description="${description//[![:alnum:]_]/ }"
+    description="${description//_/ }"
+    while [[ "$description" == *"  "* ]]; do
+        description="${description//  / }"
+    done
+    description=" $description "
+
     case "$description" in
-        *"email"*)
+        *" email "*|*" emails "*)
             logic='# Validate email format
     if [[ "$input" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
         return 0
     fi
     return 1'
             ;;
-        *"url"*|*"http"*)
+        *" url "*|*" urls "*|*" http "*|*" https "*)
             logic='# Validate URL format
     if [[ "$input" =~ ^https?:// ]]; then
         return 0
     fi
     return 1'
             ;;
-        *"number"*|*"integer"*)
+        *" number "*|*" numbers "*|*" integer "*|*" integers "*)
             logic='# Validate numeric input
     if [[ "$input" =~ ^-?[0-9]+$ ]]; then
         return 0
     fi
     return 1'
             ;;
-        *"file exists"*)
+        *" file exists "*|*" files exist "*)
             logic='# Check file exists
-    [[ -f "$input" ]]'
+    [[ -f "$input" ]] || return 1'
             ;;
-        *"directory exists"*)
+        *" directory exists "*|*" directories exist "*)
             logic='# Check directory exists
-    [[ -d "$input" ]]'
+    [[ -d "$input" ]] || return 1'
             ;;
-        *"empty"*)
+        *" empty file "*|*" empty files "*|*" file is empty "*|*" files are empty "*|*" file empty "*|*" files empty "*)
+            logic='# Check that a regular file is empty
+    [[ -f "$input" ]] || return 1
+    [[ ! -s "$input" ]] || return 1'
+            ;;
+        *" empty "*)
             logic='# Check if empty
-    [[ -z "$input" ]]'
+    [[ -z "$input" ]] || return 1'
             ;;
-        *"line count"*|*"count lines"*)
+        *" line count "*|*" line counts "*|*" count lines "*)
             logic='# Count lines
     output=$(wc -l < "$input")'
             ;;
-        *"word count"*|*"count words"*)
+        *" word count "*|*" word counts "*|*" count words "*)
             logic='# Count words
     output=$(wc -w < "$input")'
             ;;
-        *"size"*)
+        *" size "*|*" sizes "*)
             logic='# Get file size
     output=$(stat -f%z "$input" 2>/dev/null || stat -c%s "$input" 2>/dev/null)'
             ;;
-        *"timestamp"*)
+        *" timestamp "*|*" timestamps "*)
             logic='# Generate timestamp
     output=$(date +%Y%m%d_%H%M%S)'
             ;;
-        *"backup"*)
+        *" backup "*|*" backups "*)
             logic='# Create backup
     local backup="${input}.bak.$(date +%Y%m%d_%H%M%S)"
     cp -r "$input" "$backup"'
             ;;
-        *"sort"*)
+        *" sort "*|*" sorts "*|*" sorted "*|*" sorting "*)
             logic='# Sort input
     output=$(printf "%s" "$input" | sort)'
             ;;
-        *"unique"*)
+        *" unique "*|*" uniqueness "*)
             logic='# Remove duplicates
     output=$(printf "%s" "$input" | sort -u)'
             ;;
-        *"reverse"*)
+        *" reverse "*|*" reverses "*|*" reversed "*|*" reversing "*)
             logic='# Reverse input
     output=$(printf "%s" "$input" | rev)'
             ;;
         *)
             logic='# TODO: Implement logic based on description
-    # Description: '"$description"'
+    # Description: '"$raw_description"'
     output="$input"'
             ;;
     esac
@@ -501,7 +571,7 @@ generate_explain() {
     fi
 
     # Check outputs
-    [[ "$code" == *"printf "%s"*"* ]] && outputs+=("Returns string via stdout")
+    [[ "$code" == *'printf "%s"'* ]] && outputs+=("Returns string via stdout")
     [[ "$code" == *"return 0"* ]] && outputs+=("Success/failure via exit code")
 
     # Build explanation
@@ -936,14 +1006,14 @@ $func_name \- description of what this function does
             doc="$func_name: Description of what this function does\n\n"
             doc+="Usage: $func_name"
             for param in "${params[@]}"; do
-                doc+" <$param>"
+                doc+=" <$param>"
             done
             doc+="\n\n"
             
             if [[ ${#params[@]} -gt 0 ]]; then
                 doc+="Arguments:\n"
                 for param in "${params[@]}"; do
-                    doc+"  $param    Description\n"
+                    doc+="  $param    Description\n"
                 done
             fi
             ;;

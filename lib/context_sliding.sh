@@ -370,8 +370,8 @@ context_sliding_compact() {
     local current_summary=""
     local current_facts="[]"
     if [[ -f "$summary_file" ]]; then
-        current_summary=$(cat "$summary_file" | grep -o '"summary":"[^"]*"' | head -1 | cut -d'"' -f4)
-        current_facts=$(cat "$summary_file" | grep -o '"facts":\[[^]]*\]' | head -1 | cut -d: -f2-)
+        current_summary=$(grep -o '"summary":"[^"]*"' "$summary_file" | head -1 | cut -d'"' -f4)
+        current_facts=$(grep -o '"facts":\[[^]]*\]' "$summary_file" | head -1 | cut -d: -f2-)
         current_facts="${current_facts:-[]}"
     fi
     
@@ -576,9 +576,9 @@ context_sliding_stats() {
     fi
     
     if [[ -f "$summary_file" ]]; then
-        summary_tokens=$(cat "$summary_file" | grep -o '"token_count":[0-9]*' | head -1 | cut -d: -f2)
+        summary_tokens=$(grep -o '"token_count":[0-9]*' "$summary_file" | head -1 | cut -d: -f2)
         summary_tokens="${summary_tokens:-0}"
-        compacted_messages=$(cat "$summary_file" | grep -o '"messages_summarized":[0-9]*' | head -1 | cut -d: -f2)
+        compacted_messages=$(grep -o '"messages_summarized":[0-9]*' "$summary_file" | head -1 | cut -d: -f2)
         compacted_messages="${compacted_messages:-0}"
     fi
     

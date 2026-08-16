@@ -1,0 +1,15 @@
+{
+  "name": "mainframe-native-host-certification",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Pinned native coding-agent CLIs used by MAINFRAME's credential-free certification gates.",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.220",
+    "@github/copilot": "1.0.78",
+    "@google/gemini-cli": "0.53.1",
+    "@openai/codex": "0.146.0"
+  }
+}

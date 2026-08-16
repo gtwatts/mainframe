@@ -6,21 +6,20 @@ MAINFRAME is designed as an **AI-Native Bash Runtime** where security is foundat
 
 ### Core Security Principles
 
-1. **No Eval by Default** - Command execution uses safe dispatch patterns, not `eval`
-2. **Validate Before Execute** - All inputs validated before any system operation
-3. **Structured Errors** - Errors return JSON for AI self-correction, not ambiguous text
-4. **Audit Everything** - All agent operations can be logged for traceability
-5. **Fail Safely** - Operations fail closed, never fail open
+1. **Avoid Dynamic Execution by Default** - Reviewed exceptions are documented in the generated eval audit
+2. **Validate Agent-Facing Boundaries** - Inputs are checked before guarded system operations
+3. **Structured Errors** - USOP-enabled operations return parseable errors for agent correction
+4. **Auditable Operations** - Agent execution paths can emit traceable decision logs
+5. **Fail Closed at Safety Gates** - Guarded operations reject failed validation
 6. **Defense in Depth** - Multiple layers of validation and sanitization
 
 ## Supported Versions
 
 | Version | Supported          | Security Updates |
 | ------- | ------------------ | ---------------- |
-| 6.x     | :white_check_mark: | Active           |
-| 5.x     | :white_check_mark: | Security only    |
-| 4.x     | :white_check_mark: | Security only    |
-| < 4.0   | :x:                | End of life      |
+| 10.1.x  | :white_check_mark: | Active           |
+| 10.0.x  | :white_check_mark: | Security only    |
+| < 10.0  | :x:                | End of life      |
 
 ## Reporting a Vulnerability
 
@@ -80,9 +79,11 @@ Understanding it matters for deciding how much to trust each layer.
 | Threat | Defense |
 |--------|---------|
 | AI agent **mistakes** (wrong flags, wrong paths, hallucinated commands) | Destructive-command gate, risk scoring, profile tiers, path confinement |
+| Supported coding-agent shell calls before execution | Explicit Codex, Claude Code, Copilot CLI, and Gemini CLI pre-tool Agent Gateway activation |
 | **Silent failures** that cascade into bad agent decisions | Structured errors (USOP), audit trails, fail-closed validation |
 | **Accidental** destructive operations (`rm -rf` wrong dir, `dd` to wrong device) | Destructive tier (system profile required), enforced risk threshold with approval flow |
 | Path traversal **in tool input** (`../`, encoded variants, symlink escapes) | Canonicalized path validation, boundary-aware containment |
+| Registry response substitution during an explicitly requested managed-host download | Closed `registry.npmjs.org` HTTPS URLs, no redirects/proxies/credentials, exact SHA-512 SRI and package identity, bounded descriptor-safe extraction |
 | Lost agent context leading to repeated/redundant dangerous work | AWM checkpoints, discoveries, audit replay |
 
 **Out of scope (what we do NOT defend against):**
@@ -93,25 +94,222 @@ Understanding it matters for deciding how much to trust each layer.
 | Malicious code executed *by* the agent (supply-chain compromise of tools) | Out of scope for a command gate; see `lib/tirith*.sh` for supply-chain scanning |
 | Privilege escalation via setuid/kernel exploits | MAINFRAME runs as the invoking user; OS-level isolation (containers, VMs, separate users) is the correct control |
 | Host compromise in general | If the host is compromised, in-process guardrails are meaningless |
+| Shell calls from unconfigured hosts, direct terminals, or PowerShell | The current Agent Gateway covers configured POSIX shell hooks on macOS/Linux only |
+| A configured hook that the host has not trusted or loaded | Static config is not runtime proof; restart the host, use its native hook diagnostics, and run a disposable canary. Codex also requires exact-hash review in `/hooks`. |
+| Effects hidden behind delegated runtimes (`npm run`, `make`, scripts, aliases, interpreters) | The gate recognizes shell command forms; it cannot prove the behavior of every downstream program. Treat it as an accidental-risk guardrail, not adversarial containment. |
+| Passive code loaded before MAINFRAME starts | `mainframe launch` scrubs inherited language-runtime and dynamic-loader hooks after entry, but the initial `/bin/bash` interpreter and its OS loader have already started by then. |
+| Hostile same-UID mutation or race against a user-owned MAINFRAME install | The four-file launch seal detects straightforward sequential replacement of Bash, `jq`, gateway, and policy bytes, but not their dynamic-library closure. A peer process with the same UID can target the launcher, project configuration, environment, or check/use window. Use OS/root protection or process separation for that threat. |
+| Mutation by another principal authorized to write the selected Homebrew prefix | Homebrew's stable `opt` paths are deliberately mutable package-manager aliases. MAINFRAME places every authorized writer to that prefix inside the trusted package-manager boundary, including for Pi package code loaded after activation. Use a private, non-shared Homebrew prefix or the owner-private release-archive install when that trust is unacceptable. |
+| A malicious package already authorized by the trusted host manifest and package lock | SRI proves exact byte identity, not that the reviewed trust root chose benign bytes. Protect and review MAINFRAME release inputs; use OS isolation for hostile vendor code. |
 
-**Rule of thumb:** MAINFRAME makes an honest-but-fallible agent safe. For an
-adversarial workload, run the agent in an OS-level sandbox (container, VM,
+**Rule of thumb:** MAINFRAME reduces accidental risk for an
+honest-but-fallible agent; it does not make the agent intrinsically safe. For
+an adversarial workload, run the agent in an OS-level sandbox (container, VM,
 or dedicated low-privilege user) *in addition* to MAINFRAME.
+
+### Privileged host-launch boundary
+
+`mainframe launch` binds absolute Bash, `jq`, gateway, and safety-policy paths
+plus a seal containing the four corresponding SHA-256 digests. `jq` must
+resolve from a supported system or package-manager installation; project and
+arbitrary user `PATH` wrappers are rejected. The machine-independent
+`/bin/bash -p` hook bootstrap uses fixed system hash tools to verify all four
+files before every gateway invocation. Missing bindings, a malformed seal, or
+a byte mismatch fails closed. Direct host starts do not receive the five launch
+values and therefore fail closed when the configured hook runs.
+
+This closes straightforward sequential post-launch replacement; it is not a
+same-UID tamper-proof boundary. MAINFRAME is normally installed with user-owned
+files, and the four-file seal does not authenticate loaded dynamic libraries or
+other transitive dependencies. An actively hostile peer process can race
+check-to-use or modify other user-controlled inputs. Strong hostile-race
+resistance requires an OS/root-protected installation, a dedicated
+lower-privilege user, or isolation in a container or VM.
+
+For npm-wrapper hosts, launch accepts Node.js only from supported system,
+package-manager, or version-manager layouts and hashes and rechecks both Node
+and `hash-package-tree.mjs` around package-tree authentication and before exec.
+This rejects arbitrary PATH shims and detects sequential replacement. A
+user-owned version-manager Node remains self-anchored rather than authenticated
+against an external release identity.
+
+For the `launch` command, the public CLI removes `BASH_ENV`, `ENV`, Node.js
+preload/module-search/coverage/history hooks, `PERL5OPT`, `PERL5LIB`, `PERLLIB`,
+and every `LD_*`/`DYLD_*` variable before loading the common runtime. The launch
+library repeats the scrub before sensitive helpers, Node-backed authentication,
+and final host exec while preserving ordinary host configuration and
+credentials. This closes inherited passive loaders after entry; it cannot
+retroactively protect the initial interpreter or OS loader. Invoke MAINFRAME
+through a trusted executable and use a stronger isolation boundary when that
+initial process is not trusted.
+
+### Managed host acquisition and payload boundary
+
+Managed install requires one explicit source:
+
+```text
+mainframe host install HOST (--download | --package-dir DIR) [--dry-run | --yes] [--json]
+```
+
+No install contacts the network unless `--download` is present. That flag
+authorizes anonymous direct HTTPS requests only for the exact package names,
+versions, canonical `registry.npmjs.org` URLs, and SHA-512 SRI values selected
+from MAINFRAME's trusted host manifest and package lock. The downloader rejects
+redirects, alternate hosts or ports, credentials, cookies, proxy overrides,
+encoded URL variations, non-public peers, unexpected response encodings,
+oversized bodies, integrity mismatches, and pre-existing destination names. It
+does not invoke npm or inherit npm registry configuration.
+
+Downloaded bytes enter a private mode-`0700` ephemeral workspace through an
+exclusive no-follow file descriptor that is immediately unlinked before the
+first request. No downloaded archive pathname is published or reopened. After
+the streaming SRI check, the helper rewinds and independently re-verifies SRI,
+then performs bounded extraction from that same stable anonymous descriptor.
+The extractor enforces compressed, expanded, member-count, member-size, path,
+and archive-type bounds and requires the exact package name and version. The
+offline source separately requires single-link regular archive files and uses
+one stable descriptor per archive. Package lifecycle scripts and vendor
+launchers or binaries are never executed during acquisition or assembly.
+
+`--download --dry-run` performs that real network acquisition plus complete
+staged-payload authentication, then removes the workspace and publishes
+nothing. `--download --yes` performs the same verification before atomic
+publication. `--package-dir` remains strictly offline and subjects the supplied
+exact basenames to the same SRI, extraction, package-identity, full-tree, and
+entry-point checks. `--json` never prompts; an actionable request requires
+`--dry-run` or `--yes`, while a safe no-op, refusal, or validation error may
+return before the consent boundary.
+Once atomic publication becomes possible, interruption or helper failure emits
+no install success. Human output directs the operator to
+`mainframe host status HOST --runtime managed`; JSON reports the proved or
+uncertain mutation state before any retry.
+Neither source changes `PATH`, shell profiles, global packages, host settings,
+or project files.
+
+The resulting receipt and deterministic bundle ID bind the exact MAINFRAME
+version, host, platform, package set, host manifest, package lock, complete
+payload tree, and direct-native executable. This detects later drift but is not
+a publisher signature or an OS isolation boundary. A malicious same-UID process
+or malicious byte set already approved by the trusted lock remains outside this
+boundary.
+
+### Managed host quarantine recovery boundary
+
+`mainframe host remove HOST --yes` preselects a generated
+`removed.<18-lowercase-hex>` ID before entering the atomic move window. Success
+returns that ID after moving one authenticated current generation into
+owner-only same-filesystem quarantine. If interruption or helper failure makes
+the mutation outcome uncertain, the human error returns the same `Recovery ID`
+and JSON retains it as `quarantine_id`; the ID alone does not claim that the
+slot was created. Inspect managed status before an exact-ID dry run. Recovery
+is explicit and exact:
+
+```text
+mainframe host restore HOST --quarantine-id removed.<18-hex> [--dry-run | --yes] [--json]
+```
+
+Restore is offline and accepts no path, pattern, mutable alias, implicit newest
+entry, or stale host/version/platform/bundle selection. Before mutation and
+again under the shared lifecycle lock, it requires a missing active target,
+private symlink-free source ancestry, no nested mount, an exact one-generation
+slot, the same source filesystem identity, and complete current receipt/tree/
+executable authentication. Publication uses the reviewed descriptor-relative
+kernel no-replace rename. It preserves the generation inode, refuses every
+occupied active target, and emits success only after final authentication and
+explicit lock release.
+
+The consumed quarantine slot remains empty. Version 1 deliberately has no
+durable slot-to-target transaction record, so a process death or helper failure
+after rename may be reported only as `changed: null` and
+`mutation_state: "uncertain"`. A retry refuses the occupied target rather than
+claiming an unprovable idempotent success. Operators must inspect
+`mainframe host status HOST --runtime managed`; restore never attempts an
+automatic reverse move. As elsewhere, the lifecycle lock coordinates
+MAINFRAME processes but is not protection against a malicious process already
+running as the same user.
+
+### Release install and upgrade boundary
+
+The versioned bootstrap verifies one exact archive checksum record, rejects
+unsafe archive types and paths, and requires complete inner-manifest coverage.
+It writes a mode-`0600` local receipt only after the installed CLI link,
+managed bytes, version, and doctor check pass. The install root is mode `0700`.
+The receipt detects later path or managed-byte drift and binds the archive and
+manifest digests; it is not a cryptographic publisher signature. Because the
+archive and checksum are delivered from the same GitHub release origin, their
+pairing provides integrity and consistency, not an independent authenticity
+channel.
+
+Bootstrap placement is recoverable across tested process interruption. A
+private journal binds the exact archive, manifest, install-root inode, and CLI
+link inode; retry accepts only the same versioned command and refuses a
+replaced path even when its visible link target is unchanged. Optional
+shell-profile and agent-discovery writes remain outside the receipt boundary,
+so a failure there is reported as a receipt-backed partial success with a
+separate retry command.
+
+Transactional release upgrade accepts an explicit stable version only. It
+verifies the active receipt and managed runtime before download, then verifies
+the outer checksum, archive structure, complete inner manifest, and candidate
+health around cutover. Unmanaged files are preserved only outside managed
+runtime surfaces when regular, non-executable, stable, and collision-free.
+Links, special files, nested mounts, and unmanaged code fail closed. The old
+runtime remains in a private transaction directory; rollback and copied-script
+recovery are covered for ordinary errors and tested process interruption,
+including `SIGKILL` around rename boundaries.
+
+Upgrade is not a concurrent-state protocol: all agents and shells using the
+installation must be stopped, and cutover requires
+`--confirm-agents-stopped`. Filesystem durability barriers reduce incomplete
+write exposure, but MAINFRAME does not claim recovery from arbitrary storage
+hardware failure, filesystem corruption, or full-machine power loss. Keep the
+printed journal and transaction directory until the new runtime is verified or
+recovery completes.
+
+AWM state is local-user private, not a sandbox or authorization service.
+Canonical storage uses `0700` directories and `0600` files and rejects session,
+checkpoint, relative-root, and symbolic-link path escapes. Custom `AWM_ROOT`
+values must be absolute and have no symbolic-link ancestor. Any process running
+as the same OS user can still read or change that user's AWM state; namespaces
+are organizational only. Concurrent log appends, compression, and
+category-index updates preserve acknowledged entries, but they do not protect
+against a malicious process running as that same user. File-backed concurrency
+is a same-host, local-filesystem guarantee: MAINFRAME uses `flock` on Linux and
+BSD `lockf` on macOS so locks are released by the kernel after a process crash.
+When neither primitive exists, the portable `mkdir` fallback refuses automatic
+stale-lock breaking because pathname-based recovery has an ABA race; it times
+out fail-closed and reports the exact lock directory for manual inspection.
 
 ### Defense Layers (in order of evaluation)
 
-1. **Destructive-command gate** (`agent_gate_classify`) - canonical string-pattern
-   rule set (critical/high/medium/low). Host integrations should call this
-   rather than maintaining their own regex lists so rules never diverge.
-2. **Profile policy** (`agent_validate_command`) - destructive/system/network/
+1. **Host pre-tool enforcement** (`mainframe agent-hook`) - after explicit
+   activation, supported hosts can route configured POSIX shell calls through
+   a blocking hook before execution. Protected launch seals and verifies the
+   absolute Bash, `jq`, gateway, and safety-policy files; gateway or seal errors
+   fail closed. Host timeout behavior remains host-defined. See
+   [the Agent Gateway boundary](docs/AGENT_GATEWAY.md).
+2. **Destructive-command gate** (`agent_gate_classify`) - 42 canonical lexical
+   rules (critical/high/medium/low). JavaScript consumers must ship
+   `security/gate-rules.json` with its declared
+   `security/gate-normalizer.mjs` and call the exported classifier so each rule
+   receives its required raw or executable-marker input.
+3. **Profile policy** (`agent_validate_command`) - destructive/system/network/
    write tiers checked BEFORE command existence (policy is host-independent).
-3. **Path confinement** (`AGENT_SAFE_BASE`) - write targets confined to the
+4. **Path confinement** (`AGENT_SAFE_BASE`) - write targets confined to the
    project tree, traversal canonicalized.
-4. **Risk threshold** (`agent_safe_exec`) - commands scoring at or above
+5. **Risk threshold** (`agent_safe_exec`) - commands scoring at or above
    `AGENT_RISK_THRESHOLD` block unless approved (`AGENT_APPROVED=1` one-shot
    or a registered approval callback). Gate matches floor the score.
-5. **Audit** - every decision (blocked, approved, executed) written as JSONL
-   with rotation.
+6. **Audit** - decisions can be written as private JSONL with rotation. Local
+   logs are troubleshooting evidence, not a tamper-proof security ledger.
+
+`low` is a lexical no-match result: after bounded resolution and normalization,
+none of the 43 ordered patterns matched. It does not establish command
+semantics, inspect arbitrary scripts or delegated programs, or prove that
+execution is safe. A gateway may allow that tier under its selected block
+policy, but the label is not a general authorization; profile policy, path
+confinement, least privilege, review, and OS isolation remain separate
+controls.
 
 ### Agent Safety Library (`lib/agent_safety.sh`)
 

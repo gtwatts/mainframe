@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-pi-ollama-arm-contract-v1.json",
+  "title": "MAINFRAME neutral Pi and Ollama arm contract",
+  "$comment": "The runtime binding excludes the spec arm_contract member. The full spec commits this arm file, while this arm file commits the non-circular runtime projection.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "runtime_binding",
+    "study_id",
+    "pair_id",
+    "opaque_arm_ids",
+    "task_id",
+    "phases",
+    "provider",
+    "budgets",
+    "environment_contract",
+    "adapter_boundary"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "mainframe-agent-impact-pi-ollama-neutral-arm-contract" },
+    "runtime_binding": { "$ref": "#/$defs/runtimeBinding" },
+    "study_id": { "$ref": "#/$defs/neutralId" },
+    "pair_id": { "type": "string", "pattern": "^pair-[0-9a-f]{16}$" },
+    "opaque_arm_ids": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^arm-[0-9a-f]{16}$" }
+    },
+    "task_id": { "$ref": "#/$defs/neutralId" },
+    "phases": { "const": ["investigate", "implement"] },
+    "provider": { "$ref": "#/$defs/provider" },
+    "budgets": { "$ref": "#/$defs/budgets" },
+    "environment_contract": { "$ref": "#/$defs/environmentContract" },
+    "adapter_boundary": { "$ref": "#/$defs/adapterBoundary" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "neutralId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,127}$",
+      "not": { "enum": ["control", "mainframe-awm-handoff", "native-bounded-handoff", "treatment"] }
+    },
+    "runtimeBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "domain_separator_hex", "canonicalization", "projection_keys", "arm_contract_excluded", "sha256"],
+      "properties": {
+        "algorithm": { "const": "canonical-runtime-projection-sha256-v1" },
+        "domain_separator_hex": { "const": "4d41494e4652414d452d4147454e542d494d504143542d52554e54494d452d50524f4a454354494f4e2d563100" },
+        "canonicalization": { "const": "utf8-json-sorted-keys-compact-ensure-ascii-lf-v1" },
+        "projection_keys": { "const": ["schema_version", "kind", "claim_scope", "platform", "node", "mainframe", "pi", "ollama", "adapter", "protocol"] },
+        "arm_contract_excluded": { "const": true },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "model"],
+      "properties": {
+        "name": { "const": "ollama" },
+        "model": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/:+-]*$",
+          "maxLength": 256,
+          "not": { "enum": ["control", "mainframe-awm-handoff", "native-bounded-handoff", "treatment"] }
+        }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wall_seconds_per_phase", "maximum_tool_calls_per_phase", "maximum_context_bytes"],
+      "properties": {
+        "wall_seconds_per_phase": { "type": "integer", "minimum": 1, "maximum": 3600 },
+        "maximum_tool_calls_per_phase": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "maximum_context_bytes": { "type": "integer", "minimum": 1, "maximum": 1048576 }
+      }
+    },
+    "environmentContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fresh_per_phase", "allowed_environment_names"],
+      "properties": {
+        "fresh_per_phase": { "const": true },
+        "allowed_environment_names": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" }
+        }
+      }
+    },
+    "adapterBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assignment_visibility",
+        "mechanism_transition_owner",
+        "scoring_owner",
+        "same_adapter_executable_both_arms",
+        "same_provider_model_both_arms",
+        "same_phase_budgets_both_arms",
+        "request_parity_fields",
+        "forbidden_request_fields",
+        "forbidden_request_string_values",
+        "neutrality_validation"
+      ],
+      "properties": {
+        "assignment_visibility": { "const": "opaque-arm-identities-only" },
+        "mechanism_transition_owner": { "const": "harness" },
+        "scoring_owner": { "const": "harness" },
+        "same_adapter_executable_both_arms": { "const": true },
+        "same_provider_model_both_arms": { "const": true },
+        "same_phase_budgets_both_arms": { "const": true },
+        "request_parity_fields": { "const": ["budgets", "environment_contract", "phase", "provider", "task_id"] },
+        "forbidden_request_fields": { "const": ["arm_mode", "assignment", "control", "mechanism", "treatment"] },
+        "forbidden_request_string_values": { "const": ["control", "mainframe-awm-handoff", "native-bounded-handoff", "treatment"] },
+        "neutrality_validation": { "const": "recursive-exact-key-and-exact-string-value-rejection" }
+      }
+    }
+  }
+}

@@ -128,7 +128,7 @@ array_map() {
 }
 
 # -----------------------------------------------------------------------------
-# array_filter - Keep elements that match a predicate
+# collection_filter - Keep elements that match a predicate
 # -----------------------------------------------------------------------------
 # @description Filter array elements using a predicate function
 # @pre        predicate returns 0 (true) to keep, non-zero to reject
@@ -142,10 +142,13 @@ array_map() {
 # Usage:
 #   is_even() { (( $1 % 2 == 0 )); }
 #   arr=(1 2 3 4 5 6)
-#   array_filter arr is_even result
+#   collection_filter arr is_even result
 #   # result=(2 4 6)
 # -----------------------------------------------------------------------------
-array_filter() {
+
+# Named-array predicate filter that writes matches into an output array.
+# Usage: collection_filter input_array predicate output_array
+collection_filter() {
     local -n _af_input=$1
     local predicate="$2"
     local -n _af_output=$3
@@ -764,7 +767,7 @@ array_drop_while() {
 }
 
 # -----------------------------------------------------------------------------
-# array_slice - Extract a slice of the array
+# collection_slice - Extract a slice of the array
 # -----------------------------------------------------------------------------
 # @description Get elements from start index to end index (exclusive)
 # @pre        start >= 0, end >= start
@@ -778,10 +781,13 @@ array_drop_while() {
 #
 # Usage:
 #   arr=(a b c d e)
-#   array_slice 1 4 arr result
+#   collection_slice 1 4 arr result
 #   # result=(b c d)
 # -----------------------------------------------------------------------------
-array_slice() {
+
+# Named-array slice with an exclusive end and an output-array destination.
+# Usage: collection_slice start exclusive_end input_array output_array
+collection_slice() {
     local start="$1"
     local end="$2"
     local -n _asl_input=$3
@@ -1066,7 +1072,7 @@ array_flatten() {
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# array_count - Count elements matching predicate
+# collection_count - Count elements matching predicate
 # -----------------------------------------------------------------------------
 # @description Count how many elements satisfy the predicate
 # @pre        predicate returns 0 (true) for match
@@ -1080,10 +1086,13 @@ array_flatten() {
 # Usage:
 #   is_even() { (( $1 % 2 == 0 )); }
 #   arr=(1 2 3 4 5 6)
-#   count=$(array_count arr is_even)
+#   count=$(collection_count arr is_even)
 #   # count=3
 # -----------------------------------------------------------------------------
-array_count() {
+
+# Count values in a named array that satisfy a predicate function.
+# Usage: collection_count input_array predicate
+collection_count() {
     local -n _acnt_input=$1
     local predicate="$2"
 
@@ -1591,7 +1600,7 @@ array_foreach_indexed() {
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# array_sum - Sum numeric array elements
+# collection_sum - Sum numeric array elements
 # -----------------------------------------------------------------------------
 # @description Calculate sum of numeric elements
 # @pre        elements are valid integers
@@ -1603,10 +1612,13 @@ array_foreach_indexed() {
 #
 # Usage:
 #   arr=(1 2 3 4 5)
-#   sum=$(array_sum arr)
+#   sum=$(collection_sum arr)
 #   # sum=15
 # -----------------------------------------------------------------------------
-array_sum() {
+
+# Sum integer values held in a named array.
+# Usage: collection_sum input_array
+collection_sum() {
     local -n _asum_input=$1
 
     local sum=0
@@ -1655,7 +1667,7 @@ array_product() {
 }
 
 # -----------------------------------------------------------------------------
-# array_join - Join array elements with separator
+# collection_join - Join array elements with separator
 # -----------------------------------------------------------------------------
 # @description Join array elements into a string with separator
 # @pre        none
@@ -1668,10 +1680,10 @@ array_product() {
 #
 # Usage:
 #   arr=(one two three)
-#   result=$(array_join arr ", ")
+#   result=$(collection_join arr ", ")
 #   # result="one, two, three"
 # -----------------------------------------------------------------------------
-array_join() {
+collection_join() {
     local -n _aj_input=$1
     local separator="${2:-,}"
 
@@ -1691,7 +1703,7 @@ array_join() {
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# array_unique - Remove duplicate elements
+# collection_unique - Remove duplicate elements
 # -----------------------------------------------------------------------------
 # @description Remove duplicate elements, preserving first occurrence
 # @pre        none
@@ -1703,10 +1715,13 @@ array_join() {
 #
 # Usage:
 #   arr=(1 2 2 3 1 4)
-#   array_unique arr result
+#   collection_unique arr result
 #   # result=(1 2 3 4)
 # -----------------------------------------------------------------------------
-array_unique() {
+
+# Copy first-seen values from a named array into an output array.
+# Usage: collection_unique input_array output_array
+collection_unique() {
     local -n _au_input=$1
     local -n _au_output=$2
 
@@ -1771,7 +1786,7 @@ array_unique_by() {
 }
 
 # -----------------------------------------------------------------------------
-# array_intersect - Find common elements between two arrays
+# collection_intersect - Find common elements between two arrays
 # -----------------------------------------------------------------------------
 # @description Find elements that exist in both arrays
 # @pre        none
@@ -1785,10 +1800,13 @@ array_unique_by() {
 # Usage:
 #   a=(1 2 3 4)
 #   b=(3 4 5 6)
-#   array_intersect a b result
+#   collection_intersect a b result
 #   # result=(3 4)
 # -----------------------------------------------------------------------------
-array_intersect() {
+
+# Write the intersection of two named arrays into an output array.
+# Usage: collection_intersect left_array right_array output_array
+collection_intersect() {
     local -n _ai_arr1=$1
     local -n _ai_arr2=$2
     local -n _ai_output=$3
@@ -1891,7 +1909,7 @@ array_symmetric_difference() {
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# array_reverse - Reverse array order
+# collection_reverse - Reverse array order
 # -----------------------------------------------------------------------------
 # @description Reverse the order of array elements
 # @pre        none
@@ -1903,10 +1921,13 @@ array_symmetric_difference() {
 #
 # Usage:
 #   arr=(1 2 3 4 5)
-#   array_reverse arr result
+#   collection_reverse arr result
 #   # result=(5 4 3 2 1)
 # -----------------------------------------------------------------------------
-array_reverse() {
+
+# Copy a named array into an output array in reverse order.
+# Usage: collection_reverse input_array output_array
+collection_reverse() {
     local -n _arev_input=$1
     local -n _arev_output=$2
 
@@ -1921,7 +1942,7 @@ array_reverse() {
 }
 
 # -----------------------------------------------------------------------------
-# array_first - Get first element
+# collection_first - Get first element
 # -----------------------------------------------------------------------------
 # @description Get the first element of an array
 # @pre        none
@@ -1933,10 +1954,13 @@ array_reverse() {
 #
 # Usage:
 #   arr=(a b c)
-#   first=$(array_first arr)
+#   first=$(collection_first arr)
 #   # first=a
 # -----------------------------------------------------------------------------
-array_first() {
+
+# Print the first value from a named array.
+# Usage: collection_first input_array
+collection_first() {
     local -n _afirst_input=$1
 
     [[ ${#_afirst_input[@]} -eq 0 ]] && return 1
@@ -1945,7 +1969,7 @@ array_first() {
 }
 
 # -----------------------------------------------------------------------------
-# array_last - Get last element
+# collection_last - Get last element
 # -----------------------------------------------------------------------------
 # @description Get the last element of an array
 # @pre        none
@@ -1957,10 +1981,13 @@ array_first() {
 #
 # Usage:
 #   arr=(a b c)
-#   last=$(array_last arr)
+#   last=$(collection_last arr)
 #   # last=c
 # -----------------------------------------------------------------------------
-array_last() {
+
+# Print the last value from a named array.
+# Usage: collection_last input_array
+collection_last() {
     local -n _alast_input=$1
 
     local len=${#_alast_input[@]}
@@ -2017,7 +2044,7 @@ array_is_empty() {
 }
 
 # -----------------------------------------------------------------------------
-# array_length - Get array length
+# collection_length - Get array length
 # -----------------------------------------------------------------------------
 # @description Get the number of elements in an array
 # @pre        none
@@ -2029,10 +2056,13 @@ array_is_empty() {
 #
 # Usage:
 #   arr=(a b c d e)
-#   len=$(array_length arr)
+#   len=$(collection_length arr)
 #   # len=5
 # -----------------------------------------------------------------------------
-array_length() {
+
+# Print the number of values in a named array.
+# Usage: collection_length input_array
+collection_length() {
     local -n _alen_input=$1
     printf '%d' "${#_alen_input[@]}"
     return 0

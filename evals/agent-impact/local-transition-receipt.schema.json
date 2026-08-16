@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-local-transition-receipt-v1.json",
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "binding": {"type": "object", "additionalProperties": false, "required": ["size_bytes", "sha256"], "properties": {"size_bytes": {"type": "integer", "minimum": 1, "maximum": 4096}, "sha256": {"$ref": "#/$defs/sha256"}}}
+  },
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "kind", "study_id", "plan_id", "pair_id", "opaque_arm_id", "mechanism", "synthetic_fixture", "mainframe_runtime_exercised", "mainframe_awm_exercised", "source_result_sha256", "source_continuation", "neutral_continuation", "operations"],
+  "properties": {
+    "schema_version": {"const": 1}, "kind": {"const": "mainframe-agent-impact-local-transition-receipt"},
+    "study_id": {"const": "local-development-smoke-v1"}, "plan_id": {"type": "string", "pattern": "^plan-[0-9a-f]{16}$"},
+    "pair_id": {"type": "string", "pattern": "^pair-[0-9a-f]{16}$"}, "opaque_arm_id": {"type": "string", "pattern": "^arm-[0-9a-f]{16}$"},
+    "mechanism": {"enum": ["native-bounded-continuation", "awm-shaped-fixture-transition"]},
+    "synthetic_fixture": {"const": true}, "mainframe_runtime_exercised": {"const": false}, "mainframe_awm_exercised": {"const": false},
+    "source_result_sha256": {"$ref": "#/$defs/sha256"}, "source_continuation": {"$ref": "#/$defs/binding"}, "neutral_continuation": {"$ref": "#/$defs/binding"},
+    "operations": {"type": "array", "minItems": 2, "maxItems": 3, "items": {"enum": ["capture-native-continuation", "export-neutral-continuation", "fixture-init", "fixture-checkpoint", "fixture-export-neutral-continuation"]}}
+  }
+}

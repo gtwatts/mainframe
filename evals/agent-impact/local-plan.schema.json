@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-local-plan-v1.json",
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "budgets": {
+      "type": "object", "additionalProperties": false,
+      "required": ["wall_seconds_per_phase", "maximum_tool_calls_per_phase", "maximum_continuation_bytes"],
+      "properties": {"wall_seconds_per_phase": {"const": 5}, "maximum_tool_calls_per_phase": {"const": 10}, "maximum_continuation_bytes": {"const": 4096}}
+    },
+    "binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["study_sha256", "task_bundle_sha256", "repository_tree_sha256", "harness_basename", "harness_sha256", "transport_sha256", "protocol_inputs_sha256"],
+      "properties": {"study_sha256": {"$ref": "#/$defs/sha256"}, "task_bundle_sha256": {"$ref": "#/$defs/sha256"}, "repository_tree_sha256": {"$ref": "#/$defs/sha256"}, "harness_basename": {"const": "agent-impact-local.py"}, "harness_sha256": {"$ref": "#/$defs/sha256"}, "transport_sha256": {"$ref": "#/$defs/sha256"}, "protocol_inputs_sha256": {"$ref": "#/$defs/sha256"}}
+    },
+    "pair": {
+      "type": "object", "additionalProperties": false,
+      "required": ["pair_id", "task_id", "replicate", "instance_sha256", "repository_tree_sha256", "opaque_arm_order", "budgets"],
+      "properties": {
+        "pair_id": {"type": "string", "pattern": "^pair-[0-9a-f]{16}$"},
+        "task_id": {"const": "local-001"},
+        "replicate": {"type": "integer", "minimum": 1, "maximum": 3},
+        "instance_sha256": {"$ref": "#/$defs/sha256"},
+        "repository_tree_sha256": {"$ref": "#/$defs/sha256"},
+        "opaque_arm_order": {"type": "array", "minItems": 2, "maxItems": 2, "uniqueItems": true, "items": {"type": "string", "pattern": "^arm-[0-9a-f]{16}$"}},
+        "budgets": {"$ref": "#/$defs/budgets"}
+      }
+    }
+  },
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "kind", "study_id", "claim_scope", "plan_id", "binding", "assignment_commitment_sha256", "pair_count", "pairs"],
+  "properties": {
+    "schema_version": {"const": 1}, "kind": {"const": "mainframe-agent-impact-local-plan"},
+    "study_id": {"const": "local-development-smoke-v1"},
+    "claim_scope": {"const": "local-development-smoke-protocol-conformance-only"},
+    "plan_id": {"type": "string", "pattern": "^plan-[0-9a-f]{16}$"},
+    "binding": {"$ref": "#/$defs/binding"},
+    "assignment_commitment_sha256": {"$ref": "#/$defs/sha256"},
+    "pair_count": {"const": 3},
+    "pairs": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/pair"}}
+  }
+}

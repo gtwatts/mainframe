@@ -16,6 +16,7 @@ import {
   StatusBarAlignment,
   StatusBarItem,
   TextDocument,
+  ThemeColor,
   Uri,
 } from 'vscode';
 import {
@@ -112,7 +113,7 @@ function updateStatusBar(): void {
   if (!functionsPath) {
     statusBar.text = '$(warning) MAINFRAME: Not Found';
     statusBar.tooltip = 'MAINFRAME installation not detected. Set mainframe.functionsPath in settings.';
-    statusBar.backgroundColor = new (require('vscode')).ThemeColor('statusBarItem.warningBackground');
+    statusBar.backgroundColor = new ThemeColor('statusBarItem.warningBackground');
     return;
   }
 

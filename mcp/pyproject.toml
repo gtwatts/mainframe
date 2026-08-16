@@ -1,11 +1,28 @@
+[build-system]
+requires = ["uv_build>=0.11.32,<0.12"]
+build-backend = "build_backend"
+backend-path = ["."]
+
 [project]
 name = "mainframe-mcp"
-version = "1.0.0"
-description = "MAINFRAME MCP Server - Exposes bash functions as MCP tools"
-requires-python = ">=3.10"
+version = "10.2.0"
+description = "Fail-closed stable-core MCP adapter for MAINFRAME"
+readme = "README.md"
+requires-python = ">=3.10,<3.15"
+license = "MIT"
 dependencies = [
-    "mcp>=1.0.0",
+    "mcp==1.26.0",
 ]
 
-[tool.uv]
-dev-dependencies = []
+[dependency-groups]
+dev = [
+    "pytest>=8,<10",
+]
+
+[tool.uv.build-backend]
+data = { scripts = "bin" }
+source-include = ["build_backend.py"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

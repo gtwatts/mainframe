@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "call_id": "mainframe-copilot-destroy",
+  "command": "tofu destroy -auto-approve",
+  "description": "Run the native-host certification sentinel.",
+  "mode": "sync",
+  "final_text": "MAINFRAME native host certification observed the policy result."
+}

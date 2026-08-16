@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "call_id": "mainframe-claude-awm-chain",
+  "command": "mainframe awm get --session \"$MAINFRAME_AWM_SESSION\" \"$MAINFRAME_AWM_READ_KEY\" > \"$MAINFRAME_AWM_SCRATCH\" || { printf 'MAINFRAME_AWM_MISSING_PREDECESSOR\\n' >&2; exit 42; }; printf '\\n' >> \"$MAINFRAME_AWM_SCRATCH\" && IFS= read -r previous < \"$MAINFRAME_AWM_SCRATCH\" && test -n \"$previous\" && : > \"$MAINFRAME_AWM_SCRATCH\" && next=\"${previous}:${MAINFRAME_AGENT_NAME}\" && mainframe awm checkpoint --session \"$MAINFRAME_AWM_SESSION\" \"$MAINFRAME_AWM_WRITE_KEY\" \"$next\" --importance high --tags \"native-awm,$MAINFRAME_AGENT_NAME\" && printf 'MAINFRAME_AWM_CHAIN_OK:%s\\n' \"$MAINFRAME_AGENT_NAME\"",
+  "description": "Run the MAINFRAME AWM chain step for Claude.",
+  "final_text": "MAINFRAME AWM chain step completed for Claude."
+}

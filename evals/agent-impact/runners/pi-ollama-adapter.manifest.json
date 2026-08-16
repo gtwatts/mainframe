@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "kind": "mainframe-agent-impact-pi-ollama-adapter-manifest",
+  "adapter_id": "mainframe-pi-ollama-dormant-v1",
+  "adapter_version": "1.0.0",
+  "provider": "ollama",
+  "execution_status": "not-implemented",
+  "invocation_supported": false,
+  "run_action_available": false,
+  "executable": "runners/pi-ollama-adapter.py",
+  "request_schema": "pi-ollama-adapter-request.schema.json",
+  "result_schema": "pi-ollama-adapter-result.schema.json",
+  "arm_contract_schema": "pi-ollama-arm-contract.schema.json",
+  "assignment_input": "forbidden",
+  "mechanism_transition_owner": "harness",
+  "scoring_owner": "harness",
+  "permitted_environment_names": [
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "PATH",
+    "TMPDIR",
+    "XDG_CACHE_HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_STATE_HOME"
+  ]
+}

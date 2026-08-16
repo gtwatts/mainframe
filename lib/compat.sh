@@ -32,6 +32,40 @@ _compat_check_bash_version() {
 _compat_check_bash_version || return 1
 
 # =============================================================================
+# PUBLIC API DEPRECATION WARNINGS
+# =============================================================================
+
+# Symbols already reported in this shell. Compatibility wrappers call
+# mainframe_deprecated before delegating to their canonical implementation.
+declare -gA _MAINFRAME_DEPRECATION_WARNED=()
+
+# Warn once that a public symbol is deprecated.
+# Usage: mainframe_deprecated OLD_NAME REPLACEMENT REMOVE_AFTER
+# Set MAINFRAME_COMPAT_WARNINGS=0 to suppress compatibility warnings.
+mainframe_deprecated() {
+    local old_name="${1:-}"
+    local replacement="${2:-}"
+    local remove_after="${3:-}"
+    local symbol_pattern='^[a-zA-Z_][a-zA-Z0-9_:]*$'
+
+    if [[ ! "$old_name" =~ $symbol_pattern || ! "$replacement" =~ $symbol_pattern ]]; then
+        printf 'mainframe_deprecated: invalid function name\n' >&2
+        return 2
+    fi
+    if [[ ! "$remove_after" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        printf 'mainframe_deprecated: REMOVE_AFTER must be a semantic version\n' >&2
+        return 2
+    fi
+
+    [[ "${MAINFRAME_COMPAT_WARNINGS:-1}" != "0" ]] || return 0
+    [[ -z "${_MAINFRAME_DEPRECATION_WARNED[$old_name]+set}" ]] || return 0
+
+    _MAINFRAME_DEPRECATION_WARNED["$old_name"]=1
+    printf 'MAINFRAME compatibility: %s is deprecated; use %s (removal no earlier than %s).\n' \
+        "$old_name" "$replacement" "$remove_after" >&2
+}
+
+# =============================================================================
 # FEATURE DETECTION FLAGS
 # =============================================================================
 # Feature flags based on bash version - check capabilities at source time

@@ -1,12 +1,20 @@
 # MAINFRAME Python Bindings
 
-Python wrappers for the MAINFRAME bash function library. Call 4,310+ bash functions from Python with proper type hints and automatic JSON parsing.
+Typed Python bindings for MAINFRAME. Agent-controlled function calls route
+through the reviewed canonical stable-core broker; trusted application code can
+opt into an explicitly unbrokered Bash escape hatch.
 
 ## Requirements
 
 - Python 3.10+
-- MAINFRAME installed at `~/.mainframe` or `MAINFRAME_ROOT` environment variable set
-- Bash 4.0+
+- MAINFRAME installed at `~/.mainframe` or `MAINFRAME_ROOT` set to a MAINFRAME checkout
+- Bash 4.4+ in a reviewed Homebrew, Linuxbrew, MacPorts, Nix, or system layout;
+  alternatively, set `MAINFRAME_BASH` to an approved owner-safe absolute path
+
+The binding invokes that canonical interpreter with protected startup flags
+and removes passive code-loader variables such as `BASH_ENV`, exported Bash
+functions, `LD_*`/`DYLD_*`, and language startup-option variables from every
+child environment, including caller-provided overrides.
 
 ## Installation
 
@@ -22,7 +30,7 @@ pip install -e ".[dev]"
 ## Quick Start
 
 ```python
-from mainframe_bash import json_object, validate_email, uuid, timestamp
+from mainframe_bash import json_object, validate_email
 
 # Create JSON objects
 obj = json_object(name="John", age=30, active=True)
@@ -31,14 +39,14 @@ obj = json_object(name="John", age=30, active=True)
 # Validate input
 if validate_email("test@example.com"):
     print("Valid email")
-
-# Generate UUIDs
-id = uuid()  # "550e8400-e29b-41d4-a716-446655440000"
-
-# Get timestamps
-ts = timestamp()      # "2024-01-15 14:30:00"
-iso = timestamp_iso() # "2024-01-15T14:30:00-0500"
 ```
+
+The package retains its broader fixed-name typed wrapper surface for source
+compatibility through a private, quote-safe protected-Bash adapter. These JSON,
+validation, and utility wrappers are **unbrokered compatibility surfaces**:
+they do not provide broker policy, confinement, contract review, or canonical
+invocation auditing. Do not pass agent-, model-, or otherwise untrusted input
+to them until the underlying function is reviewed and the wrapper is migrated.
 
 ## Available Functions
 
@@ -140,12 +148,17 @@ log_debug("Variable x = 42")  # Requires BASHER_LOG_LEVEL=0
 
 ## Low-Level API
 
-For direct access to any MAINFRAME function:
+For deny-by-default access to reviewed stable-core MAINFRAME functions:
 
 ```python
-from mainframe_bash import call_function, call_function_json
+from mainframe_bash import (
+    call_function,
+    call_function_json,
+    exec_bash,
+    invoke_canonical,
+)
 
-# Call any function
+# Resolve a reviewed Bash name through MANIFEST.json and its call_shape
 output, code = call_function("validate_email", "test@example.com")
 if code == 0:
     print("Valid")
@@ -153,20 +166,35 @@ if code == 0:
 # Call function expecting JSON output
 obj = call_function_json("json_object", "name=John", "age:number=30")
 
-# With timeout and custom environment
-output, code = call_function(
-    "http_get",
-    "https://api.example.com/data",
-    timeout=30.0,
-    env={"HTTP_TIMEOUT": "25"}
+# Or invoke the closed canonical contract directly
+result = invoke_canonical(
+    "mf:data:json:json_object",
+    {"pairs": ["name=John", "age:number=30"]},
 )
+print(result.stdout)
+
+# Explicit trusted-code escape hatch. Never pass agent/model/user-generated text.
+output, code = exec_bash('printf "%s" "$APPLICATION_OWNED_VALUE"')
 ```
+
+`call_function` and `call_function_json` map positional arguments through the
+reviewed contract and execute `mainframe invoke` with JSON over stdin. Unknown
+names, unreviewed functions, shell builtins, and external executables such as
+`id`, `printf`, and `printenv` return exit code 126 without shell lookup. Caller
+selected `source_libs` are no longer accepted. The canonical broker validates
+capabilities, confines time and output, records an audit entry, and returns a
+strictly checked `broker-json-v1` envelope.
+
+`exec_bash` is intentionally outside that safety boundary. It remains available
+for trusted application-owned scripts and does not provide broker policy,
+confinement, or canonical invocation auditing.
 
 ## Error Handling
 
 ```python
 from mainframe_bash import (
     MainframeError,
+    MainframeBrokerError,
     MainframeNotFoundError,
     MainframeFunctionError
 )
@@ -175,6 +203,8 @@ try:
     obj = json_object(name="test")
 except MainframeNotFoundError:
     print("MAINFRAME not installed")
+except MainframeBrokerError as e:
+    print(f"Broker contract or response failed validation: {e}")
 except MainframeFunctionError as e:
     print(f"Function {e.function} failed: {e}")
 except MainframeError as e:
@@ -185,7 +215,8 @@ except MainframeError as e:
 
 ### MAINFRAME Location
 
-Set `MAINFRAME_ROOT` environment variable if MAINFRAME is not installed at `~/.mainframe`:
+Set `MAINFRAME_ROOT` when MAINFRAME is not reachable through the managed
+`~/.local/bin/mainframe` launcher or installed at `~/.mainframe`:
 
 ```bash
 export MAINFRAME_ROOT=/opt/mainframe
@@ -203,9 +234,24 @@ from mainframe_bash import uuid
 ### Detection Order
 
 1. `MAINFRAME_ROOT` environment variable
-2. `~/.mainframe`
-3. `/usr/local/share/mainframe`
-4. `/opt/mainframe`
+2. Canonical target of `~/.local/bin/mainframe`
+3. `~/.mainframe`
+4. `/usr/local/share/mainframe`
+5. `/opt/mainframe`
+
+### Bash Runtime Selection
+
+The binding never searches `PATH` for its interpreter. It checks an absolute
+`MAINFRAME_BASH` first, when set, and otherwise checks fixed Homebrew,
+Linuxbrew, MacPorts, Nix, and system locations. Bare names and relative
+overrides are rejected without execution.
+The first compatible Bash 4.4+ executable is stored and reused by its canonical
+absolute path, so a `PATH` value supplied to an individual call cannot replace
+the interpreter.
+
+An explicit `MAINFRAME_BASH` must resolve to a known system/package-manager
+layout, be owned by root or the current user, and have safe mode bits before its
+Bash 4.4+ probe runs. Temporary or arbitrary absolute executables are rejected.
 
 ## Development
 

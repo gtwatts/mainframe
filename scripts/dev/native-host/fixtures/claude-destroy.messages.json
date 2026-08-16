@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "call_id": "mainframe-claude-destroy",
+  "command": "tofu destroy -auto-approve",
+  "description": "Run the native-host certification sentinel.",
+  "final_text": "MAINFRAME native host certification observed the policy result."
+}

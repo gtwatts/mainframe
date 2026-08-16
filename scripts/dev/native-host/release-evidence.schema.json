@@ -1,0 +1,503 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/blob/main/scripts/dev/native-host/release-evidence.schema.json",
+  "title": "MAINFRAME release evidence manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "manifest_schema",
+    "release",
+    "archive",
+    "certifier_input_bundle",
+    "platform_matrix",
+    "evidence",
+    "publication"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "kind": {
+      "const": "mainframe-release-evidence-manifest"
+    },
+    "manifest_schema": {
+      "$ref": "#/$defs/repositoryFile"
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "version",
+        "tag",
+        "tag_ref",
+        "git_object_format",
+        "tag_ref_sha",
+        "tag_commit_sha",
+        "source_date_epoch",
+        "workflow"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "tag_ref": {
+          "type": "string",
+          "pattern": "^refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "git_object_format": {
+          "anyOf": [
+            {
+              "const": "sha1"
+            },
+            {
+              "const": "sha256"
+            }
+          ]
+        },
+        "tag_ref_sha": {
+          "$ref": "#/$defs/gitOid"
+        },
+        "tag_commit_sha": {
+          "$ref": "#/$defs/gitOid"
+        },
+        "source_date_epoch": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "workflow": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256",
+            "run_id",
+            "run_attempt"
+          ],
+          "properties": {
+            "path": {
+              "$ref": "#/$defs/repositoryPath"
+            },
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "run_id": {
+              "type": "string",
+              "pattern": "^[0-9]+$"
+            },
+            "run_attempt": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      }
+    },
+    "archive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "media_type",
+        "size_bytes",
+        "sha256"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^mainframe-[0-9]+\\.[0-9]+\\.[0-9]+\\.tar\\.gz$"
+        },
+        "media_type": {
+          "const": "application/gzip"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "certifier_input_bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "definition_path",
+        "definition_sha256",
+        "canonicalization",
+        "sha256",
+        "files"
+      ],
+      "properties": {
+        "definition_path": {
+          "const": "scripts/dev/native-host/certifier-inputs.json"
+        },
+        "definition_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "canonicalization": {
+          "const": "mainframe-certifier-input-bundle-v1"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "role",
+              "sha256"
+            ],
+            "properties": {
+              "path": {
+                "$ref": "#/$defs/repositoryPath"
+              },
+              "role": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "sha256": {
+                "$ref": "#/$defs/sha256"
+              }
+            }
+          }
+        }
+      }
+    },
+    "platform_matrix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "definition_path",
+        "definition_sha256",
+        "platforms"
+      ],
+      "properties": {
+        "definition_path": {
+          "const": "scripts/dev/native-host/release-platforms.json"
+        },
+        "definition_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "platforms": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/platform"
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "safety",
+        "awm_chain"
+      ],
+      "properties": {
+        "safety": {
+          "type": "array",
+          "minItems": 12,
+          "maxItems": 12,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/safetyEvidence"
+          }
+        },
+        "awm_chain": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/awmEvidence"
+          }
+        }
+      }
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_asset",
+        "certificate_bundle_asset",
+        "attestation_predicate_type"
+      ],
+      "properties": {
+        "manifest_asset": {
+          "type": "string",
+          "pattern": "^mainframe-[0-9]+\\.[0-9]+\\.[0-9]+\\.release-evidence\\.json$"
+        },
+        "certificate_bundle_asset": {
+          "type": "string",
+          "pattern": "^mainframe-[0-9]+\\.[0-9]+\\.[0-9]+\\.release-evidence\\.tar\\.gz$"
+        },
+        "attestation_predicate_type": {
+          "const": "https://github.com/gtwatts/mainframe/attestations/release-evidence/v1"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "gitOid": {
+      "type": "string",
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        {
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      ]
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "repositoryPath": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._/-]+$",
+      "minLength": 1
+    },
+    "repositoryFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/repositoryPath"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "systemLibc": {
+      "anyOf": [
+        {
+          "const": "none"
+        },
+        {
+          "const": "glibc"
+        }
+      ]
+    },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "os",
+        "arch",
+        "system_libc"
+      ],
+      "properties": {
+        "id": {
+          "anyOf": [
+            { "const": "Darwin-arm64-none" },
+            { "const": "Darwin-x86_64-none" },
+            { "const": "Linux-x86_64-glibc" }
+          ]
+        },
+        "os": {
+          "anyOf": [
+            { "const": "Darwin" },
+            { "const": "Linux" }
+          ]
+        },
+        "arch": {
+          "anyOf": [
+            { "const": "arm64" },
+            { "const": "x86_64" }
+          ]
+        },
+        "system_libc": {
+          "$ref": "#/$defs/systemLibc"
+        }
+      }
+    },
+    "safetyEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schema_path",
+        "host",
+        "os",
+        "arch",
+        "libc",
+        "system_libc",
+        "certification",
+        "archive_origin",
+        "source_git_commit",
+        "source_git_dirty",
+        "archive_sha256",
+        "evidence_sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^evidence/safety/(gemini|codex|copilot|claude)-(Darwin-(arm64|x86_64)-none|Linux-x86_64-glibc)\\.json$"
+        },
+        "schema_path": {
+          "anyOf": [
+            {
+              "const": "scripts/dev/native-host/evidence.schema.json"
+            },
+            {
+              "const": "scripts/dev/native-host/codex-evidence.schema.json"
+            },
+            {
+              "const": "scripts/dev/native-host/copilot-evidence.schema.json"
+            },
+            {
+              "const": "scripts/dev/native-host/claude-evidence.schema.json"
+            }
+          ]
+        },
+        "host": {
+          "anyOf": [
+            {
+              "const": "gemini"
+            },
+            {
+              "const": "codex"
+            },
+            {
+              "const": "copilot"
+            },
+            {
+              "const": "claude"
+            }
+          ]
+        },
+        "os": {
+          "anyOf": [
+            {
+              "const": "Darwin"
+            },
+            {
+              "const": "Linux"
+            }
+          ]
+        },
+        "arch": {
+          "anyOf": [
+            { "const": "arm64" },
+            { "const": "x86_64" }
+          ]
+        },
+        "libc": {
+          "$ref": "#/$defs/systemLibc"
+        },
+        "system_libc": {
+          "$ref": "#/$defs/systemLibc"
+        },
+        "certification": {
+          "const": "execution-certified"
+        },
+        "archive_origin": {
+          "const": "workspace-build"
+        },
+        "source_git_commit": {
+          "$ref": "#/$defs/gitOid"
+        },
+        "source_git_dirty": {
+          "const": false
+        },
+        "archive_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "evidence_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "awmEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schema_path",
+        "os",
+        "arch",
+        "libc",
+        "system_libc",
+        "certification",
+        "archive_origin",
+        "archive_sha256",
+        "evidence_sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^evidence/awm-chain/(Darwin-(arm64|x86_64)-none|Linux-x86_64-glibc)\\.json$"
+        },
+        "schema_path": {
+          "const": "scripts/dev/native-host/awm-chain-evidence.schema.json"
+        },
+        "os": {
+          "anyOf": [
+            {
+              "const": "Darwin"
+            },
+            {
+              "const": "Linux"
+            }
+          ]
+        },
+        "arch": {
+          "anyOf": [
+            { "const": "arm64" },
+            { "const": "x86_64" }
+          ]
+        },
+        "libc": {
+          "$ref": "#/$defs/systemLibc"
+        },
+        "system_libc": {
+          "$ref": "#/$defs/systemLibc"
+        },
+        "certification": {
+          "const": "native-awm-chain-execution-certified"
+        },
+        "archive_origin": {
+          "const": "external-input"
+        },
+        "archive_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "evidence_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    }
+  }
+}

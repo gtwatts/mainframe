@@ -1153,14 +1153,34 @@ agent_loop_restore() {
     local checkpoint
     checkpoint=$(cat "$checkpoint_file")
     
-    # Extract state from checkpoint
-    local saved_state
-    saved_state=$(json_get "$checkpoint" "state" 2>/dev/null || echo "")
+    # Extract and validate the nested state object from the exact checkpoint
+    # format produced by _agent_loop_checkpoint. The generic json_get helper
+    # intentionally supports only scalars, so it must not parse this object.
+    local saved_state=""
+    if json_valid "$checkpoint" &&
+        [[ "$checkpoint" == '{"checkpoint_time":'* ]] &&
+        [[ "$checkpoint" == *',"state":{'* ]] &&
+        [[ "${checkpoint: -2}" == '}}' ]]; then
+        saved_state="${checkpoint#*,\"state\":}"
+        saved_state="${saved_state%?}"
+        if [[ "$saved_state" != \{*\} ]] || ! json_valid "$saved_state"; then
+            saved_state=""
+        fi
+    fi
     
     if [[ -z "$saved_state" ]]; then
         json_object \
             "success:bool=false" \
             "error=Invalid checkpoint format"
+        return 0
+    fi
+
+    local saved_name
+    saved_name=$(json_get "$saved_state" "name" 2>/dev/null || true)
+    if [[ "$saved_name" != "$name" ]]; then
+        json_object \
+            "success:bool=false" \
+            "error=Checkpoint agent identity does not match '$name'"
         return 0
     fi
     

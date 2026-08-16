@@ -1409,13 +1409,42 @@ tar_stream_create() {
 tar_stream_extract() {
     local dest="."
     local compress=""
+    local destination_seen=0
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --gzip|-z) compress="-z"; shift ;;
             --bzip2|-j) compress="-j"; shift ;;
             --xz|-J) compress="-J"; shift ;;
-            *) dest="$1"; shift ;;
+            --help|-h)
+                printf 'Usage: tar_stream_extract [--gzip|--bzip2|--xz] [destination]\n'
+                return 0
+                ;;
+            --)
+                shift
+                if [[ $# -gt 1 ]]; then
+                    echo '{"error":"multiple destinations provided"}' >&2
+                    return 1
+                fi
+                if [[ $# -eq 1 ]]; then
+                    dest="$1"
+                    destination_seen=1
+                    shift
+                fi
+                ;;
+            -*)
+                echo '{"error":"unsupported stream extraction option"}' >&2
+                return 1
+                ;;
+            *)
+                if [[ $destination_seen -eq 1 ]]; then
+                    echo '{"error":"multiple destinations provided"}' >&2
+                    return 1
+                fi
+                dest="$1"
+                destination_seen=1
+                shift
+                ;;
         esac
     done
 

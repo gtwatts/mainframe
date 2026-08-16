@@ -658,6 +658,7 @@ llm_stream_token_count() {
 # Usage: llm_stream_simple "url" "payload" "headers..."
 llm_stream_simple() {
     # Token callback that prints to stdout
+    # shellcheck disable=SC2329  # Registered by name with llm_stream_on_token.
     _llm_stream_simple_token() {
         printf '%s' "$1"
     }

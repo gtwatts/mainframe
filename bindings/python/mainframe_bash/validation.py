@@ -4,9 +4,8 @@ MAINFRAME Validation Functions - Python wrappers for input validation.
 Wraps validation.sh functions: validate_*, sanitize_*, etc.
 """
 
-from typing import Optional, Union
-
-from .core import call_function, MainframeFunctionError
+from .core import MainframeFunctionError
+from .core import _legacy_call_function as call_function
 
 
 def validate_email(email: str) -> bool:
@@ -66,9 +65,9 @@ def validate_uuid(value: str) -> bool:
 
 
 def validate_int(
-    value: Union[str, int],
-    min_val: Optional[int] = None,
-    max_val: Optional[int] = None,
+    value: str | int,
+    min_val: int | None = None,
+    max_val: int | None = None,
 ) -> bool:
     """
     Validate integer with optional range.
@@ -98,7 +97,7 @@ def validate_int(
     return code == 0
 
 
-def validate_float(value: Union[str, float]) -> bool:
+def validate_float(value: str | float) -> bool:
     """
     Validate floating point number.
 
@@ -117,7 +116,7 @@ def validate_float(value: Union[str, float]) -> bool:
     return code == 0
 
 
-def validate_bool(value: Union[str, bool]) -> bool:
+def validate_bool(value: str | bool) -> bool:
     """
     Validate boolean value.
 
@@ -253,7 +252,7 @@ def validate_domain(domain: str) -> bool:
     return code == 0
 
 
-def validate_hex(value: str, length: Optional[int] = None) -> bool:
+def validate_hex(value: str, length: int | None = None) -> bool:
     """
     Validate hexadecimal string.
 
@@ -296,7 +295,7 @@ def validate_path(path: str, path_type: str = "any") -> bool:
     return code == 0
 
 
-def validate_path_safe(path: str, base_dir: Optional[str] = None) -> bool:
+def validate_path_safe(path: str, base_dir: str | None = None) -> bool:
     """
     Validate path is safe (no traversal attacks).
 
@@ -344,8 +343,8 @@ def validate_filename(name: str) -> bool:
 
 def validate_length(
     value: str,
-    min_len: Optional[int] = None,
-    max_len: Optional[int] = None,
+    min_len: int | None = None,
+    max_len: int | None = None,
 ) -> bool:
     """
     Validate string length.

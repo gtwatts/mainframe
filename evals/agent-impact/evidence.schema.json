@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-evidence-v1.json",
+  "title": "MAINFRAME Agent Impact Protocol evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "claim_scope",
+    "protocol",
+    "runtime",
+    "execution",
+    "pairs",
+    "aggregate",
+    "non_claims",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "mainframe-agent-impact-evidence" },
+    "claim_scope": { "const": "fixture-runner-protocol-conformance-only" },
+    "protocol": { "type": "object" },
+    "runtime": { "type": "object" },
+    "execution": { "type": "object" },
+    "pairs": { "type": "array", "minItems": 1 },
+    "aggregate": { "type": "object" },
+    "non_claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "real_provider_inference",
+        "agent_quality",
+        "productivity",
+        "comparative_agent_performance",
+        "live_agent_sessions"
+      ],
+      "properties": {
+        "real_provider_inference": { "const": "not-run" },
+        "agent_quality": { "const": "not-measured" },
+        "productivity": { "const": "not-measured" },
+        "comparative_agent_performance": { "const": "not-measured" },
+        "live_agent_sessions": { "const": 0 }
+      }
+    },
+    "limitations": { "type": "object" }
+  }
+}

@@ -13,6 +13,10 @@
 [[ -n "${_MAINFRAME_PATH_LOADED:-}" ]] && return 0
 readonly _MAINFRAME_PATH_LOADED=1
 
+# Core absolute/relative predicates are owned by pure-file. Loading the
+# dependency keeps direct path.sh users compatible without redefining them.
+source "${BASH_SOURCE[0]%/*}/pure-file.sh"
+
 # =============================================================================
 # PATH NORMALIZATION
 # =============================================================================
@@ -593,18 +597,6 @@ path_common_prefix() {
 # =============================================================================
 # PATH CHECKS
 # =============================================================================
-
-# Check if path is absolute
-# Usage: path_is_absolute "/foo/bar" && echo "yes"
-path_is_absolute() {
-    [[ "$1" == /* ]]
-}
-
-# Check if path is relative
-# Usage: path_is_relative "foo/bar" && echo "yes"
-path_is_relative() {
-    [[ "$1" != /* ]]
-}
 
 # Check if path contains parent reference (..)
 # Usage: path_has_parent_ref "../foo" && echo "yes"

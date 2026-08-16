@@ -1,0 +1,55 @@
+#!/bin/sh
+# Compatibility command with the same isolated startup boundary.
+set -eu
+
+case "$0" in
+    */*) launcher=$0 ;;
+    *)
+        launcher=$(command -v "$0") || {
+            printf '%s\n' 'mainframe-mcp: isolated launcher path is unavailable' >&2
+            exit 78
+        }
+        ;;
+esac
+case "$launcher" in
+    /*) ;;
+    *) launcher=$PWD/$launcher ;;
+esac
+
+# uv tool and pipx expose this script through a public-bin symlink. Resolve a
+# bounded link chain portably (macOS has no readlink -f) before looking for the
+# environment's sibling Python interpreter.
+links=0
+while [ -L "$launcher" ]; do
+    links=$((links + 1))
+    if [ "$links" -gt 16 ]; then
+        printf '%s\n' 'mainframe-mcp: isolated launcher symlink chain is unsafe' >&2
+        exit 78
+    fi
+    target=$(/usr/bin/readlink "$launcher") || {
+        printf '%s\n' 'mainframe-mcp: isolated launcher symlink is unreadable' >&2
+        exit 78
+    }
+    case "$target" in
+        /*) launcher=$target ;;
+        *) launcher=${launcher%/*}/$target ;;
+    esac
+done
+bin_dir=${launcher%/*}
+if ! cd -P -- "$bin_dir" 2>/dev/null; then
+    printf '%s\n' 'mainframe-mcp: isolated launcher directory is unavailable' >&2
+    exit 78
+fi
+bin_dir=$PWD
+
+python=$bin_dir/python3
+if [ ! -x "$python" ]; then
+    python=$bin_dir/python
+fi
+if [ ! -x "$python" ]; then
+    printf '%s\n' 'mainframe-mcp: isolated environment Python is unavailable' >&2
+    exit 78
+fi
+
+unset PYTHONHOME PYTHONINSPECT PYTHONPATH PYTHONSTARTUP
+exec "$python" -I -m mainframe_mcp "$@"

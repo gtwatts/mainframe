@@ -31,24 +31,40 @@ if [[ ! -f "$INPUT_PATH" ]]; then
     exit 1
 fi
 
+# Owner-parity (A++ Phase 0): completions/signatures must show exactly one
+# registration per function name — the canonical owner from MANIFEST.json's
+# name_index. Fail closed when the manifest is missing: an ambiguous agent
+# surface is worse than no surface.
+MANIFEST_PATH="$PROJECT_ROOT/MANIFEST.json"
+if [[ ! -f "$MANIFEST_PATH" ]]; then
+    echo "Error: MANIFEST.json not found — run scripts/generate-manifest.py first" >&2
+    exit 1
+fi
+
+# name -> owner module (canonical ID mf:<pack>:<module>:<name>; module is the
+# third segment)
+OWNERS_JSON=$(jq -c '.name_index | with_entries(.value = (.value | split(":")[2]))' "$MANIFEST_PATH")
+
 # Generate LSP-optimized metadata with rich information
-jq '
+jq --argjson owners "$OWNERS_JSON" '
 {
   version: .version,
   generated: (now | todate),
   index_format: "lsp-2.0",
 
   # Flatten functions into completion items with rich metadata
+  # (owner-parity: keep only the canonical owner registration)
   completions: [
     .libraries | to_entries[] |
     .key as $lib_name |
     .value as $lib |
     select(.value.functions != null) |
     .value.functions | to_entries[] |
+    select($owners[.key] == $lib_name) |
     {
       label: .key,
       kind: "Function",
-      detail: .value.signature // .key,
+      detail: (.value.signature // .key),
       documentation: (
         (.value.description // "MAINFRAME function") +
         (if .value.signature then ("\n\n**Signature:**\n```bash\n" + .value.signature + "\n```") else "" end) +
@@ -68,10 +84,10 @@ jq '
       filterText: (.key + " " + $lib_name + " " + ($lib.description // "") | ascii_downcase),
 
       # Tags for categorization
-      tags: [
+      tags: ([
         ($lib.category // "other")
       ] + (if .value.pure == true then ["pure"] else [] end)
-        + (if .value.idempotent == true then ["idempotent"] else [] end),
+        + (if .value.idempotent == true then ["idempotent"] else [] end)),
 
       # Rich metadata for LSP features
       data: {
@@ -92,11 +108,13 @@ jq '
   ],
 
   # Build signature help index
+  # (owner-parity: keep only the canonical owner registration)
   signatures: [
     .libraries | to_entries[] |
     .key as $lib_name |
     select(.value.functions != null) |
     .value.functions | to_entries[] |
+    select($owners[.key] == $lib_name) |
     select(.value.params != null and (.value.params | length) > 0) |
     {
       function: .key,
@@ -138,11 +156,11 @@ jq '
     })
   ),
 
-  # Function count for validation
+  # Function count for validation (owner-filtered: counts unique exposed names)
   stats: {
-    total_completions: ([.libraries | to_entries[] | select(.value.functions != null) | .value.functions | keys[]] | length),
+    total_completions: ([.libraries | to_entries[] | .key as $lib | .value.functions | to_entries[] | select($owners[.key] == $lib)] | length),
     total_libraries: (.libraries | keys | length),
-    total_signatures: ([.libraries | to_entries[] | select(.value.functions != null) | .value.functions | to_entries[] | select(.value.params != null and (.value.params | length) > 0)] | length),
+    total_signatures: ([.libraries | to_entries[] | .key as $lib | .value.functions | to_entries[] | select($owners[.key] == $lib) | select(.value.params != null and (.value.params | length) > 0)] | length),
     categories: (.stats.categories // [])
   }
 }

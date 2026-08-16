@@ -1,22 +1,37 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 # =============================================================================
 # MAINFRAME/scripts/generate-sbom.sh - SBOM + checksum manifest generator
 # =============================================================================
 # Generates:
-#   SHA256SUMS          - flat checksum manifest for release-critical files
-#                         (installer, libs, CLI, registry, VERSION)
+#   SHA256SUMS          - flat checksum manifest for the shared release payload
+#                         (excluding the self-describing sbom.json)
 #   sbom.json           - CycloneDX-lite software bill of materials
 #
 # Usage: scripts/generate-sbom.sh [--output-dir DIR]
 # Verify:  scripts/generate-sbom.sh --check   (exit 1 if drift)
 # =============================================================================
 
+if [[ "$-" != *p* ]]; then
+    /bin/bash --noprofile --norc -p -- "$0" "$@"
+else
+_MAINFRAME_RELEASE_SOURCE="${BASH_SOURCE[0]}"
+case "$_MAINFRAME_RELEASE_SOURCE" in
+    */*) _MAINFRAME_RELEASE_SOURCE_DIR="${_MAINFRAME_RELEASE_SOURCE%/*}" ;;
+    *) _MAINFRAME_RELEASE_SOURCE_DIR=. ;;
+esac
+SCRIPT_DIR="$(builtin cd -- "$_MAINFRAME_RELEASE_SOURCE_DIR" && builtin pwd -P)"
+# shellcheck source=scripts/dev/release-runtime.sh
+builtin source "$SCRIPT_DIR/dev/release-runtime.sh"
+mainframe_release_bootstrap "$0" "$@" || exit $?
+builtin unset _MAINFRAME_RELEASE_SOURCE _MAINFRAME_RELEASE_SOURCE_DIR
+
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUT_DIR="$ROOT"
 CHECK=0
+# shellcheck source=scripts/dev/release-payload.sh
+source "$SCRIPT_DIR/dev/release-payload.sh"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -41,13 +56,51 @@ _sbom_sha256() {
 
 VERSION="$(tr -d '[:space:]' < VERSION)"
 
-# Files that make up the verifiable release payload
-mapfile -t FILES < <(
-    {
-        printf '%s\n' VERSION install.sh get-mainframe.sh mainframe FUNCTIONS.json
-        find lib bin hooks completions scripts/security -type f 2>/dev/null
-    } | sort
-)
+# The archive, checksum manifest, and SBOM all use one payload inventory.
+# sbom.json cannot hash itself; the archive's internal SHA256SUMS hashes it.
+# Do not use only process substitution here: mapfile would hide an inventory
+# failure and could turn a missing release root into an apparently valid SBOM.
+tmp_inventory=$(mktemp)
+if ! mainframe_release_payload_files "$ROOT" > "$tmp_inventory"; then
+    rm -f "$tmp_inventory"
+    exit 1
+fi
+mapfile -t FILES < <(grep -v '^sbom\.json$' "$tmp_inventory")
+rm -f "$tmp_inventory"
+if [[ ${#FILES[@]} -eq 0 ]]; then
+    printf 'release payload inventory is empty\n' >&2
+    exit 1
+fi
+
+resolve_source_epoch() {
+    local epoch="${SOURCE_DATE_EPOCH:-}"
+
+    if [[ -z "$epoch" ]] && git -C "$ROOT" rev-parse --is-inside-work-tree \
+        >/dev/null 2>&1; then
+        epoch="$(git -C "$ROOT" log -1 --format=%ct 2>/dev/null || true)"
+    fi
+    epoch="${epoch:-0}"
+    [[ "$epoch" =~ ^[0-9]+$ ]] || {
+        printf 'SOURCE_DATE_EPOCH must be a non-negative integer\n' >&2
+        return 1
+    }
+    printf '%s\n' "$epoch"
+}
+
+format_epoch_utc() {
+    local epoch="$1"
+    local format="$2"
+
+    if date -u -d "@$epoch" "+$format" >/dev/null 2>&1; then
+        date -u -d "@$epoch" "+$format"
+    else
+        date -u -r "$epoch" "+$format"
+    fi
+}
+
+SOURCE_EPOCH="$(resolve_source_epoch)"
+SBOM_TIMESTAMP="$(format_epoch_utc "$SOURCE_EPOCH" '%Y-%m-%dT%H:%M:%SZ')"
+GENERATED_DATE="$(format_epoch_utc "$SOURCE_EPOCH" '%Y-%m-%d')"
 
 tmp_sums=$(mktemp)
 tmp_sbom=$(mktemp)
@@ -59,15 +112,29 @@ tmp_sbom=$(mktemp)
     done
 } > "$tmp_sums"
 
+PAYLOAD_DIGEST="$(_sbom_sha256 "$tmp_sums")"
+SBOM_SERIAL="$("$MAINFRAME_RELEASE_PYTHON" -I -S -B - \
+    "$VERSION" "$PAYLOAD_DIGEST" <<'PYEOF'
+import sys
+import uuid
+
+version, digest = sys.argv[1:]
+identity = f"https://github.com/gtwatts/mainframe/sbom/{version}/{digest}"
+print(f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, identity)}")
+PYEOF
+)"
+
 {
     printf '{\n'
     printf '  "bomFormat": "CycloneDX",\n'
     printf '  "specVersion": "1.5",\n'
+    printf '  "serialNumber": "%s",\n' "$SBOM_SERIAL"
     printf '  "version": 1,\n'
     printf '  "metadata": {\n'
-    printf '    "timestamp": "%s",\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    printf '    "timestamp": "%s",\n' "$SBOM_TIMESTAMP"
     printf '    "component": {\n'
     printf '      "type": "library",\n'
+    printf '      "bom-ref": "mainframe@%s",\n' "$VERSION"
     printf '      "name": "mainframe",\n'
     printf '      "version": "%s",\n' "$VERSION"
     printf '      "description": "AI-native bash runtime: safety-hardened function library and agent working memory",\n'
@@ -75,17 +142,20 @@ tmp_sbom=$(mktemp)
     printf '    }\n'
     printf '  },\n'
     printf '  "components": [\n'
-    first=1
+    printf '    {"type": "application", "bom-ref": "runtime:bash", "name": "Bash", "version": "4.4", "properties": [{"name": "mainframe:version-constraint", "value": ">=4.4"}]},\n'
+    printf '    {"type": "application", "bom-ref": "runtime:jq", "name": "jq", "properties": [{"name": "mainframe:requirement", "value": "required for agent enforcement and full metadata support"}]},\n'
+    printf '    {"type": "application", "bom-ref": "runtime:python", "name": "Python", "version": "3.9", "properties": [{"name": "mainframe:version-constraint", "value": ">=3.9 for Pi diagnosis and lifecycle"}, {"name": "mainframe:managed-host-version-constraint", "value": ">=3.10"}, {"name": "mainframe:requirement", "value": "Pi diagnosis/lifecycle and managed-host install, remove, and restore"}]}'
     for f in "${FILES[@]}"; do
         [[ -f "$f" ]] || continue
         size=$(wc -c < "$f" | tr -d '[:space:]')
         hash=$(_sbom_sha256 "$f")
-        (( first )) || printf ',\n'
-        first=0
+        printf ',\n'
         printf '    {"type": "file", "name": "%s", "hashes": [{"alg": "SHA-256", "content": "%s"}], "properties": [{"name": "size", "value": "%s"}]}' \
             "$f" "$hash" "$size"
     done
-    printf '\n  ]\n}\n'
+    printf '\n  ],\n'
+    printf '  "dependencies": [{"ref": "mainframe@%s", "dependsOn": ["runtime:bash", "runtime:jq", "runtime:python"]}]\n' "$VERSION"
+    printf '}\n'
 } > "$tmp_sbom"
 
 if (( CHECK )); then
@@ -99,17 +169,41 @@ if (( CHECK )); then
         echo "SHA256SUMS missing" >&2
         drift=1
     fi
+
+    if [[ -f "$OUT_DIR/sbom.json" ]]; then
+        if ! "$MAINFRAME_RELEASE_PYTHON" -I -S -B - \
+            "$OUT_DIR/sbom.json" "$tmp_sbom" <<'PYEOF'
+import json
+import sys
+
+def load(path):
+    with open(path, encoding="utf-8") as handle:
+        value = json.load(handle)
+    value.get("metadata", {}).pop("timestamp", None)
+    return value
+
+sys.exit(0 if load(sys.argv[1]) == load(sys.argv[2]) else 1)
+PYEOF
+        then
+            echo "sbom.json drift detected" >&2
+            drift=1
+        fi
+    else
+        echo "sbom.json missing" >&2
+        drift=1
+    fi
     rm -f "$tmp_sums" "$tmp_sbom"
     (( drift == 0 )) && echo "SBOM/checksums current"
     exit "$drift"
 fi
 
 {
-    printf '# MAINFRAME %s release checksums (generated %s)\n' "$VERSION" "$(date -u '+%Y-%m-%d')"
-    printf '# Verify: sha256sum -c SHA256SUMS --ignore-missing  (or: shasum -a 256 -c SHA256SUMS --ignore-missing)\n'
+    printf '# MAINFRAME %s release checksums (source date %s)\n' "$VERSION" "$GENERATED_DATE"
+    printf '# Every listed file is required; missing files are verification failures.\n'
     cat "$tmp_sums"
 } > "$OUT_DIR/SHA256SUMS"
 mv "$tmp_sbom" "$OUT_DIR/sbom.json"
 rm -f "$tmp_sums"
 
 echo "Generated SHA256SUMS (${#FILES[@]} files) and sbom.json for v$VERSION"
+fi

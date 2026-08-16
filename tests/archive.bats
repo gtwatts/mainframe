@@ -790,8 +790,18 @@ teardown() {
     tar_stream_create "$TEST_DIR/file1.txt" | tar_stream_extract "$TEST_DIR/stream_dest"
 
     local result
-    result=$(tar_stream_extract --help 2>/dev/null || echo "ok")
-    # Just verify the function exists and runs
+    result=$(tar_stream_extract --help)
+    assert_contains "$result" "Usage: tar_stream_extract"
+}
+
+@test "tar_stream_extract help and invalid options never read stdin" {
+    run tar_stream_extract --help
+    [ "$status" -eq 0 ]
+    assert_contains "$output" "Usage: tar_stream_extract"
+
+    run tar_stream_extract --unknown
+    [ "$status" -ne 0 ]
+    assert_contains "$output" "unsupported stream extraction option"
 }
 
 @test "gzip_stream compress mode" {

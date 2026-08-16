@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "scope": "Repository-controlled native safety, AWM, and shell-onboarding certifier code, release-evidence tooling, schemas, fixtures, dependency pins, and deterministic archive-building control files. Every listed file is bound to the tag, worktree, and final runtime archive; installed node_modules are bound separately by runtime digests.",
+  "files": [
+    {
+      "path": "VERSION",
+      "role": "release-version"
+    },
+    {
+      "path": "lib/host_lifecycle.sh",
+      "role": "managed-host-lifecycle"
+    },
+    {
+      "path": "lib/host_runtime.sh",
+      "role": "managed-host-resolver"
+    },
+    {
+      "path": "scripts/build-release-archive.sh",
+      "role": "release-archive-builder"
+    },
+    {
+      "path": "scripts/dev/build-release-tar.py",
+      "role": "release-archive-builder"
+    },
+    {
+      "path": "scripts/dev/certify-native-awm-chain.sh",
+      "role": "certifier-harness"
+    },
+    {
+      "path": "scripts/dev/certify-native-host.sh",
+      "role": "certifier-harness"
+    },
+    {
+      "path": "scripts/dev/certify-shell-onboarding.sh",
+      "role": "certifier-harness"
+    },
+    {
+      "path": "scripts/dev/native-host/acquire-managed-package.py",
+      "role": "managed-package-acquirer"
+    },
+    {
+      "path": "scripts/dev/native-host/assert-runner-platform.sh",
+      "role": "platform-validator"
+    },
+    {
+      "path": "scripts/dev/native-host/awm-chain-evidence.schema.json",
+      "role": "evidence-schema"
+    },
+    {
+      "path": "scripts/dev/native-host/build-release-evidence.py",
+      "role": "release-evidence-builder"
+    },
+    {
+      "path": "scripts/dev/native-host/certifier-inputs.json",
+      "role": "certifier-input-definition"
+    },
+    {
+      "path": "scripts/dev/native-host/certify-claude.sh",
+      "role": "certifier-harness"
+    },
+    {
+      "path": "scripts/dev/native-host/certify-codex.sh",
+      "role": "certifier-harness"
+    },
+    {
+      "path": "scripts/dev/native-host/certify-copilot.sh",
+      "role": "certifier-harness"
+    },
+    {
+      "path": "scripts/dev/native-host/claude-evidence.schema.json",
+      "role": "evidence-schema"
+    },
+    {
+      "path": "scripts/dev/native-host/claude-messages-server.py",
+      "role": "fixture-server"
+    },
+    {
+      "path": "scripts/dev/native-host/codex-evidence.schema.json",
+      "role": "evidence-schema"
+    },
+    {
+      "path": "scripts/dev/native-host/codex-responses-server.py",
+      "role": "fixture-server"
+    },
+    {
+      "path": "scripts/dev/native-host/copilot-chat-completions-server.py",
+      "role": "fixture-server"
+    },
+    {
+      "path": "scripts/dev/native-host/copilot-evidence.schema.json",
+      "role": "evidence-schema"
+    },
+    {
+      "path": "scripts/dev/native-host/evidence.schema.json",
+      "role": "evidence-schema"
+    },
+    {
+      "path": "scripts/dev/native-host/extract-managed-package.py",
+      "role": "managed-package-extractor"
+    },
+    {
+      "path": "scripts/dev/native-host/fixtures/claude-awm-chain.messages.json",
+      "role": "fixture"
+    },
+    {
+      "path": "scripts/dev/native-host/fixtures/claude-destroy.messages.json",
+      "role": "fixture"
+    },
+    {
+      "path": "scripts/dev/native-host/fixtures/codex-awm-chain.responses.json",
+      "role": "fixture"
+    },
+    {
+      "path": "scripts/dev/native-host/fixtures/codex-destroy.responses.json",
+      "role": "fixture"
+    },
+    {
+      "path": "scripts/dev/native-host/fixtures/copilot-awm-chain.chat-completions.json",
+      "role": "fixture"
+    },
+    {
+      "path": "scripts/dev/native-host/fixtures/copilot-destroy.chat-completions.json",
+      "role": "fixture"
+    },
+    {
+      "path": "scripts/dev/native-host/fixtures/gemini-awm-chain.responses.jsonl",
+      "role": "fixture"
+    },
+    {
+      "path": "scripts/dev/native-host/fixtures/gemini-destroy.responses.jsonl",
+      "role": "fixture"
+    },
+    {
+      "path": "scripts/dev/native-host/hash-package-tree.py",
+      "role": "integrity-helper"
+    },
+    {
+      "path": "scripts/dev/native-host/hosts.json",
+      "role": "host-manifest"
+    },
+    {
+      "path": "scripts/dev/native-host/managed-host-fs.py",
+      "role": "managed-host-filesystem-helper"
+    },
+    {
+      "path": "scripts/dev/native-host/package-lock.json",
+      "role": "dependency-lock"
+    },
+    {
+      "path": "scripts/dev/native-host/package.json",
+      "role": "dependency-manifest"
+    },
+    {
+      "path": "scripts/dev/native-host/release-evidence.schema.json",
+      "role": "release-evidence-schema"
+    },
+    {
+      "path": "scripts/dev/native-host/release-platforms.json",
+      "role": "release-platform-definition"
+    },
+    {
+      "path": "scripts/dev/native-host/safe-extract.py",
+      "role": "safe-extractor"
+    },
+    {
+      "path": "scripts/dev/native-host/validate-evidence.py",
+      "role": "evidence-validator"
+    },
+    {
+      "path": "scripts/dev/native-host/validate-native-executable.py",
+      "role": "native-executable-validator"
+    },
+    {
+      "path": "scripts/dev/release-payload.sh",
+      "role": "release-archive-builder"
+    },
+    {
+      "path": "scripts/dev/shell-onboarding-evidence.schema.json",
+      "role": "evidence-schema"
+    },
+    {
+      "path": "scripts/generate-sbom.sh",
+      "role": "release-archive-builder"
+    }
+  ]
+}

@@ -128,6 +128,20 @@ _heal_log() {
     fi
 }
 
+_heal_current_user() {
+    local current_user="${USER:-${LOGNAME:-}}"
+
+    if [[ -z "$current_user" ]] && command -v id >/dev/null 2>&1; then
+        current_user="$(id -un 2>/dev/null || true)"
+    fi
+
+    # Strategy strings are tokenized without eval. Skip an unusual account
+    # name rather than embedding shell syntax in a suggested command.
+    if [[ -n "$current_user" && "$current_user" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        printf '%s' "$current_user"
+    fi
+}
+
 
 # =============================================================================
 # COMMAND WRAPPING
@@ -664,6 +678,8 @@ heal_suggest() {
 _heal_suggest_permission() {
     local error="$1"
     local sugg=""
+    local current_user
+    current_user="$(_heal_current_user)"
     
     local path
     path=$(printf '%s' "$error" | grep -oE '/[^[:space:]]+' | head -1)
@@ -677,9 +693,9 @@ _heal_suggest_permission() {
     if [[ -n "$path" && -e "$path" ]]; then
         local owner
         owner=$(stat -c '%U' "$path" 2>/dev/null)
-        if [[ "$owner" != "$USER" ]]; then
+        if [[ -n "$current_user" && "$owner" != "$current_user" ]]; then
             [[ -n "$sugg" ]] && sugg+=","
-            sugg+='{"suggestion":"sudo chown '"$USER"' '"$path"'","confidence":0.70,"description":"Change file ownership to current user"}'
+            sugg+='{"suggestion":"sudo chown '"$current_user"' '"$path"'","confidence":0.70,"description":"Change file ownership to current user"}'
             sugg+=',{"suggestion":"sudo chmod u+w '"$path"'","confidence":0.60,"description":"Add write permission for user"}'
         fi
     fi
@@ -1322,6 +1338,8 @@ _heal_gather_context() {
     local context_spec="$1"
     local json="{"
     local first=true
+    local current_user
+    current_user="$(_heal_current_user)"
     
     IFS=',' read -ra ctx_parts <<< "$context_spec"
     
@@ -1335,7 +1353,7 @@ _heal_gather_context() {
             env)
                 [[ "$first" == "true" ]] || json+=","
                 first=false
-                json+='"user":"'"$USER"'","path":"'"${PATH//\"/\\\"}"'"'
+                json+='"user":"'"$(_heal_json_escape "$current_user")"'","path":"'"$(_heal_json_escape "${PATH:-}")"'"'
                 ;;
             command)
                 [[ "$first" == "true" ]] || json+=","
@@ -1432,13 +1450,23 @@ heal_stats() {
 # =============================================================================
 
 _heal_init() {
+    local current_user home_dir
+    current_user="$(_heal_current_user)"
+    home_dir="${HOME:-}"
+
     mkdir -p "$HEAL_STATE_DIR" 2>/dev/null || true
     
     # NOTE: Strategy fix commands are resolved at registration time (no shell
     # expansion at execution time) to avoid command injection via _heal_safe_execute.
-    heal_register_strategy "npm.*EACCES" "sudo chown -R $USER $HOME/.npm" &>/dev/null || true
+    if [[ -n "$current_user" && -n "$home_dir" ]]; then
+        heal_register_strategy "npm.*EACCES" \
+            "sudo chown -R $current_user $home_dir/.npm" &>/dev/null || true
+    fi
     heal_register_strategy "pip.*Permission" "pip install --user" &>/dev/null || true
-    heal_register_strategy "docker.*permission" "sudo usermod -aG docker $USER" &>/dev/null || true
+    if [[ -n "$current_user" ]]; then
+        heal_register_strategy "docker.*permission" \
+            "sudo usermod -aG docker $current_user" &>/dev/null || true
+    fi
     
     _heal_log debug "heal: initialized v$HEAL_VERSION"
 }

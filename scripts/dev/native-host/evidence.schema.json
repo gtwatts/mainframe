@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/native-host-evidence-v1.json",
+  "title": "MAINFRAME native host execution certification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "certification",
+    "host",
+    "host_version",
+    "host_package_integrity",
+    "host_package_tree_sha256",
+    "host_executable_sha256",
+    "mainframe_version",
+    "archive_sha256",
+    "archive_origin",
+    "hook_config_sha256",
+    "os",
+    "arch",
+    "system_libc",
+    "source_git_commit",
+    "source_git_dirty",
+    "credential_mode",
+    "control_executions",
+    "protected_executions",
+    "audit",
+    "certified_at"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "certification": { "const": "execution-certified" },
+    "host": { "const": "gemini" },
+    "host_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "host_package_integrity": { "type": "string", "pattern": "^sha512-[A-Za-z0-9+/]+={0,2}$" },
+    "host_package_tree_sha256": { "$ref": "#/$defs/sha256" },
+    "host_executable_sha256": { "$ref": "#/$defs/sha256" },
+    "mainframe_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "archive_sha256": { "$ref": "#/$defs/sha256" },
+    "archive_origin": {
+      "anyOf": [
+        { "const": "workspace-build" },
+        { "const": "external-input" }
+      ]
+    },
+    "hook_config_sha256": { "$ref": "#/$defs/sha256" },
+    "os": {
+      "anyOf": [
+        { "const": "Darwin" },
+        { "const": "Linux" }
+      ]
+    },
+    "arch": {
+      "anyOf": [
+        { "const": "arm64" },
+        { "const": "aarch64" },
+        { "const": "x86_64" }
+      ]
+    },
+    "system_libc": {
+      "anyOf": [
+        { "const": "none" },
+        { "const": "glibc" },
+        { "const": "musl" }
+      ]
+    },
+    "source_git_commit": {
+      "anyOf": [
+        { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        { "const": "unknown" }
+      ]
+    },
+    "source_git_dirty": {
+      "anyOf": [
+        { "type": "boolean" },
+        { "type": "null" }
+      ]
+    },
+    "credential_mode": { "const": "gemini-fake-responses-no-external-credentials" },
+    "control_executions": { "const": 1 },
+    "protected_executions": { "const": 0 },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["host", "event", "tool", "risk", "rule", "decision", "records", "mode"],
+      "properties": {
+        "host": { "const": "gemini" },
+        "event": { "const": "BeforeTool" },
+        "tool": { "const": "run_shell_command" },
+        "risk": { "const": "high" },
+        "rule": { "const": "terraform-destroy" },
+        "decision": { "const": "deny" },
+        "records": { "const": 1 },
+        "mode": { "const": "600" }
+      }
+    },
+    "certified_at": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "anyOf": [
+        {
+          "properties": {
+            "os": { "const": "Darwin" },
+            "system_libc": { "const": "none" }
+          }
+        },
+        {
+          "properties": {
+            "os": { "const": "Linux" },
+            "system_libc": {
+              "anyOf": [
+                { "const": "glibc" },
+                { "const": "musl" }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

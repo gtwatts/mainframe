@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-local-runner-request-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "study_id", "plan_id", "pair_id", "opaque_arm_id", "task_id", "phase", "workspace", "prompt_path", "context_path", "artifact_dir", "result_path", "budgets", "environment_contract"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "kind": {"const": "mainframe-agent-impact-local-run-request"},
+    "study_id": {"const": "local-development-smoke-v1"},
+    "plan_id": {"type": "string", "pattern": "^plan-[0-9a-f]{16}$"},
+    "pair_id": {"type": "string", "pattern": "^pair-[0-9a-f]{16}$"},
+    "opaque_arm_id": {"type": "string", "pattern": "^arm-[0-9a-f]{16}$"},
+    "task_id": {"const": "local-001"},
+    "phase": {"enum": ["investigate", "implement"]},
+    "workspace": {"type": "string", "minLength": 1},
+    "prompt_path": {"type": "string", "minLength": 1},
+    "context_path": {"type": ["string", "null"]},
+    "artifact_dir": {"type": "string", "minLength": 1},
+    "result_path": {"type": "string", "minLength": 1},
+    "budgets": {
+      "type": "object", "additionalProperties": false,
+      "required": ["wall_seconds", "maximum_tool_calls", "maximum_continuation_bytes"],
+      "properties": {"wall_seconds": {"const": 5}, "maximum_tool_calls": {"const": 10}, "maximum_continuation_bytes": {"const": 4096}}
+    },
+    "environment_contract": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fresh_per_phase", "allowed_environment_names"],
+      "properties": {
+        "fresh_per_phase": {"const": true},
+        "allowed_environment_names": {
+          "const": ["CI", "HOME", "LANG", "LC_ALL", "LOGNAME", "MAINFRAME_LOCAL_PROTOCOL", "NO_COLOR", "PATH", "PYTHONDONTWRITEBYTECODE", "TMPDIR", "USER", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "__CF_USER_TEXT_ENCODING"]
+        }
+      }
+    }
+  }
+}

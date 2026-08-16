@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 # =============================================================================
 # MAINFRAME CLI
 # =============================================================================
@@ -7,9 +7,11 @@
 # Commands:
 #   version     Show MAINFRAME version
 #   functions   List all available functions
+#   invoke      Invoke one reviewed canonical manifest export
 #   help        Show detailed help for a specific function
 #   search      Search functions by name or description
 #   awm         Agent Working Memory lifecycle, retrieval, and handoff tools
+#   work        Build a read-only task brief from existing project memory
 #   quickref    Show compact function signatures (with --search for lookup)
 #   fzf         Interactive fuzzy finder for functions (requires fzf)
 #   explore     TUI browser for functions (requires dialog/whiptail)
@@ -17,17 +19,549 @@
 #   benchmark   Run performance benchmarks
 #   test        Run test suite
 #   doctor      Check MAINFRAME installation
+#   shell       Inspect or repair Bash/zsh integration identity
+#   agent-hook  Enforce shell-command policy as an AI host pre-tool hook
+#   protect     Inspect project enforcement readiness
+#   host        Inspect or manage private coding-agent host runtimes
+#   pi          Diagnose, install, or remove the native Pi package integration
+#   setup       Discover shells/hosts or explicitly onboard one host
+#   onboard     Preview, consent to, and verify one protected host setup
+#   launch      Preflight and start one onboarded coding-agent host
 #   update      Update MAINFRAME (if installed via git)
+#   upgrade     Install an explicitly selected verified release archive
+#   release     Report offline release readiness without claiming remote proof
+#   uninstall   Run the installation-owned recoverable uninstaller
 # =============================================================================
+
+# An explicit unprivileged `bash bin/mainframe` can import functions whose
+# names shadow even launch primitives such as `set` and `builtin`. Enter the
+# fixed protected system Bash before executing any command in that process;
+# the protected Bash 3.2-compatible bootstrap below then selects Bash 4.4+.
+case "$-" in
+    *p*)
 
 set -euo pipefail
 
-# Determine MAINFRAME root directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# A protected launch may begin in a shell whose environment was shaped by the
+# project (for example through direnv). The interpreter for this file has
+# already started, so this cannot protect that initial process; it does ensure
+# that every later launch helper, bootstrap interpreter, and host process does
+# not inherit passive language-runtime or dynamic-loader injection hooks.
+# Keep this bootstrap compatible with Apple's Bash 3.2.
+_mainframe_cli_scrub_launch_code_loader_env() {
+    local function_name variable prefix
+
+    builtin unset -v BASHOPTS SHELLOPTS 2>/dev/null || true
+    builtin unset -v \
+        BASH_ENV BASH_LOADABLES_PATH BASH_XTRACEFD CDPATH ENV GLOBIGNORE \
+        NODE_OPTIONS NODE_PATH NODE_V8_COVERAGE NODE_REPL_HISTORY \
+        NODE_REDIRECT_WARNINGS \
+        PYTHONHOME PYTHONPATH PYTHONSTARTUP PYTHONINSPECT \
+        PYTHONWARNINGS PYTHONBREAKPOINT PYTHONUSERBASE PYTHONHASHSEED \
+        PERL5OPT PERL5LIB PERLLIB RUBYOPT RUBYLIB 2>/dev/null || return 1
+
+    for prefix in LD_ DYLD_; do
+        while IFS= read -r variable; do
+            builtin unset -v "$variable" 2>/dev/null || return 1
+        done < <(builtin compgen -A variable "$prefix")
+    done
+    while IFS= read -r function_name; do
+        if [[ "$function_name" == _mainframe_cli_scrub_launch_code_loader_env ]]; then
+            # shellcheck disable=SC2163 # The dynamic function name is intentional.
+            builtin export -n -f "$function_name" 2>/dev/null || return 1
+        else
+            builtin unset -f "$function_name" 2>/dev/null || return 1
+        fi
+    done < <(builtin compgen -A function)
+}
+
+_mainframe_cli_scrub_launch_code_loader_env || {
+    printf 'MAINFRAME could not clear inherited code-loader environment.\n' >&2
+    exit 1
+}
+unset -f _mainframe_cli_scrub_launch_code_loader_env
+
+if [[ -n "${MAINFRAME_BASH:-}" && "$MAINFRAME_BASH" != /* ]]; then
+    printf 'MAINFRAME_BASH must be an absolute reviewed Bash path; PATH names and relative paths are never executed.\n' >&2
+    exit 1
+fi
+
+# macOS login shells can let /etc/zprofile's path_helper place /usr/bin before
+# Homebrew, even when installation itself selected a supported Bash. Keep the
+# public launcher runnable under Apple's Bash 3.2 long enough to locate and
+# re-exec a verified Bash 4.4+; the runtime and gateway remain 4.4+ only.
+_mainframe_cli_bash_supported() {
+    local candidate="${1:-}"
+    [[ -x "$candidate" ]] || return 1
+    "$candidate" --noprofile --norc -p -c '
+        (( BASH_VERSINFO[0] > 4 )) ||
+        (( BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4 ))
+    ' >/dev/null 2>&1
+}
+
+# Resolve a candidate with fixed readlink paths before executing it. This
+# helper stays compatible with Apple's Bash 3.2 because it runs before the
+# supported-interpreter re-exec.
+_mainframe_cli_resolve_executable() {
+    local source="${1:-}" dir target links=0
+    [[ "$source" == /* ]] || return 1
+    while [[ -L "$source" ]]; do
+        (( links < 40 )) || return 1
+        links=$((links + 1))
+        dir="${source%/*}"
+        [[ -n "$dir" ]] || dir=/
+        dir="$(cd -- "$dir" 2>/dev/null && pwd -P)" || return 1
+        if [[ -x /usr/bin/readlink ]]; then
+            target="$(/usr/bin/readlink "$source")" || return 1
+        elif [[ -x /bin/readlink ]]; then
+            target="$(/bin/readlink "$source")" || return 1
+        else
+            return 1
+        fi
+        [[ "$target" == /* ]] && source="$target" || source="$dir/$target"
+    done
+    dir="${source%/*}"
+    [[ -n "$dir" ]] || dir=/
+    dir="$(cd -- "$dir" 2>/dev/null && pwd -P)" || return 1
+    source="$dir/${source##*/}"
+    [[ -f "$source" && -x "$source" ]] || return 1
+    [[ "$source" != *$'\n'* && "$source" != *$'\r'* &&
+       "$source" != *$'\t'* ]] || return 1
+    printf '%s\n' "$source"
+}
+
+# A protected launch under Apple's Bash 3.2 must not probe an ambient
+# project/direnv PATH entry by executing it as Bash. Only standard system and
+# package-manager layouts may bootstrap the launch command.
+_mainframe_cli_bash_allowed_for_launch() {
+    case "${1:-}" in
+        /usr/bin/bash|/bin/bash|/usr/local/bin/bash|\
+        /opt/local/bin/bash|\
+        /opt/homebrew/Cellar/*/bin/bash|/usr/local/Cellar/*/bin/bash|\
+        /home/linuxbrew/.linuxbrew/Cellar/*/bin/bash|/nix/store/*/bin/bash)
+            return 0
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+# MAINFRAME_BASH is an execution identity, not merely a fallback.  When it is
+# explicitly configured, enter that exact reviewed Bash even if the shebang or
+# caller already provided a different supported Bash (notably Linux /bin/bash).
+if [[ -n "${MAINFRAME_BASH:-}" ]]; then
+    _mainframe_cli_resolved="$(_mainframe_cli_resolve_executable \
+        "$MAINFRAME_BASH" 2>/dev/null || true)"
+    _mainframe_cli_active="$(_mainframe_cli_resolve_executable \
+        "${BASH:-}" 2>/dev/null || true)"
+    if [[ -z "$_mainframe_cli_resolved" ]] ||
+       ! _mainframe_cli_bash_allowed_for_launch "$_mainframe_cli_resolved" ||
+       ! _mainframe_cli_bash_supported "$_mainframe_cli_resolved"; then
+        printf 'MAINFRAME_BASH must resolve to a supported reviewed Bash 4.4+ installation.\n' >&2
+        exit 1
+    fi
+    if [[ -z "$_mainframe_cli_active" ||
+          "$_mainframe_cli_active" != "$_mainframe_cli_resolved" ]]; then
+        exec "$_mainframe_cli_resolved" --noprofile --norc -p "$0" "$@"
+    fi
+fi
+
+if (( BASH_VERSINFO[0] < 4 )) || \
+   (( BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4 )); then
+    _mainframe_cli_candidate=""
+    _mainframe_cli_resolved=""
+    if [[ -n "${MAINFRAME_BASH:-}" ]]; then
+        _mainframe_cli_resolved="$(_mainframe_cli_resolve_executable \
+            "$MAINFRAME_BASH" 2>/dev/null || true)"
+        if [[ -z "$_mainframe_cli_resolved" ]] ||
+           ! _mainframe_cli_bash_allowed_for_launch "$_mainframe_cli_resolved" ||
+           ! _mainframe_cli_bash_supported "$_mainframe_cli_resolved"; then
+            printf 'MAINFRAME_BASH must resolve to a supported reviewed Bash 4.4+ installation.\n' >&2
+            exit 1
+        fi
+        exec "$_mainframe_cli_resolved" --noprofile --norc -p "$0" "$@"
+    fi
+    for _mainframe_cli_candidate in \
+        /opt/homebrew/bin/bash \
+        /usr/local/bin/bash \
+        /home/linuxbrew/.linuxbrew/bin/bash \
+        /opt/local/bin/bash \
+        /usr/bin/bash \
+        /bin/bash; do
+        [[ -n "$_mainframe_cli_candidate" ]] || continue
+        _mainframe_cli_resolved="$(_mainframe_cli_resolve_executable \
+            "$_mainframe_cli_candidate" 2>/dev/null || true)"
+        [[ -n "$_mainframe_cli_resolved" ]] || continue
+        if ! _mainframe_cli_bash_allowed_for_launch "$_mainframe_cli_resolved"; then
+            continue
+        fi
+        if _mainframe_cli_bash_supported "$_mainframe_cli_resolved"; then
+            exec "$_mainframe_cli_resolved" --noprofile --norc -p "$0" "$@"
+        fi
+    done
+
+    printf 'MAINFRAME requires Bash 4.4+ at a supported fixed installation; set MAINFRAME_BASH to an absolute reviewed path (found %s).\n' \
+        "${BASH_VERSION:-unknown}" >&2
+    exit 1
+fi
+
+# Direct execution enters through the privileged shebang above. Explicit
+# `bash bin/mainframe ...` invocations are normalized here so BASH_ENV and
+# exported shell functions cannot influence the CLI after this bootstrap.
+case "$-" in
+    *p*) ;;
+    *)
+        _mainframe_cli_resolved="$(_mainframe_cli_resolve_executable \
+            "${BASH:-}" 2>/dev/null || true)"
+        [[ -n "$_mainframe_cli_resolved" ]] || {
+            printf 'MAINFRAME could not canonicalize the active Bash before protected re-entry.\n' >&2
+            exit 1
+        }
+        exec "$_mainframe_cli_resolved" --noprofile --norc -p "$0" "$@"
+        ;;
+esac
+unset -f _mainframe_cli_bash_supported
+unset -f _mainframe_cli_bash_allowed_for_launch
+unset -f _mainframe_cli_scrub_launch_code_loader_env
+unset _mainframe_cli_candidate _mainframe_cli_resolved _mainframe_cli_active
+
+# Determine MAINFRAME root directory, including when this executable is reached
+# through the installer-created symlink in ~/.local/bin.
+_MAINFRAME_CLI_INHERITED_ROOT="${MAINFRAME_ROOT:-}"
+CLI_SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$CLI_SOURCE" ]]; do
+    CLI_DIR="${CLI_SOURCE%/*}"
+    [[ "$CLI_DIR" != "$CLI_SOURCE" ]] || CLI_DIR=.
+    CLI_DIR="$(cd -- "$CLI_DIR" 2>/dev/null && pwd -P)" || exit 1
+    if [[ -x /usr/bin/readlink ]]; then
+        CLI_SOURCE="$(/usr/bin/readlink "$CLI_SOURCE")" || exit 1
+    elif [[ -x /bin/readlink ]]; then
+        CLI_SOURCE="$(/bin/readlink "$CLI_SOURCE")" || exit 1
+    else
+        exit 1
+    fi
+    [[ "$CLI_SOURCE" == /* ]] || CLI_SOURCE="$CLI_DIR/$CLI_SOURCE"
+done
+CLI_DIR="${CLI_SOURCE%/*}"
+[[ "$CLI_DIR" != "$CLI_SOURCE" ]] || CLI_DIR=.
+SCRIPT_DIR="$(cd -- "$CLI_DIR/.." 2>/dev/null && pwd -P)" || exit 1
 export MAINFRAME_ROOT="$SCRIPT_DIR"
+
+# Agent hooks run synchronously before every shell tool call. Dispatch this
+# narrow path before loading the general runtime to minimize latency and the
+# amount of code inside the enforcement boundary.
+case "${1:-}" in
+    agent-hook|agent-gateway)
+        shift
+        _mainframe_cli_jq_source="$(type -P jq 2>/dev/null || true)"
+        _mainframe_cli_jq_links=0
+        while [[ -L "$_mainframe_cli_jq_source" ]]; do
+            (( _mainframe_cli_jq_links < 40 )) || {
+                echo "MAINFRAME agent gateway failed: jq symlink traversal exceeded its limit" >&2
+                exit 2
+            }
+            _mainframe_cli_jq_links=$((_mainframe_cli_jq_links + 1))
+            _mainframe_cli_jq_dir="${_mainframe_cli_jq_source%/*}"
+            _mainframe_cli_jq_dir="$(cd -- "$_mainframe_cli_jq_dir" 2>/dev/null && pwd -P)" || exit 2
+            if [[ -x /usr/bin/readlink ]]; then
+                _mainframe_cli_jq_target="$(/usr/bin/readlink "$_mainframe_cli_jq_source")" || exit 2
+            elif [[ -x /bin/readlink ]]; then
+                _mainframe_cli_jq_target="$(/bin/readlink "$_mainframe_cli_jq_source")" || exit 2
+            else
+                exit 2
+            fi
+            if [[ "$_mainframe_cli_jq_target" == /* ]]; then
+                _mainframe_cli_jq_source="$_mainframe_cli_jq_target"
+            else
+                _mainframe_cli_jq_source="$_mainframe_cli_jq_dir/$_mainframe_cli_jq_target"
+            fi
+        done
+        _mainframe_cli_jq_dir="${_mainframe_cli_jq_source%/*}"
+        _mainframe_cli_jq_dir="$(cd -- "$_mainframe_cli_jq_dir" 2>/dev/null && pwd -P)" || exit 2
+        _mainframe_cli_jq_source="$_mainframe_cli_jq_dir/${_mainframe_cli_jq_source##*/}"
+        [[ -f "$_mainframe_cli_jq_source" && ! -L "$_mainframe_cli_jq_source" &&
+           -x "$_mainframe_cli_jq_source" ]] || {
+            echo "MAINFRAME agent gateway failed: jq is missing or unsafe" >&2
+            exit 2
+        }
+        case "$_mainframe_cli_jq_source" in
+            /usr/bin/jq|/bin/jq|/usr/local/bin/jq|/opt/local/bin/jq|\
+            /opt/homebrew/Cellar/*/bin/jq|/usr/local/Cellar/*/bin/jq|\
+            /home/linuxbrew/.linuxbrew/Cellar/*/bin/jq|/nix/store/*/bin/jq) ;;
+            *)
+                echo "MAINFRAME agent gateway failed: jq is outside a supported installation" >&2
+                exit 2
+                ;;
+        esac
+        _mainframe_cli_safety="$MAINFRAME_ROOT/lib/agent_safety.sh"
+        [[ "$_mainframe_cli_safety" == /* &&
+           -f "$_mainframe_cli_safety" && ! -L "$_mainframe_cli_safety" &&
+           -r "$_mainframe_cli_safety" ]] || {
+            echo "MAINFRAME agent gateway failed: safety policy is missing or unsafe" >&2
+            exit 2
+        }
+        # Invoke with the already-verified interpreter. A direct shebang
+        # launch could fall back to Apple's Bash 3.2 after zsh path_helper.
+        if MAINFRAME_AGENT_JQ="$_mainframe_cli_jq_source" \
+           MAINFRAME_AGENT_SAFETY="$_mainframe_cli_safety" \
+           "$BASH" --noprofile --norc -p \
+           "$MAINFRAME_ROOT/hooks/agent-gateway.sh" "$@"; then
+            exit 0
+        else
+            hook_status=$?
+            [[ "$hook_status" -eq 2 ]] || \
+                echo "MAINFRAME agent gateway failed (exit=$hook_status); denying tool call" >&2
+            exit 2
+        fi
+        ;;
+esac
+
+# The caller's PATH is untrusted process input. Preserve it only as data for
+# commands whose dedicated resolvers authenticate host/runtime dependencies,
+# then establish a fixed helper PATH before common.sh executes even one tool.
+# This keeps project-local tr/git/jq/hash shims outside every CLI initialization
+# and every lifecycle command. A few explicitly tool-oriented commands restore
+# the caller PATH only after common initialization has completed.
+_mainframe_cli_caller_path="${PATH:-}"
+_MAINFRAME_CLI_CALLER_PATH="$_mainframe_cli_caller_path"
+_mainframe_cli_restore_caller_path=false
+case "${1:-}" in
+    launch)
+        export _MAINFRAME_LAUNCH_DISCOVERY_PATH="$_mainframe_cli_caller_path"
+        ;;
+    host)
+        export _MAINFRAME_HOST_DISCOVERY_PATH="$_mainframe_cli_caller_path"
+        ;;
+    setup)
+        export _MAINFRAME_SETUP_DISCOVERY_PATH="$_mainframe_cli_caller_path"
+        if [[ -z "${_MAINFRAME_AGENT_DISCOVERY_PATH+x}" ]]; then
+            export _MAINFRAME_AGENT_DISCOVERY_PATH="$_mainframe_cli_caller_path"
+        fi
+        ;;
+    pi)
+        # Pi status/lifecycle never executes the discovered CLI. Preserve the
+        # caller PATH only as data so `pi doctor` can identify the executable
+        # the user's shell would select while the command itself stays on the
+        # fixed helper PATH below.
+        export _MAINFRAME_PI_DISCOVERY_PATH="$_mainframe_cli_caller_path"
+        ;;
+    onboard|activate|deactivate|protect)
+        # Nested onboarding CLI calls inherit the original discovery value;
+        # direct invocations capture their own caller PATH here.
+        if [[ -z "${_MAINFRAME_AGENT_DISCOVERY_PATH+x}" ]]; then
+            export _MAINFRAME_AGENT_DISCOVERY_PATH="$_mainframe_cli_caller_path"
+        fi
+        ;;
+    run|benchmark|bench|test|tests|build|fzf|fuzzy|browse|explore|tui)
+        _mainframe_cli_restore_caller_path=true
+        ;;
+esac
+
+PATH=/usr/bin:/bin:/usr/sbin:/sbin
+export PATH
+builtin hash -r
+
+# Bind lifecycle dependencies by canonical absolute path. Package-manager
+# locations remain supported without placing their neighboring executables on
+# PATH, and source/release ownership checks never resolve ambient shims.
+_mainframe_cli_tool_layout_is_known() {
+    local tool="$1" candidate="$2" prefix remainder version store_entry
+
+    case "$tool:$candidate" in
+        jq:/bin/jq|jq:/usr/bin/jq|jq:/usr/local/bin/jq|jq:/opt/local/bin/jq)
+            return 0
+            ;;
+        git:/bin/git|git:/usr/bin/git|git:/opt/local/bin/git)
+            return 0
+            ;;
+    esac
+
+    if [[ "$tool" == "jq" ]]; then
+        case "$candidate" in
+            /nix/store/*/bin/jq)
+                remainder="${candidate#/nix/store/}"
+                store_entry="${remainder%%/*}"
+                [[ -n "$store_entry" && "$remainder" == "$store_entry/bin/jq" ]]
+                return
+                ;;
+        esac
+    fi
+
+    for prefix in \
+        "/opt/homebrew/Cellar/$tool/" \
+        "/usr/local/Cellar/$tool/" \
+        "/home/linuxbrew/.linuxbrew/Cellar/$tool/"; do
+        case "$candidate" in
+            "$prefix"*)
+                remainder="${candidate#"$prefix"}"
+                version="${remainder%%/*}"
+                [[ -n "$version" && "$remainder" == "$version/bin/$tool" ]]
+                return
+                ;;
+        esac
+    done
+    return 1
+}
+
+_mainframe_cli_owner_mode() {
+    local path="$1" result owner mode
+    if [[ -x /usr/bin/stat ]]; then
+        result="$(/usr/bin/stat -c '%u %a' "$path" 2>/dev/null ||
+            /usr/bin/stat -f '%u %Mp%Lp' "$path" 2>/dev/null)" || return 1
+    elif [[ -x /bin/stat ]]; then
+        result="$(/bin/stat -c '%u %a' "$path" 2>/dev/null ||
+            /bin/stat -f '%u %Mp%Lp' "$path" 2>/dev/null)" || return 1
+    else
+        return 1
+    fi
+    [[ "$result" =~ ^[0-9]+\ [0-7]{3,4}$ ]] || return 1
+    read -r owner mode <<< "$result"
+    [[ ${#mode} -eq 4 && "$mode" == 0* ]] && mode="${mode#0}"
+    printf '%s %s\n' "$owner" "$mode"
+}
+
+_mainframe_cli_trust_file_is_safe() {
+    local path="$1" parent canonical_parent owner mode numeric
+
+    [[ "$path" == /* && "$path" != */ &&
+       "$path" != *$'\n'* && "$path" != *$'\r'* &&
+       "$path" != *$'\t'* && -f "$path" && ! -L "$path" &&
+       -r "$path" ]] || return 1
+    parent="${path%/*}"
+    [[ -n "$parent" ]] || parent=/
+    canonical_parent="$(
+        builtin cd -- "$parent" 2>/dev/null && builtin pwd -P
+    )" || return 1
+    [[ "$path" == "${canonical_parent%/}/${path##*/}" ]] || return 1
+
+    read -r owner mode < <(_mainframe_cli_owner_mode "$path") || return 1
+    [[ "$owner" =~ ^[0-9]+$ && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+    [[ "$owner" -eq 0 || "$owner" -eq "$EUID" ]] || return 1
+    numeric=$((8#$mode))
+    (( (numeric & 0022) == 0 && (numeric & 07000) == 0 ))
+}
+
+_mainframe_cli_path_has_no_write_acl() {
+    local path="$1" line listing permissions
+    case "${OSTYPE:-}" in
+        darwin*) ;;
+        *) return 0 ;;
+    esac
+    [[ -x /bin/ls ]] || return 1
+    listing="$(LC_ALL=C /bin/ls -lde "$path" 2>/dev/null)" || return 1
+    while IFS= read -r line; do
+        [[ "$line" == *' allow '* ]] || continue
+        permissions=",${line#* allow },"
+        case "$permissions" in
+            *,write,*|*,append,*|*,delete,*|*,delete_child,*|\
+            *,add_file,*|*,add_subdirectory,*|*,writeattr,*|\
+            *,writeextattr,*|*,writeowner,*|*,writesecurity,*|*,chown,*)
+                return 1
+                ;;
+        esac
+    done <<< "$listing"
+}
+
+_mainframe_cli_find_trusted_tool() {
+    local tool="$1" candidate resolved owner mode numeric
+    local -a candidates=()
+
+    case "$tool" in
+        jq)
+            candidates=(
+                /usr/bin/jq /bin/jq /opt/homebrew/bin/jq /usr/local/bin/jq
+                /home/linuxbrew/.linuxbrew/bin/jq /opt/local/bin/jq
+            )
+            ;;
+        git)
+            candidates=(
+                /opt/homebrew/bin/git /usr/local/bin/git
+                /home/linuxbrew/.linuxbrew/bin/git /opt/local/bin/git
+                /usr/bin/git /bin/git
+            )
+            ;;
+        *) return 1 ;;
+    esac
+
+    for candidate in "${candidates[@]}"; do
+        resolved="$(_mainframe_cli_resolve_executable "$candidate" 2>/dev/null || true)"
+        [[ -n "$resolved" ]] || continue
+        _mainframe_cli_tool_layout_is_known "$tool" "$resolved" || continue
+        read -r owner mode < <(_mainframe_cli_owner_mode "$resolved") || continue
+        [[ "$owner" -eq 0 || "$owner" -eq "$EUID" ]] || continue
+        numeric=$((8#$mode))
+        (( (numeric & 0022) == 0 && (numeric & 07000) == 0 &&
+           (numeric & 0100) != 0 )) || continue
+        _mainframe_cli_path_has_no_write_acl "$resolved" || continue
+        printf '%s\n' "$resolved"
+        return 0
+    done
+    return 1
+}
+
+_MAINFRAME_CLI_JQ="$(_mainframe_cli_find_trusted_tool jq 2>/dev/null || true)"
+readonly _MAINFRAME_CLI_JQ
+
+if [[ -n "$_MAINFRAME_CLI_JQ" ]]; then
+    jq() {
+        "$_MAINFRAME_CLI_JQ" "$@"
+    }
+fi
+
+# Canonical invocation is a narrow trust boundary, not an ordinary runtime
+# command. Dispatch it before common.sh can honor caller profiles, lazy stubs,
+# user config, or a broad MAINFRAME_LIBS selection. The broker itself starts a
+# clean child and loads only the reviewed canonical owner module.
+if [[ "${1:-}" == "invoke" ]]; then
+    _mainframe_cli_invoke="$MAINFRAME_ROOT/lib/invoke.sh"
+    _mainframe_cli_trust_file_is_safe "$_mainframe_cli_invoke" || {
+        echo "MAINFRAME invocation denied: canonical broker is missing or unsafe" >&2
+        exit 126
+    }
+    unset -f _mainframe_cli_resolve_executable _mainframe_cli_tool_layout_is_known
+    unset -f _mainframe_cli_owner_mode _mainframe_cli_path_has_no_write_acl
+    unset -f _mainframe_cli_find_trusted_tool _mainframe_cli_trust_file_is_safe
+    # shellcheck source=lib/invoke.sh
+    source "$_mainframe_cli_invoke"
+    shift
+    _mainframe_invoke_main "$@"
+    exit $?
+fi
+
+# General commands can use the reviewed Git wrapper below. Canonical invoke
+# never calls Git, so defer this comparatively expensive discovery until after
+# its latency-sensitive fast path.
+_MAINFRAME_CLI_GIT="$(_mainframe_cli_find_trusted_tool git 2>/dev/null || true)"
+readonly _MAINFRAME_CLI_GIT
+
+unset -f _mainframe_cli_resolve_executable _mainframe_cli_tool_layout_is_known
+unset -f _mainframe_cli_owner_mode _mainframe_cli_path_has_no_write_acl
+unset -f _mainframe_cli_find_trusted_tool _mainframe_cli_trust_file_is_safe
+
+# AWM is a latency-sensitive command path used repeatedly by coding agents.
+# Supply a fallback rather than an override so config-file profiles and library
+# selections retain the same precedence as explicit environment settings.
+if [[ ( "${1:-}" == "awm" || "${1:-}" == "work" ) &&
+      -z "${MAINFRAME_DEFAULT_LIBS+x}" ]]; then
+    export MAINFRAME_DEFAULT_LIBS="awm"
+fi
 
 # Source common library
 source "$MAINFRAME_ROOT/lib/common.sh"
+
+if [[ "$_mainframe_cli_restore_caller_path" == "true" ]]; then
+    PATH="$_mainframe_cli_caller_path"
+    export PATH
+    builtin hash -r
+fi
+unset _mainframe_cli_restore_caller_path _mainframe_cli_caller_path
+
+# An explicit library selection remains authoritative, but a CLI command must
+# still load its own implementation dependency. This adds AWM without changing
+# the caller's MAINFRAME_LIBS value or loading unrelated AI libraries.
+if [[ ( "${1:-}" == "awm" || "${1:-}" == "work" ) ]] &&
+   ! declare -F awm_init >/dev/null 2>&1; then
+    source "$MAINFRAME_ROOT/lib/awm.sh"
+fi
 
 # =============================================================================
 # COMMANDS
@@ -35,17 +569,30 @@ source "$MAINFRAME_ROOT/lib/common.sh"
 
 show_help() {
     cat << 'EOF'
-MAINFRAME - Bash Superpowers for AI Coding Assistants
+MAINFRAME - Safer shell runtime and durable memory for coding agents
 
 Usage: mainframe <command> [options]
+
+Start here (read-only):
+  cd /path/to/your/project
+  mainframe setup --project . --proof
+  mainframe setup --project .
+
+Using Pi:
+  mainframe pi doctor
+  mainframe pi install --dry-run
 
 Commands:
   version     Show MAINFRAME version and environment info
   functions   List all available functions (pipe to grep for filtering)
+  operations  List bundled legacy operation scripts
+  run         Run a bundled operation script
+  invoke      Invoke one reviewed canonical manifest export
   help        Show detailed help for a specific function
   search      Search functions by name pattern
   count       Count total functions available
   awm         Manage Agent Working Memory sessions and handoffs
+  work        Build a bounded read-only brief from existing project memory
   quickref    Show compact function signatures (with --search for lookup)
   fzf         Interactive fuzzy finder with preview (requires fzf)
   explore     TUI browser with drill-down menus (requires dialog/whiptail)
@@ -53,7 +600,20 @@ Commands:
   benchmark   Run performance benchmarks
   test        Run test suite (requires bats)
   doctor      Check MAINFRAME installation health
+  shell       Inspect or explicitly repair Bash/zsh integration identity
+  agent-hook  Diagnose supported host payload adapters (launch owns enforcement)
+  protect     Inspect project host-hook enforcement readiness
+  host        Inspect, acquire, or manage private coding-agent host runtimes
+  pi          Diagnose, install, remove, or restore the native Pi integration
+  setup       Prove core mechanisms, discover hosts, or explicitly onboard one host
+  onboard     Safely onboard one supported host with explicit consent
+  launch      Compatibility-gate and start one onboarded coding-agent host
+  activate    Activate MAINFRAME for an AI host (merge-safe, --dry-run)
+  deactivate  Remove MAINFRAME-managed activation content
   update      Update MAINFRAME (git-based installations only)
+  upgrade     Upgrade a receipt-backed release with rollback protection
+  release     Report checked-in release readiness (offline, read-only)
+  uninstall   Run the trusted recoverable uninstaller for this installation
 
 Scaffolding:
   new agent <name>     Create a new agent project
@@ -65,12 +625,17 @@ Scaffolding:
 Examples:
   mainframe version
   mainframe functions | grep json
+  mainframe operations
+  mainframe run json-to-csv input.json
+  mainframe invoke mf:data:json:json_get --input-json '{"json":"{\"name\":\"Ada\"}","key":"name"}'
   mainframe help json_object
+  mainframe launch codex --dry-run
   mainframe help validate_email
   mainframe search "array"
   mainframe awm init code-audit
   mainframe awm checkpoint --session <sid> current_step 3 --importance high
   mainframe awm find --session <sid> postgres --kind mixed
+  mainframe work "fix the flaky CI test" --project .
   mainframe quickref json
   mainframe quickref --list
   mainframe quickref --search hash
@@ -83,6 +648,30 @@ Examples:
   mainframe build container agent.sh # Generate Dockerfile
   mainframe count
   mainframe doctor
+  mainframe shell status
+  mainframe shell repair --shell all --dry-run
+  mainframe agent-hook --format auto < hook-payload.json  # diagnostic probe
+  mainframe protect status --project .
+  mainframe host status codex
+  mainframe host status --json
+  mainframe host install codex --download --dry-run
+  mainframe host install codex --package-dir ./vendor-packages --dry-run
+  mainframe host remove codex --dry-run
+  mainframe host restore codex --quarantine-id removed.0123456789abcdef01 --dry-run
+  mainframe pi status
+  mainframe pi doctor
+  mainframe pi install --dry-run
+  mainframe pi install --yes
+  mainframe pi remove --dry-run
+  mainframe pi restore --backup-id .mainframe-pi-backup-YYYYMMDDTHHMMSSZ.A1b2C3 --dry-run
+  mainframe setup --project . --proof
+  mainframe setup --project .
+  mainframe setup --project . --host codex --dry-run
+  mainframe onboard --host codex --project . --dry-run
+  mainframe launch codex --project . --dry-run
+  mainframe release readiness
+  mainframe release readiness --json
+  mainframe uninstall --dry-run
   mainframe new agent my-worker    # Scaffold new agent
   mainframe new tool validate_cfg  # Scaffold new tool
   mainframe init                   # Initialize in current dir
@@ -91,9 +680,105 @@ Documentation: https://github.com/gtwatts/mainframe
 EOF
 }
 
+_find_operation() {
+    local operation="$1"
+    local category candidate
+
+    for category in data agent git file api dev; do
+        candidate="$MAINFRAME_ROOT/scripts/$category/$operation"
+        if [[ -f "$candidate" && -x "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+        if [[ -f "${candidate}.sh" && -x "${candidate}.sh" ]]; then
+            printf '%s\n' "${candidate}.sh"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+cmd_operations() {
+    local requested_category="${1:-all}"
+    local category script name
+    local -a categories=(data agent git file api dev)
+
+    for category in "${categories[@]}"; do
+        [[ "$requested_category" == "all" || "$requested_category" == "$category" ]] || continue
+        [[ -d "$MAINFRAME_ROOT/scripts/$category" ]] || continue
+
+        printf '%s:\n' "$category"
+        for script in "$MAINFRAME_ROOT/scripts/$category"/*; do
+            [[ -f "$script" && -x "$script" ]] || continue
+            name="$(basename "$script")"
+            printf '  %s\n' "${name%.sh}"
+        done
+    done
+}
+
+cmd_operation() {
+    local operation="${1:-}"
+    local operation_path operation_header=""
+
+    if [[ -z "$operation" ]]; then
+        echo "Usage: mainframe run <operation> [args...]" >&2
+        return 1
+    fi
+    shift
+
+    if ! operation_path="$(_find_operation "$operation")"; then
+        echo "Operation not found: $operation" >&2
+        return 1
+    fi
+
+    # Bundled operations may include non-Bash executables. Keep those on their
+    # declared interpreter, but never let a Bash operation's env shebang fall
+    # back to Apple Bash 3.2 or an unreviewed PATH entry.
+    IFS= read -r operation_header < "$operation_path" || true
+    case "$operation_header" in
+        '#!'*/bash|'#!'*/bash' '*|\
+        '#!/usr/bin/env bash'|'#!/usr/bin/env bash '*|\
+        '#!/usr/bin/env -S bash'|'#!/usr/bin/env -S bash '*)
+            exec "$BASH" --noprofile --norc -p "$operation_path" "$@"
+            ;;
+    esac
+
+    exec "$operation_path" "$@"
+}
+
+# =============================================================================
+# PRODUCT-STATE COUNTS (single source of truth: FUNCTIONS.json)
+# =============================================================================
+# Runtime `declare -F` counts are profile-dependent (lean/lazy loading) and
+# must never be reported as the product's function count. All product-state
+# surfaces (version, count, doctor) read the canonical registry instead.
+#
+# Usage: read unique registrations libraries < <(_mainframe_registry_counts)
+# Returns 1 when FUNCTIONS.json or jq is unavailable.
+_mainframe_registry_counts() {
+    local json_file="${MAINFRAME_ROOT}/FUNCTIONS.json"
+    [[ -f "$json_file" ]] || return 1
+    command -v jq &>/dev/null || return 1
+    jq -r '
+        .libraries as $libs |
+        [
+            ([$libs[].functions | keys[]] | unique | length),
+            ([$libs[].functions | length] | add),
+            ($libs | length)
+        ] | @tsv
+    ' "$json_file" 2>/dev/null
+}
+
+# Runtime diagnostic only: public functions actually loaded in this process.
+_mainframe_runtime_loaded_count() {
+    declare -F | awk '{print $3}' | grep -vc '^_'
+}
+
 cmd_help() {
     local func="${1:-}"
     local json_file="${MAINFRAME_ROOT}/FUNCTIONS.json"
+    local operation_path=""
 
     if [[ -z "$func" ]]; then
         echo "Usage: mainframe help <function_name>"
@@ -107,6 +792,10 @@ cmd_help() {
         return 0
     fi
 
+    if operation_path="$(_find_operation "$func")"; then
+        exec "$operation_path" --help
+    fi
+
     # Check if FUNCTIONS.json exists
     if [[ ! -f "$json_file" ]]; then
         echo "Error: FUNCTIONS.json not found at: $json_file"
@@ -114,25 +803,43 @@ cmd_help() {
         return 1
     fi
 
-    # Search FUNCTIONS.json for the function across all libraries
-    local entry lib_name lib_desc
-    entry=$(jq -r --arg f "$func" '
-        .libraries | to_entries[] |
-        select(.value.functions[$f] != null) |
-        {
-            library: .key,
-            library_file: .value.file,
-            library_desc: .value.description,
-            func: .value.functions[$f]
-        }
-    ' "$json_file" 2>/dev/null)
+    # Search FUNCTIONS.json for the function across all libraries. Keep the
+    # matches as an array so duplicate registry owners cannot be concatenated
+    # and accidentally formatted as one function record.
+    local entries entry match_count lib_name lib_desc
+    if ! entries=$(jq -c --arg f "$func" '
+        [
+            .libraries | to_entries[] |
+            select(.value.functions[$f] != null) |
+            {
+                library: .key,
+                library_file: .value.file,
+                library_desc: .value.description,
+                func: .value.functions[$f]
+            }
+        ]
+    ' "$json_file" 2>/dev/null); then
+        echo "Error: unable to read FUNCTIONS.json" >&2
+        return 1
+    fi
 
-    if [[ -z "$entry" ]]; then
+    match_count=$(jq -r 'length' <<< "$entries")
+    if [[ "$match_count" -eq 0 ]]; then
         echo "Function '$func' not found in FUNCTIONS.json"
         echo ""
         echo "Use 'mainframe search $func' to search for similar functions."
         return 1
     fi
+
+    if [[ "$match_count" -gt 1 ]]; then
+        {
+            printf "Error: function '%s' has multiple registry owners:\n" "$func"
+            jq -r '.[] | "  - \(.library)"' <<< "$entries"
+        } >&2
+        return 1
+    fi
+
+    entry=$(jq -c '.[0]' <<< "$entries")
 
     # Extract and display function information
     lib_name=$(echo "$entry" | jq -r '.library')
@@ -190,15 +897,17 @@ cmd_help() {
 }
 
 cmd_version() {
-    local func_count
-    func_count=$(declare -F | wc -l)
-
+    local unique registrations libraries
     echo "MAINFRAME v${MAINFRAME_VERSION:-3.0.0}"
     echo ""
     echo "Environment:"
     echo "  Bash version:    ${BASH_VERSION}"
     echo "  MAINFRAME_ROOT:  ${MAINFRAME_ROOT}"
-    echo "  Functions:       ${func_count}"
+    if read -r unique registrations libraries < <(_mainframe_registry_counts); then
+        echo "  Functions:       ${unique} registry functions (${registrations} registrations across ${libraries} libraries)"
+    else
+        echo "  Functions:       unavailable (FUNCTIONS.json or jq missing)"
+    fi
     echo "  OS:              $(uname -s) $(uname -m)"
 }
 
@@ -210,60 +919,133 @@ cmd_functions() {
 cmd_search() {
     local query="${1:-}"
     local json_file="${MAINFRAME_ROOT}/FUNCTIONS.json"
+    local manifest_file="${MAINFRAME_ROOT}/MANIFEST.json"
 
     if [[ -z "$query" ]]; then
         echo "Usage: mainframe search <pattern>"
-        echo "Example: mainframe search array"
+        echo 'Example: mainframe search "create json object"'
         return 1
     fi
 
-    # If FUNCTIONS.json exists, use it for richer search results
-    if [[ -f "$json_file" ]]; then
-        local results
-        results=$(jq -r --arg q "$query" '
-            .libraries | to_entries[] |
-            .key as $lib |
-            .value.functions | to_entries[] |
-            select(.key | test($q; "i")) |
-            "\(.key) - \($lib)"
-        ' "$json_file" 2>/dev/null | head -30)
-
-        if [[ -z "$results" ]]; then
-            echo "No functions matching '$query'"
-            echo ""
-            echo "Tip: Use 'mainframe quickref --search $query' for description search"
-            return 1
-        fi
-
-        echo "Functions matching '$query':"
-        echo ""
-        echo "$results"
-        echo ""
-        echo "Use 'mainframe help <function>' for detailed information"
-    else
-        # Fallback to declared functions
-        local results
-        results=$(declare -F | awk '{print $3}' | grep -i "$query" | sort)
-
-        if [[ -z "$results" ]]; then
-            echo "No functions matching '$query'"
-            return 1
-        fi
-
-        echo "$results"
+    if (( ${#query} > 256 )) || [[ "$query" == *$'\n'* || "$query" == *$'\r'* || "$query" == *$'\t'* ]]; then
+        echo "Search query must be one printable line of at most 256 characters." >&2
+        return 64
     fi
+    if [[ ! -f "$json_file" || ! -f "$manifest_file" ]]; then
+        echo "Error: canonical discovery metadata is missing under ${MAINFRAME_ROOT}." >&2
+        return 1
+    fi
+    if ! command -v jq &>/dev/null; then
+        echo "Error: jq is required for canonical MAINFRAME discovery." >&2
+        return 1
+    fi
+
+    # Search the generated registry, then retain only the owner selected by
+    # MANIFEST.json. Ambiguous registry names stay hidden because `help` also
+    # rejects them until their compatibility migration is complete. The query
+    # is plain text, never a caller-controlled regular expression.
+    local results
+    if ! results=$(jq -rn --arg q "$query" \
+        --slurpfile registry "$json_file" \
+        --slurpfile manifest "$manifest_file" '
+        def normalize:
+            ascii_downcase
+            | gsub("[_./:-]+"; " ")
+            | gsub("[[:space:]]+"; " ")
+            | ltrimstr(" ") | rtrimstr(" ");
+        ($q | normalize) as $query
+        | ($query | split(" ") | map(select(length > 0))) as $words
+        | ($registry[0].libraries | to_entries) as $libraries
+        | (reduce (
+              $libraries[] as $library
+              | $library.value.functions
+              | keys[]
+              | {name: ., owner: $library.key}
+            ) as $registration
+            ({};
+              .[$registration.name] =
+                ((.[$registration.name] // []) + [$registration.owner])
+            )) as $owners_by_name
+        | [
+            $libraries[] as $library
+            | $library.value.functions
+            | to_entries[] as $entry
+            | select($entry.key | test("^[A-Za-z_][A-Za-z0-9_]*$"))
+            | ($owners_by_name[$entry.key] // []) as $owners
+            | select($owners | length == 1)
+            | ($manifest[0].name_index[$entry.key] // null) as $canonical_id
+            | (if $canonical_id then ($manifest[0].exports[$canonical_id] // null) else null end) as $export
+            | select($canonical_id != null and $export.name == $entry.key and $export.owner == $library.key)
+            | ($entry.key | normalize) as $normalized_name
+            | ([
+                $entry.key,
+                $library.key,
+                ($library.value.category // ""),
+                ($entry.value.description // ""),
+                ($entry.value.signature // ""),
+                ($entry.value.returns // ""),
+                (($entry.value.examples // []) | join(" "))
+              ] | join(" ") | normalize) as $haystack
+            | select($words | all(. as $word | $haystack | contains($word)))
+            | (($export.profiles // []) | index("stable-core") != null) as $stable_core
+            | ($normalized_name | test("(^| )(remove|delete|rm|kill|terminate|destroy|drop|wipe|clean|docker|compose|k8s|kubectl|write|replace|chmod|chown|publish|release|upload|deploy|secret|credential|token|send)( |$)")) as $high_name
+            | (if $high_name then "high" elif $stable_core or $entry.value.pure == true then "low" else "medium" end) as $risk
+            | (if $normalized_name == $query then 500
+               elif $normalized_name | startswith($query) then 400
+               elif $normalized_name | contains($query) then 300
+               elif (($entry.value.signature // "") | normalize | contains($query)) then 200
+               elif (($entry.value.description // "") | normalize | contains($query)) then 150
+               else 100 end) as $relevance
+            | ((if $stable_core then 40 else 0 end)
+               + (if $entry.value.pure == true then 25 else 0 end)
+               + (if $entry.value.idempotent == true then 15 else 0 end)
+               + (if $risk == "low" then 20 elif $risk == "high" then -40 else 0 end)) as $safety
+            | {
+                function: $entry.key,
+                library: $library.key,
+                signature: ($entry.value.signature // ($entry.key + " [args...]")),
+                description: ($entry.value.description // ""),
+                pure: ($entry.value.pure // false),
+                idempotent: ($entry.value.idempotent // false),
+                stable_core: $stable_core,
+                risk: $risk,
+                relevance: $relevance,
+                safety: $safety
+              }
+          ]
+        | sort_by([-.relevance, -.safety, .function])
+        | .[0:30]
+        | .[]
+        | "\(.function) - \(.library) [risk=\(.risk)\(if .stable_core then ", stable-core" else "" end)\(if .pure then ", pure" else "" end)\(if .idempotent then ", idempotent" else "" end)]\n  \(.signature)\n  \(.description)"
+    ' 2>/dev/null); then
+        echo "Error: unable to read canonical discovery metadata." >&2
+        return 1
+    fi
+
+    if [[ -z "$results" ]]; then
+        echo "No canonical functions matching '$query'"
+        return 1
+    fi
+
+    echo "Canonical functions matching '$query':"
+    echo ""
+    printf '%s\n' "$results"
+    echo ""
+    echo "Safety labels are discovery hints, not authorization. Use 'mainframe help <function>' before execution."
 }
 
 cmd_count() {
-    local total public internal
-    total=$(declare -F | wc -l)
-    public=$(declare -F | awk '{print $3}' | grep -v '^_' | wc -l)
-    internal=$(declare -F | awk '{print $3}' | grep '^_' | wc -l)
+    local unique registrations libraries runtime_loaded
 
-    echo "Function count:"
-    echo "  Public:   ${public}"
-    echo "  Internal: ${internal}"
-    echo "  Total:    ${total}"
+    if ! read -r unique registrations libraries < <(_mainframe_registry_counts); then
+        echo "Error: registry counts unavailable (FUNCTIONS.json or jq missing)" >&2
+        return 1
+    fi
+
+    runtime_loaded=$(_mainframe_runtime_loaded_count)
+
+    echo "Registry functions: ${unique} unique names (${registrations} registrations across ${libraries} libraries)"
+    echo "Runtime loaded:     ${runtime_loaded} functions (profile-dependent diagnostic)"
 }
 
 cmd_doctor() {
@@ -271,6 +1053,7 @@ cmd_doctor() {
 
     echo "MAINFRAME Doctor"
     echo "================"
+    echo "Scope: MAINFRAME shell runtime; use 'mainframe pi doctor' for Pi integration."
     echo ""
 
     # Check MAINFRAME_ROOT
@@ -279,16 +1062,17 @@ cmd_doctor() {
         echo "$MAINFRAME_ROOT"
     else
         echo "NOT SET (using script directory)"
-        ((errors++))
+        errors=$((errors + 1))
     fi
 
     # Check bash version
     echo -n "Bash version:   "
-    if ((BASH_VERSINFO[0] >= 4)); then
+    if (( BASH_VERSINFO[0] > 4 )) || \
+       (( BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4 )); then
         echo "${BASH_VERSION} (OK)"
     else
-        echo "${BASH_VERSION} (WARNING: Bash 4.0+ required)"
-        ((errors++))
+        echo "${BASH_VERSION} (ERROR: Bash 4.4+ required)"
+        errors=$((errors + 1))
     fi
 
     # Check OS
@@ -300,13 +1084,19 @@ cmd_doctor() {
         echo "Loaded (OK)"
     else
         echo "NOT LOADED (ERROR)"
-        ((errors++))
+        errors=$((errors + 1))
     fi
 
-    # Count functions
-    local func_count
-    func_count=$(declare -F | awk '{print $3}' | grep -v '^_' | wc -l)
-    echo "Functions:      ${func_count}"
+    # Count functions (canonical registry count, not profile-dependent runtime)
+    local unique registrations libraries runtime_loaded
+    if read -r unique registrations libraries < <(_mainframe_registry_counts); then
+        echo "Functions:      ${unique} registry functions (${registrations} registrations across ${libraries} libraries)"
+    else
+        echo "Functions:      REGISTRY UNAVAILABLE (ERROR)"
+        errors=$((errors + 1))
+    fi
+    runtime_loaded=$(_mainframe_runtime_loaded_count)
+    echo "Runtime loaded: ${runtime_loaded} functions (profile-dependent diagnostic)"
 
     # Check common.sh exists
     echo -n "common.sh:      "
@@ -314,7 +1104,26 @@ cmd_doctor() {
         echo "Found (OK)"
     else
         echo "NOT FOUND (ERROR)"
-        ((errors++))
+        errors=$((errors + 1))
+    fi
+
+    echo -n "Agent gateway:  "
+    if [[ -x "${MAINFRAME_ROOT}/hooks/agent-gateway.sh" ]] && command -v jq &>/dev/null; then
+        echo "Ready (OK)"
+    else
+        echo "NOT READY (requires executable hook and jq)"
+        errors=$((errors + 1))
+    fi
+
+    if [[ -f "$MAINFRAME_ROOT/lib/shell.sh" && ! -L "$MAINFRAME_ROOT/lib/shell.sh" ]]; then
+        # shellcheck source=lib/shell.sh
+        source "$MAINFRAME_ROOT/lib/shell.sh"
+        if ! _mainframe_shell_doctor_check; then
+            errors=$((errors + 1))
+        fi
+    else
+        echo "Shell identity: NOT AVAILABLE (ERROR)"
+        errors=$((errors + 1))
     fi
 
     echo ""
@@ -332,7 +1141,7 @@ cmd_benchmark() {
     local benchmark_script="${MAINFRAME_ROOT}/benchmarks/superpower_benchmarks.sh"
 
     if [[ -f "$benchmark_script" ]]; then
-        bash "$benchmark_script"
+        "$BASH" --noprofile --norc -p "$benchmark_script"
     else
         echo "Benchmark script not found: $benchmark_script"
         return 1
@@ -342,38 +1151,53 @@ cmd_benchmark() {
 cmd_test() {
     local bats="${MAINFRAME_ROOT}/tests/bats/bin/bats"
     local tests_dir="${MAINFRAME_ROOT}/tests"
-    local test_shell=""
-    local candidate=""
+    local test_shell="${MAINFRAME_BASH:-$BASH}"
 
     if [[ ! -x "$bats" ]]; then
-        echo "BATS not installed. Run: make test-deps"
+        echo "BATS is not installed. Install the integrity-pinned test dependencies:"
         echo ""
-        echo "Or install manually:"
         echo "  cd ${MAINFRAME_ROOT}"
-        echo "  git clone https://github.com/bats-core/bats-core.git tests/bats"
+        echo "  make test-deps"
         return 1
     fi
 
-    for candidate in "${BASH:-}" /opt/homebrew/bin/bash /usr/local/bin/bash "$(command -v bash 2>/dev/null)"; do
-        [[ -z "$candidate" || ! -x "$candidate" ]] && continue
-        if "$candidate" -lc '(( BASH_VERSINFO[0] >= 4 ))' >/dev/null 2>&1; then
-            test_shell="$candidate"
-            break
-        fi
-    done
-
-    if [[ -z "$test_shell" ]]; then
-        echo "MAINFRAME tests require Bash 4.0+."
-        echo "Install a newer bash and ensure it is available at /opt/homebrew/bin/bash,"
-        echo "/usr/local/bin/bash, or earlier in PATH."
+    # The CLI bootstrap has already resolved and authenticated this Bash. Keep
+    # the defensive check exact so this command cannot silently widen the
+    # product's documented >=4.4 runtime contract if called in a new context.
+    if ! "$test_shell" --noprofile --norc -p -c '
+        (( BASH_VERSINFO[0] > 4 )) ||
+        (( BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4 ))
+    ' >/dev/null 2>&1; then
+        echo "MAINFRAME tests require Bash 4.4+."
         return 1
     fi
 
-    BATS_TEST_SHELL="$test_shell" "$bats" "${tests_dir}/unit/" "${tests_dir}/integration/"
+    BATS_TEST_SHELL="$test_shell" \
+        "$test_shell" --noprofile --norc -p \
+        "$bats" "${tests_dir}/unit/" "${tests_dir}/integration/"
 }
 
 cmd_update() {
-    if [[ ! -d "${MAINFRAME_ROOT}/.git" ]]; then
+    if [[ $# -ne 0 ]]; then
+        echo "Usage: mainframe update" >&2
+        return 64
+    fi
+    if [[ "${MAINFRAME_INSTALL_METHOD:-}" == "homebrew" ]]; then
+        echo "MAINFRAME is managed by Homebrew."
+        echo ""
+        echo "Upgrade with:"
+        echo "  brew upgrade gtwatts/mainframe/mainframe"
+        return 1
+    fi
+
+    if [[ -f "${MAINFRAME_ROOT}/.mainframe-install-receipt.json" ]]; then
+        echo "This is a receipt-backed release installation."
+        echo "Use an explicit version, for example:"
+        echo "  mainframe upgrade --version 10.2.1 --confirm-agents-stopped"
+        return 1
+    fi
+
+    if ! _mainframe_git -C "$MAINFRAME_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         echo "Update only works for git-based installations."
         echo ""
         echo "If installed via basher, run:"
@@ -381,11 +1205,303 @@ cmd_update() {
         return 1
     fi
 
+    local branch
+    branch="$(_mainframe_git -C "$MAINFRAME_ROOT" branch --show-current 2>/dev/null || true)"
+    if [[ "$branch" != "main" ]]; then
+        echo "Refusing to update a non-main or detached checkout (${branch:-detached HEAD})." >&2
+        return 1
+    fi
+    if [[ -n "$(_mainframe_git -C "$MAINFRAME_ROOT" status --porcelain 2>/dev/null)" ]]; then
+        echo "Refusing to update a checkout with local changes." >&2
+        return 1
+    fi
+
     echo "Updating MAINFRAME..."
-    cd "$MAINFRAME_ROOT"
-    git pull --rebase origin main
+    _mainframe_git -C "$MAINFRAME_ROOT" fetch --prune origin main
+    _mainframe_git -C "$MAINFRAME_ROOT" merge --ff-only FETCH_HEAD
     echo ""
     echo "Updated! Run 'mainframe doctor' to verify."
+}
+
+_mainframe_git() (
+    local config_variable
+    [[ -n "$_MAINFRAME_CLI_GIT" ]] || return 127
+    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
+    unset GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+    unset GIT_CEILING_DIRECTORIES GIT_DISCOVERY_ACROSS_FILESYSTEM
+    unset GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM
+    unset GIT_EXEC_PATH GIT_PROXY_COMMAND GIT_SSH GIT_SSH_COMMAND GIT_ASKPASS
+    unset SSH_ASKPASS GIT_TEMPLATE_DIR
+    while IFS= read -r config_variable; do
+        unset "$config_variable"
+    done < <(compgen -A variable GIT_CONFIG_KEY_ || true)
+    while IFS= read -r config_variable; do
+        unset "$config_variable"
+    done < <(compgen -A variable GIT_CONFIG_VALUE_ || true)
+    export GIT_CONFIG_COUNT=0
+    "$_MAINFRAME_CLI_GIT" "$@"
+)
+
+_mainframe_sha256_file() {
+    local file="$1"
+    if command -v sha256sum >/dev/null 2>&1; then
+        command sha256sum "$file" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        command shasum -a 256 "$file" | awk '{print $1}'
+    elif command -v openssl >/dev/null 2>&1; then
+        command openssl dgst -sha256 "$file" | awk '{print $NF}'
+    else
+        return 127
+    fi
+}
+
+_mainframe_path_mode() {
+    local path="$1" value=""
+    value="$(stat -c '%a' "$path" 2>/dev/null || true)"
+    if [[ "$value" =~ ^[0-7]{3,4}$ ]]; then
+        printf '%s\n' "$value"
+        return 0
+    fi
+    value="$(stat -f '%Lp' "$path" 2>/dev/null || true)"
+    [[ "$value" =~ ^[0-7]{3,4}$ ]] && printf '%s\n' "$value"
+}
+
+_mainframe_release_owns_uninstaller() {
+    local uninstaller="$1"
+    local receipt="$MAINFRAME_ROOT/.mainframe-install-receipt.json"
+    local manifest="$MAINFRAME_ROOT/SHA256SUMS"
+    local receipt_manifest_sha manifest_sha expected_sha="" actual_sha
+    local line mode match_count=0
+
+    [[ -f "$receipt" && ! -L "$receipt" ]] || return 1
+    mode="$(_mainframe_path_mode "$receipt")"
+    [[ "$mode" == "600" ]] || return 1
+    [[ -f "$manifest" && ! -L "$manifest" ]] || return 1
+    command -v jq >/dev/null 2>&1 || return 1
+
+    receipt_manifest_sha="$(jq -er --arg root "$MAINFRAME_ROOT" '
+      select(
+        type == "object" and
+        (keys | sort) == ["archive_sha256", "bin_dir", "cli_link", "install_dir", "install_method", "installed_at", "manifest_sha256", "schema_version", "version"] and
+        .schema_version == 1 and .install_method == "release-archive" and
+        (.version | type == "string" and test("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")) and
+        (.archive_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+        (.manifest_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+        .install_dir == $root and
+        (.bin_dir | type == "string" and startswith("/") and (test("[[:cntrl:]]") | not)) and
+        (.cli_link | type == "string" and startswith("/") and (test("[[:cntrl:]]") | not)) and
+        (.installed_at | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
+      ) | .manifest_sha256
+    ' "$receipt" 2>/dev/null)" || return 1
+
+    manifest_sha="$(_mainframe_sha256_file "$manifest")" || return 1
+    [[ "$manifest_sha" == "$receipt_manifest_sha" ]] || return 1
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if (( ${#line} == 78 )) &&
+           [[ "${line:64:2}" == "  " && "${line:66}" == "uninstall.sh" &&
+              "${line:0:64}" =~ ^[0-9a-f]{64}$ ]]; then
+            expected_sha="${line:0:64}"
+            match_count=$((match_count + 1))
+        fi
+    done < "$manifest"
+    (( match_count == 1 )) || return 1
+
+    actual_sha="$(_mainframe_sha256_file "$uninstaller")" || return 1
+    [[ "$actual_sha" == "$expected_sha" ]]
+}
+
+_mainframe_source_owns_uninstaller() {
+    local uninstaller="$1"
+    local top expected_object actual_object
+
+    top="$(_mainframe_git -C "$MAINFRAME_ROOT" rev-parse --show-toplevel 2>/dev/null)" || return 1
+    [[ -d "$top" ]] || return 1
+    top="$(cd "$top" && pwd -P)"
+    [[ "$top" == "$MAINFRAME_ROOT" ]] || return 1
+
+    expected_object="$(_mainframe_git -C "$MAINFRAME_ROOT" rev-parse 'HEAD:uninstall.sh' 2>/dev/null)" || return 1
+    actual_object="$(_mainframe_git -C "$MAINFRAME_ROOT" hash-object --no-filters -- "$uninstaller" 2>/dev/null)" || return 1
+    [[ "$expected_object" =~ ^[0-9a-f]{40,64}$ && "$actual_object" == "$expected_object" ]]
+}
+
+# A deliberately tiny ownership fixture or a legacy install may contain none
+# of the Pi lifecycle payload.  Once any trusted install signal advertises the
+# payload, however, every required file must remain available so uninstall can
+# prove that Pi will not retain a dangling package entry.
+_mainframe_pi_uninstall_payload_expected() {
+    local manifest="$MAINFRAME_ROOT/SHA256SUMS"
+    local relative required line source_top=''
+
+    [[ "${MAINFRAME_PI_LIFECYCLE_REQUIRED:-}" == 1 ]] && return 0
+
+    for relative in \
+        package.json \
+        lib/pi.sh \
+        skills/pi/SKILL.md \
+        skills/pi/extensions/mainframe.ts; do
+        required="$MAINFRAME_ROOT/$relative"
+        [[ -e "$required" || -L "$required" ]] && return 0
+    done
+
+    # A committed source checkout remains Pi-capable even if every working-tree
+    # copy was removed.  Minimal test/legacy repositories do not advertise any
+    # of these paths in HEAD and therefore retain their historical behavior.
+    source_top="$(_mainframe_git -C "$MAINFRAME_ROOT" rev-parse --show-toplevel \
+        2>/dev/null || true)"
+    if [[ -n "$source_top" && -d "$source_top" ]]; then
+        if ! source_top="$(cd -- "$source_top" 2>/dev/null && pwd -P)"; then
+            source_top=""
+        fi
+        if [[ "$source_top" == "$MAINFRAME_ROOT" ]]; then
+            for relative in \
+                package.json \
+                lib/pi.sh \
+                skills/pi/SKILL.md \
+                skills/pi/extensions/mainframe.ts; do
+                if _mainframe_git -C "$MAINFRAME_ROOT" cat-file -e \
+                    "HEAD:$relative" 2>/dev/null; then
+                    return 0
+                fi
+            done
+        fi
+    fi
+
+    # Receipt-backed releases advertise payload ownership in their embedded
+    # manifest.  Reading exact record names here is intentionally fail-closed;
+    # receipt authenticity is still verified before the uninstaller executes.
+    if [[ -f "$MAINFRAME_ROOT/.mainframe-install-receipt.json" &&
+          ! -L "$MAINFRAME_ROOT/.mainframe-install-receipt.json" &&
+          -f "$manifest" && ! -L "$manifest" ]]; then
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            (( ${#line} >= 67 )) || continue
+            [[ "${line:0:64}" =~ ^[0-9a-f]{64}$ &&
+               "${line:64:2}" == "  " ]] || continue
+            case "${line:66}" in
+                package.json|lib/pi.sh|skills/pi/SKILL.md|skills/pi/extensions/mainframe.ts)
+                    return 0
+                    ;;
+            esac
+        done < "$manifest"
+    fi
+    return 1
+}
+
+_mainframe_pi_uninstall_interlock() {
+    local relative required
+    local incomplete=false
+    local pi_library="$MAINFRAME_ROOT/lib/pi.sh"
+
+    _mainframe_pi_uninstall_payload_expected || return 0
+
+    for relative in \
+        package.json \
+        lib/pi.sh \
+        skills/pi/SKILL.md \
+        skills/pi/extensions/mainframe.ts; do
+        required="$MAINFRAME_ROOT/$relative"
+        if [[ ! -f "$required" || -L "$required" ]]; then
+            if [[ "$incomplete" == false ]]; then
+                echo "MAINFRAME Pi lifecycle payload is incomplete or unsafe; refusing uninstall." >&2
+                incomplete=true
+            fi
+            echo "Missing or unsafe required file: $required" >&2
+        fi
+    done
+    if [[ "$incomplete" == true ]]; then
+        echo "Restore or reinstall this Mainframe version, then detach Pi before uninstalling." >&2
+        return 77
+    fi
+
+    # shellcheck source=lib/pi.sh
+    if ! source "$pi_library"; then
+        echo "MAINFRAME could not load its Pi uninstall interlock; refusing uninstall." >&2
+        return 77
+    fi
+    if ! declare -F _mainframe_pi_uninstall_guard >/dev/null; then
+        echo "MAINFRAME Pi uninstall interlock is unavailable; refusing uninstall." >&2
+        return 77
+    fi
+    _mainframe_pi_uninstall_guard
+}
+
+cmd_uninstall() {
+    local uninstaller="$MAINFRAME_ROOT/uninstall.sh"
+    local receipt="$MAINFRAME_ROOT/.mainframe-install-receipt.json"
+
+    _mainframe_pi_uninstall_interlock || return $?
+
+    if [[ "${MAINFRAME_INSTALL_METHOD:-}" == "homebrew" ]]; then
+        echo "MAINFRAME is managed by Homebrew."
+        echo "Before uninstalling, deactivate MAINFRAME in every onboarded project:"
+        echo "  cd /path/to/project"
+        echo "  mainframe deactivate HOST --project . --enforce"
+        echo "If Pi is attached, preview and detach it too:"
+        echo "  mainframe pi remove --dry-run"
+        echo "  mainframe pi remove --yes"
+        echo ""
+        echo "Uninstall with:"
+        echo "  brew uninstall gtwatts/mainframe/mainframe"
+        echo "Homebrew cannot run this preflight automatically; direct uninstall can strand project hooks or a Pi package path."
+        return 1
+    fi
+    if [[ -L "$uninstaller" ]]; then
+        echo "The trusted MAINFRAME uninstaller must not be a symbolic link: $uninstaller" >&2
+        return 1
+    fi
+    if [[ ! -e "$uninstaller" ]]; then
+        echo "The trusted MAINFRAME uninstaller is missing: $uninstaller" >&2
+        return 1
+    fi
+    if [[ ! -f "$uninstaller" ]]; then
+        echo "The trusted MAINFRAME uninstaller must be a regular file: $uninstaller" >&2
+        return 1
+    fi
+    if [[ ! -O "$uninstaller" ]]; then
+        echo "The trusted MAINFRAME uninstaller is not owned by the current user: $uninstaller" >&2
+        return 1
+    fi
+
+    if [[ -e "$receipt" || -L "$receipt" ]]; then
+        if ! _mainframe_release_owns_uninstaller "$uninstaller"; then
+            echo "The MAINFRAME uninstaller is not owned by this verified release: $uninstaller" >&2
+            return 1
+        fi
+    elif ! _mainframe_source_owns_uninstaller "$uninstaller"; then
+        echo "The MAINFRAME uninstaller is not owned by this source checkout: $uninstaller" >&2
+        return 1
+    fi
+
+    exec env MAINFRAME_VERSION= MAINFRAME_ROOT="$MAINFRAME_ROOT" \
+        MAINFRAME_INSTALL_DIR="$MAINFRAME_ROOT" MAINFRAME_BASH="$BASH" \
+        "$BASH" --noprofile --norc -p "$uninstaller" "$@"
+}
+
+cmd_upgrade() {
+    local updater="$MAINFRAME_ROOT/scripts/upgrade-release.sh"
+
+    if [[ "${MAINFRAME_INSTALL_METHOD:-}" == "homebrew" ]]; then
+        echo "MAINFRAME is managed by Homebrew."
+        echo "Upgrade with:"
+        echo "  brew upgrade gtwatts/mainframe/mainframe"
+        return 1
+    fi
+    if _mainframe_git -C "$MAINFRAME_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        echo "This is a source checkout; use 'mainframe update' for a fast-forward-only update." >&2
+        return 1
+    fi
+    if [[ ! -f "$MAINFRAME_ROOT/.mainframe-install-receipt.json" ]]; then
+        echo "Transactional upgrade requires a verified release receipt." >&2
+        echo "Install one explicit release with get-mainframe.sh before using this command." >&2
+        return 1
+    fi
+    if [[ ! -f "$updater" || -L "$updater" ]]; then
+        echo "The trusted release upgrader is missing or symbolic-linked: $updater" >&2
+        return 1
+    fi
+
+    env MAINFRAME_VERSION= MAINFRAME_ROOT="$MAINFRAME_ROOT" MAINFRAME_BASH="$BASH" \
+        "$BASH" --noprofile --norc -p "$updater" "$@"
 }
 
 declare -a CMD_AWM_ARGS=()
@@ -419,7 +1535,575 @@ _cmd_awm_require_session() {
         echo "Session required. Pass --session <sid> or set MAINFRAME_AWM_SESSION."
         return 1
     fi
+    _cmd_awm_reject_project_session "$session" || return 1
     awm_resume "$session" >/dev/null
+}
+
+# Project-backed AWM sessions have a separate consent and lifecycle contract.
+# Keep their opaque SIDs out of the generic session CLI so a caller cannot use
+# resume/checkpoint/export/etc. to bypass `awm project ensure` and its active
+# mapping checks. This is a CLI boundary; direct same-user filesystem access is
+# outside MAINFRAME's shell-policy threat model.
+_cmd_awm_reject_project_session() {
+    local session="${1:-}"
+
+    [[ -n "$session" ]] || return 0
+    _awm_validate_session_id "$session" 1 || return 0
+    if _awm_session_is_project_reserved "$session"; then
+        echo "Project memory is available only through 'mainframe awm project ...'" >&2
+        return 1
+    fi
+    return 0
+}
+
+_cmd_awm_reject_project_init_args() {
+    local positional=0
+    local value=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --namespace)
+                value="${2:-}"
+                if [[ "$value" == "projects" ]]; then
+                    echo "The projects namespace is reserved for explicit 'mainframe awm project ensure'" >&2
+                    return 1
+                fi
+                shift 2
+                ;;
+            --namespace=projects)
+                echo "The projects namespace is reserved for explicit 'mainframe awm project ensure'" >&2
+                return 1
+                ;;
+            --parent)
+                value="${2:-}"
+                _cmd_awm_reject_project_session "$value" || return 1
+                shift 2
+                ;;
+            --model|--backend)
+                shift 2
+                ;;
+            --*)
+                shift
+                ;;
+            *)
+                positional=$((positional + 1))
+                if [[ "$positional" -eq 2 ]]; then
+                    _cmd_awm_reject_project_session "$1" || return 1
+                fi
+                shift
+                ;;
+        esac
+    done
+}
+
+_cmd_awm_migrate_non_project_all() {
+    local sid="" _name="" _status="" _created_at=""
+    local count=0
+
+    while IFS=$'\t' read -r sid _name _status _created_at; do
+        [[ -n "$sid" ]] || continue
+        awm_migrate "$sid" >/dev/null || return 1
+        count=$((count + 1))
+    done < <(awm_list --exclude-namespace projects)
+    printf '%s' "$count"
+}
+
+declare -a CMD_AWM_PROJECT_ARGS=()
+CMD_AWM_PROJECT_END_OF_OPTIONS=false
+
+_cmd_awm_extract_project() {
+    local __target="$1"
+    local action="$2"
+    shift 2
+    local resolved_project="."
+    local seen=false
+    local discover_root=false
+    local seen_discover_root=false
+    local -a remainder=()
+
+    CMD_AWM_PROJECT_END_OF_OPTIONS=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --project)
+                if [[ "$seen" == "true" || $# -lt 2 || -z "${2:-}" || "$2" == -* ]]; then
+                    echo "--project requires exactly one directory" >&2
+                    return 2
+                fi
+                resolved_project="$2"
+                seen=true
+                shift 2
+                ;;
+            --discover-root)
+                if [[ "$seen_discover_root" == "true" ]]; then
+                    echo "--discover-root may be passed only once" >&2
+                    return 2
+                fi
+                discover_root=true
+                seen_discover_root=true
+                shift
+                ;;
+            --project=*)
+                echo "--project must be passed as --project <directory>" >&2
+                return 2
+                ;;
+            --discover-root=*)
+                echo "--discover-root does not take a value" >&2
+                return 2
+                ;;
+            --)
+                if (( ${#remainder[@]} > 0 )) && \
+                   [[ ! ( "$action" == "handoff" && ${#remainder[@]} -eq 1 && \
+                           "${remainder[0]}" == "prepare" ) ]]; then
+                    echo "-- must appear before action data" >&2
+                    return 2
+                fi
+                CMD_AWM_PROJECT_END_OF_OPTIONS=true
+                shift
+                while [[ $# -gt 0 ]]; do
+                    remainder+=("$1")
+                    shift
+                done
+                break
+                ;;
+            *)
+                remainder+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    if [[ "$discover_root" == "true" ]]; then
+        resolved_project=$(_awm_project_discover_root "$resolved_project") || return 1
+    fi
+    printf -v "$__target" '%s' "$resolved_project"
+    CMD_AWM_PROJECT_ARGS=("${remainder[@]}")
+}
+
+_cmd_awm_project_reject_flag_value() {
+    local action="$1" value="${2:-}"
+
+    if [[ "$CMD_AWM_PROJECT_END_OF_OPTIONS" != "true" && "$value" == -* ]]; then
+        echo "Unknown project ${action} option: $value (use -- before flag-looking data)" >&2
+        return 2
+    fi
+}
+
+_cmd_awm_project_validate_uint() {
+    local value="$1" label="$2" maximum="$3" allow_zero="$4"
+    local normalized
+
+    if [[ ! "$value" =~ ^[0-9]+$ || ${#value} -gt 10 ]]; then
+        echo "$label must be a non-negative integer" >&2
+        return 2
+    fi
+    normalized=$((10#$value))
+    if (( normalized > maximum )); then
+        echo "$label exceeds maximum $maximum" >&2
+        return 2
+    fi
+    if [[ "$allow_zero" != "true" && "$normalized" -eq 0 ]]; then
+        echo "$label must be greater than zero" >&2
+        return 2
+    fi
+}
+
+_cmd_awm_project_validate_option_value() {
+    local action="$1" option="$2" value="${3:-}"
+
+    if [[ -z "$value" || "$value" == -* ]]; then
+        echo "$option requires a value" >&2
+        return 2
+    fi
+    case "$option" in
+        --importance)
+            case "$value" in
+                critical|high|normal|low) ;;
+                *)
+                    echo "$option must be critical, high, normal, or low" >&2
+                    return 2
+                    ;;
+            esac
+            ;;
+        --ttl)
+            _cmd_awm_project_validate_uint "$value" "checkpoint TTL" 315360000 true || return 2
+            ;;
+        --tokens)
+            if [[ "$action" == "handoff" ]]; then
+                _cmd_awm_project_validate_uint "$value" "handoff token budget" 1000000 false || return 2
+            else
+                _cmd_awm_project_validate_uint "$value" "${action} token budget" 1000000 true || return 2
+            fi
+            ;;
+        --format)
+            case "$value" in
+                json|prompt) ;;
+                *)
+                    echo "$option must be json or prompt" >&2
+                    return 2
+                    ;;
+            esac
+            ;;
+        --kind)
+            case "$value" in
+                discovery|checkpoint|log|mixed) ;;
+                *)
+                    echo "$option must be discovery, checkpoint, log, or mixed" >&2
+                    return 2
+                    ;;
+            esac
+            ;;
+        --limit)
+            _cmd_awm_project_validate_uint "$value" "find result limit" 100000 false || return 2
+            ;;
+        --tags|--include)
+            ;;
+        *)
+            echo "Unknown project $action option: $option" >&2
+            return 2
+            ;;
+    esac
+}
+
+# Validate the complete public action grammar before awm_project_ensure can
+# create a mapping. Core AWM functions retain their direct-call compatibility,
+# but the project-scoped CLI must never turn a typo into a write for cwd.
+_cmd_awm_validate_project_action_args() {
+    local action="$1"
+    shift
+
+    case "$action" in
+        checkpoint)
+            [[ $# -ge 2 ]] || {
+                echo "Usage: mainframe awm project checkpoint --project <dir> [--discover-root] <key> <value> [--importance LEVEL] [--tags CSV] [--ttl SEC]" >&2
+                return 2
+            }
+            _cmd_awm_project_reject_flag_value "$action" "$1" || return 2
+            _cmd_awm_project_reject_flag_value "$action" "$2" || return 2
+            [[ -n "$1" ]] || {
+                echo "Project checkpoint key must not be empty" >&2
+                return 2
+            }
+            shift 2
+            while [[ $# -gt 0 ]]; do
+                case "$1" in
+                    --importance|--tags|--ttl)
+                        [[ $# -ge 2 ]] || {
+                            echo "$1 requires a value" >&2
+                            return 2
+                        }
+                        _cmd_awm_project_validate_option_value "$action" "$1" "$2" || return 2
+                        shift 2
+                        ;;
+                    *)
+                        echo "Unknown project checkpoint option: $1" >&2
+                        return 2
+                        ;;
+                esac
+            done
+            ;;
+        discovery)
+            [[ $# -ge 1 ]] || {
+                echo "Usage: mainframe awm project discovery --project <dir> [--discover-root] <text> [--importance LEVEL] [--tags CSV]" >&2
+                return 2
+            }
+            _cmd_awm_project_reject_flag_value "$action" "$1" || return 2
+            [[ -n "$1" ]] || {
+                echo "Project discovery text must not be empty" >&2
+                return 2
+            }
+            shift
+            while [[ $# -gt 0 ]]; do
+                case "$1" in
+                    --importance|--tags)
+                        [[ $# -ge 2 ]] || {
+                            echo "$1 requires a value" >&2
+                            return 2
+                        }
+                        _cmd_awm_project_validate_option_value "$action" "$1" "$2" || return 2
+                        shift 2
+                        ;;
+                    *)
+                        echo "Unknown project discovery option: $1" >&2
+                        return 2
+                        ;;
+                esac
+            done
+            ;;
+        progress)
+            [[ $# -ge 2 && $# -le 3 ]] || {
+                echo "Usage: mainframe awm project progress --project <dir> [--discover-root] <task> <current/total> [status]" >&2
+                return 2
+            }
+            _cmd_awm_project_reject_flag_value "$action" "$1" || return 2
+            _cmd_awm_project_reject_flag_value "$action" "$2" || return 2
+            [[ -n "$1" && "$2" =~ ^[0-9]+/[0-9]+$ ]] || {
+                echo "Project progress requires a non-empty task and numeric current/total" >&2
+                return 2
+            }
+            local progress_current="${2%/*}" progress_total="${2#*/}"
+            _cmd_awm_project_validate_uint "$progress_current" "progress current" 1000000000 true || return 2
+            _cmd_awm_project_validate_uint "$progress_total" "progress total" 1000000000 true || return 2
+            [[ $# -lt 3 ]] || _cmd_awm_project_reject_flag_value "$action" "$3" || return 2
+            ;;
+        get)
+            [[ $# -ge 1 && $# -le 2 ]] || {
+                echo "Usage: mainframe awm project get --project <dir> [--discover-root] <key> [default]" >&2
+                return 2
+            }
+            _cmd_awm_project_reject_flag_value "$action" "$1" || return 2
+            [[ -n "$1" ]] || {
+                echo "Project get key must not be empty" >&2
+                return 2
+            }
+            [[ $# -lt 2 ]] || _cmd_awm_project_reject_flag_value "$action" "$2" || return 2
+            ;;
+        summary)
+            while [[ $# -gt 0 ]]; do
+                case "$1" in
+                    --tokens)
+                        [[ $# -ge 2 ]] || {
+                            echo "--tokens requires a value" >&2
+                            return 2
+                        }
+                        _cmd_awm_project_validate_option_value "$action" "$1" "$2" || return 2
+                        shift 2
+                        ;;
+                    *)
+                        echo "Unknown project summary option: $1" >&2
+                        return 2
+                        ;;
+                esac
+            done
+            ;;
+        context)
+            [[ $# -ge 1 ]] || {
+                echo "Usage: mainframe awm project context --project <dir> [--discover-root] <task> [--tokens N] [--format json|prompt]" >&2
+                return 2
+            }
+            _cmd_awm_project_reject_flag_value "$action" "$1" || return 2
+            [[ -n "$1" ]] || {
+                echo "Project context task must not be empty" >&2
+                return 2
+            }
+            shift
+            while [[ $# -gt 0 ]]; do
+                case "$1" in
+                    --tokens|--format|--include)
+                        [[ $# -ge 2 ]] || {
+                            echo "$1 requires a value" >&2
+                            return 2
+                        }
+                        _cmd_awm_project_validate_option_value "$action" "$1" "$2" || return 2
+                        shift 2
+                        ;;
+                    *)
+                        echo "Unknown project context option: $1" >&2
+                        return 2
+                        ;;
+                esac
+            done
+            ;;
+        find)
+            [[ $# -ge 1 ]] || {
+                echo "Usage: mainframe awm project find --project <dir> [--discover-root] <query> [--kind KIND] [--limit N]" >&2
+                return 2
+            }
+            _cmd_awm_project_reject_flag_value "$action" "$1" || return 2
+            [[ -n "$1" ]] || {
+                echo "Project find query must not be empty" >&2
+                return 2
+            }
+            shift
+            while [[ $# -gt 0 ]]; do
+                case "$1" in
+                    --kind|--limit)
+                        [[ $# -ge 2 ]] || {
+                            echo "$1 requires a value" >&2
+                            return 2
+                        }
+                        _cmd_awm_project_validate_option_value "$action" "$1" "$2" || return 2
+                        shift 2
+                        ;;
+                    *)
+                        echo "Unknown project find option: $1" >&2
+                        return 2
+                        ;;
+                esac
+            done
+            ;;
+        handoff)
+            [[ $# -ge 1 ]] || {
+                echo "Usage: mainframe awm project handoff prepare --project <dir> [--discover-root] <target> [--tokens N] [--format json|prompt]" >&2
+                return 2
+            }
+            _cmd_awm_project_reject_flag_value "$action" "$1" || return 2
+            [[ -n "$1" ]] || {
+                echo "Project handoff target must not be empty" >&2
+                return 2
+            }
+            shift
+            while [[ $# -gt 0 ]]; do
+                case "$1" in
+                    --tokens|--format)
+                        [[ $# -ge 2 ]] || {
+                            echo "$1 requires a value" >&2
+                            return 2
+                        }
+                        _cmd_awm_project_validate_option_value "$action" "$1" "$2" || return 2
+                        shift 2
+                        ;;
+                    *)
+                        echo "Unknown project handoff option: $1" >&2
+                        return 2
+                        ;;
+                esac
+            done
+            ;;
+        *)
+            echo "Unknown project action validator: $action" >&2
+            return 2
+            ;;
+    esac
+}
+
+_cmd_awm_project_help() {
+    cat <<'EOF'
+MAINFRAME project-scoped AWM
+
+Each command resolves the canonical physical project to one private AWM
+session, so separate coding-agent shell processes do not need to retain a SID.
+
+Usage:
+  mainframe awm project ensure --project <dir> [--discover-root] [--name NAME]
+  mainframe awm project session --project <dir> [--discover-root]
+  mainframe awm project status --project <dir> [--discover-root]
+  mainframe awm project checkpoint --project <dir> [--discover-root] <key> <value> [options]
+  mainframe awm project get --project <dir> [--discover-root] <key> [default]
+  mainframe awm project discovery --project <dir> [--discover-root] <text> [options]
+  mainframe awm project progress --project <dir> [--discover-root] <task> <current/total> [status]
+  mainframe awm project close --project <dir> [--discover-root]
+  mainframe awm project summary --project <dir> [--discover-root] [--tokens N]
+  mainframe awm project context --project <dir> [--discover-root] <task> [--tokens N] [--format json|prompt]
+  mainframe awm project find --project <dir> [--discover-root] <query> [--kind KIND] [--limit N]
+  mainframe awm project handoff prepare --project <dir> [--discover-root] <target> [--tokens N] [--format json|prompt]
+
+`session`, `status`, `get`, `summary`, `context`, and `find` never create a
+project binding. Project writes and `close` serialize with renewal and require
+the currently mapped session to be active; they refuse unmapped, invalid,
+missing, completed, or replaced sessions. Only explicit `ensure` creates or
+renews a binding. Status distinguishes an absent `unmapped` binding from an
+existing unsafe `invalid` binding.
+
+`--discover-root` selects the nearest MAINFRAME-managed project root without
+crossing the current Git worktree boundary. A valid private mapping preserves
+that root after marker removal; otherwise discovery uses the worktree root, or
+the exact directory outside Git. Omit it when --project must identify the exact
+physical directory. Use `--` before an action key, value, task, or query that
+begins with a dash.
+EOF
+}
+
+cmd_awm_project() {
+    local action="${1:-help}"
+    shift || true
+    local project="."
+
+    case "$action" in
+        help|-h|--help)
+            _cmd_awm_project_help
+            ;;
+        ensure)
+            _cmd_awm_extract_project project "$action" "$@" || return $?
+            set -- "${CMD_AWM_PROJECT_ARGS[@]}"
+            local name=""
+            while [[ $# -gt 0 ]]; do
+                case "$1" in
+                    --name)
+                        [[ $# -ge 2 && -n "${2:-}" && "$2" != -* ]] || {
+                            echo "--name requires a value" >&2
+                            return 2
+                        }
+                        name="$2"
+                        shift 2
+                        ;;
+                    *)
+                        echo "Unknown project ensure option: $1" >&2
+                        return 2
+                        ;;
+                esac
+            done
+            awm_project_ensure "$project" "$name"
+            ;;
+        session)
+            _cmd_awm_extract_project project "$action" "$@" || return $?
+            set -- "${CMD_AWM_PROJECT_ARGS[@]}"
+            [[ $# -eq 0 ]] || {
+                echo "Usage: mainframe awm project session --project <dir> [--discover-root]" >&2
+                return 2
+            }
+            awm_project_session "$project"
+            ;;
+        status)
+            _cmd_awm_extract_project project "$action" "$@" || return $?
+            set -- "${CMD_AWM_PROJECT_ARGS[@]}"
+            [[ $# -eq 0 ]] || {
+                echo "Usage: mainframe awm project status --project <dir> [--discover-root]" >&2
+                return 2
+            }
+            awm_project_status "$project"
+            ;;
+        checkpoint|discovery|progress|get|summary|context|find)
+            _cmd_awm_extract_project project "$action" "$@" || return $?
+            set -- "${CMD_AWM_PROJECT_ARGS[@]}"
+            _cmd_awm_validate_project_action_args "$action" "$@" || return $?
+            case "$action" in
+                checkpoint|discovery|progress)
+                    _awm_project_mutate "$project" "$action" "$@"
+                    return $?
+                    ;;
+            esac
+            awm_project_session "$project" >/dev/null || {
+                echo "Project memory is not initialized or is invalid; run explicit project ensure first" >&2
+                return 1
+            }
+            case "$action" in
+                checkpoint) awm_checkpoint "$@" ;;
+                discovery) awm_discovery "$@" ;;
+                progress) awm_progress "$@" ;;
+                get) awm_get "$@" ;;
+                summary) awm_summary "$@" ;;
+                context) awm_context_for "$@" ;;
+                find) awm_find "$@" ;;
+            esac
+            ;;
+        close)
+            _cmd_awm_extract_project project "$action" "$@" || return $?
+            set -- "${CMD_AWM_PROJECT_ARGS[@]}"
+            [[ $# -eq 0 ]] || {
+                echo "Usage: mainframe awm project close --project <dir> [--discover-root]" >&2
+                return 2
+            }
+            _awm_project_mutate "$project" close
+            ;;
+        handoff)
+            _cmd_awm_extract_project project "$action" "$@" || return $?
+            set -- "${CMD_AWM_PROJECT_ARGS[@]}"
+            local handoff_action="${1:-prepare}"
+            if [[ "$handoff_action" == "prepare" ]]; then
+                shift || true
+            elif [[ "$handoff_action" == "accept" ]]; then
+                echo "Project-scoped handoff currently supports prepare only" >&2
+                return 2
+            fi
+            _cmd_awm_validate_project_action_args handoff "$@" || return $?
+            _awm_project_mutate "$project" handoff_prepare "$@"
+            ;;
+        *)
+            _cmd_awm_project_help >&2
+            return 2
+            ;;
+    esac
 }
 
 _cmd_awm_help() {
@@ -428,9 +2112,11 @@ MAINFRAME AWM
 
 Usage:
   mainframe awm init [name] [--parent ID] [--namespace NS] [--model MODEL] [--backend file|redis|chromadb|auto]
+  mainframe awm project <ensure|session|status|checkpoint|get|discovery|progress|close|summary|context|find|handoff> --project <dir> [--discover-root] ...
   mainframe awm resume <session_id>
   mainframe awm checkpoint --session <sid> <key> <value> [--importance LEVEL] [--tags CSV] [--ttl SEC]
   mainframe awm discovery --session <sid> <text> [--importance LEVEL] [--tags CSV]
+  mainframe awm progress --session <sid> <task> <current/total> [status]
   mainframe awm get --session <sid> <key> [default]
   mainframe awm summary --session <sid> [--tokens N]
   mainframe awm context --session <sid> <task> [--tokens N] [--format json|prompt] [--include LIST]
@@ -445,6 +2131,9 @@ Usage:
   mainframe awm migrate <sid|--all>
 
 Examples:
+  mainframe awm project ensure --project . --discover-root
+  mainframe awm project context --project . --discover-root "current task" --tokens 1200 --format prompt
+  mainframe awm project checkpoint --project . --discover-root current_phase implementation --importance high
   mainframe awm init security-audit --namespace team-red
   mainframe awm checkpoint --session abc123def456 current_step 3 --importance high
   mainframe awm discovery --session abc123def456 "Auth uses JWT refresh tokens"
@@ -461,7 +2150,11 @@ cmd_awm() {
         help|-h|--help)
             _cmd_awm_help
             ;;
+        project)
+            cmd_awm_project "$@"
+            ;;
         init)
+            _cmd_awm_reject_project_init_args "$@" || return 1
             awm_init "$@"
             ;;
         resume)
@@ -469,6 +2162,7 @@ cmd_awm() {
                 echo "Usage: mainframe awm resume <session_id>"
                 return 1
             fi
+            _cmd_awm_reject_project_session "$1" || return 1
             awm_resume "$1" >/dev/null && printf '%s\n' "$_AWM_SESSION_ID"
             ;;
         checkpoint)
@@ -484,6 +2178,13 @@ cmd_awm() {
             set -- "${CMD_AWM_ARGS[@]}"
             _cmd_awm_require_session "$discovery_session" || return 1
             awm_discovery "$@"
+            ;;
+        progress)
+            local progress_session=""
+            _cmd_awm_extract_session progress_session "$@"
+            set -- "${CMD_AWM_ARGS[@]}"
+            _cmd_awm_require_session "$progress_session" || return 1
+            awm_progress "$@"
             ;;
         get)
             local get_session=""
@@ -529,6 +2230,7 @@ cmd_awm() {
                     _cmd_awm_extract_session accept_session "$@"
                     set -- "${CMD_AWM_ARGS[@]}"
                     if [[ -n "$accept_session" ]]; then
+                        _cmd_awm_reject_project_session "$accept_session" || return 1
                         awm_resume "$accept_session" >/dev/null || return 1
                     fi
                     awm_handoff_accept "$@"
@@ -543,7 +2245,7 @@ cmd_awm() {
             esac
             ;;
         list)
-            awm_list "$@"
+            awm_list "$@" --exclude-namespace projects
             ;;
         status)
             local status_session=""
@@ -553,7 +2255,9 @@ cmd_awm() {
                 status_session="$1"
                 shift
             fi
-            awm_status "${status_session:-$_AWM_SESSION_ID}"
+            local status_target="${status_session:-$_AWM_SESSION_ID}"
+            _cmd_awm_reject_project_session "$status_target" || return 1
+            awm_status "$status_target"
             ;;
         doctor)
             local doctor_session=""
@@ -563,7 +2267,9 @@ cmd_awm() {
                 doctor_session="$1"
                 shift
             fi
-            awm_doctor "${doctor_session:-$_AWM_SESSION_ID}"
+            local doctor_target="${doctor_session:-$_AWM_SESSION_ID}"
+            _cmd_awm_reject_project_session "$doctor_target" || return 1
+            awm_doctor "$doctor_target"
             ;;
         export)
             local export_session=""
@@ -577,6 +2283,7 @@ cmd_awm() {
                 echo "Usage: mainframe awm inspect <session_id>"
                 return 1
             fi
+            _cmd_awm_reject_project_session "$1" || return 1
             awm_resume "$1" >/dev/null || return 1
             printf '{"status":%s,"summary":%s,"discoveries":%s}\n' \
                 "$(awm_status "$1")" \
@@ -584,7 +2291,12 @@ cmd_awm() {
                 "$(awm_recent discoveries 10)"
             ;;
         migrate)
-            awm_migrate "$@"
+            if [[ "${1:-}" == "--all" ]]; then
+                _cmd_awm_migrate_non_project_all
+            else
+                _cmd_awm_reject_project_session "${1:-$_AWM_SESSION_ID}" || return 1
+                awm_migrate "$@"
+            fi
             ;;
         *)
             _cmd_awm_help
@@ -1027,6 +2739,20 @@ case "${1:-help}" in
     functions|funcs|list)
         cmd_functions
         ;;
+    operations|ops)
+        cmd_operations "${2:-all}"
+        ;;
+    run)
+        shift
+        cmd_operation "$@"
+        ;;
+    invoke)
+        # The protected fast path above must consume this command before the
+        # general runtime loads. Reaching ordinary dispatch is an invariant
+        # failure, never permission to invoke through the broad shell surface.
+        echo "MAINFRAME invocation denied: canonical broker dispatch was bypassed" >&2
+        exit 126
+        ;;
     help|info|describe)
         cmd_help "${2:-}"
         ;;
@@ -1037,11 +2763,16 @@ case "${1:-help}" in
         shift
         cmd_awm "$@"
         ;;
+    work)
+        shift
+        source "$MAINFRAME_ROOT/lib/work.sh"
+        mainframe_work "$@"
+        ;;
     count)
         cmd_count
         ;;
     quickref|qr|signatures|sigs)
-        cmd_quickref "${2:-}"
+        cmd_quickref "${2:-}" "${3:-}"
         ;;
     fzf|fuzzy|browse)
         cmd_fzf "${2:-}"
@@ -1052,28 +2783,187 @@ case "${1:-help}" in
     doctor|check|health)
         cmd_doctor
         ;;
+    shell)
+        shift
+        source "$MAINFRAME_ROOT/lib/shell.sh"
+        mainframe_shell "$@"
+        ;;
+    agent-hook|agent-gateway)
+        shift
+        # Normalize any launcher/runtime failure to the blocking hook code.
+        # Hosts such as Codex, Claude, and Gemini use exit 2 as the blocking
+        # result rather than treating every non-zero failure as a denial.
+        if "$BASH" --noprofile --norc -p \
+            "$MAINFRAME_ROOT/hooks/agent-gateway.sh" "$@"; then
+            exit 0
+        else
+            hook_status=$?
+            [[ "$hook_status" -eq 2 ]] || \
+                echo "MAINFRAME agent gateway failed (exit=$hook_status); denying tool call" >&2
+            exit 2
+        fi
+        ;;
+    protect)
+        shift
+        source "$MAINFRAME_ROOT/lib/activate.sh"
+        _mainframe_protect_command "$@"
+        ;;
+    host)
+        shift
+        source "$MAINFRAME_ROOT/lib/activate.sh"
+        source "$MAINFRAME_ROOT/lib/launch.sh"
+        source "$MAINFRAME_ROOT/lib/host_runtime.sh"
+        source "$MAINFRAME_ROOT/lib/host_lifecycle.sh"
+        mainframe_host "$@"
+        ;;
+    pi)
+        shift
+        source "$MAINFRAME_ROOT/lib/pi.sh"
+        case "${1:-status}" in
+            status)
+                [[ $# -eq 0 ]] || shift
+                mainframe_pi_status "$@"
+                ;;
+            doctor)
+                shift
+                mainframe_pi_doctor "$@"
+                ;;
+            install)
+                shift
+                mainframe_pi_install "$@"
+                ;;
+            remove)
+                shift
+                mainframe_pi_remove "$@"
+                ;;
+            restore)
+                shift
+                mainframe_pi_restore "$@"
+                ;;
+            help|-h|--help)
+                printf '%s\n' \
+                    'Usage: mainframe pi <status|doctor|install|remove|restore> [options]' \
+                    '' \
+                    '  status [--json]               Inspect package and legacy collision state' \
+                    '  doctor [--json]               Diagnose exact Pi compatibility and activation' \
+                    '  install --dry-run             Preview migration without changing files' \
+                    '  install --yes                 Quarantine legacy resources and activate the package' \
+                    '  remove --dry-run              Preview detaching the managed package source' \
+                    '  remove --yes                  Detach the managed package; preserve backups/settings' \
+                    '  restore --backup-id ID --dry-run  Authenticate an exact migration recovery' \
+                    '  restore --backup-id ID --yes      Restore the exact pre-install snapshot' \
+                    '' \
+                    'After a changed install, use /reload in Pi (or restart Pi), then run /mainframe doctor.'
+                ;;
+            *)
+                echo "Unknown Pi command: $1" >&2
+                echo "Usage: mainframe pi <status|doctor|install|remove|restore> [options]" >&2
+                exit 64
+                ;;
+        esac
+        ;;
+    setup)
+        shift
+        source "$MAINFRAME_ROOT/lib/agent_safety.sh"
+        source "$MAINFRAME_ROOT/lib/activate.sh"
+        source "$MAINFRAME_ROOT/lib/onboard.sh"
+        source "$MAINFRAME_ROOT/lib/launch.sh"
+        source "$MAINFRAME_ROOT/lib/host_runtime.sh"
+        source "$MAINFRAME_ROOT/lib/setup.sh"
+        mainframe_setup "$@"
+        ;;
+    onboard)
+        shift
+        source "$MAINFRAME_ROOT/lib/activate.sh"
+        source "$MAINFRAME_ROOT/lib/onboard.sh"
+        mainframe_onboard "$@"
+        ;;
+    launch)
+        shift
+        source "$MAINFRAME_ROOT/lib/activate.sh"
+        source "$MAINFRAME_ROOT/lib/launch.sh"
+        source "$MAINFRAME_ROOT/lib/host_runtime.sh"
+        mainframe_launch "$@"
+        ;;
+    activate)
+        shift
+        source "$MAINFRAME_ROOT/lib/activate.sh"
+        mainframe_activate "$@"
+        ;;
+    deactivate)
+        shift
+        source "$MAINFRAME_ROOT/lib/activate.sh"
+        mainframe_deactivate "$@"
+        ;;
     benchmark|bench)
         cmd_benchmark
         ;;
     test|tests)
         cmd_test
         ;;
-    update|upgrade)
-        cmd_update
+    update)
+        shift
+        cmd_update "$@"
+        ;;
+    upgrade)
+        shift
+        cmd_upgrade "$@"
+        ;;
+    release)
+        shift
+        source "$MAINFRAME_ROOT/lib/release_readiness.sh"
+        case "${1:-readiness}" in
+            readiness)
+                [[ $# -eq 0 ]] || shift
+                _mainframe_release_readiness "$@"
+                ;;
+            help|-h|--help)
+                _mainframe_release_readiness_usage
+                ;;
+            *)
+                echo "Unknown release command: $1" >&2
+                _mainframe_release_readiness_usage >&2
+                exit 64
+                ;;
+        esac
+        ;;
+    uninstall)
+        shift
+        cmd_uninstall "$@"
         ;;
     new|init)
-        # Delegate to mainframe-new CLI
-        exec "$MAINFRAME_ROOT/bin/mainframe-new" "$@"
+        # Keep delegated scripts on the already-verified current interpreter;
+        # their /usr/bin/env shebang could otherwise fall back to Apple Bash.
+        if [[ $# -eq 2 && ( "$2" == "-h" || "$2" == "--help" ) ]]; then
+            exec "$BASH" --noprofile --norc -p \
+                "$MAINFRAME_ROOT/bin/mainframe-new" "$2"
+        fi
+        exec "$BASH" --noprofile --norc -p \
+            "$MAINFRAME_ROOT/bin/mainframe-new" "$@"
         ;;
     build)
-        # Delegate to mainframe-build CLI
+        # Delegate through the already-verified current interpreter.
         shift  # Remove 'build' from args
-        exec "$MAINFRAME_ROOT/bin/mainframe-build" "$@"
+        exec "$BASH" --noprofile --norc -p \
+            "$MAINFRAME_ROOT/bin/mainframe-build" "$@"
         ;;
     -h|--help)
         show_help
         ;;
     *)
-        show_help
+        if _find_operation "$1" >/dev/null; then
+            cmd_operation "$@"
+        else
+            echo "Unknown command or operation: $1" >&2
+            echo "" >&2
+            show_help >&2
+            exit 1
+        fi
+        ;;
+esac
+
+        ;;
+    *)
+        /bin/bash --noprofile --norc -p -- "$0" "$@"
         ;;
 esac

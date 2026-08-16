@@ -771,7 +771,7 @@ _temporal_detect_time_patterns() {
     local json="{\"patterns\":["
     json+="{\"pattern\":\"commands fail more on Monday mornings\",\"confidence\":0.72,\"evidence\":\"23% higher failure rate\"}"
     json+=","
-    json+="{\"pattern\":\"build commands run between 9-11am\",\"confidence\":0.68,\"evidence\":"ci runs"}"
+    json+="{\"pattern\":\"build commands run between 9-11am\",\"confidence\":0.68,\"evidence\":\"ci runs\"}"
     json+="],\"type\":\"temporal\"}"
 
     printf '%s' "$json"

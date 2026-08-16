@@ -1,0 +1,627 @@
+{
+  "schema_version": 1,
+  "scope": "Direct lib/*.sh files; column-zero name() { definitions only.",
+  "policy": "Every collision is exact and frozen. New, removed, moved, or repeated definitions require an explicit policy update.",
+  "collisions": {
+    "_agent_json_escape": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/agent.sh",
+        "lib/agent_exec.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "_agent_log": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/agent.sh",
+        "lib/agent_exec.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "_llm_log": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/llm_functions.sh",
+        "lib/llm_providers.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "_mainframe_sha256": {
+      "classification": "guarded-equivalent",
+      "definitions": [
+        "lib/audit.sh",
+        "lib/awm_storage.sh",
+        "lib/awm_stream.sh",
+        "lib/awm_tiers.sh",
+        "lib/burl_ai.sh",
+        "lib/cache.sh",
+        "lib/checkpoint.sh",
+        "lib/ci.sh",
+        "lib/embeddings.sh",
+        "lib/observe.sh",
+        "lib/rag.sh",
+        "lib/uap_v2.sh"
+      ],
+      "rationale": "Shared private compatibility shim; every copy is protected by an existence guard."
+    },
+    "_otel_context_file": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/observe.sh",
+        "lib/otel.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "_otel_gen_span_id": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/observe.sh",
+        "lib/otel.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "_otel_gen_trace_id": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/observe.sh",
+        "lib/otel.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "_otel_now_nanos": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/observe.sh",
+        "lib/otel.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "_otel_should_trace": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/observe.sh",
+        "lib/otel.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "abs": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/functional.sh",
+        "lib/pure-util.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "agent_broadcast": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/agent.sh",
+        "lib/agent_comm.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "agent_error": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/agent_comm.sh",
+        "lib/agent_safety.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "agent_find_by_capability": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/agent.sh",
+        "lib/agent_comm.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "agent_info": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/agent.sh",
+        "lib/agent_comm.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "agent_init": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/agent.sh",
+        "lib/agent_comm.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "agent_list": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/agent.sh",
+        "lib/agent_comm.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "agent_peek": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/agent.sh",
+        "lib/agent_comm.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "agent_receive": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/agent.sh",
+        "lib/agent_comm.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "agent_register": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/agent.sh",
+        "lib/agent_comm.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "agent_send": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/agent.sh",
+        "lib/agent_comm.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "agent_status": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/agent.sh",
+        "lib/agent_comm.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "circuit_breaker_call": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/resilience.sh",
+        "lib/retry.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "circuit_breaker_reset": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/resilience.sh",
+        "lib/retry.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "circuit_breaker_state": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/resilience.sh",
+        "lib/retry.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "day_of_week": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/datetime.sh",
+        "lib/pure-util.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "gen_array": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/property_test.sh",
+        "lib/proptest.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "gen_bool": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/property_test.sh",
+        "lib/proptest.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "gen_choice": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/property_test.sh",
+        "lib/proptest.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "gen_float": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/property_test.sh",
+        "lib/proptest.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "gen_int": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/property_test.sh",
+        "lib/proptest.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "gen_string": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/property_test.sh",
+        "lib/proptest.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "identity": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/compose.sh",
+        "lib/functional.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "is_root": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/pure-util.sh",
+        "lib/sysinfo.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "otel_flush": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/observe.sh",
+        "lib/otel.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "otel_instrument": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/observe.sh",
+        "lib/otel.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "otel_timed": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/observe.sh",
+        "lib/otel.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "otel_trace_end": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/observe.sh",
+        "lib/otel.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "otel_trace_start": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/observe.sh",
+        "lib/otel.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "parallel_map": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/async.sh",
+        "lib/parallel.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "path_join": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/path.sh",
+        "lib/pure-file.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "path_normalize": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/path.sh",
+        "lib/pure-file.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "path_stem": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/path.sh",
+        "lib/pure-file.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "progress_bar": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/anim.sh",
+        "lib/pure-util.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "random_hex": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/crypto.sh",
+        "lib/pure-util.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "regex_match": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/regex.sh",
+        "lib/validation.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "registry_list_libraries": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/registry.sh",
+        "lib/registry_schema.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "registry_search": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/registry.sh",
+        "lib/registry_schema.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "sandbox_available": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/sandbox.sh",
+        "lib/sandbox_exec.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "sandbox_exec": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/sandbox.sh",
+        "lib/sandbox_exec.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "semver_compare": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/parsers.sh",
+        "lib/semver.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_all": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/streaming.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_any": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/streaming.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_batch": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/streaming.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_buffer": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/stream.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_count": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/streaming.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_debounce": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/stream.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_drop_while": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/streaming.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_enumerate": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/streaming.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_fanout": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/stream.sh",
+        "lib/streaming.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_filter": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/streaming.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_find": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/streaming.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_group_by": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/stream.sh",
+        "lib/streaming.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_interleave": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/stream.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_map": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/streaming.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_merge": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/stream.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_none": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/streaming.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_reduce": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/streaming.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_stats": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/streaming.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_take": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/streaming.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_take_while": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/streaming.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_throttle": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/stream.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_window": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/stream.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "stream_zip": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/stream.sh",
+        "lib/streaming.sh",
+        "lib/streams.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "task_list": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/taskgraph.sh",
+        "lib/taskstate.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "verify_and_heal": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/heal.sh",
+        "lib/verify.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    },
+    "with_timeout": {
+      "classification": "legacy-unresolved",
+      "definitions": [
+        "lib/resilience.sh",
+        "lib/retry.sh"
+      ],
+      "rationale": "Existing unguarded collision; definition ownership is frozen pending namespace cleanup."
+    }
+  }
+}

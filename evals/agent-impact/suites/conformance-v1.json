@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "kind": "mainframe-agent-impact-suite",
+  "id": "agent-impact-conformance-v1",
+  "description": "Credentials-free protocol conformance only; not an agent-impact benchmark.",
+  "tasks": [
+    "tasks/conformance-001/task.json"
+  ]
+}

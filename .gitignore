@@ -25,6 +25,10 @@ tests/bats-file/
 # Benchmark results (keep the script, not results)
 benchmark_results/
 
+# Agent-impact raw runs and private assignment reveals
+/evals/agent-impact/runs/
+/evals/agent-impact/private/
+
 # Local config overrides
 *.local
 *.local.sh
@@ -36,9 +40,17 @@ basher.conf
 
 # Cache directory
 cache/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
 
 # AWM runtime sessions
 awm/
+
+# Local agent orchestration state
+/.pi/goals/
 
 # Temp test files
 result.txt

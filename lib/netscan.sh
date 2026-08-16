@@ -13,6 +13,11 @@
 
 # Prevent double-sourcing
 [[ -n "${_MAINFRAME_NETSCAN_LOADED:-}" ]] && return 0
+
+# http.sh owns the canonical http_headers dispatcher. Loading it explicitly
+# keeps direct `source lib/netscan.sh` usage compatible with common.sh loading.
+source "${BASH_SOURCE[0]%/*}/http.sh"
+
 readonly _MAINFRAME_NETSCAN_LOADED=1
 
 # =============================================================================
@@ -234,10 +239,10 @@ banner_grab() {
 # Extract HTTP response headers from a URL. Uses curl if available,
 # falls back to /dev/tcp for HTTP (not HTTPS).
 #
-# Usage: headers=$(http_headers "http://example.com")
-# Example: headers=$(http_headers "localhost:8080")
-http_headers() {
-    local url="$1"
+# Usage: headers=$(netscan_http_headers "http://example.com")
+# Example: headers=$(netscan_http_headers "localhost:8080")
+netscan_http_headers() {
+    local url="${1:-}"
     local timeout="${2:-$MAINFRAME_NET_TIMEOUT}"
 
     if [[ -z "$url" ]]; then

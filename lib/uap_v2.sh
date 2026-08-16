@@ -449,6 +449,11 @@ _uap_v2_send_pipe() {
 _uap_v2_send_file() {
     local agent="$1"
     local message="$2"
+
+    [[ "$agent" =~ ^[[:alnum:]][[:alnum:]_.-]*$ ]] || {
+        _uap_v2_log "error" "Invalid agent name: $agent"
+        return 1
+    }
     
     local mailbox
     mailbox=$(_uap_v2_mailbox_path "$agent")
@@ -535,10 +540,16 @@ _uap_v2_receive_file() {
         deadline=0
     fi
     
+    local msg_file candidate
     while true; do
-        # Get oldest message (sorted by filename = chronological)
-        local msg_file
-        msg_file=$(ls -1t "$mailbox"/*.json 2>/dev/null | grep -v '/\.tmp\.' | head -1)
+        # Preserve the existing newest-message-first behavior without parsing ls output.
+        msg_file=""
+        for candidate in "$mailbox"/*.json; do
+            [[ -f "$candidate" ]] || continue
+            if [[ -z "$msg_file" || "$candidate" -nt "$msg_file" ]]; then
+                msg_file="$candidate"
+            fi
+        done
         
         if [[ -n "$msg_file" && -f "$msg_file" ]]; then
             local message
@@ -593,6 +604,10 @@ uap_v2_register() {
     done
     
     [[ -z "$name" ]] && { _uap_v2_log "error" "Agent name required"; return 1; }
+    [[ "$name" =~ ^[[:alnum:]][[:alnum:]_.-]*$ ]] || {
+        _uap_v2_log "error" "Invalid agent name: $name"
+        return 1
+    }
     
     _uap_v2_ensure_dirs || return 1
     
@@ -703,6 +718,14 @@ uap_v2_unregister() {
     local name="${1:-$UAP_V2_AGENT_NAME}"
     
     [[ -z "$name" ]] && { _uap_v2_log "error" "Agent name required"; return 1; }
+    [[ "$name" =~ ^[[:alnum:]][[:alnum:]_.-]*$ ]] || {
+        _uap_v2_log "error" "Invalid agent name: $name"
+        return 1
+    }
+    [[ -n "${UAP_V2_MAILBOX_DIR:-}" && "$UAP_V2_MAILBOX_DIR" != "/" && "$UAP_V2_MAILBOX_DIR" != "." ]] || {
+        _uap_v2_log "error" "Unsafe mailbox directory"
+        return 1
+    }
     
     # Stop heartbeat
     if [[ "$name" == "$UAP_V2_AGENT_NAME" && -n "$UAP_V2_HEARTBEAT_PID" ]]; then
@@ -723,7 +746,7 @@ uap_v2_unregister() {
     # Cleanup transport
     rm -f "$UAP_V2_SOCKET_DIR/${name}.sock"
     rm -f "$UAP_V2_PIPE_DIR/${name}.pipe"
-    rm -rf "$UAP_V2_MAILBOX_DIR/$name"
+    rm -rf -- "${UAP_V2_MAILBOX_DIR:?}/$name"
     
     if [[ "$name" == "$UAP_V2_AGENT_NAME" ]]; then
         UAP_V2_AGENT_NAME=""

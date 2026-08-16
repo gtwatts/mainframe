@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""MAINFRAME MCP Server - Exposes bash functions as MCP tools."""
+"""Source-tree compatibility launcher for the packaged MCP runner."""
 
+from pathlib import Path
 import sys
-import os
 
-# Add mcp directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from server import main
+SOURCE_ROOT = Path(__file__).resolve().parent / 'src'
+sys.path.insert(0, str(SOURCE_ROOT))
 
-if __name__ == "__main__":
-    main()
+from mainframe_mcp.cli import main  # noqa: E402
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

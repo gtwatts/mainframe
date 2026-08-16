@@ -774,9 +774,11 @@ line","back\\slash","quote""inside"'
 # =============================================================================
 
 @test "perf_compare detects faster command" {
-    # 'true' should be faster than 'sleep 0.01'
+    # Bash 4.4's builtin clock has one-second resolution. Keep the slower
+    # command separated by two full ticks so this remains a deterministic
+    # compatibility assertion instead of a scheduler-bound microbenchmark.
     local result
-    result=$(perf_compare "true" "sleep 0.01" 3)
+    result=$(perf_compare "true" "sleep 2" 1)
     [[ "$result" == *'"winner":"cmd1"'* ]]
 }
 

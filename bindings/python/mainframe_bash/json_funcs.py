@@ -5,12 +5,14 @@ Wraps json.sh functions: json_object, json_array, json_string, etc.
 """
 
 import json
-from typing import Any, Union
+from typing import Any, cast
 
-from .core import call_function, call_function_json, MainframeFunctionError
+from .core import MainframeFunctionError
+from .core import _legacy_call_function as call_function
+from .core import _legacy_call_function_json as call_function_json
 
 
-def json_object(**kwargs: Union[str, int, float, bool, None]) -> dict[str, Any]:
+def json_object(**kwargs: str | int | float | bool | None) -> dict[str, Any]:
     """
     Create a JSON object from keyword arguments.
 
@@ -41,10 +43,10 @@ def json_object(**kwargs: Union[str, int, float, bool, None]) -> dict[str, Any]:
         else:
             args.append(f"{key}={value}")
 
-    return call_function_json("json_object", *args)
+    return cast(dict[str, Any], call_function_json("json_object", *args))
 
 
-def json_array(*items: Union[str, int, float, bool, None]) -> list[Any]:
+def json_array(*items: str | int | float | bool | None) -> list[Any]:
     """
     Create a JSON array from arguments.
 
@@ -70,7 +72,7 @@ def json_array(*items: Union[str, int, float, bool, None]) -> list[Any]:
         else:
             str_items.append(str(item))
 
-    return call_function_json("json_array", *str_items)
+    return cast(list[Any], call_function_json("json_array", *str_items))
 
 
 def json_string(value: str) -> str:
@@ -140,11 +142,11 @@ def json_value(value: Any, value_type: str = "auto") -> str:
     """
     output, code = call_function("json_value", str(value), value_type)
     if code != 0:
-        raise MainframeFunctionError("json_value", f"Failed to create JSON value", code)
+        raise MainframeFunctionError("json_value", "Failed to create JSON value", code)
     return output
 
 
-def json_merge(*objects: Union[dict, str]) -> dict[str, Any]:
+def json_merge(*objects: dict | str) -> dict[str, Any]:
     """
     Merge multiple JSON objects.
 
@@ -168,10 +170,10 @@ def json_merge(*objects: Union[dict, str]) -> dict[str, Any]:
         else:
             json_strings.append(str(obj))
 
-    return call_function_json("json_merge", *json_strings)
+    return cast(dict[str, Any], call_function_json("json_merge", *json_strings))
 
 
-def json_pretty(obj: Union[dict, list, str], indent: str = "  ") -> str:
+def json_pretty(obj: dict | list | str, indent: str = "  ") -> str:
     """
     Pretty-print a JSON value.
 
@@ -188,7 +190,7 @@ def json_pretty(obj: Union[dict, list, str], indent: str = "  ") -> str:
         pretty = json_pretty({"a": 1, "b": 2})
         # Returns formatted multi-line JSON
     """
-    if isinstance(obj, (dict, list)):
+    if isinstance(obj, dict | list):
         json_str = json.dumps(obj)
     else:
         json_str = str(obj)

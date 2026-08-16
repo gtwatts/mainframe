@@ -1,0 +1,463 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/installed-awm-handoff-private-v1.json",
+  "title": "MAINFRAME private installed-candidate AWM handoff record",
+  "$comment": "Private verification input. It may contain absolute paths, raw continuations, AWM state, and process output and must never be uploaded or published as public evidence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "claim_scope",
+    "candidate",
+    "platform",
+    "shell",
+    "protocol",
+    "processes",
+    "mechanisms",
+    "artifacts",
+    "measurements",
+    "execution",
+    "public_projection_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "mainframe-installed-awm-handoff-private-record" },
+    "claim_scope": {
+      "const": "installed-candidate-awm-handoff-mechanism-conformance-only"
+    },
+    "candidate": { "$ref": "#/$defs/candidate" },
+    "platform": { "$ref": "#/$defs/platform" },
+    "shell": { "$ref": "#/$defs/shell" },
+    "protocol": { "$ref": "#/$defs/protocol" },
+    "processes": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "prefixItems": [
+        { "$ref": "#/$defs/ensureProcess" },
+        { "$ref": "#/$defs/checkpointProcess" },
+        { "$ref": "#/$defs/discoveryProcess" },
+        { "$ref": "#/$defs/handoffProcess" }
+      ],
+      "items": false
+    },
+    "mechanisms": { "$ref": "#/$defs/mechanisms" },
+    "artifacts": { "$ref": "#/$defs/artifacts" },
+    "measurements": { "$ref": "#/$defs/measurements" },
+    "execution": { "$ref": "#/$defs/execution" },
+    "public_projection_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 64,
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"
+    },
+    "bashVersion": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 128,
+      "pattern": "^[0-9]+\\.[0-9]+(?:\\.[0-9]+)?\\([0-9]+\\)-[A-Za-z0-9._+-]+$"
+    },
+    "absolutePath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 32768,
+      "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*//)(?!.*\\/$)(?!.*\\\\)/[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "fileBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "type", "mode", "size_bytes", "sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/absolutePath" },
+        "type": { "const": "file" },
+        "mode": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 4,
+          "pattern": "^0[0-7]{3}$"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 536870912
+        },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "privateTreeBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "algorithm", "sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/absolutePath" },
+        "algorithm": {
+          "const": "mainframe-agent-impact-private-tree-sha256-v1"
+        },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "packageTreeBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "algorithm", "sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/absolutePath" },
+        "algorithm": { "const": "mainframe-package-tree-sha256-v1" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "archive",
+        "checksum",
+        "install_root",
+        "installed_tree",
+        "install_receipt",
+        "installed_payload",
+        "install_receipt_verified"
+      ],
+      "properties": {
+        "version": { "$ref": "#/$defs/version" },
+        "archive": { "$ref": "#/$defs/fileBinding" },
+        "checksum": { "$ref": "#/$defs/fileBinding" },
+        "install_root": { "$ref": "#/$defs/absolutePath" },
+        "installed_tree": { "$ref": "#/$defs/packageTreeBinding" },
+        "install_receipt": { "$ref": "#/$defs/fileBinding" },
+        "installed_payload": {
+          "const": "authenticated-release-files-private-staging"
+        },
+        "install_receipt_verified": { "const": true }
+      }
+    },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "os", "architecture", "system_libc"],
+      "properties": {
+        "id": {
+          "enum": [
+            "Darwin-arm64-none",
+            "Darwin-x86_64-none",
+            "Linux-x86_64-glibc"
+          ]
+        },
+        "os": { "enum": ["Darwin", "Linux"] },
+        "architecture": { "enum": ["arm64", "x86_64"] },
+        "system_libc": { "enum": ["none", "glibc"] }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "id": { "const": "Darwin-arm64-none" },
+            "os": { "const": "Darwin" },
+            "architecture": { "const": "arm64" },
+            "system_libc": { "const": "none" }
+          }
+        },
+        {
+          "properties": {
+            "id": { "const": "Darwin-x86_64-none" },
+            "os": { "const": "Darwin" },
+            "architecture": { "const": "x86_64" },
+            "system_libc": { "const": "none" }
+          }
+        },
+        {
+          "properties": {
+            "id": { "const": "Linux-x86_64-glibc" },
+            "os": { "const": "Linux" },
+            "architecture": { "const": "x86_64" },
+            "system_libc": { "const": "glibc" }
+          }
+        }
+      ]
+    },
+    "shell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "executable",
+        "version",
+        "runtime_bash",
+        "fresh_login_shell_count",
+        "distinct_processes",
+        "isolated_profile_discovery"
+      ],
+      "properties": {
+        "name": { "enum": ["bash", "zsh"] },
+        "executable": { "$ref": "#/$defs/fileBinding" },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._+():,-]{0,255}$"
+        },
+        "runtime_bash": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["executable", "version"],
+          "properties": {
+            "executable": { "$ref": "#/$defs/fileBinding" },
+            "version": { "$ref": "#/$defs/bashVersion" }
+          }
+        },
+        "fresh_login_shell_count": { "const": 4 },
+        "distinct_processes": { "const": true },
+        "isolated_profile_discovery": { "const": true }
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "certifier",
+        "private_schema",
+        "evidence_schema",
+        "neutral_continuation_schema",
+        "task_bundle",
+        "fake_transport",
+        "grader",
+        "maximum_continuation_bytes"
+      ],
+      "properties": {
+        "certifier": { "$ref": "#/$defs/fileBinding" },
+        "private_schema": { "$ref": "#/$defs/fileBinding" },
+        "evidence_schema": { "$ref": "#/$defs/fileBinding" },
+        "neutral_continuation_schema": { "$ref": "#/$defs/fileBinding" },
+        "task_bundle": { "$ref": "#/$defs/privateTreeBinding" },
+        "fake_transport": { "$ref": "#/$defs/fileBinding" },
+        "grader": { "$ref": "#/$defs/fileBinding" },
+        "maximum_continuation_bytes": { "const": 4096 }
+      }
+    },
+    "processBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sequence",
+        "operation",
+        "pid",
+        "command_sha256",
+        "stdout",
+        "stderr",
+        "exit_code"
+      ],
+      "properties": {
+        "sequence": { "type": "integer", "minimum": 1, "maximum": 4 },
+        "operation": {
+          "enum": ["ensure", "checkpoint", "discovery", "handoff"]
+        },
+        "pid": { "type": "integer", "minimum": 1 },
+        "command_sha256": { "$ref": "#/$defs/sha256" },
+        "stdout": { "$ref": "#/$defs/fileBinding" },
+        "stderr": { "$ref": "#/$defs/fileBinding" },
+        "exit_code": { "const": 0 }
+      }
+    },
+    "ensureProcess": {
+      "allOf": [
+        { "$ref": "#/$defs/processBase" },
+        {
+          "properties": {
+            "sequence": { "const": 1 },
+            "operation": { "const": "ensure" }
+          }
+        }
+      ]
+    },
+    "checkpointProcess": {
+      "allOf": [
+        { "$ref": "#/$defs/processBase" },
+        {
+          "properties": {
+            "sequence": { "const": 2 },
+            "operation": { "const": "checkpoint" }
+          }
+        }
+      ]
+    },
+    "discoveryProcess": {
+      "allOf": [
+        { "$ref": "#/$defs/processBase" },
+        {
+          "properties": {
+            "sequence": { "const": 3 },
+            "operation": { "const": "discovery" }
+          }
+        }
+      ]
+    },
+    "handoffProcess": {
+      "allOf": [
+        { "$ref": "#/$defs/processBase" },
+        {
+          "properties": {
+            "sequence": { "const": 4 },
+            "operation": { "const": "handoff" }
+          }
+        }
+      ]
+    },
+    "mechanisms": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["control", "treatment", "neutral_envelopes_equal"],
+      "properties": {
+        "control": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["raw_continuation", "neutral_envelope"],
+          "properties": {
+            "raw_continuation": { "$ref": "#/$defs/fileBinding" },
+            "neutral_envelope": { "$ref": "#/$defs/fileBinding" }
+          }
+        },
+        "treatment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "awm_before",
+            "awm_after_ensure",
+            "awm_after_checkpoint",
+            "awm_after_discovery",
+            "awm_after_handoff",
+            "exported_handoff",
+            "neutral_envelope"
+          ],
+          "properties": {
+            "awm_before": { "$ref": "#/$defs/privateTreeBinding" },
+            "awm_after_ensure": { "$ref": "#/$defs/privateTreeBinding" },
+            "awm_after_checkpoint": { "$ref": "#/$defs/privateTreeBinding" },
+            "awm_after_discovery": { "$ref": "#/$defs/privateTreeBinding" },
+            "awm_after_handoff": { "$ref": "#/$defs/privateTreeBinding" },
+            "exported_handoff": { "$ref": "#/$defs/fileBinding" },
+            "neutral_envelope": { "$ref": "#/$defs/fileBinding" }
+          }
+        },
+        "neutral_envelopes_equal": { "const": true }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task",
+        "investigate_prompt",
+        "implement_prompt",
+        "fake_transport",
+        "grader",
+        "control_workspace_initial",
+        "control_workspace_after_investigate",
+        "control_workspace_final",
+        "treatment_workspace_initial",
+        "treatment_workspace_after_investigate",
+        "treatment_workspace_final",
+        "control_grader_stdout",
+        "treatment_grader_stdout"
+      ],
+      "properties": {
+        "task": { "$ref": "#/$defs/fileBinding" },
+        "investigate_prompt": { "$ref": "#/$defs/fileBinding" },
+        "implement_prompt": { "$ref": "#/$defs/fileBinding" },
+        "fake_transport": { "$ref": "#/$defs/fileBinding" },
+        "grader": { "$ref": "#/$defs/fileBinding" },
+        "control_workspace_initial": { "$ref": "#/$defs/privateTreeBinding" },
+        "control_workspace_after_investigate": { "$ref": "#/$defs/privateTreeBinding" },
+        "control_workspace_final": { "$ref": "#/$defs/privateTreeBinding" },
+        "treatment_workspace_initial": { "$ref": "#/$defs/privateTreeBinding" },
+        "treatment_workspace_after_investigate": { "$ref": "#/$defs/privateTreeBinding" },
+        "treatment_workspace_final": { "$ref": "#/$defs/privateTreeBinding" },
+        "control_grader_stdout": { "$ref": "#/$defs/fileBinding" },
+        "treatment_grader_stdout": { "$ref": "#/$defs/fileBinding" }
+      }
+    },
+    "measurements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_fact_occurrences_control",
+        "source_fact_occurrences_treatment",
+        "neutral_envelopes_equal",
+        "control_score",
+        "treatment_score",
+        "maximum_score",
+        "control_tests_passed",
+        "treatment_tests_passed",
+        "tests_total",
+        "score_delta",
+        "outcome",
+        "final_trees_equal",
+        "initial_workspaces_equal",
+        "investigation_workspace_unchanged",
+        "installed_payload_unchanged",
+        "poison_path_marker_absent",
+        "public_paths_embedded"
+      ],
+      "properties": {
+        "source_fact_occurrences_control": { "const": 1 },
+        "source_fact_occurrences_treatment": { "const": 1 },
+        "neutral_envelopes_equal": { "const": true },
+        "control_score": { "const": 100 },
+        "treatment_score": { "const": 100 },
+        "maximum_score": { "const": 100 },
+        "control_tests_passed": { "const": 4 },
+        "treatment_tests_passed": { "const": 4 },
+        "tests_total": { "const": 4 },
+        "score_delta": { "const": 0 },
+        "outcome": { "const": "tie" },
+        "final_trees_equal": { "const": true },
+        "initial_workspaces_equal": { "const": true },
+        "investigation_workspace_unchanged": { "const": true },
+        "installed_payload_unchanged": { "const": true },
+        "poison_path_marker_absent": { "const": true },
+        "public_paths_embedded": { "const": false }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fresh_login_shell_processes",
+        "fake_transport_processes",
+        "grader_processes",
+        "certifier_started_top_level_processes",
+        "certifier_started_live_agent_sessions",
+        "certifier_started_provider_sessions",
+        "certifier_issued_provider_requests",
+        "certifier_started_pi_sessions",
+        "certifier_started_ollama_sessions",
+        "certifier_network_api_calls",
+        "host_activation_performed",
+        "external_publication_performed"
+      ],
+      "properties": {
+        "fresh_login_shell_processes": { "const": 4 },
+        "fake_transport_processes": { "const": 3 },
+        "grader_processes": { "const": 2 },
+        "certifier_started_top_level_processes": { "const": 9 },
+        "certifier_started_live_agent_sessions": { "const": 0 },
+        "certifier_started_provider_sessions": { "const": 0 },
+        "certifier_issued_provider_requests": { "const": 0 },
+        "certifier_started_pi_sessions": { "const": 0 },
+        "certifier_started_ollama_sessions": { "const": 0 },
+        "certifier_network_api_calls": { "const": 0 },
+        "host_activation_performed": { "const": false },
+        "external_publication_performed": { "const": false }
+      }
+    }
+  }
+}

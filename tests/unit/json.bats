@@ -436,6 +436,33 @@ teardown() {
 # CATEGORY 8: EXTRACTION
 # =============================================================================
 
+@test "json_set: appends numeric value to object" {
+    result=$(json_set '{"a":1}' "b" "2")
+    [[ "$result" == '{"a":1,"b":2}' ]]
+}
+
+@test "json_set: replaces existing string value" {
+    result=$(json_set '{"a":1,"b":"x"}' "b" "y")
+    [[ "$result" == '{"a":1,"b":"y"}' ]]
+}
+
+@test "json_set: replaces existing numeric value" {
+    result=$(json_set '{"a":1}' "a" "5")
+    [[ "$result" == '{"a":5}' ]]
+}
+
+@test "json_set: escapes string values" {
+    result=$(json_set '{"a":"hi"}' "a" 'say "hi"')
+    [[ "$result" == '{"a":"say \"hi\""}' ]]
+}
+
+@test "json_set: handles bool/null/scalars and empty object" {
+    result=$(json_set '{}' "ok" "true")
+    [[ "$result" == '{"ok":true}' ]]
+    result=$(json_set '{"a":1}' "n" "null")
+    [[ "$result" == '{"a":1,"n":null}' ]]
+}
+
 @test "json_get: extracts string value" {
     result=$(json_get '{"name":"John"}' "name")
     [[ "$result" == 'John' ]]

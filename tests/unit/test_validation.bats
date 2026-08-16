@@ -67,6 +67,36 @@ setup() {
     [ "$status" -eq 0 ]
 }
 
+@test "validate_int: preserves signed and leading-zero range behavior" {
+    run validate_int "-5" "-10" "-1"
+    [ "$status" -eq 0 ]
+
+    run validate_int "-11" "-10" "-1"
+    [ "$status" -eq 1 ]
+
+    run validate_int "08" "000" "010"
+    [ "$status" -eq 0 ]
+
+    run validate_int "-08" "-010" "-001"
+    [ "$status" -eq 0 ]
+}
+
+@test "validate_int: rejects arithmetic bounds without executing them" {
+    local min_marker="$BATS_TEST_TMPDIR/validate-int-min-arithmetic"
+    local max_marker="$BATS_TEST_TMPDIR/validate-int-max-arithmetic"
+    local min_payload max_payload
+    min_payload="$(printf 'a[$(printf marker > "%s")]' "$min_marker")"
+    max_payload="$(printf 'a[$(printf marker > "%s")]' "$max_marker")"
+
+    run validate_int "1" "$min_payload"
+    [ "$status" -eq 1 ]
+    [ ! -e "$min_marker" ]
+
+    run validate_int "1" "" "$max_payload"
+    [ "$status" -eq 1 ]
+    [ ! -e "$max_marker" ]
+}
+
 @test "validate_float: accepts valid floats" {
     run validate_float "3.14"
     [ "$status" -eq 0 ]

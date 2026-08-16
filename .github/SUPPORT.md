@@ -6,7 +6,8 @@
 
 - **[README](../README.md)** - Quick start and overview
 - **[INSTALL.md](../INSTALL.md)** - Detailed installation guide
-- **[CHEATSHEET.md](../CHEATSHEET.md)** - Complete function reference (4,000+ functions across 117 libraries)
+- **[FUNCTIONS.json](../FUNCTIONS.json)** - Generated function and library inventory
+- **[CHEATSHEET.md](../CHEATSHEET.md)** - Human-oriented function reference
 - **[CONTRIBUTING.md](../CONTRIBUTING.md)** - How to contribute
 - **[Wiki](https://github.com/gtwatts/mainframe/wiki)** - Extended documentation
 

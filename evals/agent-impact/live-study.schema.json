@@ -1,0 +1,353 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/agent-impact-live-study-v2.json",
+  "title": "MAINFRAME agent impact preregistered live study",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "id",
+    "title",
+    "hypothesis",
+    "stage",
+    "task_classes",
+    "suite",
+    "replicates_per_task",
+    "planned_runner",
+    "mainframe_release",
+    "container_image_digest",
+    "isolation_policy",
+    "provider_proxy_policy",
+    "awm_mechanism_contract",
+    "host_environment",
+    "provider",
+    "budgets",
+    "endpoint",
+    "statistics",
+    "exclusions",
+    "stopping",
+    "publication"
+  ],
+  "properties": {
+    "schema_version": { "const": 2 },
+    "kind": { "const": "mainframe-agent-impact-live-study" },
+    "id": { "$ref": "#/$defs/id" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 1024 },
+    "hypothesis": {
+      "const": "A bounded MAINFRAME AWM handoff improves a fresh implementation session's hidden grader score relative to an equally bounded native/manual handoff for a pinned provider, model, and fixed coding-task suite."
+    },
+    "stage": { "enum": ["pilot", "confirmatory"] },
+    "task_classes": {
+      "const": [
+        "nested-configuration-precedence-and-falsy-merge",
+        "checkpoint-after-commit-idempotency",
+        "safe-manifest-include"
+      ]
+    },
+    "suite": { "$ref": "#/$defs/relativePath" },
+    "replicates_per_task": {
+      "type": "integer",
+      "minimum": 6,
+      "maximum": 1000,
+      "multipleOf": 2
+    },
+    "planned_runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executable", "manifest"],
+      "properties": {
+        "executable": { "$ref": "#/$defs/relativePath" },
+        "manifest": { "$ref": "#/$defs/relativePath" }
+      }
+    },
+    "mainframe_release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "archive",
+        "checksum_sidecar",
+        "installed_tree_algorithm",
+        "installed_tree_sha256"
+      ],
+      "properties": {
+        "archive": { "$ref": "#/$defs/relativePath" },
+        "checksum_sidecar": { "$ref": "#/$defs/relativePath" },
+        "installed_tree_algorithm": { "const": "mainframe-package-tree-sha256-v1" },
+        "installed_tree_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "container_image_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "isolation_policy": { "$ref": "#/$defs/relativePath" },
+    "provider_proxy_policy": { "$ref": "#/$defs/relativePath" },
+    "awm_mechanism_contract": { "$ref": "#/$defs/relativePath" },
+    "host_environment": { "$ref": "#/$defs/hostEnvironment" },
+    "provider": { "$ref": "#/$defs/provider" },
+    "budgets": { "$ref": "#/$defs/budgets" },
+    "endpoint": { "$ref": "#/$defs/endpoint" },
+    "statistics": { "$ref": "#/$defs/statistics" },
+    "exclusions": { "$ref": "#/$defs/exclusions" },
+    "stopping": { "$ref": "#/$defs/stopping" },
+    "publication": { "$ref": "#/$defs/publication" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "stage": { "const": "pilot" } } },
+      "then": { "properties": { "replicates_per_task": { "const": 6 } } }
+    },
+    {
+      "if": { "properties": { "stage": { "const": "confirmatory" } } },
+      "then": { "properties": { "replicates_per_task": { "enum": [12, 20] } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": { "const": "pilot" },
+          "replicates_per_task": { "const": 6 }
+        }
+      },
+      "then": {
+        "properties": {
+          "stopping": {
+            "properties": {
+              "minimum_valid_pairs": { "const": 18 },
+              "maximum_planned_pairs": { "const": 18 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": { "const": "confirmatory" },
+          "replicates_per_task": { "const": 12 }
+        }
+      },
+      "then": {
+        "properties": {
+          "stopping": {
+            "properties": {
+              "minimum_valid_pairs": { "const": 36 },
+              "maximum_planned_pairs": { "const": 36 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": { "const": "confirmatory" },
+          "replicates_per_task": { "const": 20 }
+        }
+      },
+      "then": {
+        "properties": {
+          "stopping": {
+            "properties": {
+              "minimum_valid_pairs": { "const": 60 },
+              "maximum_planned_pairs": { "const": 60 }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,127}$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\)[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "model", "model_snapshot", "client", "host", "configuration"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,255}$"
+        },
+        "model": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,255}$"
+        },
+        "model_snapshot": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,255}$"
+        },
+        "client": { "$ref": "#/$defs/versionBinding" },
+        "host": { "$ref": "#/$defs/versionBinding" },
+        "configuration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "temperature",
+            "top_p",
+            "provider_seed",
+            "tool_choice",
+            "reasoning_effort"
+          ],
+          "properties": {
+            "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+            "top_p": { "type": "number", "minimum": 0, "maximum": 1 },
+            "provider_seed": {
+              "type": ["integer", "null"],
+              "minimum": -9223372036854775808,
+              "maximum": 9223372036854775807
+            },
+            "tool_choice": { "enum": ["auto", "required", "none"] },
+            "reasoning_effort": { "enum": ["none", "low", "medium", "high"] }
+          }
+        }
+      }
+    },
+    "versionBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,255}$"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,255}$"
+        }
+      }
+    },
+    "hostEnvironment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operating_system", "architecture", "shell"],
+      "properties": {
+        "operating_system": { "enum": ["linux", "macos"] },
+        "architecture": { "enum": ["x86_64", "arm64"] },
+        "shell": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version", "executable_sha256"],
+          "properties": {
+            "name": { "enum": ["bash", "zsh"] },
+            "version": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,255}$"
+            },
+            "executable_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wall_seconds_per_phase",
+        "maximum_tool_calls_per_phase",
+        "maximum_context_bytes",
+        "maximum_input_tokens_per_phase",
+        "maximum_output_tokens_per_phase",
+        "maximum_cost_usd_per_pair"
+      ],
+      "properties": {
+        "wall_seconds_per_phase": { "const": 900 },
+        "maximum_tool_calls_per_phase": { "const": 40 },
+        "maximum_context_bytes": { "const": 8192 },
+        "maximum_input_tokens_per_phase": { "type": "integer", "minimum": 1, "maximum": 10000000 },
+        "maximum_output_tokens_per_phase": { "type": "integer", "minimum": 1, "maximum": 10000000 },
+        "maximum_cost_usd_per_pair": { "type": "number", "minimum": 0, "maximum": 1000000 }
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primary", "secondary", "direction", "unit"],
+      "properties": {
+        "primary": { "const": "equal-task-weighted-paired-normalized-score-delta" },
+        "secondary": { "const": "paired-binary-solve-status" },
+        "direction": { "const": "higher-is-better" },
+        "unit": { "const": "normalized-task-score" }
+      }
+    },
+    "statistics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "estimator",
+        "randomization_test",
+        "secondary_test",
+        "confidence_interval",
+        "bootstrap_random_number_algorithm",
+        "bootstrap_seed",
+        "bootstrap_resamples",
+        "confidence_level",
+        "alpha"
+      ],
+      "properties": {
+        "estimator": { "const": "equal-task-weighted-mean-paired-normalized-score-delta" },
+        "randomization_test": { "const": "exact-task-blocked-sign-flip" },
+        "secondary_test": { "const": "two-sided-exact-mcnemar" },
+        "confidence_interval": { "const": "task-stratified-paired-bootstrap" },
+        "bootstrap_random_number_algorithm": { "const": "sha256-counter-prng-v1" },
+        "bootstrap_seed": {
+          "type": "integer",
+          "minimum": -9223372036854775808,
+          "maximum": 9223372036854775807
+        },
+        "bootstrap_resamples": { "type": "integer", "minimum": 10000, "maximum": 1000000 },
+        "confidence_level": { "const": 0.95 },
+        "alpha": { "const": 0.05 }
+      }
+    },
+    "exclusions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["infrastructure_failure", "agent_failure", "missing_arm", "reruns"],
+      "properties": {
+        "infrastructure_failure": { "const": "invalidate-complete-pair-and-publish" },
+        "agent_failure": { "const": "score-as-observed-no-exclusion" },
+        "missing_arm": { "const": "invalidate-complete-pair-and-publish" },
+        "reruns": { "const": "no-silent-reruns-publish-every-attempt" }
+      }
+    },
+    "stopping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum_valid_pairs", "maximum_planned_pairs", "rule"],
+      "properties": {
+        "minimum_valid_pairs": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "maximum_planned_pairs": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "rule": { "const": "run-all-preregistered-pairs-no-optional-stopping" }
+      }
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "publish_preregistration_before_first_session",
+        "publish_assignment_reveal_after_scoring",
+        "publish_all_attempts",
+        "publish_invalid_pairs",
+        "raw_artifacts"
+      ],
+      "properties": {
+        "publish_preregistration_before_first_session": { "const": true },
+        "publish_assignment_reveal_after_scoring": { "const": true },
+        "publish_all_attempts": { "const": true },
+        "publish_invalid_pairs": { "const": true },
+        "raw_artifacts": { "const": "private-hash-bound" }
+      }
+    }
+  }
+}

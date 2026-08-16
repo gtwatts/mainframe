@@ -1,6 +1,6 @@
 # MAINFRAME - AI Coding Assistant Instructions
 
-> Pure bash function library for AI agents. 3,821+ functions, 152 libraries, zero dependencies.
+> Bash runtime for AI agents with persistent working memory, structured output, safety primitives, and a generated function registry.
 
 ```bash
 source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
@@ -10,16 +10,16 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 
 | Platform | Integration | Status |
 |----------|-------------|--------|
-| **Pi** | `skills/pi/SKILL.md` + Pi MAINFRAME tools | ✅ Full support |
-| **Claude Code** | `skills/claude-code/SKILL.md` | ✅ Full support |
-| **OpenAI Codex / Codex CLI** | `skills/codex/AGENTS.md` | ✅ Full support |
-| **Kimi Code CLI** | `skills/kimi-cli/SKILL.md` | ✅ Full support |
-| **Google CLI** | `skills/google-cli/SKILL.md` | ✅ Full support |
-| **OpenCode** | `skills/opencode/SKILL.md` | ✅ Full support |
-| **Cursor** | `.cursorrules` / `skills/cursor/` | ✅ Full support |
-| **Aider** | `skills/aider/CONVENTIONS.md` | ✅ Full support |
-| **Vercel AI SDK** | `skills/vercel-ai-sdk/` | ✅ Full support |
-| **Custom Agents** | `lib/uap.sh` + `lib/mcp_server.sh` | ✅ Protocol support |
+| **Pi** | `skills/pi/SKILL.md` + Pi MAINFRAME tools | Instructions + tools |
+| **Claude Code** | `skills/claude-code/SKILL.md` | Instructions |
+| **OpenAI Codex / Codex CLI** | `skills/codex/AGENTS.md` | Instructions |
+| **Kimi Code CLI** | `skills/kimi-cli/SKILL.md` | Instructions |
+| **Google CLI** | `skills/google-cli/SKILL.md` | Instructions |
+| **OpenCode** | `skills/opencode/SKILL.md` | Instructions |
+| **Cursor** | `.cursorrules` / `skills/cursor/` | Instructions |
+| **Aider** | `skills/aider/CONVENTIONS.md` | Instructions |
+| **Vercel AI SDK** | `skills/vercel-ai-sdk/` | System-prompt template |
+| **Custom Agents** | `lib/uap.sh` + `lib/mcp_server.sh` | Protocol source |
 
 ## Library Overview
 
@@ -62,17 +62,16 @@ result=$(memoize --ttl 300 http_get "https://api.example.com/data")
 ## Function Lookup
 
 ```bash
-mainframe quickref json      # List json.sh functions
-mainframe quickref validate  # List validation.sh functions
-mainframe quickref --search "hash"  # Search all functions
+mainframe search json_object
+mainframe help json_object
 ```
 
 ## Important Rules
 
 1. **Do not read MAINFRAME source** - use functions directly
 2. **Check CHEATSHEET.md** for exact signatures
-3. **Zero dependencies** - pure bash (openssl for HTTPS)
-4. **Bash 4.0+ required**
+3. **Check optional dependencies** - integrations may require the host tools they wrap
+4. **Bash 4.4+ required**
 
 ## Agent Teams Integration
 
@@ -141,7 +140,7 @@ Orchestration tools are available via MCP for teammates that prefer tool calls o
 
 ## Reference Files
 
-- **CHEATSHEET.md** - All 3,821+ function signatures
+- **CHEATSHEET.md** - Function signatures from the generated registry
 - **FUNCTIONS.json** - Machine-readable function index
 - **DECISION_TREES.md** - "I need X" workflow guidance
 - **ERRORS.json** - Error codes and recovery

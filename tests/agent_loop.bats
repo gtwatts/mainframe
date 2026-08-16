@@ -25,12 +25,17 @@ setup() {
 
 # Test teardown
 teardown() {
-    # Stop any running test agents
-    agent_loop_list --json 2>/dev/null | grep -o '"name":"[^"]*"' | while read -r name; do
-        name="${name#\"name\":\"}"
-        name="${name%\"}"
-        [[ "$name" == test_* ]] && agent_loop_stop "$name" >/dev/null 2>&1 || true
-    done
+    # Stop by private PID-file inventory so malformed state can never hide a
+    # live test loop from cleanup.
+    local pid_file name
+    if [[ -d "$AGENT_LOOP_DIR" ]]; then
+        for pid_file in "$AGENT_LOOP_DIR"/test_*/agent.pid; do
+            [[ -f "$pid_file" ]] || continue
+            name="${pid_file%/agent.pid}"
+            name="${name##*/}"
+            agent_loop_stop "$name" >/dev/null 2>&1 || true
+        done
+    fi
     
     rm -rf "$TEST_DIR"
 }
@@ -171,20 +176,39 @@ teardown() {
 
 @test "agent_loop_restore recovers from checkpoint" {
     agent_loop_start "test_restore" --goal "Test checkpoint"
-    sleep 1
-    
-    # Manually create a checkpoint
+    agent_loop_pause "test_restore" >/dev/null
+
+    # Create a real checkpoint, then change the current state before restore.
     local checkpoint_dir="$AGENT_LOOP_DIR/test_restore"
-    local checkpoint_data
-    checkpoint_data=$(json_object \
-        "checkpoint_time=test" \
-        "state=$(cat "$checkpoint_dir/state.json")")
-    echo "$checkpoint_data" > "$checkpoint_dir/checkpoint.json"
+    _agent_loop_checkpoint "test_restore"
+    local expected_state
+    expected_state=$(cat "$checkpoint_dir/state.json")
+    printf '%s' '{"name":"test_restore","status":"corrupted"}' \
+        > "$checkpoint_dir/state.json"
     
     local result
     result=$(agent_loop_restore "test_restore") || true
     
     [[ "$result" == *'"success":true'* ]]
+    json_valid "$(cat "$checkpoint_dir/state.json")"
+    [[ "$(cat "$checkpoint_dir/state.json")" == "$expected_state" ]]
+}
+
+@test "agent_loop_restore rejects malformed nested state without changing current state" {
+    agent_loop_start "test_restore_invalid" --goal "Keep current state"
+
+    local checkpoint_dir="$AGENT_LOOP_DIR/test_restore_invalid"
+    local expected_state
+    expected_state=$(cat "$checkpoint_dir/state.json")
+    printf '%s' '{"checkpoint_time":"test","state":"not-an-object"}' \
+        > "$checkpoint_dir/checkpoint.json"
+
+    local result
+    result=$(agent_loop_restore "test_restore_invalid") || true
+
+    [[ "$result" == *'"success":false'* ]]
+    [[ "$result" == *'Invalid checkpoint format'* ]]
+    [[ "$(cat "$checkpoint_dir/state.json")" == "$expected_state" ]]
 }
 
 @test "agent_loop_restore fails without checkpoint" {

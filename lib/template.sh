@@ -25,42 +25,6 @@ declare -gA _TEMPLATE_HELPERS=()
 # Template variables (associative array)
 declare -gA _TEMPLATE_VARS=()
 
-# =============================================================================
-# CORE TEMPLATE ENGINE
-# =============================================================================
-
-# Main render function
-# Usage: template::render "Hello {{name}}!" name="World"
-# Usage: echo "Hello {{name}}!" | template::render - name="World"
-# shellcheck disable=SC2329  # Function is invoked externally/indirectly
-template::render() {
-    local template=""
-    local -A vars=()
-    
-    # Parse arguments
-    if [[ "$1" == "-" ]]; then
-        # Read from stdin
-        template=$(cat)
-        shift
-    elif [[ -n "$1" && "$1" != *"="* ]]; then
-        template="$1"
-        shift
-    fi
-    
-    # Parse variable assignments
-    for arg in "$@"; do
-        if [[ "$arg" == *"="* ]]; then
-            local key="${arg%%=*}"
-            local value="${arg#*=}"
-            vars["$key"]="$value"
-            _TEMPLATE_VARS["$key"]="$value"
-        fi
-    done
-    
-    # Process template
-    _template_process "$template"
-}
-
 # Render template from file
 # Usage: template::render_file "config.tpl" name="value"
 template::render_file() {
@@ -464,8 +428,10 @@ _template_loop() {
 # ADVANCED RENDER WITH BLOCKS
 # =============================================================================
 
-# Full render with block support (conditionals and loops)
+# Main render function, including block support (conditionals and loops)
 # Usage: template::render "{{#if x}}yes{{/if}}" x=true
+# Usage: echo "Hello {{name}}!" | template::render - name="World"
+# shellcheck disable=SC2329  # Function is invoked externally/indirectly
 template::render() {
     local template=""
     

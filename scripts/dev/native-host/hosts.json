@@ -1,0 +1,191 @@
+{
+  "schema_version": 1,
+  "gemini": {
+    "package": "@google/gemini-cli",
+    "version": "0.53.1",
+    "integrity": "sha512-xBGdD/tl05gsTpD2oV1Bq0NCb4BBeTnjSbKxHtwOB7nt1QMaqWYJ9WsOEsQQhQ2P1v0UJth1F17SAXvdZ5mASw==",
+    "entrypoint": "node_modules/@google/gemini-cli/bundle/gemini.js",
+    "entrypoint_sha256": "a193db41b0b2c9e35a8c5aafcb2c810947ee41a311757bb4ee4d6b015bc3bfb5",
+    "package_tree_sha256": "78af76cfb06c42eed086f7de65b67ef1fe45b09106c8dfd14070c35ab1a67e14"
+  },
+  "copilot": {
+    "package": "@github/copilot",
+    "version": "1.0.78",
+    "integrity": "sha512-jn+8HLZC3R7d6K1/1g9L1iWNKzBVS3JdVcx40r3aWyS5r+MLV1OPNp0fo5OfRMCDIm3NmEaaoqypi9sQkCXuiQ==",
+    "entrypoint": "node_modules/@github/copilot/npm-loader.js",
+    "entrypoint_sha256": "0ea824a86be5757533fdb092eff7050871bd7a711a46babde0ffe0e44ac5ad88",
+    "dependency": {
+      "package": "detect-libc",
+      "version": "2.1.2",
+      "integrity": "sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ=="
+    },
+    "platforms": {
+      "Darwin-arm64-none": {
+        "package": "@github/copilot-darwin-arm64",
+        "package_version": "1.0.78",
+        "integrity": "sha512-P11+VyWg8ad0WlywGtO2d7AxqTLJv4hkUicFg6Ycth5lfk00aCu/74YOOZSPO6C2bBBJhAza7oAdmauM6KEojw==",
+        "binary": "node_modules/@github/copilot-darwin-arm64/copilot",
+        "executable_sha256": "1dd966fa15f5ad042c6c1b0272f36fee6ae82b1f175037499a6c19596bd9b291",
+        "runtime_tree_sha256": "07b33e72d4a35ddc992abd2b0e6a4a0d0cc351772c9df7a1dc1e767372299af2"
+      },
+      "Darwin-x86_64-none": {
+        "package": "@github/copilot-darwin-x64",
+        "package_version": "1.0.78",
+        "integrity": "sha512-stimP3WDFs2GU8nJzTJbtRpZViV4bsf80yg7QrFq+G4RISQ3Nihg/3/H0U6UQF1+txMJ/Ohmb5RFYxSw1Hj2sw==",
+        "binary": "node_modules/@github/copilot-darwin-x64/copilot",
+        "executable_sha256": "e2ef46125ceb6a3ea539b02b046f57bf8ebf2f35e8166ef7be8f02a4cc89896a",
+        "runtime_tree_sha256": "78630dc12a9e33224472247fac180418a6419f796128efa27247d602e5443de5"
+      },
+      "Linux-aarch64-glibc": {
+        "package": "@github/copilot-linux-arm64",
+        "package_version": "1.0.78",
+        "integrity": "sha512-K31PRKGTm252V1Lof7ypjg283R2QSm3BgoCvZfX2taos4wqC3SaTozSQKwW3dgrAx7A3G3SGEoilVCNqfigdZA==",
+        "binary": "node_modules/@github/copilot-linux-arm64/copilot",
+        "executable_sha256": "8fc37b6dcb1275d049b4c94c1e25caf1b54d368adbc515ddb0b6969bc085de22",
+        "runtime_tree_sha256": "14d57914866adbf1981bd6ed2edfb4cc728c1adb477b76d09b3d5ddaacf928f3"
+      },
+      "Linux-x86_64-glibc": {
+        "package": "@github/copilot-linux-x64",
+        "package_version": "1.0.78",
+        "integrity": "sha512-QK3oMtAn9dIv+1u1kx0xNpZNtZxdI+uZVIyLl7myp+Oh2Uj8BLagVv6a7uP0cDphO3TgfIdlvpepCe5MIcx0fw==",
+        "binary": "node_modules/@github/copilot-linux-x64/copilot",
+        "executable_sha256": "7e87127e53dc5f9ebc33663287ea05c6e55f1de254adfd9b7d17936d7d65a51c",
+        "runtime_tree_sha256": "e80b4e541dda932fef319f79a14944c7e24acedb74b22c6dd8a6e7b015bbe386"
+      },
+      "Linux-aarch64-musl": {
+        "package": "@github/copilot-linuxmusl-arm64",
+        "package_version": "1.0.78",
+        "integrity": "sha512-F/0cTMsz6ug4yiXn3RKaCAMsLR261U5Njb6G9Y/HeAI7ES/tKEo2t5SHuvgXaIH4mYiZsRvfDKdX7c0WgBX/Jg==",
+        "binary": "node_modules/@github/copilot-linuxmusl-arm64/copilot",
+        "executable_sha256": "feb9fc61493ec0e469bc2ca330ece29410559d8eaaba5a3d813e3c9cb3ea6110",
+        "runtime_tree_sha256": "ea7b29df5af9782ea6c0dc3f69a76c5e24ed5dad5698bcdf4ea14533771b9d98"
+      },
+      "Linux-x86_64-musl": {
+        "package": "@github/copilot-linuxmusl-x64",
+        "package_version": "1.0.78",
+        "integrity": "sha512-YMaJaeBGbArGAFYel+yFaFW/0rFgh0Oqki2f2mUtlonTX/xHr8EB4+mTnMJkHYMFy4gOTC3OtSEEe1NaW/cBXQ==",
+        "binary": "node_modules/@github/copilot-linuxmusl-x64/copilot",
+        "executable_sha256": "a16c45dd92dab88f3b9f1d2135f160d7e39d411b1ca0110457420d417015a076",
+        "runtime_tree_sha256": "1e8c490d6e06819f6d9ea1b1dfe9f789009286957a00baedd2d35c0844a70ad3"
+      }
+    }
+  },
+  "claude": {
+    "package": "@anthropic-ai/claude-code",
+    "channel": "stable",
+    "version": "2.1.220",
+    "integrity": "sha512-ogBrvwkqF9f8okmnXKxmRNHuvtFxFEffe5pWdqOV3iQDxlUOKirFqnyWC7NGXXnDA4WkkbPH8pvSbwyCR2Auyw==",
+    "package_tree_sha256": "48c63b70077572c889931dd9024d3253aef33a7f558efd63a72287915228f154",
+    "stub": "node_modules/@anthropic-ai/claude-code/bin/claude.exe",
+    "stub_sha256": "6d7abae055d3b598281300a6c835086dec81bf3048f8a2294c5d3e50c8830d7b",
+    "cli_wrapper": "node_modules/@anthropic-ai/claude-code/cli-wrapper.cjs",
+    "cli_wrapper_sha256": "61ad63033d9c8155d5e60a29f45dc4665afa07631c0b108e62cc83bf45ba490e",
+    "installer": "node_modules/@anthropic-ai/claude-code/install.cjs",
+    "installer_sha256": "5cbab1670597f492cd4eeb946f3c344ebcb1fbd43c623ba192c9b33744461b85",
+    "signed_release_manifest": {
+      "sha256": "40f281ff188f1cd4f39309da41a219014dad2555d96e9780c67a2138720d12ed",
+      "signature_sha256": "63ed32a9d1b382728ea3855a62aaf7ad19d2c7bdcb3eae91959f5bb1e316c99f",
+      "signing_key_sha256": "bd70a5e4a268002704024ceba7f8446024114e94f3f0bdd11c23a9e592be81c6",
+      "signing_key_fingerprint": "31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE",
+      "commit": "4073f59596e272f39393db4f96abc5f4b10eff21",
+      "build_date": "2026-07-24T22:28:51Z"
+    },
+    "platforms": {
+      "Darwin-arm64-none": {
+        "package": "@anthropic-ai/claude-code-darwin-arm64",
+        "package_version": "2.1.220",
+        "integrity": "sha512-rmtd41Bf+n+YnhjSjtQ8WG5qy8KKogUp3YRfQrkLsTgPUD0H3j869rBInBJT3SHrKQ0hLghQLGM73CC1C+USLQ==",
+        "binary": "node_modules/@anthropic-ai/claude-code-darwin-arm64/claude",
+        "executable_sha256": "8addc857f3fe64d5a0368af9ee50321b50afb4a6918ba3ef018ab84f5dbbe081",
+        "package_tree_sha256": "6da681d4bb400bbffde53853dafc72ee4b004d3c150e3bd8c41df0e2b98a89ec",
+        "runtime_tree_sha256": "8e1106b53bdfc9501a20f6db370fbf3a99a8269eae3cf83a5648a7f5a1ebf385"
+      },
+      "Darwin-x86_64-none": {
+        "package": "@anthropic-ai/claude-code-darwin-x64",
+        "package_version": "2.1.220",
+        "integrity": "sha512-hbuoG+YCo37VzSKzKJ47ymRmt/YjASc3dRcsZtCcftLYdopv8KL889x/IbCl3cfp/VqV2rRDZ0f3aUDpHUFweQ==",
+        "binary": "node_modules/@anthropic-ai/claude-code-darwin-x64/claude",
+        "executable_sha256": "dca7be0aa7d3d924836d440e0c6d8e3d47ef3c8e61fa5809b54b9017170ce2f3",
+        "package_tree_sha256": "cc36d73a7be3c4b28e210ea59f7ec27248b8d28efa25fddd6ff3ecff10c76f67",
+        "runtime_tree_sha256": "49ddfd04e6f432f85112100e2430d54818c6e5622b11c6d7e1fa1976ecbd431f"
+      },
+      "Linux-aarch64-glibc": {
+        "package": "@anthropic-ai/claude-code-linux-arm64",
+        "package_version": "2.1.220",
+        "integrity": "sha512-VHFI8mKruIntKn7eq81sbyS19/KWmQcmJQsS/C+j9M/E+w0s4UytgsL7DADPjBE/GByNiKoRtLYDMntCjRlOdA==",
+        "binary": "node_modules/@anthropic-ai/claude-code-linux-arm64/claude",
+        "executable_sha256": "159e4a51d796f3bf14677577100f7efb845611b1ceaf0c30cbd8d4650d942185",
+        "package_tree_sha256": "2586a9a24559a93d848017c1d07e55226fc9a0c9f20bc0b717b3f640b9e44afe",
+        "runtime_tree_sha256": "8226f69c94fd9ce96627dde9ab9300308edb23ef9f788b24b29b9d45a7af32be"
+      },
+      "Linux-x86_64-glibc": {
+        "package": "@anthropic-ai/claude-code-linux-x64",
+        "package_version": "2.1.220",
+        "integrity": "sha512-3CGFCnI0gpgsqNeJruFALBDGJaKXOuok3alQEg56ty2yOPpIrOx/r2Y0+T4uhJl7kP5Hzw4IFkxo4DZKWvzQ7Q==",
+        "binary": "node_modules/@anthropic-ai/claude-code-linux-x64/claude",
+        "executable_sha256": "674f61f20ff306f3100cf9200e4c36c4b70278b5bef2884549819b942a89c863",
+        "package_tree_sha256": "20a769f239501b51e64d60814bb04460587ef694464cb426dfeab39a3c1d7077",
+        "runtime_tree_sha256": "56ffb3acc9a257d0681e6b2d1798d70e34454ecc69cf56398a49d4a0713f5924"
+      },
+      "Linux-aarch64-musl": {
+        "package": "@anthropic-ai/claude-code-linux-arm64-musl",
+        "package_version": "2.1.220",
+        "integrity": "sha512-m37ALw8jcbSknuyG7xDQjGPY7Gth3eX8iFY1XFEWABVq1iUMVAUn96WC9eqwi8/JSqyG2t3oNRiqHdi2ZNKFGQ==",
+        "binary": "node_modules/@anthropic-ai/claude-code-linux-arm64-musl/claude",
+        "executable_sha256": "5eb2697a1500c1b8736e53fd696392196dc6758cf1d470c64d8d2a2fd1629eeb",
+        "package_tree_sha256": "b0449d2447b346b9d5d4c74b1b1c33d25d63ebd4ef2262d682727296be437dc4",
+        "runtime_tree_sha256": "2d42d47eed2dd5a22210b7bbc156153bfd77f2182e3ce3e5bf77facab061e19e"
+      },
+      "Linux-x86_64-musl": {
+        "package": "@anthropic-ai/claude-code-linux-x64-musl",
+        "package_version": "2.1.220",
+        "integrity": "sha512-+QyT1KikOdMRKReWFaBYGsroYx2vEjjx54DwhMoC24oE1DxjC+SlKjeOTRXAKiu0fr0O549Lkhg2tuT5xtQpAQ==",
+        "binary": "node_modules/@anthropic-ai/claude-code-linux-x64-musl/claude",
+        "executable_sha256": "f1c20514a3571cdf9982e25c490042d740ed7cfed3f00c64ba92dc7ec47c3c5b",
+        "package_tree_sha256": "71415f838000b7b7a069fd78d2c8ea6c2e53c85a1582a76bdd901258e5ae4328",
+        "runtime_tree_sha256": "d5b808b8bf2e0b24918dfcea2bae0349535aa0fb5cc664756fdb6424545c7cfe"
+      }
+    }
+  },
+  "codex": {
+    "package": "@openai/codex",
+    "version": "0.146.0",
+    "integrity": "sha512-yG3sPWNda/2YAIQIDq9MrrjoCTIQ7rxYM5IasrG3VBcuhCLTkgeg/JzqmJq1V98RE4MJ5jCxDXXQlOjrditFRw==",
+    "entrypoint": "node_modules/@openai/codex/bin/codex.js",
+    "entrypoint_sha256": "134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477",
+    "platforms": {
+      "Darwin-arm64": {
+        "package_alias": "@openai/codex-darwin-arm64",
+        "package_version": "0.146.0-darwin-arm64",
+        "integrity": "sha512-nb61yX4r5L6Z0dlC4o3u0GAK1YCd4TUvjaB382bajDoh84V+uv2hTBIVZ++fgXWV9yoeuNrNnNcn7GoTGOe2Tg==",
+        "binary": "node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex",
+        "executable_sha256": "ae1d3ffe6d48aec6a4dc3f50e7eb8e0d11962485a6a9406c5a7012139383da02",
+        "package_tree_sha256": "a262d29e1dae17e6913b742a9d6b16ecf640cd66831100e4af2ee7e1ff40c99f"
+      },
+      "Darwin-x86_64": {
+        "package_alias": "@openai/codex-darwin-x64",
+        "package_version": "0.146.0-darwin-x64",
+        "integrity": "sha512-hTQR5jy/ObfTf1MDnuJCZJAe+SljKE8DDwQWN6lDFgjsPhMQz852U2tILt8Ei+G5GkQSzemHYKl2AYPwW0Y5xw==",
+        "binary": "node_modules/@openai/codex-darwin-x64/vendor/x86_64-apple-darwin/bin/codex",
+        "executable_sha256": "544e2df9e6f09b3f1ceb0405879c83dd099ec015aeed942bb091ff0f29f60dc2",
+        "package_tree_sha256": "5c49a068bee5bf68ecdecf856eeef395bd9bf6e0691159843237fe50859590d2"
+      },
+      "Linux-aarch64": {
+        "package_alias": "@openai/codex-linux-arm64",
+        "package_version": "0.146.0-linux-arm64",
+        "integrity": "sha512-qiYDxkkEFnXG7joadJW6Q+XcgyDXCpGdpa9nk/c+i0gEomur1j7bHvx12NfWWCF/y8Tqri6ay+FLuC2MjdehtA==",
+        "binary": "node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex",
+        "executable_sha256": "cb5e8cb8a333a408ce6adbe0d4fad1845c69772c2216af7c1f88c98a11460dc6",
+        "package_tree_sha256": "2ad86aeb2a1954439ada85b1914ab953690d86f344e2afe328e3255a24422502"
+      },
+      "Linux-x86_64": {
+        "package_alias": "@openai/codex-linux-x64",
+        "package_version": "0.146.0-linux-x64",
+        "integrity": "sha512-fswvyGprAPCMiOEue/7MKMk7pCjh9kZIJfJX5i9atmfnmGYbYCcUhZsEH9LEP0+0t5xyPqDbfNXY7NSxIVuXxA==",
+        "binary": "node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
+        "executable_sha256": "2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+        "package_tree_sha256": "f52c7d5b545d38091e3acff5eb95bf426a67647d598b484f938411e2a2e9f21c"
+      }
+    }
+  }
+}

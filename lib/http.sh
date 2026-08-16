@@ -783,10 +783,41 @@ http_header_get() {
     return 1
 }
 
-# Get all headers as newline-separated list
+# Check whether an http_headers argument is a network target rather than a
+# response payload. Explicit schemes and the documented host:port form are
+# unambiguous; bare localhost and dotted hostnames remain supported for
+# compatibility with netscan's historical behavior.
+_http_headers_is_url_target() {
+    local target="${1:-}"
+
+    [[ -n "$target" ]] || return 1
+    [[ "$target" != *$'\n'* && "$target" != *$'\r'* ]] || return 1
+    [[ "$target" != HTTP/* ]] || return 1
+
+    case "$target" in
+        http://*|https://*) return 0 ;;
+    esac
+
+    local authority="${target%%/*}"
+    [[ "$authority" == "localhost" || "$authority" == localhost:* ]] && return 0
+    [[ "$authority" =~ ^\[[0-9A-Fa-f:]+\](:[0-9]+)?$ ]] && return 0
+    [[ "$authority" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*:[0-9]+$ ]] && return 0
+    [[ "$authority" =~ ^([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(:[0-9]+)?$ ]]
+}
+
+# Get response headers or fetch headers from a URL target.
 # Usage: http_headers "$response"
+# Usage: http_headers "https://example.com" [timeout]
 http_headers() {
-    local response="$1"
+    local source="${1:-}"
+
+    [[ -n "$source" ]] || return 1
+
+    if _http_headers_is_url_target "$source"; then
+        declare -F netscan_http_headers >/dev/null 2>&1 || return 1
+        netscan_http_headers "$@"
+        return $?
+    fi
 
     local in_headers=true
     while IFS= read -r line; do
@@ -794,7 +825,7 @@ http_headers() {
         [[ -z "$line" ]] && break
         [[ "$line" =~ ^HTTP/ ]] && continue
         printf '%s\n' "$line"
-    done <<< "$response"
+    done <<< "$source"
 }
 
 # =============================================================================

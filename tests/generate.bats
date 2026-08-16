@@ -45,6 +45,114 @@ setup() {
     [[ $status -eq 0 ]]
     # Should have file existence check (safety feature)
     [[ "$output" == *"[[ ! -f"* ]]
+    [[ "$output" == *'local input="$file"'* ]]
+}
+
+@test "generate_function: deterministically prioritizes file safety over processing" {
+    run _generate_detect_template "process files safely"
+    [[ $status -eq 0 ]]
+    [[ "$output" == "file_operation" ]]
+}
+
+@test "generate_function: validation wins over file and pattern matching is token-aware" {
+    run _generate_detect_template "validate empty file"
+    [[ $status -eq 0 ]]
+    [[ "$output" == "validation" ]]
+
+    run _generate_detect_template "profile parser"
+    [[ $status -eq 0 ]]
+    [[ "$output" == "standard" ]]
+
+    run _generate_detect_template "is_empty"
+    [[ $status -eq 0 ]]
+    [[ "$output" == "validation" ]]
+
+    run _generate_detect_template "has_value"
+    [[ $status -eq 0 ]]
+    [[ "$output" == "validation" ]]
+
+    logic="$(_generate_logic_from_description "is_empty")"
+    [[ "$logic" == *'[[ -z "$input" ]]'* ]]
+}
+
+@test "generate_function: empty-file validator rejects a nonempty file" {
+    local empty_file="$BATS_TEST_TMPDIR/empty"
+    local nonempty_file="$BATS_TEST_TMPDIR/nonempty"
+    : > "$empty_file"
+    printf 'data\n' > "$nonempty_file"
+
+    generated="$(generate_function "validate empty file")"
+    eval "$generated"
+
+    run validate_empty_file "$empty_file"
+    [[ $status -eq 0 ]]
+    run validate_empty_file "$nonempty_file"
+    [[ $status -ne 0 ]]
+}
+
+@test "generate_function: logic matching does not find file inside profile" {
+    local empty_file="$BATS_TEST_TMPDIR/empty"
+    : > "$empty_file"
+
+    generated="$(generate_function "validate profile is empty")"
+    [[ "$generated" == *'[[ -z "$input" ]]'* ]]
+    [[ "$generated" != *'[[ -f "$input" ]]'* ]]
+    eval "$generated"
+
+    # A file-emptiness validator would accept this path because the referenced
+    # file is empty. Generic profile-input validation must reject the nonempty
+    # argument string instead.
+    run validate_profile_is_empty "$empty_file"
+    [[ $status -ne 0 ]]
+}
+
+@test "generate_function: generated-style file tokens retain the regular-file gate" {
+    local missing_file="$BATS_TEST_TMPDIR/definitely-missing"
+
+    run _generate_detect_template "count_lines_in_file"
+    [[ $status -eq 0 ]]
+    [[ "$output" == "file_operation" ]]
+
+    generated="$(generate_function "count_lines_in_file")"
+    [[ "$generated" == *'[[ ! -f "$file" ]]'* ]]
+    eval "$generated"
+
+    run count_lines_in_file "$missing_file"
+    [[ $status -ne 0 ]]
+}
+
+@test "generate_function: bounded logic matching preserves supported validator variants" {
+    local spec description function_name generated
+    local -a cases=(
+        "validate emails|validate_emails"
+        "validate URLs|validate_urls"
+        "validate HTTPS|validate_https"
+        "validate numbers|validate_numbers"
+        "validate integers|validate_integers"
+    )
+
+    for spec in "${cases[@]}"; do
+        IFS='|' read -r description function_name <<< "$spec"
+        generated="$(generate_function "$description")"
+        [[ "$generated" != *"TODO: Implement logic"* ]]
+        eval "$generated"
+
+        run "$function_name" "definitely_invalid"
+        [[ $status -ne 0 ]]
+    done
+}
+
+@test "generate_function: explicit precedence covers every pattern exactly once" {
+    local pattern
+    local -A seen=()
+
+    for pattern in "${_GENERATE_PATTERN_ORDER[@]}"; do
+        [[ -n "${_GENERATE_PATTERNS[$pattern]+present}" ]]
+        [[ -z "${seen[$pattern]+present}" ]]
+        seen["$pattern"]=1
+    done
+
+    [[ "${#seen[@]}" -eq "${#_GENERATE_PATTERNS[@]}" ]]
 }
 
 # =============================================================================

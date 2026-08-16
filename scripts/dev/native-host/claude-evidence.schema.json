@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/native-host-claude-evidence-v1.json",
+  "title": "MAINFRAME Claude Code native-host execution certification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "certification",
+    "host",
+    "host_channel",
+    "host_version",
+    "host_package_integrity",
+    "host_platform_package",
+    "host_platform_version",
+    "host_platform_package_integrity",
+    "host_package_root_tree_sha256",
+    "host_package_tree_sha256",
+    "host_stub_sha256",
+    "host_cli_wrapper_sha256",
+    "host_installer_sha256",
+    "host_executable_sha256",
+    "host_release_manifest_sha256",
+    "host_release_manifest_signature_sha256",
+    "host_release_signing_key_fingerprint",
+    "host_release_commit",
+    "host_release_build_date",
+    "runtime_launch_mode",
+    "host_cli_wrapper_executed",
+    "mainframe_version",
+    "archive_sha256",
+    "archive_origin",
+    "hook_config_sha256",
+    "fixture_sha256",
+    "fixture_server_sha256",
+    "os",
+    "arch",
+    "libc",
+    "system_libc",
+    "source_git_commit",
+    "source_git_dirty",
+    "credential_mode",
+    "provider_wire_api",
+    "provider_requests_per_run",
+    "provider_requests_total",
+    "provider_placeholder_authorization",
+    "provider_user_credentials_supplied",
+    "network_boundary",
+    "project_trust_mode",
+    "settings_sources",
+    "managed_settings_present",
+    "permission_mode",
+    "tool_surface",
+    "control_executions",
+    "protected_executions",
+    "control_tool_success",
+    "protected_tool_denied",
+    "protected_hook_started",
+    "protected_hook_responses",
+    "protected_hook_exit_code",
+    "protected_denial",
+    "audit",
+    "certified_at"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "certification": { "const": "execution-certified" },
+    "host": { "const": "claude" },
+    "host_channel": { "const": "stable" },
+    "host_version": { "const": "2.1.220" },
+    "host_package_integrity": { "const": "sha512-ogBrvwkqF9f8okmnXKxmRNHuvtFxFEffe5pWdqOV3iQDxlUOKirFqnyWC7NGXXnDA4WkkbPH8pvSbwyCR2Auyw==" },
+    "host_platform_package": { "type": "string", "pattern": "^@anthropic-ai/claude-code-(darwin|linux)-(arm64|x64)(-musl)?$" },
+    "host_platform_version": { "const": "2.1.220" },
+    "host_platform_package_integrity": { "$ref": "#/$defs/npmIntegrity" },
+    "host_package_root_tree_sha256": { "const": "48c63b70077572c889931dd9024d3253aef33a7f558efd63a72287915228f154" },
+    "host_package_tree_sha256": { "$ref": "#/$defs/sha256" },
+    "host_stub_sha256": { "const": "6d7abae055d3b598281300a6c835086dec81bf3048f8a2294c5d3e50c8830d7b" },
+    "host_cli_wrapper_sha256": { "const": "61ad63033d9c8155d5e60a29f45dc4665afa07631c0b108e62cc83bf45ba490e" },
+    "host_installer_sha256": { "const": "5cbab1670597f492cd4eeb946f3c344ebcb1fbd43c623ba192c9b33744461b85" },
+    "host_executable_sha256": { "$ref": "#/$defs/sha256" },
+    "host_release_manifest_sha256": { "const": "40f281ff188f1cd4f39309da41a219014dad2555d96e9780c67a2138720d12ed" },
+    "host_release_manifest_signature_sha256": { "const": "63ed32a9d1b382728ea3855a62aaf7ad19d2c7bdcb3eae91959f5bb1e316c99f" },
+    "host_release_signing_key_fingerprint": { "const": "31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE" },
+    "host_release_commit": { "const": "4073f59596e272f39393db4f96abc5f4b10eff21" },
+    "host_release_build_date": { "const": "2026-07-24T22:28:51Z" },
+    "runtime_launch_mode": { "const": "npm-ignore-scripts-direct-platform-binary" },
+    "host_cli_wrapper_executed": { "const": false },
+    "mainframe_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "archive_sha256": { "$ref": "#/$defs/sha256" },
+    "archive_origin": {
+      "anyOf": [
+        { "const": "workspace-build" },
+        { "const": "external-input" }
+      ]
+    },
+    "hook_config_sha256": { "$ref": "#/$defs/sha256" },
+    "fixture_sha256": { "const": "aede0aba3a0c5dc12bcf098ba087148fb9e8f116838b8b79e9470639c4eee5f8" },
+    "fixture_server_sha256": { "const": "ea4b0c3d41edd9826d8b6aef4ad34ac91febe2ab480d70d0a2c12f0c7b5fd539" },
+    "os": {
+      "anyOf": [
+        { "const": "Darwin" },
+        { "const": "Linux" }
+      ]
+    },
+    "arch": {
+      "anyOf": [
+        { "const": "arm64" },
+        { "const": "aarch64" },
+        { "const": "x86_64" }
+      ]
+    },
+    "libc": {
+      "anyOf": [
+        { "const": "none" },
+        { "const": "glibc" },
+        { "const": "musl" }
+      ]
+    },
+    "system_libc": {
+      "anyOf": [
+        { "const": "none" },
+        { "const": "glibc" },
+        { "const": "musl" }
+      ]
+    },
+    "source_git_commit": {
+      "anyOf": [
+        { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        { "const": "unknown" }
+      ]
+    },
+    "source_git_dirty": {
+      "anyOf": [
+        { "type": "boolean" },
+        { "type": "null" }
+      ]
+    },
+    "credential_mode": { "const": "claude-loopback-messages-synthetic-bearer-no-user-credentials" },
+    "provider_wire_api": { "const": "anthropic-messages" },
+    "provider_requests_per_run": { "const": 2 },
+    "provider_requests_total": { "const": 4 },
+    "provider_placeholder_authorization": { "const": true },
+    "provider_user_credentials_supplied": { "const": false },
+    "network_boundary": { "const": "loopback-base-url-and-nonessential-traffic-disabled" },
+    "project_trust_mode": { "const": "claude-print-mode-trust-verification-disabled" },
+    "settings_sources": { "const": "project-only" },
+    "managed_settings_present": { "const": false },
+    "permission_mode": { "const": "dontAsk" },
+    "tool_surface": { "const": "Bash-only-exact-command-allow" },
+    "control_executions": { "const": 1 },
+    "protected_executions": { "const": 0 },
+    "control_tool_success": { "const": true },
+    "protected_tool_denied": { "const": true },
+    "protected_hook_started": { "const": 1 },
+    "protected_hook_responses": { "const": 1 },
+    "protected_hook_exit_code": { "const": 2 },
+    "protected_denial": { "const": "MAINFRAME agent gateway blocked the tool call: risk=high rule=terraform-destroy" },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["host", "event", "tool", "risk", "rule", "decision", "records", "mode"],
+      "properties": {
+        "host": { "const": "claude" },
+        "event": { "const": "PreToolUse" },
+        "tool": { "const": "Bash" },
+        "risk": { "const": "high" },
+        "rule": { "const": "terraform-destroy" },
+        "decision": { "const": "deny" },
+        "records": { "const": 1 },
+        "mode": { "const": "600" }
+      }
+    },
+    "certified_at": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "anyOf": [
+        {
+          "properties": {
+            "os": { "const": "Darwin" },
+            "arch": { "const": "arm64" },
+            "libc": { "const": "none" },
+            "system_libc": { "const": "none" },
+            "host_platform_package": { "const": "@anthropic-ai/claude-code-darwin-arm64" },
+            "host_platform_package_integrity": { "const": "sha512-rmtd41Bf+n+YnhjSjtQ8WG5qy8KKogUp3YRfQrkLsTgPUD0H3j869rBInBJT3SHrKQ0hLghQLGM73CC1C+USLQ==" },
+            "host_package_tree_sha256": { "const": "8e1106b53bdfc9501a20f6db370fbf3a99a8269eae3cf83a5648a7f5a1ebf385" },
+            "host_executable_sha256": { "const": "8addc857f3fe64d5a0368af9ee50321b50afb4a6918ba3ef018ab84f5dbbe081" }
+          }
+        },
+        {
+          "properties": {
+            "os": { "const": "Darwin" },
+            "arch": { "const": "x86_64" },
+            "libc": { "const": "none" },
+            "system_libc": { "const": "none" },
+            "host_platform_package": { "const": "@anthropic-ai/claude-code-darwin-x64" },
+            "host_platform_package_integrity": { "const": "sha512-hbuoG+YCo37VzSKzKJ47ymRmt/YjASc3dRcsZtCcftLYdopv8KL889x/IbCl3cfp/VqV2rRDZ0f3aUDpHUFweQ==" },
+            "host_package_tree_sha256": { "const": "49ddfd04e6f432f85112100e2430d54818c6e5622b11c6d7e1fa1976ecbd431f" },
+            "host_executable_sha256": { "const": "dca7be0aa7d3d924836d440e0c6d8e3d47ef3c8e61fa5809b54b9017170ce2f3" }
+          }
+        },
+        {
+          "properties": {
+            "os": { "const": "Linux" },
+            "arch": { "const": "aarch64" },
+            "libc": { "const": "glibc" },
+            "system_libc": { "const": "glibc" },
+            "host_platform_package": { "const": "@anthropic-ai/claude-code-linux-arm64" },
+            "host_platform_package_integrity": { "const": "sha512-VHFI8mKruIntKn7eq81sbyS19/KWmQcmJQsS/C+j9M/E+w0s4UytgsL7DADPjBE/GByNiKoRtLYDMntCjRlOdA==" },
+            "host_package_tree_sha256": { "const": "8226f69c94fd9ce96627dde9ab9300308edb23ef9f788b24b29b9d45a7af32be" },
+            "host_executable_sha256": { "const": "159e4a51d796f3bf14677577100f7efb845611b1ceaf0c30cbd8d4650d942185" }
+          }
+        },
+        {
+          "properties": {
+            "os": { "const": "Linux" },
+            "arch": { "const": "x86_64" },
+            "libc": { "const": "glibc" },
+            "system_libc": { "const": "glibc" },
+            "host_platform_package": { "const": "@anthropic-ai/claude-code-linux-x64" },
+            "host_platform_package_integrity": { "const": "sha512-3CGFCnI0gpgsqNeJruFALBDGJaKXOuok3alQEg56ty2yOPpIrOx/r2Y0+T4uhJl7kP5Hzw4IFkxo4DZKWvzQ7Q==" },
+            "host_package_tree_sha256": { "const": "56ffb3acc9a257d0681e6b2d1798d70e34454ecc69cf56398a49d4a0713f5924" },
+            "host_executable_sha256": { "const": "674f61f20ff306f3100cf9200e4c36c4b70278b5bef2884549819b942a89c863" }
+          }
+        },
+        {
+          "properties": {
+            "os": { "const": "Linux" },
+            "arch": { "const": "aarch64" },
+            "libc": { "const": "musl" },
+            "system_libc": { "const": "musl" },
+            "host_platform_package": { "const": "@anthropic-ai/claude-code-linux-arm64-musl" },
+            "host_platform_package_integrity": { "const": "sha512-m37ALw8jcbSknuyG7xDQjGPY7Gth3eX8iFY1XFEWABVq1iUMVAUn96WC9eqwi8/JSqyG2t3oNRiqHdi2ZNKFGQ==" },
+            "host_package_tree_sha256": { "const": "2d42d47eed2dd5a22210b7bbc156153bfd77f2182e3ce3e5bf77facab061e19e" },
+            "host_executable_sha256": { "const": "5eb2697a1500c1b8736e53fd696392196dc6758cf1d470c64d8d2a2fd1629eeb" }
+          }
+        },
+        {
+          "properties": {
+            "os": { "const": "Linux" },
+            "arch": { "const": "x86_64" },
+            "libc": { "const": "musl" },
+            "system_libc": { "const": "musl" },
+            "host_platform_package": { "const": "@anthropic-ai/claude-code-linux-x64-musl" },
+            "host_platform_package_integrity": { "const": "sha512-+QyT1KikOdMRKReWFaBYGsroYx2vEjjx54DwhMoC24oE1DxjC+SlKjeOTRXAKiu0fr0O549Lkhg2tuT5xtQpAQ==" },
+            "host_package_tree_sha256": { "const": "d5b808b8bf2e0b24918dfcea2bae0349535aa0fb5cc664756fdb6424545c7cfe" },
+            "host_executable_sha256": { "const": "f1c20514a3571cdf9982e25c490042d740ed7cfed3f00c64ba92dc7ec47c3c5b" }
+          }
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "npmIntegrity": { "type": "string", "pattern": "^sha512-[A-Za-z0-9+/]+={0,2}$" }
+  }
+}

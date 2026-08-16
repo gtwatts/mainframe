@@ -863,58 +863,669 @@ _agent_resolve_command() {
 # Tiers: critical (irreversible/system), high (destructive but scoped),
 # medium (externally visible / hard to reverse), low (everything else).
 
+# Internal: decode only shell quoting and backslash escaping in one word.
+# Expansion is intentionally out of scope here; _agent_resolve_command handles
+# the small, supported variable-expansion subset before lexical analysis.
+_agent_gate_decode_word() {
+    local input="$1" output="" quote="" ch next body decoded ansi_ch
+    local i j escaped len=${#input}
+
+    for (( i=0; i<len; i++ )); do
+        ch="${input:i:1}"
+        if [[ "$quote" == "'" ]]; then
+            [[ "$ch" == "'" ]] && quote="" || output+="$ch"
+            continue
+        fi
+        if [[ "$quote" == '"' ]]; then
+            if [[ "$ch" == '"' ]]; then
+                quote=""
+            elif [[ "$ch" == $'\\' && $((i + 1)) -lt len ]]; then
+                next="${input:i+1:1}"
+                case "$next" in
+                    '$'|'`'|'"'|$'\\') output+="$next"; i=$((i + 1)) ;;
+                    $'\n') i=$((i + 1)) ;;
+                    *) output+="$ch" ;;
+                esac
+            else
+                output+="$ch"
+            fi
+            continue
+        fi
+
+        case "$ch" in
+            "'"|'"') quote="$ch" ;;
+            '$')
+                # ANSI-C quoted words become literal argv after shell decoding.
+                # Bash printf is a builtin and receives data, never shell code.
+                if [[ "${input:i+1:1}" == "'" ]]; then
+                    body=""
+                    escaped=0
+                    for (( j=i+2; j<len; j++ )); do
+                        ansi_ch="${input:j:1}"
+                        if [[ "$ansi_ch" == "'" && "$escaped" -eq 0 ]]; then
+                            break
+                        fi
+                        body+="$ansi_ch"
+                        if [[ "$ansi_ch" == $'\\' && "$escaped" -eq 0 ]]; then
+                            escaped=1
+                        else
+                            escaped=0
+                        fi
+                    done
+                    if (( j < len )); then
+                        # \c truncates printf %b output. Preserve it as dynamic
+                        # syntax rather than canonicalizing an incomplete word.
+                        if [[ "$body" == *'\c'* ]]; then
+                            output+="\$'$body'"
+                        else
+                            printf -v decoded '%b' "$body"
+                            output+="$decoded"
+                        fi
+                        i=$j
+                    else
+                        output+="$ch"
+                    fi
+                else
+                    output+="$ch"
+                fi
+                ;;
+            $'\\')
+                if (( i + 1 < len )); then
+                    i=$((i + 1))
+                    [[ "${input:i:1}" == $'\n' ]] || output+="${input:i:1}"
+                else
+                    output+="$ch"
+                fi
+                ;;
+            *) output+="$ch" ;;
+        esac
+    done
+
+    printf '%s' "$output"
+}
+
+# Internal: identify executable words that still contain shell expansion or
+# encoding syntax after lexical command-position analysis. The record marker
+# is emitted only for executable tokens (including wrapper targets and shell
+# -c programs), so benign arguments such as `rg '$('` remain outside this
+# conservative rule.
+_agent_gate_has_dynamic_executable() {
+    local remaining="$1" marker=$'\036' token
+
+    while [[ "$remaining" == *"$marker"* ]]; do
+        remaining="${remaining#*"$marker"}"
+        token="${remaining%%[[:space:];\&\|\(\)]*}"
+        case "$token" in
+            *'$'*|*'`'*|*'*'*|*'?'*|*'['*|*']'*|*'{'*|*'}'*) return 0 ;;
+        esac
+    done
+    return 1
+}
+
+_agent_gate_has_executable_named() {
+    local remaining="$1" expected="$2" marker=$'\036' token
+
+    while [[ "$remaining" == *"$marker"* ]]; do
+        remaining="${remaining#*"$marker"}"
+        token="${remaining%%[[:space:];\&\|\(\)]*}"
+        [[ "${token##*/}" == "$expected" ]] && return 0
+    done
+    return 1
+}
+
+# Internal: find lexically active command/process substitution without
+# executing or rewriting the command. Single-quoted data and backslash-escaped
+# characters are intentionally ignored; substitutions remain active inside
+# double quotes, while process substitution does not.
+_agent_gate_has_dynamic_shell_expansion() {
+    local input="$1" quote="" ch next i len=${#1}
+
+    for (( i=0; i<len; i++ )); do
+        ch="${input:i:1}"
+        if [[ "$quote" == "'" ]]; then
+            [[ "$ch" == "'" ]] && quote=""
+            continue
+        fi
+        if [[ "$quote" == '"' ]]; then
+            if [[ "$ch" == '"' ]]; then
+                quote=""
+            elif [[ "$ch" == $'\\' && $((i + 1)) -lt len ]]; then
+                next="${input:i+1:1}"
+                case "$next" in
+                    '$'|'`'|'"'|$'\\'|$'\n') i=$((i + 1)) ;;
+                esac
+            elif [[ "$ch" == '$' && "${input:i+1:1}" == '(' ]]; then
+                return 0
+            elif [[ "$ch" == '`' ]]; then
+                return 0
+            fi
+            continue
+        fi
+
+        case "$ch" in
+            "'") quote="'" ;;
+            '"') quote='"' ;;
+            $'\\') (( i++ )) || true ;;
+            '$') [[ "${input:i+1:1}" == '(' ]] && return 0 ;;
+            '`') return 0 ;;
+            '<'|'>') [[ "${input:i+1:1}" == '(' ]] && return 0 ;;
+        esac
+    done
+    return 1
+}
+
+_agent_gate_has_unsupported_control() {
+    local input="$1" ch code i
+    local LC_ALL=C
+
+    for (( i=0; i<${#input}; i++ )); do
+        ch="${input:i:1}"
+        printf -v code '%d' "'$ch"
+        if (( (code < 32 && code != 9 && code != 10) || code == 127 )); then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Internal: create an analysis-only form of a POSIX shell command string.
+# Executables are marked with an ASCII record separator and path prefixes are
+# removed only at command positions. The marker lets destructive classifiers
+# distinguish an executable `rm` from prose such as a commit message that
+# merely mentions "rm -rf".
+#
+# This is deliberately a bounded, honest-but-fallible lexer, not a complete
+# shell parser. It understands command separators, simple quotes/escapes,
+# common command wrappers, git/terraform global options, find -exec, and shell
+# -c. Dynamic evaluation constructs are rejected conservatively by the gate
+# before ordinary command matching. Inline Git alias definitions and the
+# documented option arity of supported wrappers are covered; pre-existing
+# aliases, functions, and unknown implementation-specific wrapper options
+# remain outside this lexer's scope.
+# Most importantly, it never executes or rewrites caller input.
+_agent_gate_normalize_command_paths() {
+    local input="$1" output="" token="" quote="" ch raw plain command inner
+    local marker=$'\036'
+    local -a words=() types=()
+    local i len=${#input}
+
+    # First pass: split into shell words, whitespace, and command separators
+    # while keeping quoted and escaped separators inside their original word.
+    for (( i=0; i<len; i++ )); do
+        ch="${input:i:1}"
+        if [[ -n "$quote" ]]; then
+            token+="$ch"
+            if [[ "$ch" == "$quote" ]]; then
+                quote=""
+            elif [[ "$ch" == $'\\' && "$quote" == '"' && $((i + 1)) -lt len ]]; then
+                i=$((i + 1))
+                token+="${input:i:1}"
+            fi
+            continue
+        fi
+
+        case "$ch" in
+            "'"|'"') quote="$ch"; token+="$ch" ;;
+            $'\\')
+                token+="$ch"
+                if (( i + 1 < len )); then
+                    i=$((i + 1))
+                    token+="${input:i:1}"
+                fi
+                ;;
+            ' '|$'\t')
+                if [[ -n "$token" ]]; then
+                    words+=("$token"); types+=(word); token=""
+                fi
+                words+=("$ch"); types+=(space)
+                ;;
+            '<'|'>')
+                if [[ -n "$token" ]]; then
+                    words+=("$token"); types+=(word); token=""
+                fi
+                words+=("$ch"); types+=(operator)
+                ;;
+            $'\n'|';'|'|'|'&'|'('|')')
+                if [[ -n "$token" ]]; then
+                    words+=("$token"); types+=(word); token=""
+                fi
+                words+=("$ch"); types+=(separator)
+                ;;
+            *) token+="$ch" ;;
+        esac
+    done
+    if [[ -n "$token" ]]; then
+        words+=("$token"); types+=(word)
+    fi
+
+    local at_command=1 wrapper="" wrapper_arg_pending=0
+    local wrapper_split_string_pending=0
+    local wrapper_timeout_duration=0
+    local current_command="" shell_code_pending=0
+    local find_exec_pending=0 find_embedded_shell=0
+    local git_preamble=0 terraform_preamble=0 option_arg_pending=0
+    local git_config_arg_pending=0
+    local redirect_target_pending=0
+    local function_name_pending=0
+
+    # Second pass: identify the words the shell treats as executables. Wrapper
+    # options are omitted from the analysis form so their operands cannot be
+    # mistaken for the wrapped command.
+    for (( i=0; i<${#words[@]}; i++ )); do
+        raw="${words[i]}"
+        case "${types[i]}" in
+            space)
+                output+="$raw"
+                continue
+                ;;
+            separator)
+                output+="$raw"
+                at_command=1
+                wrapper=""; wrapper_arg_pending=0
+                wrapper_split_string_pending=0
+                wrapper_timeout_duration=0
+                current_command=""; shell_code_pending=0
+                find_exec_pending=0; find_embedded_shell=0
+                git_preamble=0; terraform_preamble=0; option_arg_pending=0
+                git_config_arg_pending=0
+                redirect_target_pending=0
+                function_name_pending=0
+                continue
+                ;;
+            operator)
+                output+="$raw"
+                [[ "$raw" == '>' ]] && redirect_target_pending=1
+                continue
+                ;;
+        esac
+
+        plain=$(_agent_gate_decode_word "$raw")
+
+        if (( redirect_target_pending )); then
+            if [[ "${plain,,}" =~ ^/dev/(sd|disk|rdisk|nvme) ]]; then
+                output+="${marker}mainframe-raw-device-redirect "
+            fi
+            output+="$plain"
+            redirect_target_pending=0
+            continue
+        fi
+
+        # GNU env -S/--split-string reparses its operand as command argv. Treat
+        # that operand as a nested shell command for policy analysis. This is
+        # analysis-only and never evaluates caller input.
+        if (( wrapper_split_string_pending )); then
+            inner=$(_agent_gate_normalize_command_paths "$plain")
+            output+=" $inner"
+            wrapper_split_string_pending=0
+            continue
+        fi
+
+        # A code operand to sh -c is itself a shell program. Analyze that
+        # operand recursively and place it behind an explicit command boundary.
+        if (( shell_code_pending )); then
+            inner=$(_agent_gate_normalize_command_paths "$plain")
+            output+=" ; $inner"
+            shell_code_pending=0
+            continue
+        fi
+
+        # find -exec/-execdir introduces a nested command position.
+        if (( find_exec_pending )); then
+            command="${plain##*/}"
+            command="${command,,}"
+            output+="${marker}${command}"
+            find_exec_pending=0
+            case "$command" in
+                sh|bash|dash|zsh) find_embedded_shell=1 ;;
+                *) find_embedded_shell=0 ;;
+            esac
+            continue
+        fi
+
+        if (( at_command )); then
+            if (( function_name_pending )); then
+                output+="$plain"
+                function_name_pending=0
+                at_command=1
+                continue
+            fi
+            # Shell control words introduce (or preserve) a real command
+            # position; they are syntax, not the executable. Treat `)` as a
+            # boundary as well so case-pattern actions are analyzed.
+            case "$plain" in
+                function)
+                    output+="$raw"
+                    function_name_pending=1
+                    at_command=1
+                    continue
+                    ;;
+                if|then|elif|else|while|until|do|fi|done|'esac'|in|'!'|'{'|'}'|for|select|case)
+                    output+="$raw"
+                    at_command=1
+                    continue
+                    ;;
+            esac
+
+            # Assignment words precede, but do not consume, a command position.
+            if [[ -z "$wrapper" && "$plain" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+                output+="$raw"
+                continue
+            fi
+
+            if [[ -n "$wrapper" ]]; then
+                if (( wrapper_arg_pending )); then
+                    wrapper_arg_pending=$((wrapper_arg_pending - 1))
+                    continue
+                fi
+                if [[ "$wrapper" == timeout && "$wrapper_timeout_duration" -eq 1 &&
+                      "$plain" =~ ^[0-9]+([.][0-9]+)?[smhd]?$ ]]; then
+                    wrapper_timeout_duration=0
+                    continue
+                fi
+                if [[ "$wrapper" == env && "$plain" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+                    continue
+                fi
+                if [[ "$plain" == '--' ]]; then
+                    continue
+                fi
+                if [[ "$plain" == -* ]]; then
+                    if [[ "$wrapper" == env &&
+                          ( "$plain" == --split-string=* ||
+                            ( "$plain" == -S?* && "$plain" != -S ) ) ]]; then
+                        if [[ "$plain" == --split-string=* ]]; then
+                            inner=${plain#*=}
+                        else
+                            inner=${plain#-S}
+                        fi
+                        inner=$(_agent_gate_normalize_command_paths "$inner")
+                        output+=" $inner"
+                        continue
+                    fi
+                    case "$wrapper:$plain" in
+                        env:-S|env:--split-string)
+                            wrapper_split_string_pending=1
+                            ;;
+                        sudo:-u|sudo:--user|sudo:-g|sudo:--group|sudo:-h|sudo:--host|sudo:-p|sudo:--prompt|sudo:-C|sudo:--chdir|sudo:-R|sudo:--role|sudo:-T|sudo:--command-timeout|sudo:-D|sudo:--chroot|sudo:-U|sudo:--other-user|sudo:-t|sudo:--type|\
+                        env:-u|env:--unset|env:-C|env:--chdir|\
+                        nice:-n|nice:--adjustment|time:-o|time:--output|time:-f|time:--format|\
+                        exec:-a|exec:--argv0|timeout:-s|timeout:--signal|timeout:-k|timeout:--kill-after|\
+                        stdbuf:-i|stdbuf:--input|stdbuf:-o|stdbuf:--output|stdbuf:-e|stdbuf:--error)
+                            wrapper_arg_pending=1
+                            ;;
+                    esac
+                    continue
+                fi
+            fi
+
+            command="${plain##*/}"
+            command="${command,,}"
+            output+="${marker}${command}"
+            current_command="$command"
+            at_command=0
+            wrapper=""
+            git_preamble=0; terraform_preamble=0; option_arg_pending=0
+            case "$command" in
+                sudo|env|nice|command|builtin|exec|nohup|time|timeout|stdbuf)
+                    wrapper="$command"
+                    at_command=1
+                    current_command=""
+                    [[ "$command" == timeout ]] && wrapper_timeout_duration=1
+                    ;;
+                git) git_preamble=1 ;;
+                terraform|tofu) terraform_preamble=1 ;;
+            esac
+            continue
+        fi
+
+        if (( find_embedded_shell )) && [[ "$plain" =~ ^-[^-]*c[^-]*$ ]]; then
+            output+="$plain"
+            shell_code_pending=1
+            continue
+        fi
+        if [[ "$current_command" =~ ^(sh|bash|dash|zsh)$ && "$plain" =~ ^-[^-]*c[^-]*$ ]]; then
+            output+="$plain"
+            shell_code_pending=1
+            continue
+        fi
+
+        if (( git_preamble )); then
+            if (( option_arg_pending )); then
+                option_arg_pending=$((option_arg_pending - 1))
+                if (( git_config_arg_pending )) &&
+                   [[ "${plain,,}" == alias.*=* ]]; then
+                    output+="${marker}mainframe-inline-git-alias"
+                fi
+                git_config_arg_pending=0
+                continue
+            fi
+            case "$plain" in
+                -c)
+                    option_arg_pending=1
+                    git_config_arg_pending=1
+                    continue
+                    ;;
+                -C|--git-dir|--work-tree|--namespace|--super-prefix|--config-env)
+                    option_arg_pending=1
+                    git_config_arg_pending=0
+                    continue
+                    ;;
+                -calias.*=*)
+                    output+="${marker}mainframe-inline-git-alias"
+                    continue
+                    ;;
+                --git-dir=*|--work-tree=*|--namespace=*|--super-prefix=*|--config-env=*|-*)
+                    continue
+                    ;;
+                *) git_preamble=0 ;;
+            esac
+        elif (( terraform_preamble )); then
+            if (( option_arg_pending )); then
+                option_arg_pending=$((option_arg_pending - 1))
+                continue
+            fi
+            case "$plain" in
+                -chdir) option_arg_pending=1; continue ;;
+                -chdir=*|-*) continue ;;
+                *) terraform_preamble=0 ;;
+            esac
+        fi
+
+        if [[ "$current_command" == find && "$plain" =~ ^-exec(dir)?$ ]]; then
+            find_exec_pending=1
+        fi
+        output+="$plain"
+    done
+
+    printf '%s' "$output"
+}
+
+# Internal: classify rm recursion/force flags independent of flag order.
+# The earlier regex rules handled common `rm -rf` spellings but could miss an
+# unrelated option placed first (`rm -v -rf`) or multiple long options. This
+# parser examines every rm option word up to `--` without evaluating the shell.
+# Prints one of: critical, high, low.
+_agent_gate_rm_flag_tier() {
+    local remaining="$1" args word next
+    local marker=$'\036' needle
+    needle="${marker}rm"
+    local has_recursive has_force
+
+    while [[ "$remaining" == *"$needle"* ]]; do
+        remaining="${remaining#*"$needle"}"
+        next="${remaining:0:1}"
+        case "$next" in
+            ''|' '|$'\t'|$'\n'|';'|'&'|'|'|'('|')') ;;
+            *) continue ;;
+        esac
+
+        args="$remaining"
+        args="${args%%"$marker"*}"
+        args="${args%%$'\n'*}"
+        args="${args%%';'*}"
+        args="${args%%'&'*}"
+        args="${args%%'|'*}"
+        args="${args%%'('*}"
+        args="${args%%')'*}"
+        has_recursive=0
+        has_force=0
+
+        # Shell word splitting is intentional and analysis-only here. Flags
+        # cannot contain meaningful whitespace; quoted operands are ignored.
+        for word in $args; do
+            word="${word#\"}"; word="${word%\"}"
+            word="${word#\'}"; word="${word%\'}"
+            [[ "$word" == "--" ]] && break
+            [[ "$word" == -* ]] || continue
+            case "$word" in
+                --recursive) has_recursive=1 ;;
+                --force) has_force=1 ;;
+                --*) ;;
+                *)
+                    [[ "$word" == *[rR]* ]] && has_recursive=1
+                    [[ "$word" == *f* ]] && has_force=1
+                    ;;
+            esac
+        done
+
+        if (( has_recursive && has_force )); then
+            printf 'critical'
+            return 0
+        fi
+        if (( has_recursive )); then
+            printf 'high'
+            return 0
+        fi
+
+    done
+
+    printf 'low'
+}
+
+# Internal: detect mutation of MAINFRAME's own runtime in one normalized
+# executable segment. Read-only release preview remains allowed; update,
+# confirmed upgrade, and Homebrew mutation require a human terminal.
+_agent_gate_has_runtime_mutation() {
+    local normalized="${1,,}" marker=$'\036' rest chunk
+    local re_update='^mainframe[[:space:]]+update([[:space:];&|()]|$)'
+    local re_upgrade='^mainframe[[:space:]]+upgrade([[:space:];&|()]|$)'
+    local re_uninstall='^mainframe[[:space:]]+uninstall([[:space:];&|()]|$)'
+    local re_dry_run='(^|[[:space:]])--dry-run([[:space:];&|()]|$)'
+    local re_brew='^brew[[:space:]]+(upgrade|uninstall)([[:space:];&|()]|$)'
+    local re_formula='(^|[[:space:]])(gtwatts/mainframe/mainframe|mainframe)([[:space:];&|()]|$)'
+
+    rest="$normalized"
+    while [[ "$rest" == *"$marker"* ]]; do
+        rest="${rest#*"$marker"}"
+        if [[ "$rest" == *"$marker"* ]]; then
+            chunk="${rest%%"$marker"*}"
+            rest="$marker${rest#*"$marker"}"
+        else
+            chunk="$rest"
+            rest=''
+        fi
+        [[ "$chunk" =~ $re_update ]] && return 0
+        if [[ "$chunk" =~ $re_upgrade ]] && ! [[ "$chunk" =~ $re_dry_run ]]; then
+            return 0
+        fi
+        if [[ "$chunk" =~ $re_uninstall ]] && ! [[ "$chunk" =~ $re_dry_run ]]; then
+            return 0
+        fi
+        if [[ "$chunk" =~ $re_brew ]] && [[ "$chunk" =~ $re_formula ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Internal: match a command string against the gate rules
 # Prints: "<tier> <rule_id>" for the first (highest-severity) match
 _agent_gate_match() {
-    local s="$1"
+    local raw="${2:-$1}" s structured raw_structured marker=$'\036'
+    local LC_ALL=C dynamic_executable=false shell_eval=false
+    local dynamic_shell_expansion=false unsupported_control=false
+    local runtime_mutation=false
+    _agent_gate_has_unsupported_control "$raw" && unsupported_control=true
+    structured=$(_agent_gate_normalize_command_paths "$1")
+    raw_structured=$(_agent_gate_normalize_command_paths "$raw")
+    s="${structured,,}"
+    if _agent_gate_has_dynamic_executable "$structured" ||
+       _agent_gate_has_dynamic_executable "$raw_structured"; then
+        dynamic_executable=true
+    fi
+    if _agent_gate_has_executable_named "$structured" eval ||
+       _agent_gate_has_executable_named "$raw_structured" eval; then
+        shell_eval=true
+    fi
+    _agent_gate_has_dynamic_shell_expansion "$raw" && dynamic_shell_expansion=true
+    _agent_gate_has_runtime_mutation "$s" && runtime_mutation=true
+    local rm_flag_tier
+    rm_flag_tier=$(_agent_gate_rm_flag_tier "$s")
 
     # Regexes as variables: [[ =~ ]] parses bare >, &, |, (, ) in unquoted
     # patterns as shell syntax; indirection avoids that class of bug.
-    local re_rm='(^|[[:space:]&|;|(|)])rm[[:space:]]+([^-;|&]*-([a-zA-Z]*[rR][a-zA-Z]*f|[a-zA-Z]*f[a-zA-Z]*[rR])[a-zA-Z]*|[^-;|&]*-[a-zA-Z]*[rR][[:space:]]+-[a-zA-Z]*f|[^-;|&]*--recursive[^[:space:]]*[[:space:]]+--force)'
-    local re_sudo_rm='(^|[[:space:]&|;|(|)])sudo[[:space:]]+rm([[:space:]]|$)'
-    local re_mkfs='(^|[[:space:]&|;|(|)])(mkfs|mkfs\.[a-z0-9]+|newfs|mkswap)([[:space:]]|$)'
-    local re_dd='(^|[[:space:]&|;|(|)])dd[[:space:]].*of=/dev/'
-    local re_diskutil='(^|[[:space:]&|;|(|)])diskutil[[:space:]]+(erase|partition|unmountDisk|apfs)'
-    local re_devredir='>[[:space:]]*/dev/(sd|disk|rdisk|nvme)'
-    local re_chmod777='(^|[[:space:]&|;|(|)])chmod[[:space:]]+(-[a-zA-Z]*R[a-zA-Z]*[[:space:]]+)*777([[:space:]]|$)'
-    local re_chownR='(^|[[:space:]&|;|(|)])chown[[:space:]]+-[a-zA-Z]*R'
-    local re_gitclean='(^|[[:space:]&|;|(|)])git[[:space:]]+clean[[:space:]].*-[a-zA-Z]*[fxd]'
-    local re_gitreset='(^|[[:space:]&|;|(|)])git[[:space:]]+reset[[:space:]]+--hard([[:space:]]|$)'
-    local re_dockerprune='(^|[[:space:]&|;|(|)])docker[[:space:]]+system[[:space:]]+prune.*(-a|--all|--volumes)'
-    local re_kubectl='(^|[[:space:]&|;|(|)])kubectl[[:space:]]+delete([[:space:]]|$)'
-    local re_tfdestroy='(^|[[:space:]&|;|(|)])(terraform|tofu)[[:space:]]+destroy([[:space:]]|$)'
-    local re_s3rm='(^|[[:space:]&|;|(|)])aws[[:space:]]+s3[[:space:]]+rm.*--recursive'
-    local re_finddelete='(^|[[:space:]&|;|(|)])find[[:space:]].*-delete([[:space:]]|$)'
-    local re_xargsrm='\|[[:space:]]*xargs[[:space:]].*rm([[:space:]]|$)'
-    local re_rsyncdel='(^|[[:space:]&|;|(|)])rsync[[:space:]].*--delete'
-    local re_pipeshell='(curl|wget)[[:space:]].*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh)([[:space:]]|$)'
-    local re_pushmirror='(^|[[:space:]&|;|(|)])git[[:space:]]+push[[:space:]].*--mirror'
-    local re_killall1='(^|[[:space:]&|;|(|)])kill[[:space:]]+(-9|-KILL)[[:space:]]+-1([[:space:]]|$)'
-    local re_pushforce='(^|[[:space:]&|;|(|)])git[[:space:]]+push[[:space:]].*(--force|-f)([[:space:]]|$)'
-    local re_rmrecursive='(^|[[:space:]&|;|(|)])rm[[:space:]]+([^-;|&]*-[a-zA-Z]*[rR][a-zA-Z]*([[:space:]]|$)|[^-;|&]*--recursive([[:space:]]|$))'
-    local re_findexec='(^|[[:space:]&|;|(|)])find[[:space:]].*-exec[[:space:]]+(sh|bash|dash|zsh|rm)([[:space:]]|$)'
-    local re_pyrmtree='(^|[[:space:]&|;|(|)])python[0-9.]*[[:space:]].*(rmtree|os\.remove|os\.unlink|os\.rmdir|\.unlink\()'
-    local re_perlunlink='(^|[[:space:]&|;|(|)])perl[[:space:]].*(unlink|rmtree)'
-    local re_rbrm='(^|[[:space:]&|;|(|)])ruby[[:space:]].*(rm_rf|rmtree|FileUtils)'
-    local re_noderm='(^|[[:space:]&|;|(|)])node[[:space:]].*(rmSync|unlinkSync|fs\.rm)'
-    local re_truncate='(^|[[:space:]&|;|(|)])truncate[[:space:]]+(-s|--size)[[:space:]]'
-    local re_gitwipe='(^|[[:space:]&|;|(|)])git[[:space:]]+(checkout|restore)[[:space:]]+(--[[:space:]]+)?\.([[:space:]]|$)'
-    local re_killall='(^|[[:space:]&|;|(|)])killall([[:space:]]|$)'
-    local re_npmpub='(^|[[:space:]&|;|(|)])npm[[:space:]]+publish([[:space:]]|$)'
-    local re_crontab='(^|[[:space:]&|;|(|)])crontab[[:space:]]+-r([[:space:]]|$)'
-    local re_launchctl='(^|[[:space:]&|;|(|)])launchctl[[:space:]]+(load|unload|remove|kickstart)([[:space:]]|$)'
+    # These two rules are intentionally conservative. A hook cannot safely
+    # prove what eval, command/process substitution, or legacy backticks will
+    # execute after approval, so their presence is itself a blocking risk.
+    local re_sudo_rm="${marker}sudo[[:space:]]+${marker}rm([[:space:]]|$)"
+    local re_mkfs="${marker}(mkfs|mkfs\\.[a-z0-9]+|newfs|mkswap)([[:space:]]|$)"
+    local re_dd="${marker}dd[[:space:]][^${marker}]*of=/dev/"
+    local re_diskutil="${marker}diskutil[[:space:]]+(erase|partition|unmountdisk|apfs)"
+    local re_forkbomb="${marker}:\\(\\)\\{[[:space:]]+${marker}:\\|${marker}:&[[:space:]]+\\};${marker}:|${marker}:\\(\\)[[:space:]]+${marker}\\{:\\|${marker}:&\\};${marker}:"
+    local re_devredir="${marker}mainframe-raw-device-redirect([[:space:]]|$)"
+    local re_chmod777="${marker}chmod[[:space:]]+(([^${marker}]*[[:space:]])?(--recursive|-[a-zA-Z]*[rR][a-zA-Z]*)[[:space:]]+([^${marker}]*[[:space:]])?777([[:space:]]|$)|([^${marker}]*[[:space:]])?777[[:space:]]+([^${marker}]*[[:space:]])?(--recursive|-[a-zA-Z]*[rR][a-zA-Z]*)([[:space:]]|$))"
+    local re_chownR="${marker}chown[[:space:]]+([^${marker}]*[[:space:]])?(--recursive|-[a-zA-Z]*[rR][a-zA-Z]*)([[:space:]]|$)"
+    local re_gitclean="${marker}git[[:space:]]+clean[[:space:]]+([^${marker}]*[[:space:]])?-[a-zA-Z]*[fxd][a-zA-Z]*([[:space:]]|$)"
+    local re_gitreset="${marker}git[[:space:]]+reset[[:space:]]+--hard([[:space:]]|$)"
+    local re_dockerprune="${marker}docker[[:space:]]+system[[:space:]]+prune[^${marker}]*(-a|--all|--volumes)"
+    local re_kubectl="${marker}kubectl[[:space:]]+delete([[:space:]]|$)"
+    local re_tfdestroy="${marker}(terraform|tofu)[[:space:]]+destroy([[:space:]]|$)"
+    local re_s3rm="${marker}aws[[:space:]]+s3[[:space:]]+rm[^${marker}]*--recursive"
+    local re_finddelete="${marker}find[[:space:]][^${marker}]*-delete([[:space:]]|$)"
+    local re_xargsrm="\\|[[:space:]]*${marker}xargs[[:space:]][^${marker}]*rm([[:space:]]|$)"
+    local re_rsyncdel="${marker}rsync[[:space:]][^${marker}]*--delete"
+    local re_pipeshell="\\|[[:space:]]*(${marker}(sudo|env|nice|command|nohup|time)[[:space:]]*)*${marker}(bash|sh|dash|zsh)([[:space:]]|$)"
+    local re_pushmirror="${marker}git[[:space:]]+push[[:space:]][^${marker}]*--mirror"
+    local re_killall1="${marker}kill[[:space:]]+(-9|-kill)[[:space:]]+-1([[:space:]]|$)"
+    local re_pushforce="${marker}git[[:space:]]+push[[:space:]][^${marker}]*(--force|-f)([[:space:]]|$)"
+    local re_findexec="${marker}find[[:space:]][^${marker}]*-exec[[:space:]]+${marker}(sh|bash|dash|zsh|rm)([[:space:]]|$)"
+    local re_pyrmtree="${marker}python[0-9.]*[[:space:]][^${marker}]*(rmtree|os\\.remove|os\\.unlink|os\\.rmdir|\\.unlink\\()"
+    local re_perlunlink="${marker}perl[[:space:]][^${marker}]*(unlink|rmtree)"
+    local re_rbrm="${marker}ruby[[:space:]][^${marker}]*(rm_rf|rmtree|fileutils)"
+    local re_noderm="${marker}node[[:space:]][^${marker}]*(rmsync|unlinksync|fs\\.rm)"
+    local re_project_memory_init="${marker}mainframe[[:space:]]+awm[[:space:]]+(project[[:space:]]+ensure([[:space:]]|$)|init[[:space:]][^${marker}]*--namespace(=|[[:space:]]+)projects([[:space:]]|$))|${marker}awm_project_ensure([[:space:]]|$)|${marker}awm_init[[:space:]][^${marker}]*--namespace(=|[[:space:]]+)projects([[:space:]]|$)"
+    local re_project_memory_close="${marker}mainframe[[:space:]]+awm[[:space:]]+project[[:space:]]+close([[:space:]]|$)"
+    local re_mainframe_yes="${marker}mainframe[[:space:]][^${marker}]*--yes([[:space:]]|$)"
+    local re_truncate="${marker}truncate[[:space:]]+(-s|--size)[[:space:]]"
+    local re_gitwipe="${marker}git[[:space:]]+(checkout|restore)[[:space:]]+(--[[:space:]]+)?\\.([[:space:]]|$)"
+    local re_killall="${marker}killall([[:space:]]|$)"
+    local re_npmpub="${marker}npm[[:space:]]+publish([[:space:]]|$)"
+    local re_crontab="${marker}crontab[[:space:]]+-r([[:space:]]|$)"
+    local re_launchctl="${marker}launchctl[[:space:]]+(load|unload|remove|kickstart)([[:space:]]|$)"
+    local re_inline_git_alias="${marker}mainframe-inline-git-alias([[:space:]]|$)"
 
     # --- critical -------------------------------------------------------------
-    [[ "$s" =~ $re_rm ]]       && { printf 'critical recursive-force-rm'; return 0; }
+    [[ "$unsupported_control" == "true" ]] \
+        && { printf 'critical unsupported-control-byte'; return 0; }
+    [[ "$dynamic_executable" == "true" ]] \
+        && { printf 'critical dynamic-executable-word'; return 0; }
+    [[ "$shell_eval" == "true" ]] \
+        && { printf 'critical shell-eval'; return 0; }
+    [[ "$dynamic_shell_expansion" == "true" ]] \
+        && { printf 'critical dynamic-shell-expansion'; return 0; }
+    [[ "$s" =~ $re_inline_git_alias ]] \
+        && { printf 'critical inline-git-alias'; return 0; }
+    [[ "$rm_flag_tier" == "critical" ]] \
+        && { printf 'critical recursive-force-rm'; return 0; }
     [[ "$s" =~ $re_sudo_rm ]]  && { printf 'critical sudo-rm'; return 0; }
     [[ "$s" =~ $re_mkfs ]]     && { printf 'critical filesystem-format'; return 0; }
     [[ "$s" =~ $re_dd ]]       && { printf 'critical dd-raw-disk-write'; return 0; }
     [[ "$s" =~ $re_diskutil ]] && { printf 'critical diskutil-erase'; return 0; }
-    [[ "$s" == *":(){ :|:& };:"* || "$s" == *":() {:|:&};:"* ]] \
-        && { printf 'critical fork-bomb'; return 0; }
+    [[ "$s" =~ $re_forkbomb ]] && { printf 'critical fork-bomb'; return 0; }
     [[ "$s" =~ $re_devredir ]] && { printf 'critical raw-device-redirect'; return 0; }
 
     # --- high -----------------------------------------------------------------
+    [[ "$rm_flag_tier" == "high" ]] \
+        && { printf 'high rm-recursive'; return 0; }
     [[ "$s" =~ $re_chmod777 ]]   && { printf 'high chmod-recursive-777'; return 0; }
     [[ "$s" =~ $re_chownR ]]     && { printf 'high chown-recursive'; return 0; }
     [[ "$s" =~ $re_gitclean ]]   && { printf 'high git-clean-destructive'; return 0; }
@@ -926,15 +1537,22 @@ _agent_gate_match() {
     [[ "$s" =~ $re_finddelete ]] && { printf 'high find-delete'; return 0; }
     [[ "$s" =~ $re_xargsrm ]]    && { printf 'high xargs-rm-pipeline'; return 0; }
     [[ "$s" =~ $re_rsyncdel ]]   && { printf 'high rsync-delete'; return 0; }
-    [[ "$s" =~ $re_pipeshell ]]  && { printf 'high download-piped-to-shell'; return 0; }
+    [[ "$s" =~ $re_pipeshell ]]  && { printf 'high opaque-pipe-to-shell'; return 0; }
     [[ "$s" =~ $re_pushmirror ]] && { printf 'high git-push-mirror'; return 0; }
     [[ "$s" =~ $re_killall1 ]]   && { printf 'high kill-all-processes'; return 0; }
-    [[ "$s" =~ $re_rmrecursive ]] && { printf 'high rm-recursive'; return 0; }
     [[ "$s" =~ $re_findexec ]]    && { printf 'high find-exec-shell'; return 0; }
     [[ "$s" =~ $re_pyrmtree ]]    && { printf 'high python-rmtree'; return 0; }
     [[ "$s" =~ $re_perlunlink ]]  && { printf 'high perl-unlink'; return 0; }
     [[ "$s" =~ $re_rbrm ]]        && { printf 'high ruby-rmrf'; return 0; }
     [[ "$s" =~ $re_noderm ]]      && { printf 'high node-rmsync'; return 0; }
+    [[ "$s" =~ $re_project_memory_init ]] \
+        && { printf 'high mainframe-project-memory-initialization'; return 0; }
+    [[ "$s" =~ $re_project_memory_close ]] \
+        && { printf 'high mainframe-project-memory-close'; return 0; }
+    [[ "$s" =~ $re_mainframe_yes ]] \
+        && { printf 'high mainframe-explicit-confirmation'; return 0; }
+    [[ "$runtime_mutation" == "true" ]] \
+        && { printf 'high mainframe-runtime-mutation'; return 0; }
 
     # --- medium ---------------------------------------------------------------
     [[ "$s" =~ $re_pushforce ]]  && { printf 'medium git-push-force'; return 0; }
@@ -958,12 +1576,12 @@ _agent_gate_match() {
 # Usage: agent_gate_classify "rm -rf /tmp/x"
 #        agent_gate_classify "${cmd[*]}"
 agent_gate_classify() {
-    local cmd_string
-    cmd_string=$(_agent_resolve_command "$*")
+    local raw_cmd="$*" cmd_string
+    cmd_string=$(_agent_resolve_command "$raw_cmd")
     local block_tier="${AGENT_GATE_BLOCK_TIER:-high}"
 
     local match tier rule
-    match=$(_agent_gate_match "$cmd_string")
+    match=$(_agent_gate_match "$cmd_string" "$raw_cmd")
     tier="${match%% *}"
     rule="${match#* }"
 
@@ -1799,6 +2417,38 @@ agent_ensure_command() {
 # AUDIT TRAIL
 # =============================================================================
 
+# Internal: encode one Bash string as JSON string content without invoking a
+# parser or trusting locale character classes. JSON forbids every byte below
+# 0x20 unless escaped; handling the full range keeps hook metadata such as tool
+# names from corrupting the append-only JSONL stream.
+_agent_audit_json_escape() {
+    local input="$1" output="" ch code escaped i
+    local LC_ALL=C
+
+    for (( i=0; i<${#input}; i++ )); do
+        ch="${input:i:1}"
+        case "$ch" in
+            $'\\') output+='\\' ;;
+            '"') output+='\"' ;;
+            $'\b') output+='\b' ;;
+            $'\f') output+='\f' ;;
+            $'\n') output+='\n' ;;
+            $'\r') output+='\r' ;;
+            $'\t') output+='\t' ;;
+            *)
+                printf -v code '%d' "'$ch"
+                if (( code < 32 )); then
+                    printf -v escaped '\\u%04x' "$code"
+                    output+="$escaped"
+                else
+                    output+="$ch"
+                fi
+                ;;
+        esac
+    done
+    printf '%s' "$output"
+}
+
 # Write audit entry to log file
 # @post: entry appended to AGENT_AUDIT_LOG
 # @returns: 0
@@ -1809,29 +2459,33 @@ agent_audit() {
     shift
 
     # Build details as JSON array
-    local details_json="["
+    local details_json="[" escaped_action escaped_item
     local first=true
     for item in "$@"; do
         $first || details_json+=","
         first=false
-        item="${item//\\/\\\\}"
-        item="${item//\"/\\\"}"
-        item="${item//$'\n'/\\n}"
-        details_json+="\"$item\""
+        escaped_item="$(_agent_audit_json_escape "$item")"
+        details_json+="\"$escaped_item\""
     done
     details_json+="]"
+    escaped_action="$(_agent_audit_json_escape "$action")"
 
     local entry
     printf -v entry '{"ts":"%s","pid":%d,"action":"%s","details":%s}' \
         "$(date -Iseconds)" \
         "$$" \
-        "${action//\"/\\\"}" \
+        "$escaped_action" \
         "$details_json"
 
-    # Rotate before append when the log exceeds the size cap
-    _agent_audit_rotate "$AGENT_AUDIT_LOG"
-
-    printf '%s\n' "$entry" >> "$AGENT_AUDIT_LOG"
+    # The privileged agent gateway supplies an already-open append descriptor
+    # so a path swap after validation cannot redirect its decision record.
+    if [[ "${AGENT_AUDIT_FD:-}" =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "$entry" >&"$AGENT_AUDIT_FD"
+    else
+        # General library callers retain the existing rotation behavior.
+        _agent_audit_rotate "$AGENT_AUDIT_LOG"
+        printf '%s\n' "$entry" >> "$AGENT_AUDIT_LOG"
+    fi
 }
 
 # Internal: rotate an audit log when it exceeds AGENT_AUDIT_MAX_BYTES,
