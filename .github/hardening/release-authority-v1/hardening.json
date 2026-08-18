@@ -1,0 +1,489 @@
+{
+  "documentType": "codex-security.hardening-analysis",
+  "schemaVersion": "1.0",
+  "analysisId": "hardening_20260812_release_authority",
+  "sourceEvidence": {
+    "kind": "source_snapshot",
+    "label": "Mainframe release authority current working-tree evidence",
+    "collectionSha256": "1a52a5b428a0ddf3bd28625259cf531d32e0b8f0a701cf9cf50650ce47f0578a",
+    "artifactCount": 3,
+    "targetRevision": "2724995e22a51758c55e960fcba891f9c60e5a3d",
+    "sourceDrift": "present"
+  },
+  "assessment": {
+    "outcome": "opportunities_identified",
+    "summary": "The current release bytes are strongly checked, but signing and publication authority must move out of the tag-controlled workflow before those checks can authorize a public release."
+  },
+  "constraints": {
+    "profile": "balanced",
+    "changeHorizons": [
+      "incremental",
+      "medium_term",
+      "foundational"
+    ],
+    "nonNegotiables": [
+      "Candidate or tag-controlled code must not execute in a job with signing or publication authority.",
+      "The 16 tested candidate assets must cross the boundary without being rebuilt.",
+      "The protected release environment and prepublication draft-byte verification must remain.",
+      "Existing immutable releases must be verified against their original receipt and provenance rather than current rerun bytes.",
+      "The migration must not change the Mainframe runtime archive solely because of workflow or test changes."
+    ],
+    "assumptions": [
+      "The protected default branch is a trusted control boundary for release workflow definitions.",
+      "No measured release latency, memory, or API-call budget was supplied.",
+      "PyPI publication is outside this hardening decision.",
+      "A separately scoped policy credential or external prerequisite remains available for immutable-release policy inspection."
+    ]
+  },
+  "opportunities": [
+    {
+      "opportunityId": "split-release-authority",
+      "title": "Separate release authority from candidate code",
+      "summary": "Turn the tag workflow into an unprivileged evidence producer and move signing and publication into certificate-distinct default-branch workflows.",
+      "diagnosis": "Release bytes are bound precisely, but the same tag-selected workflow can execute repository code and mint attestations, while its write-capable publisher checks out and executes the release commit. The authority boundary therefore does not independently identify the program that certified and published the bytes.",
+      "evidence": [
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E001",
+          "path": ".github/workflows/test.yml",
+          "claim": "The release-build path executes repository-controlled code with OIDC and attestation-write permissions, and release-publish executes the release commit with contents-write authority."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "coverage",
+          "evidenceId": "E002",
+          "path": "tests/release_evidence_workflow.bats",
+          "claim": "Focused workflow coverage locks exact asset inventory, tag identity, provenance subjects, draft-byte checks, and immutable-release rerun behavior."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "coverage",
+          "evidenceId": "E003",
+          "path": "tests/mcp_package.bats",
+          "claim": "MCP package coverage binds the wheel, source distribution, runtime pair, and persistent pipx install path to the tested runtime candidate."
+        },
+        {
+          "claimType": "inferred",
+          "sourceKind": "source",
+          "evidenceId": "E001-authority-inference",
+          "path": ".github/workflows/test.yml",
+          "claim": "Because multiple code-executing jobs share the tag workflow's provenance and dangerous permissions, workflow identity alone cannot establish that only an intended clean signer minted a release-authorizing statement."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "document",
+          "evidenceId": "E004",
+          "path": "https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_run",
+          "claim": "A workflow_run consumer can receive write authority after an unprivileged producer, its definition comes from the default branch, untrusted artifacts require defensive handling, and a chain is limited to three workflow levels."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "document",
+          "evidenceId": "E005",
+          "path": "https://docs.github.com/en/enterprise-cloud@latest/actions/how-tos/secure-your-work/use-artifact-attestations/increase-security-rating",
+          "claim": "Attestation verification can restrict an exact signer workflow, allowing a dedicated signer path to be certificate-distinguishable from the candidate workflow."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "document",
+          "evidenceId": "E006",
+          "path": "https://docs.github.com/en/rest/actions/artifacts",
+          "claim": "Artifact and release APIs expose stable IDs, source-run metadata, sizes, and SHA-256 digests for a fail-closed handoff."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "document",
+          "evidenceId": "E007",
+          "path": "https://docs.github.com/en/actions/reference/workflows-and-actions/variables#default-environment-variables",
+          "claim": "A workflow run ID survives reruns while the run attempt increments, and artifact metadata does not independently bind an artifact to that attempt."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "document",
+          "evidenceId": "E008",
+          "path": "https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases",
+          "claim": "Release-asset immutability begins only after publication, so exact draft inventory and downloaded-byte verification must complete before publication."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "document",
+          "evidenceId": "E009",
+          "path": "https://docs.github.com/en/enterprise-cloud@latest/rest/repos/repos#check-if-immutable-releases-are-enabled-for-a-repository",
+          "claim": "Repository immutable-release policy inspection requires Administration read and should not broaden the write-capable publisher's repository token."
+        }
+      ],
+      "desiredInvariants": [
+        "No job that checks out or executes candidate or tag-controlled code has OIDC, attestation-write, artifact-metadata-write, protected release secrets, or contents-write permission.",
+        "Every release-authorizing statement is certificate-distinguishable from every code-executing candidate job.",
+        "The only contents-write job runs protected default-branch workflow code, performs no checkout, and treats downloaded bytes solely as untrusted data.",
+        "A canonical signing request and signer-produced authorization receipt bind producer and signer runs and attempts, raw tag and peeled commit identities, artifact IDs and API digests, and every release filename, size, and SHA-256.",
+        "The public release contains exactly the 16 tested candidate assets plus the signed authorization receipt.",
+        "A partial or ambiguous publication remains a reversible draft and never becomes an immutable public release.",
+        "An existing immutable release is verification-only and is checked against its own original authorization receipt and signer provenance."
+      ],
+      "proposalPath": "proposals/split-release-authority.md",
+      "options": [
+        {
+          "optionId": "retain-tag-workflow-local-guards",
+          "title": "Retain the tag workflow with stronger local guards",
+          "kind": "baseline",
+          "summary": "Keep the current workflow topology while reducing credential exposure and adding more receipt and ordering checks.",
+          "diagramPaths": {
+            "before": "diagrams/split-release-authority-before.mmd",
+            "after": "diagrams/split-release-authority-retain-tag-workflow-local-guards-after.mmd"
+          },
+          "evidenceCoverage": [
+            {
+              "evidenceId": "E001",
+              "effect": "mitigates",
+              "tacticalFixRequired": true,
+              "rationale": "Credential scoping and local guards reduce accidental exposure but do not separate authority from tag-controlled code."
+            },
+            {
+              "evidenceId": "E002",
+              "effect": "addresses",
+              "tacticalFixRequired": true,
+              "rationale": "The current exact inventory and draft checks remain useful tactical controls."
+            },
+            {
+              "evidenceId": "E005",
+              "effect": "unaffected",
+              "tacticalFixRequired": false,
+              "rationale": "The signer remains inside the same workflow identity and is not certificate-distinct."
+            }
+          ],
+          "tradeoffs": [
+            {
+              "dimension": "security",
+              "direction": "improves",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "Narrower token exposure and stronger local validation reduce mistakes, but candidate-selected code remains in the release authority domain.",
+              "validationPlan": "Statically enumerate every permission, secret, checkout, and attestation step, then prove a same-workflow code-executing job still shares signer authority."
+            },
+            {
+              "dimension": "performance",
+              "direction": "neutral",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "No additional workflow hop or full-packet transfer is required.",
+              "validationPlan": "Compare candidate-to-publication elapsed time and downloaded bytes with the current workflow."
+            },
+            {
+              "dimension": "memory",
+              "direction": "neutral",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "Local guards require only bounded receipt and digest state.",
+              "validationPlan": "Measure peak resident memory while validating the fixed asset inventory."
+            },
+            {
+              "dimension": "reliability",
+              "direction": "improves",
+              "confidence": "medium",
+              "basis": "source-derived",
+              "assessment": "More exact checks catch drift earlier, but signing, publishing, and candidate execution still share one blast radius.",
+              "validationPlan": "Inject failures before signing, during upload, and before publication and inspect the resulting release state."
+            },
+            {
+              "dimension": "operability",
+              "direction": "neutral",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "The existing one-workflow operating model remains familiar.",
+              "validationPlan": "Have a maintainer rehearse the current rerun and partial-draft runbook."
+            },
+            {
+              "dimension": "migration",
+              "direction": "neutral",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "The change can be delivered as focused permission and validation edits.",
+              "validationPlan": "Run the existing release workflow contract and compare the workflow graph before and after."
+            }
+          ],
+          "residualRisks": [
+            "Tag-controlled code can still mint provenance and execute under publication authority.",
+            "Workflow identity still cannot distinguish the intended signer from another authorized job."
+          ],
+          "implementationReadiness": {
+            "affectedComponents": [
+              ".github/workflows/test.yml",
+              "tests/release_evidence_workflow.bats"
+            ],
+            "workPackages": [
+              "Remove persisted credentials and narrow secrets.",
+              "Add canonical handoff and step-order assertions."
+            ],
+            "acceptanceCriteria": [
+              "Every current byte and draft check remains green.",
+              "The option is explicitly documented as non-authorizing temporary hardening."
+            ],
+            "migrationNotes": [
+              "Do not use this option to authorize a public 10.2.0 release."
+            ],
+            "rollback": "Revert the focused permission and contract-test edits."
+          }
+        },
+        {
+          "optionId": "default-branch-two-stage-authority",
+          "title": "Use default-branch signer and publisher workflows",
+          "kind": "structural",
+          "summary": "Make the tag workflow an unprivileged producer, then use a default-branch signer and a checkout-free protected publisher as two workflow_run consumers.",
+          "diagramPaths": {
+            "before": "diagrams/split-release-authority-before.mmd",
+            "after": "diagrams/split-release-authority-default-branch-two-stage-authority-after.mmd"
+          },
+          "evidenceCoverage": [
+            {
+              "evidenceId": "E001",
+              "effect": "addresses",
+              "tacticalFixRequired": true,
+              "rationale": "Dangerous signing and publication capabilities move out of every candidate-code execution job."
+            },
+            {
+              "evidenceId": "E002",
+              "effect": "addresses",
+              "tacticalFixRequired": true,
+              "rationale": "Exact inventory, tag, provenance, draft, and rerun checks are preserved and redistributed by trust stage."
+            },
+            {
+              "evidenceId": "E004",
+              "effect": "addresses",
+              "tacticalFixRequired": false,
+              "rationale": "The design uses the documented default-branch privileged-consumer boundary and remains within the three-level workflow_run chain limit."
+            },
+            {
+              "evidenceId": "E005",
+              "effect": "addresses",
+              "tacticalFixRequired": false,
+              "rationale": "The release verifier can require the dedicated signer workflow identity rather than test.yml at the tag commit."
+            },
+            {
+              "evidenceId": "E007",
+              "effect": "addresses",
+              "tacticalFixRequired": true,
+              "rationale": "Attempt-qualified no-overwrite artifacts plus signed producer and signer attempt fields close rerun substitution."
+            },
+            {
+              "evidenceId": "E008",
+              "effect": "addresses",
+              "tacticalFixRequired": true,
+              "rationale": "The publisher verifies exact remote draft bytes before publication and retains verification-only rerun behavior."
+            }
+          ],
+          "tradeoffs": [
+            {
+              "dimension": "security",
+              "direction": "improves",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "The observed authority overlaps disappear because candidate code has no signing or write capability and the signer and publisher have distinct default-branch workflow identities.",
+              "validationPlan": "Prove exact permissions and workflow identities statically, then run hostile-artifact and wrong-signer hosted canaries."
+            },
+            {
+              "dimension": "performance",
+              "direction": "regresses",
+              "confidence": "medium",
+              "basis": "source-derived",
+              "assessment": "Two workflow starts and repeated streaming digest passes add latency and packet I/O to a low-frequency release path.",
+              "validationPlan": "Compare candidate-to-publication elapsed time, API calls, and bytes transferred against the current tagged workflow; reject unbounded growth."
+            },
+            {
+              "dimension": "memory",
+              "direction": "neutral",
+              "confidence": "medium",
+              "basis": "source-derived",
+              "assessment": "Receipts are capped at 64 KiB and large assets can be hashed in chunks, so the design need not buffer the packet in memory.",
+              "validationPlan": "Measure peak resident memory in signer and publisher while processing the largest candidate archive."
+            },
+            {
+              "dimension": "reliability",
+              "direction": "improves",
+              "confidence": "medium",
+              "basis": "source-derived",
+              "assessment": "Signing and publishing fail independently, publication remains a reversible draft, and immutable reruns are verification-only; event delivery and cross-run state add new failure modes.",
+              "validationPlan": "Fault-inject every stage boundary and require deterministic retry, exact partial-draft handling, and zero writes on ambiguous state."
+            },
+            {
+              "dimension": "operability",
+              "direction": "regresses",
+              "confidence": "medium",
+              "basis": "source-derived",
+              "assessment": "Maintainers must correlate producer, signer, and publisher runs and operate a versioned receipt and draft state machine.",
+              "validationPlan": "Rehearse the runbook with a disposable tag and require summaries to expose every run, attempt, artifact, tag, receipt, draft, and recovery identity."
+            },
+            {
+              "dimension": "migration",
+              "direction": "regresses",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "The cutover adds two workflows, two canonical control documents, a seventeenth asset, new signer policy, and adversarial state-machine coverage.",
+              "validationPlan": "Land read-only contracts first, canary the chain, then atomically remove all legacy signing and publishing authority before enabling the new publisher."
+            }
+          ],
+          "residualRisks": [
+            "Protected default-branch compromise or a repository administrator can still alter release policy.",
+            "GitHub-hosted runner, OIDC, attestation, or API compromise remains outside this repository control.",
+            "A separately scoped immutable-policy credential remains sensitive and must be limited to policy inspection.",
+            "This is release authorization, not proof that the signer itself built the candidate under SLSA level 3 semantics."
+          ],
+          "implementationReadiness": {
+            "affectedComponents": [
+              ".github/workflows/test.yml",
+              ".github/workflows/release-sign.yml",
+              ".github/workflows/release-publish.yml",
+              ".github/schemas/release-signing-request.schema.json",
+              ".github/schemas/release-authorization.schema.json",
+              "tests/release_split_trust_workflow.bats",
+              "tests/release_evidence_workflow.bats",
+              "tests/mcp_package.bats"
+            ],
+            "workPackages": [
+              "Define canonical signing-request and authorization-receipt contracts.",
+              "Remove all signing and publication authority from the candidate workflow.",
+              "Add a checkout-free default-branch signer with exact producer and artifact validation.",
+              "Add a checkout-free protected publisher with exact statement, tag, draft, and immutable-release validation.",
+              "Add static, dynamic, rerun, partial-draft, no-execution, and hosted negative tests."
+            ],
+            "acceptanceCriteria": [
+              "Every tag-triggered code-executing job is unprivileged.",
+              "Only the signer can mint the dedicated release-authorization statement and only the publisher has contents-write authority.",
+              "The signer statement covers exactly the 16 candidate assets plus the authorization receipt.",
+              "A hosted disposable tag proves exact signer certificate identity, protected approval, draft-byte verification, and immutable final verification.",
+              "No failure or rerun can publish rebuilt, cross-attempt, ambiguous, or partially verified bytes."
+            ],
+            "migrationNotes": [
+              "Increase producer artifact retention from 7 days to at least 30 days.",
+              "Do not retain a legacy tag-controlled signer or publisher fallback.",
+              "A trusted default-branch manual promotion may be the emergency fallback."
+            ],
+            "rollback": "Disable the signer and publisher workflows and protected environment entry, preserve evidence and any draft for review, and use trusted default-branch manual verification without restoring tag-controlled authority."
+          }
+        },
+        {
+          "optionId": "external-release-controller",
+          "title": "Move release authority to an external controller",
+          "kind": "isolation",
+          "summary": "Use a separately protected repository or GitHub App to validate, sign, and publish Mainframe release packets.",
+          "diagramPaths": {
+            "before": "diagrams/split-release-authority-before.mmd",
+            "after": "diagrams/split-release-authority-external-release-controller-after.mmd"
+          },
+          "evidenceCoverage": [
+            {
+              "evidenceId": "E001",
+              "effect": "addresses",
+              "tacticalFixRequired": true,
+              "rationale": "The Mainframe repository cannot directly change the external controller's release-authority program."
+            },
+            {
+              "evidenceId": "E002",
+              "effect": "addresses",
+              "tacticalFixRequired": true,
+              "rationale": "The current byte and draft checks become the cross-system receipt contract."
+            },
+            {
+              "evidenceId": "E005",
+              "effect": "addresses",
+              "tacticalFixRequired": false,
+              "rationale": "The controller has an independently managed signer and publisher identity."
+            },
+            {
+              "evidenceId": "E009",
+              "effect": "addresses",
+              "tacticalFixRequired": false,
+              "rationale": "Policy introspection and publication permissions can be isolated in a narrowly scoped controller credential."
+            }
+          ],
+          "tradeoffs": [
+            {
+              "dimension": "security",
+              "direction": "improves",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "A Mainframe repository compromise cannot directly alter the release-authority code or credential owner.",
+              "validationPlan": "Demonstrate that Mainframe write access cannot change controller policy, signer identity, or publication credentials."
+            },
+            {
+              "dimension": "performance",
+              "direction": "regresses",
+              "confidence": "medium",
+              "basis": "hypothetical",
+              "assessment": "Cross-repository or app delivery adds network hops, API calls, and full-packet transfer.",
+              "validationPlan": "Measure end-to-end promotion latency and bytes transferred through a controller rehearsal."
+            },
+            {
+              "dimension": "memory",
+              "direction": "neutral",
+              "confidence": "low",
+              "basis": "hypothetical",
+              "assessment": "Streaming validation can keep memory bounded, but controller implementation details are not selected.",
+              "validationPlan": "Require chunked hashing and measure controller peak memory with the largest release packet."
+            },
+            {
+              "dimension": "reliability",
+              "direction": "unknown",
+              "confidence": "medium",
+              "basis": "hypothetical",
+              "assessment": "Administrative compromise is better contained, while another repository or service adds event-delivery, credential, and availability failure modes.",
+              "validationPlan": "Exercise controller outage, delayed artifact transfer, token rotation, duplicate delivery, and partial-draft recovery."
+            },
+            {
+              "dimension": "operability",
+              "direction": "regresses",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "A second authority domain needs ownership, access policy, monitoring, credential lifecycle, incident response, and cross-system tracing.",
+              "validationPlan": "Assign owners and rehearse normal release, credential rotation, emergency disablement, and audit retrieval."
+            },
+            {
+              "dimension": "migration",
+              "direction": "regresses",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "The repository, controller, credentials, attestations, receipt protocol, and recovery plan must cut over together.",
+              "validationPlan": "Run a parallel nonpublishing controller canary, then remove in-repository authority in one controlled cutover."
+            }
+          ],
+          "residualRisks": [
+            "The external controller or its administrator becomes a high-value release root of trust.",
+            "Cross-system availability and credential lifecycle can delay or block releases.",
+            "The same artifact parsing and draft-state protections remain necessary."
+          ],
+          "implementationReadiness": {
+            "affectedComponents": [
+              ".github/workflows/test.yml",
+              "external release controller",
+              "cross-system receipt and attestation policy"
+            ],
+            "workPackages": [
+              "Select and provision the authority domain.",
+              "Define the cross-system receipt and authentication contract.",
+              "Implement independent signing, publication, audit, and incident controls.",
+              "Canary and cut over without retaining repository-local write authority."
+            ],
+            "acceptanceCriteria": [
+              "Mainframe repository write access cannot alter controller policy or credentials.",
+              "The controller accepts only exact authenticated packets and publishes only verified drafts.",
+              "Cross-system outage and credential-rotation rehearsals have deterministic recovery."
+            ],
+            "migrationNotes": [
+              "Choose this option when independent organizational ownership is a non-negotiable requirement."
+            ],
+            "rollback": "Disable controller publication, retain received evidence for review, and use an independently governed emergency release procedure."
+          }
+        }
+      ],
+      "recommendedOptionId": "default-branch-two-stage-authority",
+      "recommendation": "Use the default-branch signer and publisher split under the current single-repository constraints; choose the external controller when protected-default-branch compromise must not be able to change release policy."
+    }
+  ],
+  "openQuestions": [
+    "Should specialized Pi, MCP, native, and formula statements remain alongside the exact 17-subject release-authorization statement after the first compatible release?",
+    "Which protected default-branch revision or ruleset pins the signer and publisher workflow definitions for a release?",
+    "Will immutable-release policy be verified by an environment-scoped Administration-read credential or enforced as an external prerequisite?",
+    "What reviewed emergency promotion path is available when workflow_run delivery or the protected environment is unavailable?"
+  ]
+}

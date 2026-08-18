@@ -549,10 +549,10 @@ jobs:
             version: '0.73.1'
             integrity: 'sha512-gXQh3SaZmWTfVMc4Ao5+LGbVeKvzyO7tolok0nLsZgq9nGjZx/EEU3NM8C+qUnB4Nvs2rswG5qOVgLzQkq0fHQ=='
             rpc_user_bash: '0'
-          - id: fork-0.84.1
+          - id: fork-0.84.2
             package: '@earendil-works/pi-coding-agent'
-            version: '0.84.1'
-            integrity: 'sha512-ncAqFrG+iybuPGOhMiZoEHkEzTpJgz3guYD32pD+M7ucc0WeHmauP6wa7qwP8V/KWvsZDVNa5XGsdZ7fkC7w7A=='
+            version: '0.84.2'
+            integrity: 'sha512-l4E+B7hgXKWddRo8bC/eSue2aWZjEgJ9xIpf5p0Og+lq8a2TArCwJ0HCoCPCgaBP/tN4zbYH/wOwvx9pJpeLCA=='
             rpc_user_bash: '1'
     steps:
       - name: Checkout
@@ -990,7 +990,7 @@ jobs:
             test ! -L "$evidence_file"
             test "$(stat -c '%h' "$evidence_file")" -eq 1
           done
-          for pi_id in fork-0.84.1 upstream-0.73.1; do
+          for pi_id in fork-0.84.2 upstream-0.73.1; do
             for target_id in \
               Darwin-arm64-none Darwin-x86_64-none Linux-x86_64-glibc; do
               suffix="${pi_id}-${target_id}"
@@ -1067,9 +1067,9 @@ jobs:
                 workflow_run_attempt: $run_attempt
               } and
               ([.matrix[].id] == [
-                "fork-0.84.1@Darwin-arm64-none",
-                "fork-0.84.1@Darwin-x86_64-none",
-                "fork-0.84.1@Linux-x86_64-glibc",
+                "fork-0.84.2@Darwin-arm64-none",
+                "fork-0.84.2@Darwin-x86_64-none",
+                "fork-0.84.2@Linux-x86_64-glibc",
                 "upstream-0.73.1@Darwin-arm64-none",
                 "upstream-0.73.1@Darwin-x86_64-none",
                 "upstream-0.73.1@Linux-x86_64-glibc"
@@ -1087,20 +1087,20 @@ jobs:
               "$(sha256sum "$cell_receipt" | awk '{print $1}')"
           done
 
-      - name: Attest fork 0.84.1 Darwin arm64 Pi cell
+      - name: Attest fork 0.84.2 Darwin arm64 Pi cell
         uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
         with:
-          subject-path: ${{ runner.temp }}/pi-cell-fork-0.84.1-Darwin-arm64-none.json
+          subject-path: ${{ runner.temp }}/pi-cell-fork-0.84.2-Darwin-arm64-none.json
 
-      - name: Attest fork 0.84.1 Darwin x86_64 Pi cell
+      - name: Attest fork 0.84.2 Darwin x86_64 Pi cell
         uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
         with:
-          subject-path: ${{ runner.temp }}/pi-cell-fork-0.84.1-Darwin-x86_64-none.json
+          subject-path: ${{ runner.temp }}/pi-cell-fork-0.84.2-Darwin-x86_64-none.json
 
-      - name: Attest fork 0.84.1 Linux x86_64 glibc Pi cell
+      - name: Attest fork 0.84.2 Linux x86_64 glibc Pi cell
         uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
         with:
-          subject-path: ${{ runner.temp }}/pi-cell-fork-0.84.1-Linux-x86_64-glibc.json
+          subject-path: ${{ runner.temp }}/pi-cell-fork-0.84.2-Linux-x86_64-glibc.json
 
       - name: Attest upstream 0.73.1 Darwin arm64 Pi cell
         uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
@@ -1208,8 +1208,8 @@ jobs:
       - name: Install integrity-pinned Pi with lifecycle scripts disabled
         env:
           PI_PACKAGE: '@earendil-works/pi-coding-agent'
-          PI_VERSION: '0.84.1'
-          PI_INTEGRITY: 'sha512-ncAqFrG+iybuPGOhMiZoEHkEzTpJgz3guYD32pD+M7ucc0WeHmauP6wa7qwP8V/KWvsZDVNa5XGsdZ7fkC7w7A=='
+          PI_VERSION: '0.84.2'
+          PI_INTEGRITY: 'sha512-l4E+B7hgXKWddRo8bC/eSue2aWZjEgJ9xIpf5p0Og+lq8a2TArCwJ0HCoCPCgaBP/tN4zbYH/wOwvx9pJpeLCA=='
         run: |
           set -euo pipefail
           pi_prefix="$RUNNER_TEMP/stable-core-pi-prefix"
@@ -3697,7 +3697,7 @@ jobs:
           )
           test "${#pi_cell_receipts[@]}" -eq 6
           expected_index=0
-          for pi_id in fork-0.84.1 upstream-0.73.1; do
+          for pi_id in fork-0.84.2 upstream-0.73.1; do
             for target_id in \
               Darwin-arm64-none Darwin-x86_64-none Linux-x86_64-glibc; do
               cell_receipt="gate-evidence/pi/pi-cell-${pi_id}-${target_id}.json"
@@ -4043,7 +4043,7 @@ jobs:
             test -f "$evidence_file"
             test ! -L "$evidence_file"
           done
-          for pi_id in upstream-0.73.1 fork-0.84.1; do
+          for pi_id in upstream-0.73.1 fork-0.84.2; do
             for target_id in \
               Darwin-arm64-none Darwin-x86_64-none Linux-x86_64-glibc; do
               test -f "gate-evidence/pi/pi-candidate-${pi_id}-${target_id}.sha256"
@@ -4075,7 +4075,7 @@ jobs:
             test "$(grep -Ec '^ok [0-9]+ ' "$tap_file" || true)" -eq 45
             test "$(grep -Ec '^not ok ' "$tap_file" || true)" -eq 0
             case "$tap_file" in
-              *fork-0.84.1*)
+              *fork-0.84.2*)
                 ! grep -Fq '# skip ' "$tap_file"
                 ;;
               *upstream-0.73.1*)
@@ -4727,9 +4727,9 @@ jobs:
             dist/mainframe_mcp-${{ steps.version.outputs.version }}-py3-none-any.whl
             dist/mainframe_mcp-${{ steps.version.outputs.version }}.tar.gz
             dist/mainframe-mcp-candidate.sha256
-            dist/pi-cell-fork-0.84.1-Darwin-arm64-none.json
-            dist/pi-cell-fork-0.84.1-Darwin-x86_64-none.json
-            dist/pi-cell-fork-0.84.1-Linux-x86_64-glibc.json
+            dist/pi-cell-fork-0.84.2-Darwin-arm64-none.json
+            dist/pi-cell-fork-0.84.2-Darwin-x86_64-none.json
+            dist/pi-cell-fork-0.84.2-Linux-x86_64-glibc.json
             dist/pi-cell-upstream-0.73.1-Darwin-arm64-none.json
             dist/pi-cell-upstream-0.73.1-Darwin-x86_64-none.json
             dist/pi-cell-upstream-0.73.1-Linux-x86_64-glibc.json
@@ -5088,9 +5088,9 @@ jobs:
               "dist/mainframe_mcp-${RELEASE_VERSION}-py3-none-any.whl" \
               "dist/mainframe_mcp-${RELEASE_VERSION}.tar.gz" \
               "dist/mainframe-mcp-candidate.sha256" \
-              "dist/pi-cell-fork-0.84.1-Darwin-arm64-none.json" \
-              "dist/pi-cell-fork-0.84.1-Darwin-x86_64-none.json" \
-              "dist/pi-cell-fork-0.84.1-Linux-x86_64-glibc.json" \
+              "dist/pi-cell-fork-0.84.2-Darwin-arm64-none.json" \
+              "dist/pi-cell-fork-0.84.2-Darwin-x86_64-none.json" \
+              "dist/pi-cell-fork-0.84.2-Linux-x86_64-glibc.json" \
               "dist/pi-cell-upstream-0.73.1-Darwin-arm64-none.json" \
               "dist/pi-cell-upstream-0.73.1-Darwin-x86_64-none.json" \
               "dist/pi-cell-upstream-0.73.1-Linux-x86_64-glibc.json" \
@@ -5108,9 +5108,9 @@ jobs:
               "mainframe_mcp-${RELEASE_VERSION}-py3-none-any.whl"
               "mainframe_mcp-${RELEASE_VERSION}.tar.gz"
               "mainframe-mcp-candidate.sha256"
-              "pi-cell-fork-0.84.1-Darwin-arm64-none.json"
-              "pi-cell-fork-0.84.1-Darwin-x86_64-none.json"
-              "pi-cell-fork-0.84.1-Linux-x86_64-glibc.json"
+              "pi-cell-fork-0.84.2-Darwin-arm64-none.json"
+              "pi-cell-fork-0.84.2-Darwin-x86_64-none.json"
+              "pi-cell-fork-0.84.2-Linux-x86_64-glibc.json"
               "pi-cell-upstream-0.73.1-Darwin-arm64-none.json"
               "pi-cell-upstream-0.73.1-Darwin-x86_64-none.json"
               "pi-cell-upstream-0.73.1-Linux-x86_64-glibc.json"
@@ -5216,9 +5216,9 @@ jobs:
               "mainframe_mcp-\($version)-py3-none-any.whl",
               "mainframe_mcp-\($version).tar.gz",
               "mainframe-mcp-candidate.sha256",
-              "pi-cell-fork-0.84.1-Darwin-arm64-none.json",
-              "pi-cell-fork-0.84.1-Darwin-x86_64-none.json",
-              "pi-cell-fork-0.84.1-Linux-x86_64-glibc.json",
+              "pi-cell-fork-0.84.2-Darwin-arm64-none.json",
+              "pi-cell-fork-0.84.2-Darwin-x86_64-none.json",
+              "pi-cell-fork-0.84.2-Linux-x86_64-glibc.json",
               "pi-cell-upstream-0.73.1-Darwin-arm64-none.json",
               "pi-cell-upstream-0.73.1-Darwin-x86_64-none.json",
               "pi-cell-upstream-0.73.1-Linux-x86_64-glibc.json",
@@ -5424,9 +5424,9 @@ jobs:
             "$mcp_wheel" \
             "$mcp_sdist" \
             "$mcp_pair_manifest" \
-            "$asset_root/pi-cell-fork-0.84.1-Darwin-arm64-none.json" \
-            "$asset_root/pi-cell-fork-0.84.1-Darwin-x86_64-none.json" \
-            "$asset_root/pi-cell-fork-0.84.1-Linux-x86_64-glibc.json" \
+            "$asset_root/pi-cell-fork-0.84.2-Darwin-arm64-none.json" \
+            "$asset_root/pi-cell-fork-0.84.2-Darwin-x86_64-none.json" \
+            "$asset_root/pi-cell-fork-0.84.2-Linux-x86_64-glibc.json" \
             "$asset_root/pi-cell-upstream-0.73.1-Darwin-arm64-none.json" \
             "$asset_root/pi-cell-upstream-0.73.1-Darwin-x86_64-none.json" \
             "$asset_root/pi-cell-upstream-0.73.1-Linux-x86_64-glibc.json" \

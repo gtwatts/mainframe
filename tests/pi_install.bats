@@ -674,7 +674,7 @@ PY
 }
 
 @test "Pi doctor reports exact certified host separately from disk and live activation" {
-    write_fake_pi '@earendil-works/pi-coding-agent' '0.84.1'
+    write_fake_pi '@earendil-works/pi-coding-agent' '0.84.2'
     _mainframe_pi_platform_tuple() { printf '%s\n' 'Darwin-arm64-none'; }
 
     run mainframe_pi_doctor --json
@@ -706,7 +706,7 @@ import sys
 document = json.loads(sys.argv[1])
 assert document["pi"]["identity_consistent"] is True
 assert document["pi"]["package"] == "@earendil-works/pi-coding-agent"
-assert document["pi"]["version"] == "0.84.1"
+assert document["pi"]["version"] == "0.84.2"
 assert document["pi"]["executed"] is False
 assert document["overall"]["ready"] is False
 PY
@@ -755,7 +755,7 @@ PY
 }
 
 @test "Pi doctor fails closed for an unknown Pi version or an uncertified platform" {
-    write_fake_pi '@earendil-works/pi-coding-agent' '0.84.2'
+    write_fake_pi '@earendil-works/pi-coding-agent' '0.84.3'
     _mainframe_pi_platform_tuple() { printf '%s\n' 'Darwin-arm64-none'; }
     run mainframe_pi_install --yes
     [[ "$status" -eq 0 ]]
@@ -780,7 +780,7 @@ PY
     [[ "$output" == *'Disk state:        CANONICAL'* ]]
     [[ "$output" != *'READY'* ]]
 
-    write_fake_pi '@earendil-works/pi-coding-agent' '0.84.1'
+    write_fake_pi '@earendil-works/pi-coding-agent' '0.84.2'
     _mainframe_pi_platform_tuple() { printf '%s\n' 'Linux-x86_64-glibc'; }
     run mainframe_pi_doctor --json
     [[ "$status" -eq 2 ]]
@@ -819,7 +819,7 @@ PY
 }
 
 @test "Pi doctor explains an uninitialized agent directory without creating it" {
-    write_fake_pi '@earendil-works/pi-coding-agent' '0.84.1'
+    write_fake_pi '@earendil-works/pi-coding-agent' '0.84.2'
     _mainframe_pi_platform_tuple() { printf '%s\n' 'Darwin-arm64-none'; }
     /bin/rmdir "$TEST_AGENT_DIR"
 

@@ -1,0 +1,16 @@
+flowchart LR
+  Tag["Release tag"]
+  Candidate["Unprivileged Mainframe candidate workflow"]
+  Packet["Exact packet and canonical receipt"]
+  Controller["Separate protected release repository or GitHub App"]
+  Human["Independent approval policy"]
+  Release["Immutable Mainframe release"]
+
+  Tag --> Candidate
+  Candidate --> Packet
+  Packet --> Controller
+  Human --> Controller
+  Controller --> Release
+
+  classDef isolated fill:#d8f3dc,stroke:#176b2c,color:#111;
+  class Controller isolated;

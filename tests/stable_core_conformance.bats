@@ -246,7 +246,7 @@ PY
     [[ "$lane" == *'"$GITHUB_WORKSPACE/mcp/.venv/bin/python" -c'* ]]
     [[ "$lane" == *'from mcp.server import Server'* ]]
     [[ "$lane" == *"PI_PACKAGE: '@earendil-works/pi-coding-agent'"* ]]
-    [[ "$lane" == *"PI_VERSION: '0.84.1'"* ]]
+    [[ "$lane" == *"PI_VERSION: '0.84.2'"* ]]
     [[ "$lane" == *'npm_config_ignore_scripts=true'* ]]
     [[ "$lane" == *'scripts/dev/release-candidate.sh'*'--prepare --output-dir'* ]]
     [[ "$lane" == *'scripts/dev/release-candidate.sh'*'--check --output-dir'* ]]

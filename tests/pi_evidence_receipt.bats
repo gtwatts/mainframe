@@ -66,7 +66,7 @@ build_fixture_artifacts() {
         "$PROJECT_ROOT" tests)"
     archive_sha="$(shasum -a 256 "$ARCHIVE" | awk '{print $1}')"
 
-    for pi_id in fork-0.84.1 upstream-0.73.1; do
+    for pi_id in fork-0.84.2 upstream-0.73.1; do
         local package_name package_version npm_integrity package_root runtime_root integrity_file
         package_name="$(jq -er --arg id "$pi_id" \
             '.pi_versions[] | select(.id == $id) | .package' "$CONTRACT")"
@@ -295,7 +295,7 @@ verify_durable_cells() {
         .artifacts.node_binding.file_sha256 ==
           .observation.node_runtime.pre_test_binding.file_sha256
       )] | length) == 6 and
-      ([.matrix[] | select(.pi.id == "fork-0.84.1") | .result.skipped] | add) == 0 and
+      ([.matrix[] | select(.pi.id == "fork-0.84.2") | .result.skipped] | add) == 0 and
       ([.matrix[] | select(.pi.id == "upstream-0.73.1") | .result.skipped] | add) == 3
     ' "$RECEIPT"
     [[ "$status" -eq 0 ]]
@@ -316,7 +316,7 @@ verify_durable_cells() {
 }
 
 @test "Pi release receipt rejects TAP result, name, order, and skip drift" {
-    local tap="$ARTIFACTS/pi-candidate-fork-0.84.1-Linux-x86_64-glibc.tap"
+    local tap="$ARTIFACTS/pi-candidate-fork-0.84.2-Linux-x86_64-glibc.tap"
     local backup="$BATS_TEST_TMPDIR/tap.backup"
     cp "$tap" "$backup"
     sed 's/^ok 2 /not ok 2 /' "$tap" > "$BATS_TEST_TMPDIR/tap.mutated"
@@ -343,7 +343,7 @@ verify_durable_cells() {
 }
 
 @test "Pi release receipt rejects hidden TAP failures bailouts and reordered records" {
-    local tap="$ARTIFACTS/pi-candidate-fork-0.84.1-Linux-x86_64-glibc.tap"
+    local tap="$ARTIFACTS/pi-candidate-fork-0.84.2-Linux-x86_64-glibc.tap"
     local backup="$BATS_TEST_TMPDIR/tap.strict.backup"
     cp "$tap" "$backup"
 
@@ -385,7 +385,7 @@ PY
 }
 
 @test "Pi release receipt rejects missing, extra, symlinked, hard-linked, and mismatched inputs" {
-    local binding="$ARTIFACTS/pi-tests-fork-0.84.1-Darwin-arm64-none.sha256"
+    local binding="$ARTIFACTS/pi-tests-fork-0.84.2-Darwin-arm64-none.sha256"
     local saved="$BATS_TEST_TMPDIR/binding.saved"
     mv "$binding" "$saved"
     run create_receipt
@@ -420,8 +420,8 @@ PY
 }
 
 @test "Pi release receipt rejects a copied receipt mislabeled as another platform cell" {
-    local source_cell="$ARTIFACTS/pi-cell-fork-0.84.1-Darwin-arm64-none.json"
-    local target_cell="$ARTIFACTS/pi-cell-fork-0.84.1-Linux-x86_64-glibc.json"
+    local source_cell="$ARTIFACTS/pi-cell-fork-0.84.2-Darwin-arm64-none.json"
+    local target_cell="$ARTIFACTS/pi-cell-fork-0.84.2-Linux-x86_64-glibc.json"
     cp "$source_cell" "$target_cell"
     run create_receipt
     [[ "$status" -ne 0 ]]
@@ -429,7 +429,7 @@ PY
 }
 
 @test "Pi release receipt rejects pre-test runtime snapshot drift" {
-    local snapshot="$ARTIFACTS/pi-runtime-pre-fork-0.84.1-Linux-x86_64-glibc.json"
+    local snapshot="$ARTIFACTS/pi-runtime-pre-fork-0.84.2-Linux-x86_64-glibc.json"
     jq -cS '.runtime_tree_sha256 = ("0" * 64)' "$snapshot" > "$BATS_TEST_TMPDIR/snapshot"
     mv "$BATS_TEST_TMPDIR/snapshot" "$snapshot"
     run create_receipt
@@ -438,7 +438,7 @@ PY
 }
 
 @test "Pi release receipt rejects pre-test Node binding tamper" {
-    local binding="$ARTIFACTS/pi-node-pre-fork-0.84.1-Linux-x86_64-glibc.json"
+    local binding="$ARTIFACTS/pi-node-pre-fork-0.84.2-Linux-x86_64-glibc.json"
     jq -cS '.executable.sha256 = ("0" * 64)' "$binding" > \
         "$BATS_TEST_TMPDIR/node-binding-tampered.json"
     mv "$BATS_TEST_TMPDIR/node-binding-tampered.json" "$binding"
@@ -561,7 +561,7 @@ PY
     run create_receipt
     [[ "$status" -eq 0 ]]
     stage_durable_cells
-    local cell="$DURABLE_CELLS/pi-cell-fork-0.84.1-Darwin-arm64-none.json"
+    local cell="$DURABLE_CELLS/pi-cell-fork-0.84.2-Darwin-arm64-none.json"
     local saved="$BATS_TEST_TMPDIR/durable-cell.saved"
 
     mv "$cell" "$saved"
@@ -594,7 +594,7 @@ PY
     run create_receipt
     [[ "$status" -eq 0 ]]
     stage_durable_cells
-    local cell="$DURABLE_CELLS/pi-cell-fork-0.84.1-Darwin-arm64-none.json"
+    local cell="$DURABLE_CELLS/pi-cell-fork-0.84.2-Darwin-arm64-none.json"
     local tampered="$BATS_TEST_TMPDIR/tampered-durable-cell.json"
     local rebound="$BATS_TEST_TMPDIR/rebound.pi-evidence.json"
 
@@ -604,13 +604,13 @@ PY
     [[ "$status" -ne 0 ]]
     [[ "$output" == *"digest does not match aggregate"* ]]
 
-    cp "$ARTIFACTS/pi-cell-fork-0.84.1-Darwin-arm64-none.json" "$cell"
-    jq -cS '.cell_id = "fork-0.84.1@Linux-x86_64-glibc"' "$cell" > "$tampered"
+    cp "$ARTIFACTS/pi-cell-fork-0.84.2-Darwin-arm64-none.json" "$cell"
+    jq -cS '.cell_id = "fork-0.84.2@Linux-x86_64-glibc"' "$cell" > "$tampered"
     mv "$tampered" "$cell"
     local cell_sha
     cell_sha="$(shasum -a 256 "$cell" | awk '{print $1}')"
     jq -cS --arg sha "$cell_sha" \
-        '.matrix[] |= if .id == "fork-0.84.1@Darwin-arm64-none" then
+        '.matrix[] |= if .id == "fork-0.84.2@Darwin-arm64-none" then
           .artifacts.cell_receipt.file_sha256 = $sha else . end' \
         "$RECEIPT" > "$rebound"
     run verify_durable_cells "$rebound"
@@ -622,7 +622,7 @@ PY
     run create_receipt
     [[ "$status" -eq 0 ]]
     stage_durable_cells
-    local cell="$DURABLE_CELLS/pi-cell-fork-0.84.1-Darwin-arm64-none.json"
+    local cell="$DURABLE_CELLS/pi-cell-fork-0.84.2-Darwin-arm64-none.json"
     local original="$BATS_TEST_TMPDIR/original-durable-cell.json"
     local changed="$BATS_TEST_TMPDIR/changed-durable-cell.json"
     local rebound="$BATS_TEST_TMPDIR/rebound-run.pi-evidence.json"
@@ -653,7 +653,7 @@ PY
     local cell_sha
     cell_sha="$(shasum -a 256 "$cell" | awk '{print $1}')"
     jq -cS --arg sha "$cell_sha" \
-        '.matrix[] |= if .id == "fork-0.84.1@Darwin-arm64-none" then
+        '.matrix[] |= if .id == "fork-0.84.2@Darwin-arm64-none" then
           .artifacts.cell_receipt.file_sha256 = $sha else . end' \
         "$RECEIPT" > "$rebound"
     run verify_durable_cells "$rebound"

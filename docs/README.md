@@ -35,6 +35,7 @@ Use this page to distinguish current product documentation from historical desig
 ## Engineering evidence
 
 - [Security eval audit](SECURITY_EVAL_AUDIT.md)
+- [Release authority hardening review](../.github/hardening/release-authority-v1/hardening.md)
 - [Offline agent mechanism evidence](OFFLINE_AGENT_MECHANISM_EVIDENCE.md)
 - [Agent Impact conformance evaluation](AGENT_IMPACT_EVALUATION.md)
 - [Agent Impact live-study preregistration](AGENT_IMPACT_LIVE_STUDY.md)

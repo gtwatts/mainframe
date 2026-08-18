@@ -51,7 +51,7 @@ Additional measured facts:
 | Tools | `status/install_commands/search/help/exec/awm/bash_safety_check` plus `/mainframe` | Exact seven-tool surface validated locally |
 | Function execution | Canonical MANIFEST owner only; stable-core delegates by canonical ID to the bounded `mainframe invoke` broker, while every non-stable-core function stays on the guarded legacy path and uses Pi human confirmation | Candidate source tests pass; this is source-candidate evidence, not live activation on the user's running Pi process |
 | Audit | Private rotating `bash-audit.jsonl` stores decision metadata plus command SHA-256/length, not raw commands | Candidate source tests pass |
-| Pi versions | Current `@earendil-works/pi-coding-agent` 0.84.1 and legacy-scope `@mariozechner/pi-coding-agent` 0.73.1 | Local package/tool/runtime compatibility validated 2026-08-09; pinned CI gate present but not yet public-green |
+| Pi versions | Current `@earendil-works/pi-coding-agent` 0.84.2 and legacy-scope `@mariozechner/pi-coding-agent` 0.73.1 | Local package/tool/runtime compatibility validated 2026-08-17; pinned CI gate present but not yet public-green |
 | Activation note | Package changes require `/reload` or a restart, followed by `/mainframe status`; MAINFRAME CLI uninstall refuses incomplete/attached Pi state, but direct Homebrew uninstall has no Formula preflight and requires the documented detach chain | Runtime load is distinct from disk `ready` state |
 
 ### 2. Supported onboarding hosts
@@ -124,7 +124,7 @@ executions or completed cross-platform release certification. WSL is untested.
 1. The exact Pi compatibility matrix is not yet green in public CI. The legacy
    0.73.1 RPC client-side `bash` command does not emit `user_bash`, so no
    extension can gate that one RPC route; its normal agent tool calls and TUI
-   `user_bash` event are covered. Current Pi 0.84.1 emits the RPC hook and passes
+   `user_bash` event are covered. Current Pi 0.84.2 emits the RPC hook and passes
    the complete safe/block regression.
 2. The final 10.2.0 candidate does not yet have current `Darwin-x86_64-none` or
    `Linux-x86_64-glibc` execution proof; WSL is untested and unadvertised.

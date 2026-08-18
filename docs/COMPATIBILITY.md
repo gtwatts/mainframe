@@ -33,7 +33,7 @@ before direct `brew uninstall`, or Pi can retain a dangling `opt_libexec` path.
 
 | Pi distribution | Pinned version | Platform tuple | Product status | Candidate evidence |
 |---|---:|---|---|---|
-| `@earendil-works/pi-coding-agent` | 0.84.1 | `Darwin-arm64-none` | `CERTIFIED` | Exact local package, prompt, seven tools, agent Bash, TUI `user_bash`, RPC safe/block paths, and Bash/zsh callers pass on 2026-08-09 |
+| `@earendil-works/pi-coding-agent` | 0.84.2 | `Darwin-arm64-none` | `CERTIFIED` | Exact local package, prompt, seven tools, agent Bash, TUI `user_bash`, RPC safe/block paths, and Bash/zsh callers pass on 2026-08-17 |
 | Legacy scope `@mariozechner/pi-coding-agent` | 0.73.1 | `Darwin-arm64-none` | `LIMITED` | Package, prompt, seven tools, agent Bash, and TUI `user_bash` pass; its RPC client `bash` command does not emit the extension event and that route is not observable |
 | Any other package, version, or platform | any | any unlisted exact tuple | `COMPATIBILITY_UNVERIFIED` | Never inferred from a semver range or from a passing subset; Linux and Intel macOS remain unverified until exact evidence is promoted into the compatibility manifest |
 

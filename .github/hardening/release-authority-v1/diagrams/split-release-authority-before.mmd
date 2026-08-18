@@ -1,0 +1,20 @@
+flowchart LR
+  Tag["Release tag and tag-controlled workflow"]
+  Build["release-build\nexecutes repository code"]
+  Sign["OIDC and attestation authority"]
+  Packet["16 release assets"]
+  Publish["release-publish\nchecks out tag code"]
+  Secret["Policy secret and contents:write"]
+  Release["Immutable GitHub Release"]
+
+  Tag --> Build
+  Build --> Packet
+  Build --> Sign
+  Sign --> Packet
+  Packet --> Publish
+  Tag --> Publish
+  Secret --> Publish
+  Publish --> Release
+
+  classDef danger fill:#ffd7d7,stroke:#a00,color:#111;
+  class Build,Publish,Sign danger;

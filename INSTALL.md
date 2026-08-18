@@ -2,6 +2,52 @@
 
 This guide installs the full MAINFRAME CLI and verifies Agent Working Memory from a clean shell.
 
+## Fast path
+
+The public verified-release bootstrap is still publication-gated, so use a
+reviewed source checkout today:
+
+### macOS fast path
+
+```bash
+brew install bash jq git
+git clone https://github.com/gtwatts/mainframe.git "$HOME/.mainframe"
+/opt/homebrew/bin/bash --noprofile --norc -p \
+  "$HOME/.mainframe/install.sh"  # Apple Silicon
+# Intel Homebrew uses: /usr/local/bin/bash --noprofile --norc -p "$HOME/.mainframe/install.sh"
+
+export MAINFRAME_ROOT="$HOME/.mainframe"
+export PATH="$HOME/.local/bin:$PATH"
+mainframe version
+mainframe doctor
+```
+
+### Linux fast path
+
+```bash
+# Debian/Ubuntu example; install Bash 4.4+, jq, and Git with your package manager.
+sudo apt-get install bash jq git
+git clone https://github.com/gtwatts/mainframe.git "$HOME/.mainframe"
+/bin/bash --noprofile --norc -p "$HOME/.mainframe/install.sh"
+
+export MAINFRAME_ROOT="$HOME/.mainframe"
+export PATH="$HOME/.local/bin:$PATH"
+mainframe version
+mainframe doctor
+```
+
+Then run the zero-residue first-use proof from the project where an agent will
+work:
+
+```bash
+cd /path/to/your/project
+mainframe setup --project . --proof
+mainframe setup --project .
+```
+
+The rest of this page is the complete installation, verification, upgrade,
+integration, recovery, and troubleshooting reference.
+
 ## Requirements
 
 - Bash 4.4 or newer

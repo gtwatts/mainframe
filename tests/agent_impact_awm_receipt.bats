@@ -271,7 +271,7 @@ runtime_expected = {
     "installed_tree_algorithm": "mainframe-package-tree-sha256-v1",
     "installed_tree_sha256": installed_tree,
     "pi_package": "@mariozechner/pi-coding-agent",
-    "pi_version": "0.84.1",
+    "pi_version": "0.84.2",
     "pi_executable_sha256": "5" * 64,
     "pi_loader_sha256": "6" * 64,
     "pi_extension_sha256": "7" * 64,
@@ -1202,7 +1202,7 @@ PY
     [[ "$(mode_of "$integration/public/public.json")" == "644" ]]
     run "$JQ_BIN" -e '
       .runtime_observed.pi_package == "@earendil-works/pi-coding-agent" and
-      .runtime_observed.pi_version == "0.84.1" and
+      .runtime_observed.pi_version == "0.84.2" and
       (.runtime_observed.registered_tools | length) == 7 and
       .runtime_observed.loaded_mainframe_awm == true and
       .runtime_observed.provider_adapter_loaded == false and
@@ -1215,7 +1215,7 @@ PY
     [[ "$status" -eq 0 ]]
     run "$JQ_BIN" -e '
       .runtime.pi_package == "@earendil-works/pi-coding-agent" and
-      .runtime.pi_version == "0.84.1" and
+      .runtime.pi_version == "0.84.2" and
       .measurements.operation_count == 3 and
       .checks.bound_driver_declares_provider_requests_zero == true and
       .scope_boundary.live_study_eligibility ==

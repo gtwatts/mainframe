@@ -383,7 +383,7 @@ Pi can use MAINFRAME in two complementary ways:
    Pi can retain a dangling package path.
 
    The candidate is tested against current
-   `@earendil-works/pi-coding-agent` 0.84.1 and the legacy-scope
+   `@earendil-works/pi-coding-agent` 0.84.2 and the legacy-scope
    `@mariozechner/pi-coding-agent` 0.73.1. The latter does not emit
    `user_bash` for its client-side RPC `bash` command, so extensions cannot
    guard that one legacy RPC path; normal agent Bash and interactive TUI Bash

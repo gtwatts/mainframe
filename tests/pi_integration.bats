@@ -98,7 +98,7 @@ assert len(keys) == len(set(keys)), keys
 assert all(record["mainframe_version"] == document["version"] for record in records)
 current = next(record for record in records if record["package"] == "@earendil-works/pi-coding-agent")
 legacy = next(record for record in records if record["package"] == "@mariozechner/pi-coding-agent")
-assert current["version"] == "0.84.1" and current["support"] == "certified"
+assert current["version"] == "0.84.2" and current["support"] == "certified"
 assert all(value == "verified" for value in current["capabilities"].values())
 assert legacy["version"] == "0.73.1" and legacy["support"] == "limited"
 assert legacy["capabilities"]["rpc_user_bash_gate"] == "not-observable"
@@ -1231,7 +1231,7 @@ mkdirSync(dirname(certifiedPiCli), { recursive: true });
 writeFileSync(certifiedPiCli, "// exact certified Pi identity fixture\n");
 writeFileSync(join(certifiedPiRoot, "package.json"), JSON.stringify({
   name: "@earendil-works/pi-coding-agent",
-  version: "0.84.1",
+  version: "0.84.2",
   bin: { pi: "dist/cli.js" },
 }));
 const os = process.platform === "darwin" ? "Darwin" : process.platform === "linux" ? "Linux" : process.platform;
@@ -1242,7 +1242,7 @@ const currentPlatform = `${os}-${arch}-${libc}`;
 const compatibilityPath = join(root, "config", "pi-compatibility.json");
 const compatibility = JSON.parse(readFileSync(compatibilityPath, "utf8"));
 const certified = compatibility.certifications.find((record) =>
-  record.package === "@earendil-works/pi-coding-agent" && record.version === "0.84.1");
+  record.package === "@earendil-works/pi-coding-agent" && record.version === "0.84.2");
 if (!certified || !Array.isArray(certified.platforms)) {
   throw new Error("badge fixture could not locate the exact certified Pi record");
 }

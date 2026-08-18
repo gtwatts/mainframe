@@ -44,7 +44,7 @@ setup() {
     PACKAGE_ROOT="$RUNTIME_ROOT/@earendil-works/pi-coding-agent"
     INTEGRITY_FILE="$BATS_TEST_TMPDIR/npm-integrity.txt"
     PLATFORM_ID="Linux-x86_64-glibc"
-    PI_ID="fork-0.84.1"
+    PI_ID="fork-0.84.2"
     SUFFIX="$PI_ID-$PLATFORM_ID"
     ARCHIVE_BINDING="$BATS_TEST_TMPDIR/pi-candidate-$SUFFIX.sha256"
     TEST_BINDING="$BATS_TEST_TMPDIR/pi-tests-$SUFFIX.sha256"
@@ -56,10 +56,10 @@ setup() {
 
     printf 'fixture archive bytes\n' > "$ARCHIVE"
     printf '%s\n' \
-        'sha512-ncAqFrG+iybuPGOhMiZoEHkEzTpJgz3guYD32pD+M7ucc0WeHmauP6wa7qwP8V/KWvsZDVNa5XGsdZ7fkC7w7A==' \
+        'sha512-l4E+B7hgXKWddRo8bC/eSue2aWZjEgJ9xIpf5p0Og+lq8a2TArCwJ0HCoCPCgaBP/tN4zbYH/wOwvx9pJpeLCA==' \
         > "$INTEGRITY_FILE"
     printf '%s\n' \
-        '{"name":"@earendil-works/pi-coding-agent","version":"0.84.1"}' \
+        '{"name":"@earendil-works/pi-coding-agent","version":"0.84.2"}' \
         > "$PACKAGE_ROOT/package.json"
     printf '#!/usr/bin/env node\n' > "$PACKAGE_ROOT/bin/pi.js"
     chmod 755 "$PACKAGE_ROOT/bin/pi.js"
@@ -90,7 +90,7 @@ build_pre_test_snapshot() {
         --pi-runtime-root "$RUNTIME_ROOT" \
         --pi-install-prefix "$INSTALL_PREFIX" \
         --expected-package '@earendil-works/pi-coding-agent' \
-        --expected-version 0.84.1 \
+        --expected-version 0.84.2 \
         --output "$PRE_TEST_SNAPSHOT"
     PRE_TEST_SNAPSHOT_SHA="$(shasum -a 256 "$PRE_TEST_SNAPSHOT" | awk '{print $1}')"
 }
@@ -191,11 +191,11 @@ verify_receipt() {
     run jq -e '
       .kind == "mainframe-pi-exact-candidate-cell-evidence" and
       .claim_scope == "exact-candidate-single-cell-pi-integration-conformance-only" and
-      .cell_id == "fork-0.84.1@Linux-x86_64-glibc" and
+      .cell_id == "fork-0.84.2@Linux-x86_64-glibc" and
       .host.observation_mode == "test-override" and
       .host.test_override == "Linux-x86_64-glibc" and
       .pi.package == "@earendil-works/pi-coding-agent" and
-      .pi.version == "0.84.1" and
+      .pi.version == "0.84.2" and
       (.pi.package_json_sha256 | test("^[0-9a-f]{64}$")) and
       (.pi.package_tree_sha256 | test("^[0-9a-f]{64}$")) and
       (.pi.runtime_tree_sha256 | test("^[0-9a-f]{64}$")) and
@@ -209,7 +209,7 @@ verify_receipt() {
       .runtime_proof.runtime_unchanged == true and
       .runtime_proof.result == "unchanged" and
       .runtime_proof.pre_test_snapshot.name ==
-        "pi-runtime-pre-fork-0.84.1-Linux-x86_64-glibc.json" and
+        "pi-runtime-pre-fork-0.84.2-Linux-x86_64-glibc.json" and
       .compatibility.support == "unverified" and
       .compatibility.runtime_state == "COMPATIBILITY_UNVERIFIED" and
       .result == {
@@ -248,7 +248,7 @@ PY
       .node_runtime == {
         algorithm: "MAINFRAME-NATIVE-EXECUTABLE-BINDING-V1",
         pre_test_binding: {
-          name: "pi-node-pre-fork-0.84.1-Linux-x86_64-glibc.json",
+          name: "pi-node-pre-fork-0.84.2-Linux-x86_64-glibc.json",
           file_sha256: $binding_sha
         },
         pre_test: {
@@ -331,7 +331,7 @@ PY
     [[ "$output" == *"package.json identity"* ]]
 
     printf '%s\n' \
-        '{"name":"@earendil-works/pi-coding-agent","version":"0.84.1"}' \
+        '{"name":"@earendil-works/pi-coding-agent","version":"0.84.2"}' \
         > "$PACKAGE_ROOT/package.json"
     printf '%s\n' 'sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==' \
         > "$INTEGRITY_FILE"
@@ -340,7 +340,7 @@ PY
     [[ "$output" == *"npm integrity input does not match"* ]]
 
     printf '%s\n' \
-        'sha512-ncAqFrG+iybuPGOhMiZoEHkEzTpJgz3guYD32pD+M7ucc0WeHmauP6wa7qwP8V/KWvsZDVNa5XGsdZ7fkC7w7A==' \
+        'sha512-l4E+B7hgXKWddRo8bC/eSue2aWZjEgJ9xIpf5p0Og+lq8a2TArCwJ0HCoCPCgaBP/tN4zbYH/wOwvx9pJpeLCA==' \
         > "$INTEGRITY_FILE"
     printf '%064d\n' 0 > "$ARCHIVE_BINDING"
     run create_receipt
@@ -420,7 +420,7 @@ PY
         --pi-runtime-root "$RUNTIME_ROOT" \
         --pi-install-prefix "$INSTALL_PREFIX" \
         --expected-package '@earendil-works/pi-coding-agent' \
-        --expected-version 0.84.1 \
+        --expected-version 0.84.2 \
         --output "$linked_snapshot"
     [[ "$status" -ne 0 ]]
     [[ "$output" == *"package ancestor must be a real directory"* ]]
@@ -437,7 +437,7 @@ PY
         --pi-runtime-root "$linked_prefix/node_modules" \
         --pi-install-prefix "$linked_prefix" \
         --expected-package '@earendil-works/pi-coding-agent' \
-        --expected-version 0.84.1 \
+        --expected-version 0.84.2 \
         --output "$linked_snapshot"
     [[ "$status" -ne 0 ]]
     [[ "$output" == *"pi-install-prefix must be a real directory"* ]]

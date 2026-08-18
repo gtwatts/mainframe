@@ -106,7 +106,7 @@ const MAINFRAME_PI_EXTENSION_PATH = "./skills/pi/extensions/mainframe.ts";
 const MAINFRAME_PI_SKILL_PATH = "./skills/pi";
 const MAINFRAME_PI_PROMPT_BLOCK_START = "<mainframe-pi-runtime version=\"1\">";
 const MAINFRAME_PI_PROMPT_BLOCK_END = "</mainframe-pi-runtime>";
-const MAINFRAME_PI_PROMPT_TIMEOUT_MS = 1_500;
+const MAINFRAME_PI_PROMPT_TIMEOUT_MS = 3_000;
 // Each project AWM call spawns trusted Bash, sources core+awm, and may wait up
 // to AWM_LOCK_TIMEOUT (5s, lib/awm.sh) on the session lock before doing its
 // fsync-bound writes. The outer bound must therefore exceed the inner lock

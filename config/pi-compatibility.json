@@ -32,19 +32,22 @@
   },
   "certifications": [
     {
-      "id": "pi-0.84.1-darwin-arm64-full",
+      "id": "pi-0.84.2-darwin-arm64-full",
       "mainframe_version": "10.2.0",
       "package": "@earendil-works/pi-coding-agent",
-      "version": "0.84.1",
-      "npm_integrity": "sha512-ncAqFrG+iybuPGOhMiZoEHkEzTpJgz3guYD32pD+M7ucc0WeHmauP6wa7qwP8V/KWvsZDVNa5XGsdZ7fkC7w7A==",
+      "version": "0.84.2",
+      "npm_integrity": "sha512-l4E+B7hgXKWddRo8bC/eSue2aWZjEgJ9xIpf5p0Og+lq8a2TArCwJ0HCoCPCgaBP/tN4zbYH/wOwvx9pJpeLCA==",
       "platforms": [
         "Darwin-arm64-none"
       ],
       "support": "certified",
       "profile": "full",
-      "evidence_date": "2026-08-09",
+      "evidence_date": "2026-08-17",
       "evidence": [
-        "tests/pi_integration.bats"
+        "tests/pi_integration.bats",
+        "tests/pi_install.bats",
+        "tests/pi_project_awm.bats",
+        "tests/pi_compatibility_manifest.bats"
       ],
       "capabilities": {
         "local_package_discovery": "verified",

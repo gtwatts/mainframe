@@ -8,6 +8,20 @@ it before reporting success. With one explicit host, setup delegates to
 instructions and native shell-policy hook, then checks the local gateway and
 generated project configuration.
 
+```mermaid
+flowchart TD
+    A[Install MAINFRAME] --> B[Run zero-residue proof]
+    B --> C[Run read-only project discovery]
+    C --> D{Choose one supported host}
+    D --> E[Preview onboarding with --dry-run]
+    E --> F[Apply explicitly as a human]
+    F --> G[Launch through MAINFRAME]
+    G --> H[Verify native trust, hook, and canary behavior]
+```
+
+The important boundary is that discovery never applies changes. A person
+chooses the host and approves the exact mutation after reviewing the preview.
+
 ## Safe quickstart
 
 First run the zero-residue mechanism proof, then read-only discovery from the

@@ -266,7 +266,7 @@ const mutations = [
   ["overlong platform identity", (document) => { document.certifications[0].platforms = [`Darwin-${"p".repeat(250)}`]; }],
   ["control in certification id", (document) => { document.certifications[0].id = "pi-current\nplatform"; }],
   ["control in package identity", (document) => { document.certifications[0].package = "@fixture/pi\tagent"; }],
-  ["control in version identity", (document) => { document.certifications[0].version = "0.84.1\n"; }],
+  ["control in version identity", (document) => { document.certifications[0].version = "0.84.2\n"; }],
   ["control in platform identity", (document) => { document.certifications[0].platforms = ["Darwin-arm64-none\r"]; }],
 ];
 

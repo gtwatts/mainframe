@@ -1,72 +1,225 @@
 # MAINFRAME
 
-**Give your coding agent a safer, smarter shell.**
+**The agent-agnostic control plane for coding agents that touch real shells.**
 
-Coding agents are strong reasoners, but their permissions, memory, shell
-policy, and readiness evidence differ from one host to another. MAINFRAME is a
-user-owned local execution layer for Pi and other supported coding agents. It
-brings four capabilities into one portable contract without replacing the
-agent's native controls or the user's zsh or Bash workflow:
+Coding agents are useful because they can act: edit files, run commands,
+install packages, inspect state, and coordinate work. They are risky for the
+same reason. MAINFRAME sits between your coding agent and your machine to
+provide one local layer for shell policy, durable agent memory, reviewed shell
+tools, and readiness evidence.
 
-- **Agent Working Memory (AWM):** file-backed checkpoints, discoveries, progress, and handoffs that survive context loss.
-- **Enforced shell policy:** after explicit project onboarding, supported hosts launched through MAINFRAME can route configured POSIX shell calls through one auditable destructive-command gateway.
-- **Safer primitives:** validation, risk classification, path checks, and approval-aware execution helpers for agent workflows.
-- **Structured output:** predictable envelopes that agents can parse without scraping prose.
-
-Pi does the reasoning. MAINFRAME makes the machine work safer, more
-repeatable, and easier for that reasoning to use well.
-
-Read [Why MAINFRAME](docs/COMPARISON.md) for the current comparison with a raw
-shell, agent-native controls, and operating-system isolation—including the
-claims MAINFRAME deliberately does not make.
-
-The core runtime is written in Bash. Optional integrations use the host tools they wrap.
+MAINFRAME is not Pi-only. Pi is the deepest current integration, but the
+product is designed for the broader coding-agent ecosystem: OpenAI Codex,
+Claude Code, GitHub Copilot CLI, Gemini CLI, Cursor, Aider, OpenCode, Kimi,
+and custom shell-capable agents. Use the native host integration where one
+exists, or use the shell, MCP, AWM, and language-binding surfaces from your
+own agent runtime. MAINFRAME complements—not replaces—the agent's native
+controls and any OS sandbox, container, VM, or separate-user isolation you
+already use.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Tests](https://img.shields.io/github/actions/workflow/status/gtwatts/mainframe/test.yml?branch=main&label=tests)](https://github.com/gtwatts/mainframe/actions/workflows/test.yml)
 [![Bash 4.4+](https://img.shields.io/badge/bash-4.4%2B-green.svg)](INSTALL.md#requirements)
 [![GitHub stars](https://img.shields.io/github/stars/gtwatts/mainframe?style=social)](https://github.com/gtwatts/mainframe)
 
-## Start here — zero-residue proof and read-only discovery
+## Why MAINFRAME?
 
-After installing through the currently available path below, begin in the
-project where a coding agent will work:
+| Coding-agent pain | MAINFRAME answer | Practical benefit |
+|---|---|---|
+| An agent can run a destructive shell command at machine speed | A deterministic policy gate classifies configured shell routes before execution | Known critical/high-risk patterns are blocked or escalated before damage |
+| Long work disappears when context is compacted or a session restarts | Agent Working Memory stores explicit checkpoints, discoveries, progress, and handoffs | Fresh agents resume from durable local state instead of rebuilding context |
+| Agents improvise brittle shell one-liners | A searchable registry of 4,400+ Bash functions plus 26 reviewed stable-core invocation contracts | More predictable, inspectable, repeatable operations |
+| Package or lifecycle changes can be hard to notice | Human-confirmed Pi and managed-host lifecycle flows | The agent cannot silently authorize its own MAINFRAME installation or removal |
+| “Installed” does not prove the running agent is protected | Doctor commands, compatibility manifests, receipts, and the Pi `MF ...` badge | Readiness is visible and fails closed instead of being assumed |
+
+MAINFRAME is designed for honest-but-fallible agents. It is **not** an OS
+sandbox, malware boundary, or protection against a hostile process already
+running as your user. Keep native host controls and OS isolation enabled for
+hostile-code or least-privilege requirements.
+
+## Works with your coding agent
+
+MAINFRAME is agent-agnostic. The integration depth depends on the host, but
+the core value is shared: safer shell execution, durable memory, structured
+tools, and readiness evidence.
+
+| Agent or host | Current integration |
+|---|---|
+| Pi | First-party package, skill, slash command, protected Bash wrapper, seven guarded tools, AWM, and transactional lifecycle management |
+| OpenAI Codex | Project instructions plus enforced `PreToolUse` Bash policy |
+| Claude Code | Project instructions plus enforced `PreToolUse` Bash policy |
+| GitHub Copilot CLI | Project instructions plus enforced `preToolUse` shell policy |
+| Gemini CLI | Project instructions plus enforced `BeforeTool` shell policy |
+| Cursor, Aider, OpenCode, Kimi | Project rules, conventions, and MAINFRAME instructions |
+| Custom or future agents | Bash libraries, AWM CLI, stable-core broker, MCP server, or Node.js/Python bindings |
+
+If an agent can read project instructions and ask for shell work, it can use
+MAINFRAME's memory and tool surfaces. Native pre-execution enforcement is
+available on the explicitly supported host routes above; unsupported routes
+remain honest inspection or helper surfaces rather than claiming interception.
+
+## How MAINFRAME works
+
+```mermaid
+flowchart LR
+    A[Coding agent] -->|shell or function request| G{MAINFRAME policy gate}
+    G -->|known safe or reviewed| B[Protected Bash / reviewed function]
+    G -->|requires a human decision| H[Operator approval]
+    H --> B
+    G -->|blocked pattern| X[Denied with a reason]
+    B --> R[Project or runtime]
+    G --> L[Private audit record]
+    X --> L
+    A <--> M[Agent Working Memory]
+    M --> C[Checkpoints, discoveries, progress, handoffs]
+```
+
+The decision path is deliberately boring:
+
+```mermaid
+sequenceDiagram
+    participant Agent
+    participant Mainframe
+    participant Human
+    participant Machine
+    Agent->>Mainframe: Propose command or function
+    Mainframe->>Mainframe: Normalize, classify, validate, bind policy
+    alt Blocked
+        Mainframe-->>Agent: Refuse with reason
+        Mainframe->>Mainframe: Record bounded audit metadata
+    else Human approval required
+        Mainframe-->>Human: Show exact preview
+        Human-->>Mainframe: Confirm in a terminal
+        Mainframe->>Machine: Execute bounded action
+    else Safe or reviewed
+        Mainframe->>Machine: Execute through protected path
+    end
+```
+
+Four pieces work together:
+
+1. **Gate:** canonical Bash policy rules classify supported shell routes and
+   deny configured destructive patterns before execution.
+2. **Toolbox:** the function registry, quick references, and stable-core
+   broker give agents structured tools instead of improvised shell glue.
+3. **Memory:** AWM preserves high-signal project state outside the chat window
+   and creates bounded handoffs for future or delegated agents.
+4. **Proof:** doctor, setup, compatibility manifests, receipts, and private
+   audit records distinguish “files exist” from “this exact integration is
+   ready.”
+
+Read [Why MAINFRAME](docs/COMPARISON.md) for the detailed comparison with a
+raw shell, agent-native controls, and operating-system isolation—including the
+claims MAINFRAME deliberately does not make.
+
+## Quick install
+
+The verified release installer is still publication-gated, so the current
+public install path is a reviewed source checkout. The repository's `10.2.0`
+work is an unpublished candidate; pin and review the commit you install.
+
+### macOS
+
+```bash
+brew install bash jq git
+git clone https://github.com/gtwatts/mainframe.git "$HOME/.mainframe"
+/opt/homebrew/bin/bash --noprofile --norc -p \
+  "$HOME/.mainframe/install.sh"  # Apple Silicon
+# Intel Homebrew uses: /usr/local/bin/bash --noprofile --norc -p "$HOME/.mainframe/install.sh"
+
+export MAINFRAME_ROOT="$HOME/.mainframe"
+export PATH="$HOME/.local/bin:$PATH"
+mainframe doctor
+```
+
+### Linux
+
+```bash
+# Debian/Ubuntu example; install Bash 4.4+, jq, and Git with your package manager.
+sudo apt-get install bash jq git
+git clone https://github.com/gtwatts/mainframe.git "$HOME/.mainframe"
+/bin/bash --noprofile --norc -p "$HOME/.mainframe/install.sh"
+
+export MAINFRAME_ROOT="$HOME/.mainframe"
+export PATH="$HOME/.local/bin:$PATH"
+mainframe doctor
+```
+
+The installer links `mainframe` into `~/.local/bin` and can add the required
+shell-profile entries. Open a new terminal if `mainframe` is not found.
+
+### Prove the local mechanism in two minutes
 
 ```bash
 cd /path/to/your/project
+mainframe version
+mainframe doctor
 mainframe setup --project . --proof
 mainframe setup --project .
 ```
 
-The proof is a concise, hostless first pass. In a private mode-700 temporary
-directory, it checks installation health, one fixed reviewed pure invocation,
-an isolated AWM checkpoint retrieved by a fresh Bash process, and one
-classifier-only denial. On success it removes the temporary AWM and broker
-state, leaving no project, user AWM, or audit state behind. It never executes
-the denial canary, a coding-agent host, or Pi. This is a zero-residue mechanism
-proof, not evidence that a live host is protected or that an agent adopted
-MAINFRAME.
+`--proof` uses isolated private temporary state and removes it on success. The
+read-only setup report shows shell, Pi, supported-host, protection, and AWM
+state without changing project or agent configuration.
 
-The full setup report shows Bash/zsh readiness, Pi state, supported host candidates, and
-exact next commands without selecting a host, running Pi, or changing project,
-agent, AWM, or shell state. If an exact host runtime is missing or incompatible,
-the report now continues through the safe recovery handoff: offline status,
-verified managed-runtime preview/apply commands when that route is certified,
-and the exact protected-setup follow-up. It prints those commands; it never runs
-them during discovery.
+### Pi quick setup
 
-Using Pi? Keep the first pass read-only:
+Pi has the deepest current integration. Keep the first pass read-only:
 
 ```bash
 mainframe pi doctor
 mainframe pi install --dry-run
 ```
 
-Activation remains a separate human-confirmed action. After Pi reloads the
-package, `/mainframe doctor` is the live in-process proof. On each agent turn,
-the Pi footer mirrors that same fail-closed diagnosis as `MF READY`,
-`MF SETUP_REQUIRED`, `MF RELOAD_REQUIRED`, `MF UNVERIFIED`, or `MF BLOCKED`;
-the badge is a visible status signal, not a substitute for the doctor details.
+After reviewing the preview, a human runs activation in an external terminal:
+
+```bash
+mainframe pi install --yes
+```
+
+Then reload or restart Pi and run the in-process proof:
+
+```text
+/mainframe doctor
+```
+
+The current certified Pi target is `@earendil-works/pi-coding-agent` `0.84.2`
+on `Darwin-arm64-none`; unknown package, version, or platform combinations
+fail closed as unverified. External `mainframe pi doctor` cannot inspect a
+running Pi process, so only `/mainframe doctor` can report live `READY`.
+
+### Codex, Claude Code, Copilot, and Gemini quick setup
+
+Use the same discovery-first pattern for the other supported project-hook
+hosts:
+
+```bash
+cd /path/to/your/project
+mainframe setup --project .
+mainframe setup --project . --host codex --dry-run
+mainframe setup --project . --host codex
+mainframe launch codex --project .
+```
+
+Replace `codex` with `claude-code`, `copilot`, or `gemini` as appropriate.
+The setup report never auto-selects a host or changes files. Onboarding writes
+only after an explicit human-reviewed apply, and `launch` performs the
+preflight before starting the protected host session.
+
+### Custom agents
+
+Use the pieces directly when there is no native host adapter yet:
+
+```bash
+mainframe work "continue the current task" --project .
+mainframe search "validate a safe path"
+mainframe invoke mf:data:json:json_get \
+  --input-json '{"json":"{\"name\":\"Ada\"}","key":"name"}'
+```
+
+Custom runtimes can also use the MCP server, Node.js/Python bindings, or the
+Bash libraries directly. Unsupported hosts do not get an interception claim;
+they get MAINFRAME's memory, toolbox, policy, and evidence surfaces.
 
 ## Install and prove it works
 
@@ -780,6 +933,12 @@ See [Claims and benchmarks](docs/CLAIMS_AND_BENCHMARKS.md) for the evidence poli
 
 MAINFRAME is active, experimental open-source infrastructure. The AWM, safety, structured-output, and Bash test surfaces are the most mature. Language bindings and editor/protocol integrations are versioned separately and may have narrower validation coverage.
 
+Current exact Pi compatibility is `@earendil-works/pi-coding-agent` `0.84.2`
+on `Darwin-arm64-none`; the legacy-scope `@mariozechner/pi-coding-agent`
+`0.73.1` route remains limited because its client-side RPC Bash route is not
+observable. Other exact package, version, and platform combinations remain
+unverified until their evidence is promoted into the compatibility manifest.
+
 Current version:
 
 ```bash
@@ -791,6 +950,7 @@ The repository includes a generated function registry, cross-platform Bash CI, a
 
 ## Documentation
 
+- [Why MAINFRAME](docs/COMPARISON.md)
 - [Documentation index](docs/README.md)
 - [Installation](INSTALL.md)
 - [Coding-agent onboarding](docs/ONBOARDING.md)

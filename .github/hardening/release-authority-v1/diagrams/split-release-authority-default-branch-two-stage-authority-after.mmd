@@ -1,0 +1,23 @@
+flowchart LR
+  Tag["Release tag"]
+  Candidate["Unprivileged candidate workflow\nbuild, test, verify"]
+  Packet["Exact packet and signing request\nIDs, digests, source identity"]
+  Signer["Default-branch workflow_run signer\nno checkout or candidate execution"]
+  Signed["Authorization receipt and\ncertificate-distinct statement"]
+  Publisher["Default-branch workflow_run publisher\nprotected environment, checkout-free"]
+  Secret["Scoped policy read secret"]
+  Release["Verified draft then immutable release"]
+
+  Tag --> Candidate
+  Candidate --> Packet
+  Packet --> Signer
+  Signer --> Signed
+  Packet --> Publisher
+  Signed --> Publisher
+  Secret --> Publisher
+  Publisher --> Release
+
+  classDef trusted fill:#d8f3dc,stroke:#176b2c,color:#111;
+  class Signer,Publisher trusted;
+  classDef unpriv fill:#dbeafe,stroke:#1d4ed8,color:#111;
+  class Candidate unpriv;

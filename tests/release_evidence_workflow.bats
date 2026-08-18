@@ -720,9 +720,9 @@ expected_transfer_paths = [
   "dist/mainframe_mcp-${{ steps.version.outputs.version }}-py3-none-any.whl",
   "dist/mainframe_mcp-${{ steps.version.outputs.version }}.tar.gz",
   "dist/mainframe-mcp-candidate.sha256",
-  "dist/pi-cell-fork-0.84.1-Darwin-arm64-none.json",
-  "dist/pi-cell-fork-0.84.1-Darwin-x86_64-none.json",
-  "dist/pi-cell-fork-0.84.1-Linux-x86_64-glibc.json",
+  "dist/pi-cell-fork-0.84.2-Darwin-arm64-none.json",
+  "dist/pi-cell-fork-0.84.2-Darwin-x86_64-none.json",
+  "dist/pi-cell-fork-0.84.2-Linux-x86_64-glibc.json",
   "dist/pi-cell-upstream-0.73.1-Darwin-arm64-none.json",
   "dist/pi-cell-upstream-0.73.1-Darwin-x86_64-none.json",
   "dist/pi-cell-upstream-0.73.1-Linux-x86_64-glibc.json",
@@ -839,9 +839,9 @@ assets = [
   '"dist/mainframe_mcp-${RELEASE_VERSION}-py3-none-any.whl"',
   '"dist/mainframe_mcp-${RELEASE_VERSION}.tar.gz"',
   '"dist/mainframe-mcp-candidate.sha256"',
-  '"dist/pi-cell-fork-0.84.1-Darwin-arm64-none.json"',
-  '"dist/pi-cell-fork-0.84.1-Darwin-x86_64-none.json"',
-  '"dist/pi-cell-fork-0.84.1-Linux-x86_64-glibc.json"',
+  '"dist/pi-cell-fork-0.84.2-Darwin-arm64-none.json"',
+  '"dist/pi-cell-fork-0.84.2-Darwin-x86_64-none.json"',
+  '"dist/pi-cell-fork-0.84.2-Linux-x86_64-glibc.json"',
   '"dist/pi-cell-upstream-0.73.1-Darwin-arm64-none.json"',
   '"dist/pi-cell-upstream-0.73.1-Darwin-x86_64-none.json"',
   '"dist/pi-cell-upstream-0.73.1-Linux-x86_64-glibc.json"',
@@ -946,9 +946,9 @@ expected_immutable_assets = [
   '"mainframe_mcp-\($version)-py3-none-any.whl"',
   '"mainframe_mcp-\($version).tar.gz"',
   '"mainframe-mcp-candidate.sha256"',
-  '"pi-cell-fork-0.84.1-Darwin-arm64-none.json"',
-  '"pi-cell-fork-0.84.1-Darwin-x86_64-none.json"',
-  '"pi-cell-fork-0.84.1-Linux-x86_64-glibc.json"',
+  '"pi-cell-fork-0.84.2-Darwin-arm64-none.json"',
+  '"pi-cell-fork-0.84.2-Darwin-x86_64-none.json"',
+  '"pi-cell-fork-0.84.2-Linux-x86_64-glibc.json"',
   '"pi-cell-upstream-0.73.1-Darwin-arm64-none.json"',
   '"pi-cell-upstream-0.73.1-Darwin-x86_64-none.json"',
   '"pi-cell-upstream-0.73.1-Linux-x86_64-glibc.json"',
@@ -962,9 +962,9 @@ expected_immutable_assets.each do |asset|
     final_script.scan(asset).length == expected_count
 end
 %w[
-  pi-cell-fork-0.84.1-Darwin-arm64-none.json
-  pi-cell-fork-0.84.1-Darwin-x86_64-none.json
-  pi-cell-fork-0.84.1-Linux-x86_64-glibc.json
+  pi-cell-fork-0.84.2-Darwin-arm64-none.json
+  pi-cell-fork-0.84.2-Darwin-x86_64-none.json
+  pi-cell-fork-0.84.2-Linux-x86_64-glibc.json
   pi-cell-upstream-0.73.1-Darwin-arm64-none.json
   pi-cell-upstream-0.73.1-Darwin-x86_64-none.json
   pi-cell-upstream-0.73.1-Linux-x86_64-glibc.json

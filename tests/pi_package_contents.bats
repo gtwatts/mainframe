@@ -22,7 +22,7 @@ teardown() {
     rm -rf -- "$TEST_ROOT"
 }
 
-find_pi_0841() {
+find_pi_0842() {
     local candidate version
 
     for candidate in \
@@ -34,7 +34,7 @@ find_pi_0841() {
     do
         [[ -n "$candidate" && "$candidate" == /* && -x "$candidate" ]] || continue
         version="$("$candidate" --version 2>/dev/null || true)"
-        if [[ "$version" == 0.84.1 ]]; then
+        if [[ "$version" == 0.84.2 ]]; then
             printf '%s\n' "$candidate"
             return 0
         fi
@@ -229,9 +229,9 @@ PY
     [[ "$status" -eq 0 ]]
 }
 
-@test "packed payload loads hand-in-glove through Pi 0.84.1" {
+@test "packed payload loads hand-in-glove through Pi 0.84.2" {
     local pi_bin report="$TEST_ROOT/pack.json"
-    pi_bin="$(find_pi_0841)" || skip "Pi 0.84.1 is not installed"
+    pi_bin="$(find_pi_0842)" || skip "Pi 0.84.2 is not installed"
     [[ -n "$NODE_BIN" && -x "$NODE_BIN" ]] || skip "Node.js is required"
 
     run npm_pack --pack-destination "$PACK_DIR"
@@ -380,8 +380,8 @@ if (executed?.details?.result?.code !== 0 ||
   throw new Error(`packed broker execution failed: ${JSON.stringify(executed)}`);
 }
 
-console.log("packed MAINFRAME loads through Pi 0.84.1 with all seven tools, gate, registry, and broker");
+console.log("packed MAINFRAME loads through Pi 0.84.2 with all seven tools, gate, registry, and broker");
 JS
     [[ "$status" -eq 0 ]]
-    [[ "$output" == "packed MAINFRAME loads through Pi 0.84.1 with all seven tools, gate, registry, and broker" ]]
+    [[ "$output" == "packed MAINFRAME loads through Pi 0.84.2 with all seven tools, gate, registry, and broker" ]]
 }

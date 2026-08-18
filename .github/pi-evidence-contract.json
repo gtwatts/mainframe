@@ -33,10 +33,10 @@
   ],
   "pi_versions": [
     {
-      "id": "fork-0.84.1",
+      "id": "fork-0.84.2",
       "package": "@earendil-works/pi-coding-agent",
-      "version": "0.84.1",
-      "npm_integrity": "sha512-ncAqFrG+iybuPGOhMiZoEHkEzTpJgz3guYD32pD+M7ucc0WeHmauP6wa7qwP8V/KWvsZDVNa5XGsdZ7fkC7w7A==",
+      "version": "0.84.2",
+      "npm_integrity": "sha512-l4E+B7hgXKWddRo8bC/eSue2aWZjEgJ9xIpf5p0Og+lq8a2TArCwJ0HCoCPCgaBP/tN4zbYH/wOwvx9pJpeLCA==",
       "profile": "full",
       "expected_skips": 0,
       "expected_skip": null,

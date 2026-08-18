@@ -358,11 +358,11 @@ def create(root):
                       "mainframe_search", "mainframe_status"],
         },
         "certifications": [{
-            "id": "pi-0.84.1-test-full",
+            "id": "pi-0.84.2-test-full",
             "mainframe_version": "10.2.0",
             "package": "@earendil-works/pi-coding-agent",
-            "version": "0.84.1",
-            "npm_integrity": "sha512-ncAqFrG+iybuPGOhMiZoEHkEzTpJgz3guYD32pD+M7ucc0WeHmauP6wa7qwP8V/KWvsZDVNa5XGsdZ7fkC7w7A==",
+            "version": "0.84.2",
+            "npm_integrity": "sha512-l4E+B7hgXKWddRo8bC/eSue2aWZjEgJ9xIpf5p0Og+lq8a2TArCwJ0HCoCPCgaBP/tN4zbYH/wOwvx9pJpeLCA==",
             "platforms": [platform_tuple], "support": "certified", "profile": "full",
             "evidence_date": "2026-08-12", "evidence": ["synthetic-offline-fixture"],
             "capabilities": {
@@ -393,7 +393,7 @@ def create(root):
         destination.chmod(0o755 if relative.endswith(".py") else 0o644)
 
     package_manifest = {
-        "name": "@earendil-works/pi-coding-agent", "version": "0.84.1",
+        "name": "@earendil-works/pi-coding-agent", "version": "0.84.2",
         "type": "module", "bin": {"pi": "dist/cli.js"},
     }
     write_json(pi / "package.json", package_manifest)
@@ -513,7 +513,7 @@ def create(root):
                                "sha256": mf_tree_sha},
             "pi_extension": binding(mf / "skills/pi/extensions/mainframe.ts"),
             "pi_compatibility_manifest": binding(mf / "config/pi-compatibility.json"),
-            "pi_compatibility_certification_id": "pi-0.84.1-test-full",
+            "pi_compatibility_certification_id": "pi-0.84.2-test-full",
             "awm_protocol": {
                 "transition_driver": binding(mf / "lib/awm-transition.sh"),
                 "raw_schema": binding(mf / "schemas/awm-raw.schema.json"),
@@ -522,7 +522,7 @@ def create(root):
             },
         },
         "pi": {
-            "package_name": "@earendil-works/pi-coding-agent", "package_version": "0.84.1",
+            "package_name": "@earendil-works/pi-coding-agent", "package_version": "0.84.2",
             "architecture": architecture, "executable": binding(pi / "dist/cli.js"),
             "package_manifest": binding(pi / "package.json"),
             "package_tree": {"root": str(pi), "algorithm": "mainframe-pi-runtime-tree-sha256-v1",
@@ -843,7 +843,7 @@ PYEOF
 
     local certified_id
     certified_id="$(jq -r '.certifications[] |
-        select(.version == "0.84.1" and .support == "certified" and .profile == "full") |
+        select(.version == "0.84.2" and .support == "certified" and .profile == "full") |
         .id' "$PROJECT_ROOT/config/pi-compatibility.json")"
     run jq -e --arg id "$certified_id" \
         '.["$defs"].certificationId.pattern as $pattern | $id | test($pattern)' \
