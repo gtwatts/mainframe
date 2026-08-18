@@ -51,7 +51,7 @@ def _sanitize_python_import_paths() -> None:
 
 
 def _verify_upstream_sdk_origin() -> None:
-    """Bind ``import mcp`` to the exact installed 1.26.0 distribution."""
+    """Bind ``import mcp`` to the exact installed 1.29.0 distribution."""
     from importlib.metadata import distribution
     from importlib.util import find_spec
 
@@ -59,9 +59,9 @@ def _verify_upstream_sdk_origin() -> None:
         sdk_distribution = distribution('mcp')
     except PackageNotFoundError as error:
         raise RuntimeConfigurationError('the pinned MCP SDK is not installed') from error
-    if sdk_distribution.version != '1.26.0':
+    if sdk_distribution.version != '1.29.0':
         raise RuntimeConfigurationError(
-            f'MCP SDK {sdk_distribution.version!r} does not match pinned 1.26.0'
+            f'MCP SDK {sdk_distribution.version!r} does not match pinned 1.29.0'
         )
     expected = Path(
         sdk_distribution.locate_file('mcp/__init__.py')

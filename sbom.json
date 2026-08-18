@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:760bb0fb-b7ed-5048-8256-67eadd0e6072",
+  "serialNumber": "urn:uuid:1169f0af-4db6-5cb5-91e1-85f68601ea38",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-08-16T18:07:54Z",
+    "timestamp": "2026-08-18T01:27:29Z",
     "component": {
       "type": "library",
       "bom-ref": "mainframe@10.2.0",
@@ -56,7 +56,7 @@
     {"type": "file", "name": "docs/CANONICAL_MANIFEST.md", "hashes": [{"alg": "SHA-256", "content": "73814c11cb571377ff2b66550c05f84849da4bb76ded5b9eb44e37d9bae1d389"}], "properties": [{"name": "size", "value": "15834"}]},
     {"type": "file", "name": "docs/CLAIMS_AND_BENCHMARKS.md", "hashes": [{"alg": "SHA-256", "content": "aafb3e5b9ec6c3cb74a8adca1e7ebe29758a574ca3bf4f9a9163f789dbdae3b2"}], "properties": [{"name": "size", "value": "7167"}]},
     {"type": "file", "name": "docs/COMPARISON.md", "hashes": [{"alg": "SHA-256", "content": "4428142bb7d19c7ed614253ef01e8d2f5322dadd9dde1f82f14f13e422fe27dc"}], "properties": [{"name": "size", "value": "8430"}]},
-    {"type": "file", "name": "docs/COMPATIBILITY.md", "hashes": [{"alg": "SHA-256", "content": "bad636ce53e95b6ed5862cce54ccf1d08a3ee0db4c4cff507e9fd0a95cd1e7ea"}], "properties": [{"name": "size", "value": "20494"}]},
+    {"type": "file", "name": "docs/COMPATIBILITY.md", "hashes": [{"alg": "SHA-256", "content": "b052b53282bd9de8d9e0f85630abbb092995eacac1a2fe68deec12b5f922f072"}], "properties": [{"name": "size", "value": "20494"}]},
     {"type": "file", "name": "docs/COMPREHENSIVE_REVIEW_REPORT.md", "hashes": [{"alg": "SHA-256", "content": "35f278005b3516066c915ba3b6c369016790a65132e3b501f66a48e84fd30fee"}], "properties": [{"name": "size", "value": "20770"}]},
     {"type": "file", "name": "docs/INSTALLED_AWM_HANDOFF_CONFORMANCE.md", "hashes": [{"alg": "SHA-256", "content": "77e7292c53b33f2928de0d46380d724853ffb33778e7cca1d70e68697de5c2ee"}], "properties": [{"name": "size", "value": "8630"}]},
     {"type": "file", "name": "docs/INTEGRATION_MATRIX.md", "hashes": [{"alg": "SHA-256", "content": "3059ae873d87d6fffeba06217c3ee5006d81c77810d169e6981a4ad26088562a"}], "properties": [{"name": "size", "value": "10822"}]},

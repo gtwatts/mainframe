@@ -152,7 +152,7 @@ macOS/Linux claim.
 
 | Item | Version | Gate |
 |---|---|---|
-| MCP package / SDK | `mainframe-mcp` 10.2.0 / exact `mcp==1.26.0`; Python >=3.10,<3.15 | locked wheel + sdist build, clean non-editable install, and `python -I -m mainframe_mcp`/isolated-console proof |
+| MCP package / SDK | `mainframe-mcp` 10.2.0 / exact `mcp==1.29.0`; Python >=3.10,<3.15 | locked wheel + sdist build, clean non-editable install, and `python -I -m mainframe_mcp`/isolated-console proof |
 | Public surface | Exactly 26 brokered stable-core tools | no public `core`/`full` route; any `MAINFRAME_MCP_TIER` setting fails closed |
 
 ## LSP extension (`lsp/`)

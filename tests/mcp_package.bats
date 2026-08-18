@@ -274,7 +274,7 @@ assert metadata["Name"] == "mainframe-mcp"
 assert metadata["Version"] == "10.2.0"
 assert metadata["Summary"] == "Fail-closed stable-core MCP adapter for MAINFRAME"
 assert metadata["Requires-Python"] == ">=3.10, <3.15"
-assert metadata.get_all("Requires-Dist") == ["mcp==1.26.0"]
+assert metadata.get_all("Requires-Dist") == ["mcp==1.29.0"]
 assert metadata["License-Expression"] == "MIT"
 
 assert "mainframe_mcp-10.2.0.dist-info/entry_points.txt" not in names
@@ -291,7 +291,7 @@ with tarfile.open(sdist_path, "r:gz") as archive:
 assert package_info["Name"] == metadata["Name"]
 assert package_info["Version"] == metadata["Version"]
 assert package_info["Requires-Python"] == metadata["Requires-Python"]
-assert package_info.get_all("Requires-Dist") == ["mcp==1.26.0"]
+assert package_info.get_all("Requires-Dist") == ["mcp==1.29.0"]
 PY
     [ "$status" -eq 0 ]
 }
@@ -451,8 +451,10 @@ PY
 import json
 import os
 from pathlib import Path
+import select
 import subprocess
 import sys
+from types import SimpleNamespace
 
 command, runtime, outside, work = sys.argv[1:]
 hostile_bin = Path(work) / "hostile-bin"
@@ -492,15 +494,43 @@ environment = os.environ.copy()
 for key in ("PYTHONHOME", "PYTHONINSPECT", "PYTHONPATH", "PYTHONSTARTUP", "MAINFRAME_MCP_TIER"):
     environment.pop(key, None)
 environment.update({"PATH": str(hostile_bin), "PYTHONUNBUFFERED": "1"})
-process = subprocess.run(
+process = subprocess.Popen(
     [command, "--mainframe-root", runtime],
-    input="".join(json.dumps(item, separators=(",", ":")) + "\n" for item in messages),
+    stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
     text=True,
-    capture_output=True,
     cwd=outside,
     env=environment,
-    timeout=120,
-    check=False,
+)
+assert process.stdin is not None
+assert process.stdout is not None
+assert process.stderr is not None
+responses = {}
+try:
+    for item in messages:
+        process.stdin.write(json.dumps(item, separators=(",", ":")) + "\n")
+        process.stdin.flush()
+        if item.get("id") is None:
+            continue
+        ready, _, _ = select.select([process.stdout], [], [], 10)
+        assert ready, f"timed out waiting for response {item['id']}"
+        line = process.stdout.readline()
+        assert line, f"server closed stdout before response {item['id']}"
+        message = json.loads(line)
+        assert message.get("id") == item["id"], (item["id"], message)
+        responses[message["id"]] = message
+    process.stdin.close()
+    returncode = process.wait(timeout=10)
+    process_stderr = process.stderr.read()
+finally:
+    if process.poll() is None:
+        process.kill()
+        process.wait(timeout=10)
+process = SimpleNamespace(
+    returncode=returncode,
+    stdout="",
+    stderr=process_stderr,
 )
 assert process.returncode == 0, (process.returncode, process.stderr)
 assert "Traceback" not in process.stderr
@@ -508,12 +538,6 @@ for denied_name in (
     "mainframe_definitely_unknown", "mainframe_ls", "mainframe_ensure_dir"
 ):
     assert denied_name in process.stderr, process.stderr
-responses = {}
-for line in process.stdout.splitlines():
-    message = json.loads(line)
-    if message.get("id") is not None:
-        assert message["id"] not in responses
-        responses[message["id"]] = message
 assert set(responses) == {1, 2, 3, 4, 5, 6}, responses
 assert responses[1]["result"]["serverInfo"]["name"] == "mainframe-mcp-server"
 
@@ -876,7 +900,7 @@ assert package["include_dependencies"] is False
 PY
     [ "$status" -eq 0 ]
 
-    # Prove the isolated environment contains upstream `mcp` 1.26.0 and the
+    # Prove the isolated environment contains upstream `mcp` 1.29.0 and the
     # adapter under separate top-level names. This catches a distribution that
     # accidentally vendors or shadows the SDK even if its shim still starts.
     run "$venv_python" -I - "$pipx_home/venvs/mainframe-mcp" <<'PY'
@@ -890,7 +914,7 @@ import mainframe_mcp
 
 mcp_distribution = metadata.distribution("mcp")
 adapter_distribution = metadata.distribution("mainframe-mcp")
-assert mcp_distribution.version == "1.26.0"
+assert mcp_distribution.version == "1.29.0"
 assert adapter_distribution.version == "10.2.0"
 mcp_origin = Path(mcp.__file__).resolve()
 adapter_origin = Path(mainframe_mcp.__file__).resolve()
