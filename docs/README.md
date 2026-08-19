@@ -5,6 +5,7 @@ Use this page to distinguish current product documentation from historical desig
 ## Start here
 
 - [Why MAINFRAME: current product comparison](COMPARISON.md)
+- [Agent-agnostic control-plane plan](CONTROL_PLANE_PLAN.md)
 - [A++ product and adoption plan](A_PLUS_PLUS_PLAN.md)
 - [Installation](../INSTALL.md)
 - [Coding-agent onboarding](ONBOARDING.md)

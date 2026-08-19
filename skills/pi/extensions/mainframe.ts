@@ -364,8 +364,29 @@ async function runProcess(command: string, args: string[], opts: { cwd?: string;
 		});
 		child.on("close", done);
 		if (opts.input && child.stdin) {
-			child.stdin.write(opts.input);
-			child.stdin.end();
+			// A fail-closed child may exit before draining stdin (for example, a
+			// broker rejecting an envelope before reading it). EPIPE is expected
+			// in that path; the child's exit status and captured output remain the
+			// authority. Attach the handler before writing so Node cannot turn the
+			// expected closed-pipe race into an unhandled error.
+			child.stdin.on("error", (error: NodeJS.ErrnoException) => {
+				if (error?.code === "EPIPE" || error?.code === "ERR_STREAM_DESTROYED") return;
+				stderr += `\n${error.message}`;
+			});
+			try {
+				child.stdin.write(opts.input, (error?: Error | null) => {
+					const code = (error as NodeJS.ErrnoException | null | undefined)?.code;
+					if (error && code !== "EPIPE" && code !== "ERR_STREAM_DESTROYED") {
+						stderr += `\n${error.message}`;
+					}
+					try {
+						child.stdin?.end();
+					} catch {}
+				});
+			} catch (error) {
+				stderr += `\n${error instanceof Error ? error.message : String(error)}`;
+				terminate("SIGTERM");
+			}
 		}
 	});
 }

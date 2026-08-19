@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:1169f0af-4db6-5cb5-91e1-85f68601ea38",
+  "serialNumber": "urn:uuid:e4e1d8b4-6a34-5166-9b07-235047158daf",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-08-18T01:27:29Z",
+    "timestamp": "2026-08-18T17:08:56Z",
     "component": {
       "type": "library",
       "bom-ref": "mainframe@10.2.0",
@@ -58,6 +58,7 @@
     {"type": "file", "name": "docs/COMPARISON.md", "hashes": [{"alg": "SHA-256", "content": "4428142bb7d19c7ed614253ef01e8d2f5322dadd9dde1f82f14f13e422fe27dc"}], "properties": [{"name": "size", "value": "8430"}]},
     {"type": "file", "name": "docs/COMPATIBILITY.md", "hashes": [{"alg": "SHA-256", "content": "b052b53282bd9de8d9e0f85630abbb092995eacac1a2fe68deec12b5f922f072"}], "properties": [{"name": "size", "value": "20494"}]},
     {"type": "file", "name": "docs/COMPREHENSIVE_REVIEW_REPORT.md", "hashes": [{"alg": "SHA-256", "content": "35f278005b3516066c915ba3b6c369016790a65132e3b501f66a48e84fd30fee"}], "properties": [{"name": "size", "value": "20770"}]},
+    {"type": "file", "name": "docs/CONTROL_PLANE_PLAN.md", "hashes": [{"alg": "SHA-256", "content": "f885c5d84917b521c557b0191d584782ff794d699f18dd20a85f5ffc3e8e13a3"}], "properties": [{"name": "size", "value": "6547"}]},
     {"type": "file", "name": "docs/INSTALLED_AWM_HANDOFF_CONFORMANCE.md", "hashes": [{"alg": "SHA-256", "content": "77e7292c53b33f2928de0d46380d724853ffb33778e7cca1d70e68697de5c2ee"}], "properties": [{"name": "size", "value": "8630"}]},
     {"type": "file", "name": "docs/INTEGRATION_MATRIX.md", "hashes": [{"alg": "SHA-256", "content": "3059ae873d87d6fffeba06217c3ee5006d81c77810d169e6981a4ad26088562a"}], "properties": [{"name": "size", "value": "10822"}]},
     {"type": "file", "name": "docs/MANAGED_HOST_PAYLOADS.md", "hashes": [{"alg": "SHA-256", "content": "790d9fd8e82bd46a750247f4afdd229ba071155a6cd5b033a3561210760aa9b0"}], "properties": [{"name": "size", "value": "19144"}]},
@@ -68,7 +69,7 @@
     {"type": "file", "name": "docs/ORCHESTRATION.md", "hashes": [{"alg": "SHA-256", "content": "63d9fc314169f3199f4cfcc1447324b1f57c2ae5b02a78ce33eed2887d55685f"}], "properties": [{"name": "size", "value": "15748"}]},
     {"type": "file", "name": "docs/PARADIGMS.md", "hashes": [{"alg": "SHA-256", "content": "0de6259031f647703a77c87288eed7957db5f3a9529529be93dd5f743f1ae14c"}], "properties": [{"name": "size", "value": "7333"}]},
     {"type": "file", "name": "docs/PROJECT_REVIEW_2026-05-18.md", "hashes": [{"alg": "SHA-256", "content": "a8b7292dd45a53906799771bdf64248f667eef3630c9e612f0d3b65018735883"}], "properties": [{"name": "size", "value": "6071"}]},
-    {"type": "file", "name": "docs/README.md", "hashes": [{"alg": "SHA-256", "content": "e12f714673d38f9e6478a29177b007753497b916bda7e4ff8208790fbb6c7f9f"}], "properties": [{"name": "size", "value": "2657"}]},
+    {"type": "file", "name": "docs/README.md", "hashes": [{"alg": "SHA-256", "content": "d1fb4d68f24da24058fc1dd0a61ca29ec7fecb61b63245f8796d18d1f9fda8a5"}], "properties": [{"name": "size", "value": "2718"}]},
     {"type": "file", "name": "docs/ROADMAP_10_PHASE.md", "hashes": [{"alg": "SHA-256", "content": "127f794840b039ba5a3505e99f2963b121c92c34edafca17517da2056d349f4f"}], "properties": [{"name": "size", "value": "18600"}]},
     {"type": "file", "name": "docs/SECURITY_EVAL_AUDIT.md", "hashes": [{"alg": "SHA-256", "content": "c7950c5fe20f4afd8fa353f64ecc5bacd65e813582ae7b925ed5090fcdf8a4cc"}], "properties": [{"name": "size", "value": "10019"}]},
     {"type": "file", "name": "docs/STABLE_CORE.md", "hashes": [{"alg": "SHA-256", "content": "a161a33d6ab256abc0bfb117c10b7a00f711022dbcfbf347a362c54aefff0d93"}], "properties": [{"name": "size", "value": "6763"}]},
@@ -511,7 +512,7 @@
     {"type": "file", "name": "skills/mainframe/SKILL.md", "hashes": [{"alg": "SHA-256", "content": "df0e1652aee557f1bd5db805ef01056f89e71b6cd05e5298b1e89a0f46fd9edb"}], "properties": [{"name": "size", "value": "2419"}]},
     {"type": "file", "name": "skills/opencode/SKILL.md", "hashes": [{"alg": "SHA-256", "content": "439b9011c7f5d0eadd1545cb31918305d6cb3359308d0830904e1320d9198432"}], "properties": [{"name": "size", "value": "2542"}]},
     {"type": "file", "name": "skills/pi/SKILL.md", "hashes": [{"alg": "SHA-256", "content": "e4d368551239f28e402cf02833ad08b1c7a22a06ec73cd90d43fb6fb89c679eb"}], "properties": [{"name": "size", "value": "6218"}]},
-    {"type": "file", "name": "skills/pi/extensions/mainframe.ts", "hashes": [{"alg": "SHA-256", "content": "5796d19790bf0f0774f639af8354729be71d65461f7e5742f33a33b4025df1b9"}], "properties": [{"name": "size", "value": "135367"}]},
+    {"type": "file", "name": "skills/pi/extensions/mainframe.ts", "hashes": [{"alg": "SHA-256", "content": "28146dfd31890f8e4b4d0872c28db76017ea03b0be85c765cdec786d5766e8d8"}], "properties": [{"name": "size", "value": "136309"}]},
     {"type": "file", "name": "skills/vercel-ai-sdk/system-prompt.md", "hashes": [{"alg": "SHA-256", "content": "f2e9f3aa32c2bf61fea910068be3998911cbc1a0466bc7d5abba0888de47cf01"}], "properties": [{"name": "size", "value": "6840"}]},
     {"type": "file", "name": "uninstall.sh", "hashes": [{"alg": "SHA-256", "content": "cd112d3ba2ce0b4802d1d9fee03e1c39c6d752a4357cb6556b36e4621504d223"}], "properties": [{"name": "size", "value": "18188"}]}
   ],
