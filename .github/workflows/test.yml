@@ -209,7 +209,7 @@ jobs:
           ./tests/bats/bin/bats --formatter tap --print-output-on-failure \
             tests/owner-parity.bats \
             tests/awm_project.bats \
-            tests/awm_project_atomic.bats \
+            tests/durable_project_memory_route.bats \
             tests/activate.bats \
             tests/activate_enforce.bats \
             tests/activation-awm.bats \
