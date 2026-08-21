@@ -243,14 +243,22 @@ EOF
         'noninteractive onboarding without --yes did not exit 2' \
         'interactive decline did not exit 2' \
         'onboard --host "$ONBOARD_HOST" --project "$ONBOARD_PROJECT" --yes' \
+        'AWM project session:  RECORDED \([0-9a-f]{12}; non-authoritative\)' \
+        'AWM project reads:    READY (durable control-plane; non-authoritative data)' \
         'repeat onboarding was not idempotent' \
         'mainframe protect status' \
         'Host runtime load:' \
         'gateway audit disclosed raw command text' \
+        'state_home="$home/.local/state"' \
+        'awm_root="$state_home/mainframe/.mainframe-control-plane-runtime/project-memory-adapter-state/awm"' \
+        'chmod 700 "$home" "$home/.local" "$config_home" "$state_home"' \
+        'certifier private runtime root is unsafe' \
         'dry-run changed AWM state' \
         'unapproved onboarding changed AWM state' \
         'declined onboarding changed AWM state' \
         'cd "$ONBOARD_NESTED"' \
+        'mainframe awm project context --project . --discover-root "<current task>" --tokens 1200 --format prompt' \
+        'If a required project-memory mutation or read route is unavailable, fail closed: stop and request human direction.' \
         'mainframe awm project ensure --project . --discover-root' \
         'mainframe awm project checkpoint --project . --discover-root' \
         'mainframe work "onboarding verification" --project . --tokens 1200 --format prompt' \

@@ -481,10 +481,19 @@ nested_project="$project/src/agent/work"
 release_root="$workdir/releases"
 certifier_root="$workdir/certifier"
 install_dir="$home/.mainframe"
-awm_root="$install_dir/awm"
+config_home="$home/.config"
+state_home="$home/.local/state"
+awm_root="$state_home/mainframe/.mainframe-control-plane-runtime/project-memory-adapter-state/awm"
 bin_dir="$home/.local/bin"
-audit="$home/.local/state/mainframe/onboarding-gateway.jsonl"
-mkdir -p "$home" "$nested_project" "$release_root/v$version" "$certifier_root"
+audit="$state_home/mainframe/onboarding-gateway.jsonl"
+mkdir -p "$home" "$home/.local" "$config_home" "$state_home" \
+    "$nested_project" "$release_root/v$version" "$certifier_root"
+chmod 700 "$home" "$home/.local" "$config_home" "$state_home"
+for private_root in "$home" "$home/.local" "$config_home" "$state_home"; do
+    [[ -d "$private_root" && ! -L "$private_root" &&
+       "$(file_mode "$private_root")" == "700" ]] ||
+        fail "certifier private runtime root is unsafe: $private_root"
+done
 cp "$native_executable_validator" "$certifier_root/"
 native_executable_validator_snapshot="$certifier_root/validate-native-executable.py"
 chmod a-w "$native_executable_validator_snapshot"
@@ -574,8 +583,8 @@ chmod 600 "$bootstrap_fixture_marker"
 
 env \
     HOME="$home" \
-    XDG_CONFIG_HOME="$home/.config" \
-    XDG_STATE_HOME="$home/.local/state" \
+    XDG_CONFIG_HOME="$config_home" \
+    XDG_STATE_HOME="$state_home" \
     SHELL="$shell_bin" \
     TMPDIR="$workdir" \
     PATH="$PATH" \
@@ -663,7 +672,7 @@ fresh_shell() {
         env -i \
             HOME="$home" USER=mainframe-test LOGNAME=mainframe-test \
             SHELL="$shell_bin" TERM=dumb PATH="$base_path" TMPDIR="$workdir" ZDOTDIR="$home" \
-            XDG_CONFIG_HOME="$home/.config" XDG_STATE_HOME="$home/.local/state" \
+            XDG_CONFIG_HOME="$config_home" XDG_STATE_HOME="$state_home" \
             MAINFRAME_AGENT_AUDIT_LOG="$audit" \
             ONBOARD_HOST="$host" ONBOARD_PROJECT="$project" ONBOARD_NESTED="$nested_project" \
             EXPECTED_CLI="$bin_dir/mainframe" EXPECTED_ROOT="$install_dir" \
@@ -673,7 +682,7 @@ fresh_shell() {
         env -i \
             HOME="$home" USER=mainframe-test LOGNAME=mainframe-test \
             SHELL="$shell_bin" TERM=dumb PATH="$base_path" TMPDIR="$workdir" \
-            XDG_CONFIG_HOME="$home/.config" XDG_STATE_HOME="$home/.local/state" \
+            XDG_CONFIG_HOME="$config_home" XDG_STATE_HOME="$state_home" \
             MAINFRAME_AGENT_AUDIT_LOG="$audit" \
             ONBOARD_HOST="$host" ONBOARD_PROJECT="$project" ONBOARD_NESTED="$nested_project" \
             EXPECTED_CLI="$bin_dir/mainframe" EXPECTED_ROOT="$install_dir" \
@@ -688,7 +697,7 @@ fresh_bash_nonlogin() {
     env -i \
         HOME="$home" USER=mainframe-test LOGNAME=mainframe-test \
         SHELL="$shell_bin" TERM=dumb PATH="$base_path" TMPDIR="$workdir" \
-        XDG_CONFIG_HOME="$home/.config" XDG_STATE_HOME="$home/.local/state" \
+        XDG_CONFIG_HOME="$config_home" XDG_STATE_HOME="$state_home" \
         MAINFRAME_AGENT_AUDIT_LOG="$audit" \
         ONBOARD_HOST="$host" ONBOARD_PROJECT="$project" ONBOARD_NESTED="$nested_project" \
         EXPECTED_CLI="$bin_dir/mainframe" EXPECTED_ROOT="$install_dir" \
@@ -704,7 +713,7 @@ fresh_shell_decline() {
     env -i \
         HOME="$home" USER=mainframe-test LOGNAME=mainframe-test \
         SHELL="$shell_bin" TERM=dumb PATH="$base_path" TMPDIR="$workdir" ZDOTDIR="$home" \
-        XDG_CONFIG_HOME="$home/.config" XDG_STATE_HOME="$home/.local/state" \
+        XDG_CONFIG_HOME="$config_home" XDG_STATE_HOME="$state_home" \
         MAINFRAME_AGENT_AUDIT_LOG="$audit" \
         ONBOARD_HOST="$host" ONBOARD_PROJECT="$project" \
         "$python_bin" - "$shell_bin" "$shell_name" "$command_text" <<'PYEOF'
@@ -906,16 +915,21 @@ fresh_shell 'mainframe onboard --host "$ONBOARD_HOST" --project "$ONBOARD_PROJEC
     > "$workdir/onboard.log"
 grep -Fq 'Host runtime load:' "$workdir/onboard.log" || fail "runtime boundary is missing"
 grep -Fq 'UNVERIFIED' "$workdir/onboard.log" || fail "runtime load was overstated"
-grep -Eq '^AWM project session:  READY \([0-9a-f]{12}\)$' "$workdir/onboard.log" || \
-    fail "AWM project session is not ready"
+grep -Eq '^AWM project session:  RECORDED \([0-9a-f]{12}; non-authoritative\)$' \
+    "$workdir/onboard.log" || {
+    cat "$workdir/onboard.log" >&2
+    fail "AWM project session was not recorded with the non-authority boundary"
+}
+grep -Fq 'AWM project reads:    READY (durable control-plane; non-authoritative data)' \
+    "$workdir/onboard.log" || fail "AWM project read plane is not ready"
 [[ -f "$project/$instruction" && -f "$project/$enforcement" ]] || \
     fail "managed host files are missing"
 grep -Fq 'Team instructions must survive.' "$project/$instruction" || \
     fail "foreign project instructions were overwritten"
-grep -Fq 'mainframe work "<current task>" --project . --tokens 1200' \
-    "$project/$instruction" || fail "managed instructions do not request the read-only work brief"
-grep -Fq 'do not initialize or renew memory without human confirmation' \
-    "$project/$instruction" || fail "managed instructions omit the project-memory consent boundary"
+grep -Fq 'mainframe awm project context --project . --discover-root "<current task>" --tokens 1200 --format prompt' \
+    "$project/$instruction" || fail "managed instructions do not request the control-plane read brief"
+grep -Fq 'If a required project-memory mutation or read route is unavailable, fail closed: stop and request human direction.' \
+    "$project/$instruction" || fail "managed instructions omit the project-memory fail-closed boundary"
 grep -Fq 'Never store credentials, tokens, secrets, raw sensitive payloads, or routine command chatter.' \
     "$project/$instruction" || fail "managed instructions omit the AWM privacy contract"
 [[ -f "$audit" && ! -L "$audit" ]] || fail "gateway audit is missing"
