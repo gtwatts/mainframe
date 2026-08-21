@@ -45,6 +45,7 @@ declare -g _AWM_ACTIVE_BACKEND="${AWM_BACKEND:-file}"
 declare -g _AWM_V2_INITIALIZED=0
 declare -g _AWM_EMBEDDINGS_ATTEMPTED=0
 declare -g _AWM_STRICT_JQ=""
+declare -g _AWM_CHECKPOINT_FAILURE_STAGE=""
 declare -gi _AWM_PROJECT_MUTATION_DEPTH=0
 declare -gA _AWM_DEPRECATION_WARNED=()
 
@@ -1209,18 +1210,37 @@ _awm_checkpoint_write_unlocked() {
 # 0 for a current value, 2 for expired retention, and 3 for malformed/tampered
 # metadata or a value digest mismatch.  Legacy memory always remains explicitly
 # non-authorizing even when this consistency check succeeds.
+_awm_checkpoint_metadata_fail() {
+    # Only fixed labels from _awm_checkpoint_metadata reach this helper.  Keep
+    # paths, checkpoint keys, sidecar contents, and value bytes out of the
+    # diagnostic because callers may be crossing a sandbox trust boundary.
+    _AWM_CHECKPOINT_FAILURE_STAGE="$1"
+    return 3
+}
+
 _awm_checkpoint_metadata() {
     local sid="$1" safe_key="$2" file="$3"
-    local meta_file content canonical fields
+    local meta_file content canonical fields jq_path
     local ttl expires_at_epoch expected_sha actual_sha now
 
-    meta_file="$(_awm_session_dir "$sid")/index/${safe_key}.json" || return 3
-    [[ -f "$meta_file" && ! -L "$meta_file" ]] || return 3
-    _awm_reject_symlink_components "$meta_file" >/dev/null 2>&1 || return 3
-    content=$(<"$meta_file") || return 3
-    canonical=$(printf '%s' "$content" | _awm_strict_jq -cS . 2>/dev/null) || return 3
-    [[ "$content" == "$canonical" ]] || return 3
-    fields=$(printf '%s' "$content" | _awm_strict_jq -er \
+    _AWM_CHECKPOINT_FAILURE_STAGE=""
+    meta_file="$(_awm_session_dir "$sid")/index/${safe_key}.json" ||
+        _awm_checkpoint_metadata_fail sidecar-path || return 3
+    [[ -f "$meta_file" && ! -L "$meta_file" ]] ||
+        _awm_checkpoint_metadata_fail sidecar-missing || return 3
+    _awm_reject_symlink_components "$meta_file" >/dev/null 2>&1 ||
+        _awm_checkpoint_metadata_fail sidecar-path || return 3
+    content=$(<"$meta_file") ||
+        _awm_checkpoint_metadata_fail sidecar-read || return 3
+    jq_path="$(_awm_strict_jq_path 2>/dev/null)" ||
+        _awm_checkpoint_metadata_fail parser-unavailable || return 3
+    "$jq_path" -n -e 'true' >/dev/null 2>&1 ||
+        _awm_checkpoint_metadata_fail parser-unavailable || return 3
+    canonical=$(printf '%s' "$content" | "$jq_path" -cS . 2>/dev/null) ||
+        _awm_checkpoint_metadata_fail sidecar-json-invalid || return 3
+    [[ "$content" == "$canonical" ]] ||
+        _awm_checkpoint_metadata_fail sidecar-noncanonical || return 3
+    fields=$(printf '%s' "$content" | "$jq_path" -er \
         --arg sid "$sid" --arg storage "$safe_key" '
         def exact_keys($expected): type == "object" and keys == $expected;
         def valid:
@@ -1261,18 +1281,27 @@ _awm_checkpoint_metadata() {
             else (.retention.expires_at_epoch | tostring) end),
            .value_sha256] | @tsv
         else error("invalid checkpoint sidecar") end
-        ' 2>/dev/null) || return 3
+        ' 2>/dev/null) ||
+        _awm_checkpoint_metadata_fail sidecar-schema-invalid || return 3
     IFS=$'\t' read -r ttl expires_at_epoch expected_sha <<<"$fields"
     [[ "$ttl" =~ ^[0-9]+$ &&
        ( "$expires_at_epoch" == null || "$expires_at_epoch" =~ ^[0-9]+$ ) &&
-       "$expected_sha" =~ ^[0-9a-f]{64}$ ]] || return 3
-    actual_sha=$(_awm_sha256_file "$file") || return 3
-    [[ "$actual_sha" == "$expected_sha" ]] || return 3
+       "$expected_sha" =~ ^[0-9a-f]{64}$ ]] ||
+        _awm_checkpoint_metadata_fail sidecar-fields-invalid || return 3
+    actual_sha=$(_awm_sha256_file "$file") ||
+        _awm_checkpoint_metadata_fail digest-tool-unavailable || return 3
+    [[ "$actual_sha" == "$expected_sha" ]] ||
+        _awm_checkpoint_metadata_fail digest-mismatch || return 3
     if [[ "$expires_at_epoch" != null ]]; then
         now=$(_awm_epoch)
-        [[ "$now" =~ ^[0-9]+$ ]] || return 3
-        (( now < expires_at_epoch )) || return 2
+        [[ "$now" =~ ^[0-9]+$ ]] ||
+            _awm_checkpoint_metadata_fail clock-invalid || return 3
+        if (( now >= expires_at_epoch )); then
+            _AWM_CHECKPOINT_FAILURE_STAGE="retention-expired"
+            return 2
+        fi
     fi
+    _AWM_CHECKPOINT_FAILURE_STAGE=""
     printf '%s' "$content"
 }
 
@@ -3014,7 +3043,7 @@ awm_get() {
             if (( metadata_rc == 2 )); then
                 _awm_log warn "awm_get: checkpoint retention expired"
             else
-                _awm_log error "awm_get: checkpoint metadata/value binding is invalid"
+                _awm_log error "awm_get: checkpoint metadata/value binding is invalid (stage=${_AWM_CHECKPOINT_FAILURE_STAGE:-unknown})"
             fi
             printf '%s' "$default"
             return 1
