@@ -154,14 +154,16 @@ body_map_for_default() {
     done
 }
 
-@test "load-all late module loads and awm_v2_init cannot replace facade bodies" {
+@test "load-all closure and explicit late modules preserve facade bodies" {
     local canonical_stream_reference all_reference actual
 
     canonical_stream_reference=$(body_map_for_libraries awm,awm_stream)
     all_reference=$(body_map_for_libraries awm,awm_protocol)
 
     actual=$(body_map_for_profile minimal 'mainframe_load_all >/dev/null 2>&1')
-    [ "$actual" = "$all_reference" ]
+    # The canonical load-all closure intentionally excludes the legacy
+    # protocol-v4 compatibility module; it remains an explicit opt-in below.
+    [ "$actual" = "$canonical_stream_reference" ]
 
     actual=$(body_map_for_libraries awm 'mainframe_load awm_stream >/dev/null 2>&1')
     [ "$actual" = "$canonical_stream_reference" ]

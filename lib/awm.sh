@@ -588,30 +588,60 @@ _awm_path_mode() {
     fi
 }
 
-# Linux user namespaces expose an unmapped host UID as the kernel overflow UID
-# (normally 65534).  Codex's bubblewrap sandbox maps only the invoking account,
-# so the host-root-owned /usr/bin/jq remains immutable but no longer appears to
-# be owned by numeric UID 0 inside the sandbox.  Prove that host UID 0 is
-# genuinely absent from the current namespace before accepting that narrow
-# representation; ordinary namespaces and package-manager jq paths do not use
-# this exception.
-_awm_uid_map_excludes_host_root() {
-    local map_file="${1:-/proc/self/uid_map}"
-    local inside outside length extra saw_mapping=0
+# Linux user namespaces expose every unmapped host UID as the configured
+# overflow UID. Codex's bubblewrap sandbox maps the invoking account (and may
+# map inside UID 0 to an unprivileged host UID), so host-root-owned /usr/bin/jq
+# can have an owner other than 0 or EUID inside the sandbox. Do not assume the
+# conventional overflow value 65534: prove from the strict namespace map that
+# host UID 0 is absent and that the observed file owner is not an inside UID.
+_awm_uid_map_proves_unmapped_owner() {
+    local owner="$1" map_file="${2:-/proc/self/uid_map}"
+    local inside outside length extra
+    local inside_start outside_start range_length inside_end outside_end index
+    local owner_numeric saw_mapping=0 owner_is_mapped=0 line_count=0
+    local id_limit=4294967295 max_map_lines=340
+    local -a inside_starts=() inside_ends=() outside_starts=() outside_ends=()
 
+    [[ "$owner" =~ ^(0|[1-9][0-9]{0,9})$ ]] || return 1
+    owner_numeric=$((10#$owner))
+    (( owner_numeric < id_limit )) || return 1
     [[ -f "$map_file" && ! -L "$map_file" && -r "$map_file" ]] || return 1
-    while read -r inside outside length extra; do
-        [[ -z "${extra:-}" && "$inside" =~ ^[0-9]+$ &&
-           "$outside" =~ ^[0-9]+$ && "$length" =~ ^[0-9]+$ &&
-           ${#inside} -le 10 && ${#outside} -le 10 && ${#length} -le 10 ]] ||
-            return 1
-        (( 10#$length > 0 )) || return 1
+
+    while read -r inside outside length extra ||
+        [[ -n "${inside:-}${outside:-}${length:-}${extra:-}" ]]; do
+        (( line_count += 1, line_count <= max_map_lines )) || return 1
+        [[ -z "${extra:-}" &&
+           "$inside" =~ ^(0|[1-9][0-9]{0,9})$ &&
+           "$outside" =~ ^(0|[1-9][0-9]{0,9})$ &&
+           "$length" =~ ^(0|[1-9][0-9]{0,9})$ ]] || return 1
+        inside_start=$((10#$inside))
+        outside_start=$((10#$outside))
+        range_length=$((10#$length))
+        (( inside_start < id_limit && outside_start < id_limit &&
+           range_length > 0 && range_length <= id_limit &&
+           inside_start <= id_limit - range_length &&
+           outside_start <= id_limit - range_length )) || return 1
+        inside_end=$((inside_start + range_length))
+        outside_end=$((outside_start + range_length))
+
+        # With unsigned UID ranges, any mapping of host UID 0 begins at 0.
+        (( outside_start != 0 )) || return 1
+        for ((index = 0; index < ${#inside_starts[@]}; index += 1)); do
+            (( inside_start >= inside_ends[index] ||
+               inside_end <= inside_starts[index] )) || return 1
+            (( outside_start >= outside_ends[index] ||
+               outside_end <= outside_starts[index] )) || return 1
+        done
+        (( owner_numeric < inside_start || owner_numeric >= inside_end )) ||
+            owner_is_mapped=1
+        inside_starts+=("$inside_start")
+        inside_ends+=("$inside_end")
+        outside_starts+=("$outside_start")
+        outside_ends+=("$outside_end")
         saw_mapping=1
-        # UID-map ranges are non-negative, so host UID 0 is mapped exactly
-        # when a non-empty range begins at outside UID 0.
-        (( 10#$outside != 0 )) || return 1
     done <"$map_file"
-    (( saw_mapping == 1 ))
+
+    (( saw_mapping == 1 && owner_is_mapped == 0 ))
 }
 
 _awm_strict_jq_owner_is_trusted() {
@@ -621,12 +651,11 @@ _awm_strict_jq_owner_is_trusted() {
     if [[ "$owner" -eq 0 || "$owner" -eq "$EUID" ]]; then
         return 0
     fi
-    [[ "$owner" -eq 65534 ]] || return 1
     case "$candidate" in
         /usr/bin/jq|/bin/jq) ;;
         *) return 1 ;;
     esac
-    _awm_uid_map_excludes_host_root /proc/self/uid_map
+    _awm_uid_map_proves_unmapped_owner "$owner" /proc/self/uid_map
 }
 
 # Resolve the semantic parser from a closed set of fixed installations.  The
@@ -1233,9 +1262,9 @@ _awm_checkpoint_metadata() {
     content=$(<"$meta_file") ||
         _awm_checkpoint_metadata_fail sidecar-read || return 3
     jq_path="$(_awm_strict_jq_path 2>/dev/null)" ||
-        _awm_checkpoint_metadata_fail parser-unavailable || return 3
+        _awm_checkpoint_metadata_fail parser-admission-unavailable || return 3
     "$jq_path" -n -e 'true' >/dev/null 2>&1 ||
-        _awm_checkpoint_metadata_fail parser-unavailable || return 3
+        _awm_checkpoint_metadata_fail parser-execution-unavailable || return 3
     canonical=$(printf '%s' "$content" | "$jq_path" -cS . 2>/dev/null) ||
         _awm_checkpoint_metadata_fail sidecar-json-invalid || return 3
     [[ "$content" == "$canonical" ]] ||
