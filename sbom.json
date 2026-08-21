@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:78883b92-d820-54c3-9f83-0c6e90f5cc93",
+  "serialNumber": "urn:uuid:7cb10348-6b1e-5657-aaa2-c405adbb471d",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-08-21T19:31:00Z",
+    "timestamp": "2026-08-21T20:30:36Z",
     "component": {
       "type": "library",
       "bom-ref": "mainframe@10.2.0",
@@ -231,7 +231,7 @@
     {"type": "file", "name": "lib/async.sh", "hashes": [{"alg": "SHA-256", "content": "c06578629f0e08dcceaad7017824e269f5ee3954616ec260ba21b3f6156f1dfc"}], "properties": [{"name": "size", "value": "12203"}]},
     {"type": "file", "name": "lib/atomic.sh", "hashes": [{"alg": "SHA-256", "content": "2519f3a126ad4dbcbb848c0c51e1765184dd11a5ba1dac9bb846e7edaaca7dbd"}], "properties": [{"name": "size", "value": "17592"}]},
     {"type": "file", "name": "lib/audit.sh", "hashes": [{"alg": "SHA-256", "content": "a088a66af32b8943a4571506f2f57b1b09d378c55c7c2bea00012295c27e2407"}], "properties": [{"name": "size", "value": "44753"}]},
-    {"type": "file", "name": "lib/awm.sh", "hashes": [{"alg": "SHA-256", "content": "fae29b40072463872c4a1e572912d322e7a4137aeda89cc41aba63a466b86fbb"}], "properties": [{"name": "size", "value": "168340"}]},
+    {"type": "file", "name": "lib/awm.sh", "hashes": [{"alg": "SHA-256", "content": "5e13dbed616acd6d0249d1be59872d0a3aac8270a6d02d775a1010f4582c9920"}], "properties": [{"name": "size", "value": "169838"}]},
     {"type": "file", "name": "lib/awm_protocol.sh", "hashes": [{"alg": "SHA-256", "content": "79040b5bff7b7d1f8c47f70803ce52d2c094485e7d819ce3937426d9c70540ff"}], "properties": [{"name": "size", "value": "23822"}]},
     {"type": "file", "name": "lib/awm_storage.sh", "hashes": [{"alg": "SHA-256", "content": "24b024cc3aa30e3291cd3037899d96e0dd9db883e1317a9ac41cbd0fe5af479b"}], "properties": [{"name": "size", "value": "25270"}]},
     {"type": "file", "name": "lib/awm_stream.sh", "hashes": [{"alg": "SHA-256", "content": "615426038980ddfaebec512cc189da6433dd3ffce69babacb28c4e513a9d16fd"}], "properties": [{"name": "size", "value": "32087"}]},

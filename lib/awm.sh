@@ -593,45 +593,77 @@ _awm_path_mode() {
 # map inside UID 0 to an unprivileged host UID), so host-root-owned /usr/bin/jq
 # can have an owner other than 0 or EUID inside the sandbox. Do not assume the
 # conventional overflow value 65534: prove from the strict namespace map that
-# host UID 0 is absent and that the observed file owner is not an inside UID.
+# the observed file owner is not an inside UID. Bubblewrap's devpts setup uses
+# two nested user namespaces, so its final parent-UID-0 mapping is admitted only
+# for one exact EUID range whose observed owner matches the kernel overflow UID.
+_awm_kernel_overflow_uid_matches() {
+    local owner="$1" overflow_file="${2:-/proc/sys/kernel/overflowuid}"
+    local overflow_uid extra
+
+    [[ -f "$overflow_file" && ! -L "$overflow_file" && -r "$overflow_file" ]] ||
+        return 7
+    {
+        IFS= read -r overflow_uid || return 7
+        ! IFS= read -r extra || return 7
+    } <"$overflow_file"
+    [[ "$overflow_uid" =~ ^(0|[1-9][0-9]{0,9})$ ]] || return 7
+    (( 10#$overflow_uid < 4294967295 )) || return 7
+    [[ "$owner" == "$overflow_uid" ]] || return 8
+}
+
+_awm_uid_map_range_is_nested_bwrap() {
+    local inside_start="$1" outside_start="$2" range_length="$3"
+    local effective_uid="$4"
+
+    (( effective_uid != 0 && inside_start == effective_uid &&
+       outside_start == 0 && range_length == 1 ))
+}
+
 _awm_uid_map_proves_unmapped_owner() {
     local owner="$1" map_file="${2:-/proc/self/uid_map}"
+    local overflow_file="${3:-/proc/sys/kernel/overflowuid}"
     local inside outside length extra
     local inside_start outside_start range_length inside_end outside_end index
     local owner_numeric saw_mapping=0 owner_is_mapped=0 line_count=0
+    local parent_root_mapping=0 nested_bwrap_signature=0
     local id_limit=4294967295 max_map_lines=340
     local -a inside_starts=() inside_ends=() outside_starts=() outside_ends=()
 
-    [[ "$owner" =~ ^(0|[1-9][0-9]{0,9})$ ]] || return 1
+    [[ "$owner" =~ ^(0|[1-9][0-9]{0,9})$ ]] || return 2
     owner_numeric=$((10#$owner))
-    (( owner_numeric < id_limit )) || return 1
-    [[ -f "$map_file" && ! -L "$map_file" && -r "$map_file" ]] || return 1
+    (( owner_numeric < id_limit )) || return 2
+    [[ -f "$map_file" && ! -L "$map_file" && -r "$map_file" ]] || return 3
 
     while read -r inside outside length extra ||
         [[ -n "${inside:-}${outside:-}${length:-}${extra:-}" ]]; do
-        (( line_count += 1, line_count <= max_map_lines )) || return 1
+        (( line_count += 1, line_count <= max_map_lines )) || return 4
         [[ -z "${extra:-}" &&
            "$inside" =~ ^(0|[1-9][0-9]{0,9})$ &&
            "$outside" =~ ^(0|[1-9][0-9]{0,9})$ &&
-           "$length" =~ ^(0|[1-9][0-9]{0,9})$ ]] || return 1
+           "$length" =~ ^(0|[1-9][0-9]{0,9})$ ]] || return 4
         inside_start=$((10#$inside))
         outside_start=$((10#$outside))
         range_length=$((10#$length))
         (( inside_start < id_limit && outside_start < id_limit &&
            range_length > 0 && range_length <= id_limit &&
            inside_start <= id_limit - range_length &&
-           outside_start <= id_limit - range_length )) || return 1
+           outside_start <= id_limit - range_length )) || return 4
         inside_end=$((inside_start + range_length))
         outside_end=$((outside_start + range_length))
 
-        # With unsigned UID ranges, any mapping of host UID 0 begins at 0.
-        (( outside_start != 0 )) || return 1
         for ((index = 0; index < ${#inside_starts[@]}; index += 1)); do
             (( inside_start >= inside_ends[index] ||
-               inside_end <= inside_starts[index] )) || return 1
+               inside_end <= inside_starts[index] )) || return 4
             (( outside_start >= outside_ends[index] ||
-               outside_end <= outside_starts[index] )) || return 1
+               outside_end <= outside_starts[index] )) || return 4
         done
+        if (( outside_start == 0 )); then
+            parent_root_mapping=1
+            if _awm_uid_map_range_is_nested_bwrap \
+                "$inside_start" "$outside_start" "$range_length" "$EUID"; then
+                nested_bwrap_signature=1
+            fi
+        fi
         (( owner_numeric < inside_start || owner_numeric >= inside_end )) ||
             owner_is_mapped=1
         inside_starts+=("$inside_start")
@@ -641,21 +673,29 @@ _awm_uid_map_proves_unmapped_owner() {
         saw_mapping=1
     done <"$map_file"
 
-    (( saw_mapping == 1 && owner_is_mapped == 0 ))
+    (( saw_mapping == 1 )) || return 4
+    (( owner_is_mapped == 0 )) || return 6
+    if (( parent_root_mapping == 1 )); then
+        (( line_count == 1 && nested_bwrap_signature == 1 )) || return 5
+        _awm_kernel_overflow_uid_matches "$owner" "$overflow_file"
+        return $?
+    fi
+    return 0
 }
 
 _awm_strict_jq_owner_is_trusted() {
     local owner="$1" candidate="$2"
 
-    [[ "$owner" =~ ^[0-9]+$ ]] || return 1
+    [[ "$owner" =~ ^[0-9]+$ ]] || return 2
     if [[ "$owner" -eq 0 || "$owner" -eq "$EUID" ]]; then
         return 0
     fi
     case "$candidate" in
         /usr/bin/jq|/bin/jq) ;;
-        *) return 1 ;;
+        *) return 2 ;;
     esac
-    _awm_uid_map_proves_unmapped_owner "$owner" /proc/self/uid_map
+    _awm_uid_map_proves_unmapped_owner "$owner" \
+        /proc/self/uid_map /proc/sys/kernel/overflowuid
 }
 
 # Resolve the semantic parser from a closed set of fixed installations.  The
