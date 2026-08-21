@@ -7,8 +7,8 @@
   "protocol_version": "1.0.0",
   "subject": {
     "kind": "source",
-    "source_revision": "6ac7fa3be8939252ec8d092ae80bb0a259ebdda1",
-    "source_tree_sha256": "788ec303372cdcc41dd174f759b65e0d2aea1aeda27c73db9053cde107b8bc22",
+    "source_revision": "4bcccbd9964b31cbc6dff169352c876af99c241f",
+    "source_tree_sha256": "2c2ff89f92f321bbdb6484edd85747eaafef98d1800936bbfeb2dc7673b0a7d5",
     "inventory_sha256": null,
     "payload_sha256": null,
     "version": "10.2.0"
@@ -25,8 +25,8 @@
     "architecture": "arm64",
     "runner_class": "maintainer-local"
   },
-  "issued_at": "2026-08-21T15:35:28Z",
-  "expires_at": "2026-08-22T15:35:28Z",
+  "issued_at": "2026-08-21T15:57:52Z",
+  "expires_at": "2026-08-22T15:57:52Z",
   "evidence": [
     {
       "path": "config/host-capabilities.json",
