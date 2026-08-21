@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:3d546afb-fe81-53b1-83bc-09cda5802da3",
+  "serialNumber": "urn:uuid:63091235-b818-56b7-9cf7-be183f8d4e90",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-08-21T17:07:23Z",
+    "timestamp": "2026-08-21T18:04:20Z",
     "component": {
       "type": "library",
       "bom-ref": "mainframe@10.2.0",
@@ -434,7 +434,7 @@
     {"type": "file", "name": "scripts/api/webhook-relay.sh", "hashes": [{"alg": "SHA-256", "content": "6841144dc479e3be940fc8e19f5b91c4ea588f2170569e51271b17dd2ff5256c"}], "properties": [{"name": "size", "value": "5677"}]},
     {"type": "file", "name": "scripts/atomic_edit.sh", "hashes": [{"alg": "SHA-256", "content": "e7e2ddb776ab898acb34b25c817d25531124aaf5c3601a79fe6e6905306b33f4"}], "properties": [{"name": "size", "value": "32693"}]},
     {"type": "file", "name": "scripts/build-release-archive.sh", "hashes": [{"alg": "SHA-256", "content": "1c8880c190d142b5c13f127d06c209b5ff292e63365296c1880ab655a8092143"}], "properties": [{"name": "size", "value": "5555"}]},
-    {"type": "file", "name": "scripts/check-control-plane-claim.py", "hashes": [{"alg": "SHA-256", "content": "f7ef5317f846b9366887cd885cabf6ee36dfeeeab30691ef4b646403c9c66ea4"}], "properties": [{"name": "size", "value": "46467"}]},
+    {"type": "file", "name": "scripts/check-control-plane-claim.py", "hashes": [{"alg": "SHA-256", "content": "56140b6a9bd6f7b042e35e1faa04cace25ad3d576a090d57080888b3de94695b"}], "properties": [{"name": "size", "value": "47194"}]},
     {"type": "file", "name": "scripts/check-function-exports.py", "hashes": [{"alg": "SHA-256", "content": "d1a93e25ed98d642fda247fc95768dd55fca853d8d78e4a403ab3a8a0bdd4eeb"}], "properties": [{"name": "size", "value": "12628"}]},
     {"type": "file", "name": "scripts/check-owner-parity.py", "hashes": [{"alg": "SHA-256", "content": "79264c67752a201dda66c492cc8aee0197662ecf78915aab17f95399d3a223e7"}], "properties": [{"name": "size", "value": "23301"}]},
     {"type": "file", "name": "scripts/context_summary.sh", "hashes": [{"alg": "SHA-256", "content": "ea68f4a62892a4eaec65e6241cd635d30634e44668521325bc4ec7482750afe8"}], "properties": [{"name": "size", "value": "30360"}]},

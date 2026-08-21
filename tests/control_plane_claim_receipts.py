@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -791,6 +792,60 @@ class ClaimGatePolicyShapeTests(unittest.TestCase):
         self.assertEqual(external["subject_kind"], "payload")
         self.assertTrue(external["external_verifier"])
         self.assertEqual(external["authorities"], ("host-operator",))
+
+    def test_local_verifier_timeouts_are_closed_and_bounded(self) -> None:
+        expected_keys = {
+            "subject_kind",
+            "command_identity",
+            "argv",
+            "authorities",
+            "external_verifier",
+            "forbidden_output",
+            "timeout_seconds",
+        }
+        for gate in self.checker.GATE_POLICIES.values():
+            for verifier in gate["proofs"].values():
+                self.assertEqual(set(verifier), expected_keys)
+                self.assertIs(type(verifier["timeout_seconds"]), int)
+                self.assertGreater(verifier["timeout_seconds"], 0)
+                self.assertLessEqual(
+                    verifier["timeout_seconds"],
+                    self.checker.MAX_LOCAL_VERIFIER_TIMEOUT_SECONDS,
+                )
+
+        memory = self.checker.GATE_POLICIES["project-memory-contract"]
+        self.assertEqual(
+            {
+                memory["proofs"][proof_kind]["timeout_seconds"]
+                for proof_kind in memory["required"]
+            },
+            {300},
+        )
+        for invalid in (True, 0, 301, 1.5):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                self.checker.proof(
+                    "source",
+                    "mainframe.test.timeout.v1",
+                    ("/bin/true",),
+                    timeout_seconds=invalid,
+                )
+
+    def test_local_verifier_execution_uses_the_reviewed_timeout(self) -> None:
+        completed = subprocess.CompletedProcess(
+            args=("/bin/true",), returncode=0, stdout=b""
+        )
+        with mock.patch.object(
+            self.checker.subprocess, "run", return_value=completed
+        ) as run:
+            passed = self.checker.execute_local_verifier(
+                PROJECT_ROOT,
+                ("/bin/true",),
+                (),
+                300,
+                {},
+            )
+        self.assertTrue(passed)
+        self.assertEqual(run.call_args.kwargs["timeout"], 300)
 
     def test_ci_checkouts_include_the_attested_subject_parent(self) -> None:
         workflow = (PROJECT_ROOT / ".github/workflows/test.yml").read_text(

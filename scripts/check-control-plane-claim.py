@@ -64,6 +64,8 @@ RECEIPT_PROTOCOL_VERSION = "1.0.0"
 SOURCE_AUTHORITIES = ("local-verifier",)
 MAX_LOCAL_RECEIPT_TTL = timedelta(days=7)
 MAX_VERIFIER_OUTPUT = 65536
+DEFAULT_LOCAL_VERIFIER_TIMEOUT_SECONDS = 120
+MAX_LOCAL_VERIFIER_TIMEOUT_SECONDS = 300
 LOCAL_VERIFIER_CANDIDATES = {
     "python3": ("/usr/bin/python3", "/bin/python3"),
     "bats": (
@@ -107,7 +109,17 @@ def proof(
     *,
     external_verifier: bool = False,
     forbidden_output: tuple[str, ...] = (),
+    timeout_seconds: int = DEFAULT_LOCAL_VERIFIER_TIMEOUT_SECONDS,
 ) -> dict[str, object]:
+    if (
+        type(timeout_seconds) is not int
+        or timeout_seconds < 1
+        or timeout_seconds > MAX_LOCAL_VERIFIER_TIMEOUT_SECONDS
+    ):
+        raise ValueError(
+            "local verifier timeout must be an integer from 1 through "
+            f"{MAX_LOCAL_VERIFIER_TIMEOUT_SECONDS} seconds"
+        )
     return {
         "subject_kind": subject_kind,
         "command_identity": command_identity,
@@ -115,6 +127,7 @@ def proof(
         "authorities": authorities,
         "external_verifier": external_verifier,
         "forbidden_output": forbidden_output,
+        "timeout_seconds": timeout_seconds,
     }
 
 
@@ -224,11 +237,13 @@ GATE_POLICIES: dict[str, dict[str, object]] = {
                 "source", "mainframe.project-memory.twelve-operation-route.v1",
                 ("bats", "tests/durable_project_memory_route.bats"),
                 forbidden_output=("# skip", "expected failure"),
+                timeout_seconds=300,
             ),
             "privacy-recovery-no-fallback": proof(
                 "source", "mainframe.project-memory.privacy-recovery.v1",
                 ("bats", "tests/durable_project_memory_route.bats"),
                 forbidden_output=("# skip", "expected failure"),
+                timeout_seconds=300,
             ),
         },
     },
@@ -520,9 +535,10 @@ def execute_local_verifier(
     root: Path,
     argv: tuple[str, ...],
     forbidden_output: tuple[str, ...],
-    cache: dict[tuple[tuple[str, ...], tuple[str, ...]], bool | None],
+    timeout_seconds: int,
+    cache: dict[tuple[tuple[str, ...], tuple[str, ...], int], bool | None],
 ) -> bool | None:
-    cache_key = (argv, forbidden_output)
+    cache_key = (argv, forbidden_output, timeout_seconds)
     if cache_key in cache:
         return cache[cache_key]
     executable = argv[0]
@@ -559,7 +575,7 @@ def execute_local_verifier(
             check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            timeout=120,
+            timeout=timeout_seconds,
         )
     except subprocess.TimeoutExpired:
         fail(f"local verifier timed out: {' '.join(argv)}")
@@ -697,7 +713,7 @@ def validate_receipt(
     policy: dict[str, object], revision: str, version: str,
     inventory_digest: str, source_tree_digest: str,
     verifier_cache: dict[
-        tuple[tuple[str, ...], tuple[str, ...]], bool | None
+        tuple[tuple[str, ...], tuple[str, ...], int], bool | None
     ],
 ) -> tuple[str, str, bool]:
     receipt = require_closed_object(document, RECEIPT_KEYS, "receipt")
@@ -845,7 +861,11 @@ def validate_receipt(
         fail(f"gate {gate_id} local verifier runner_class must be maintainer-local")
     require_string_list(receipt["limitations"], "receipt limitations")
     actual_pass = execute_local_verifier(
-        root, tuple(argv), proof_policy["forbidden_output"], verifier_cache
+        root,
+        tuple(argv),
+        proof_policy["forbidden_output"],
+        proof_policy["timeout_seconds"],
+        verifier_cache,
     )
     if actual_pass is None:
         return receipt_id, proof_kind, True
@@ -880,7 +900,7 @@ def validate_contract(document: dict[str, object], root: Path) -> CheckResult:
     inventory_digest = validate_release_inventory(root)
     source_tree_digest = source_tree_sha256(root)
     verifier_cache: dict[
-        tuple[tuple[str, ...], tuple[str, ...]], bool | None
+        tuple[tuple[str, ...], tuple[str, ...], int], bool | None
     ] = {}
     gate_states: dict[str, str] = {}
     seen_receipt_paths: set[str] = set()
