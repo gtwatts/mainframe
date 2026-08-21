@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "receipt_type": "mainframe-control-plane-gate-receipt",
+  "receipt_id": "adapter-contract-durable-correlation-local-20260821",
+  "gate_id": "adapter-contract",
+  "proof_kind": "durable-correlation",
+  "protocol_version": "1.0.0",
+  "subject": {
+    "kind": "source",
+    "source_revision": "90441d867b6921ef3a7deff8679d5971307f5d40",
+    "source_tree_sha256": "f62f1f38beda9c44fe591082d6ef3a8e372b0f12bee675ab2436de12319ed21b",
+    "inventory_sha256": null,
+    "payload_sha256": null,
+    "version": "10.2.0"
+  },
+  "command": {
+    "identity": "mainframe.adapter-contract.correlation.v1",
+    "argv": [
+      "bats",
+      "tests/adapter_kernel_route.bats"
+    ]
+  },
+  "environment": {
+    "os": "darwin",
+    "architecture": "arm64",
+    "runner_class": "maintainer-local"
+  },
+  "issued_at": "2026-08-21T14:33:31Z",
+  "expires_at": "2026-08-22T14:33:31Z",
+  "evidence": [
+    {
+      "path": "config/host-capabilities.json",
+      "sha256": "0b4a8b98161b5caddf7a2ebdfd26d1c2b8f0a8967fbbf89818cdf2ed4b1e3fc5",
+      "role": "source-evidence"
+    },
+    {
+      "path": "scripts/generate-host-adapters.sh",
+      "sha256": "4d65e66fc1916629e9aa37c918e3d1e2a776e1cd9d47c8a5c01e713a43378aef",
+      "role": "source-evidence"
+    },
+    {
+      "path": "tests/host_capabilities.bats",
+      "sha256": "3d677f7f47bb9bb2754a8af1474b19d069670b7febbe35bb184512cd7b4f2a0f",
+      "role": "source-evidence"
+    }
+  ],
+  "result": "pass",
+  "authority": {
+    "class": "local-verifier",
+    "signer_id": "scripts/check-control-plane-claim.py",
+    "independence": "project",
+    "signature": null
+  },
+  "limitations": [
+    "Local source proof validates kernel-authoritative durable identifiers and non-authorizing client correlation; it is not live host certification."
+  ]
+}

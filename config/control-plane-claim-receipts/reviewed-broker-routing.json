@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "receipt_type": "mainframe-control-plane-gate-receipt",
+  "receipt_id": "reviewed-broker-routing-kernel-routed-stable-core-local-20260821",
+  "gate_id": "reviewed-broker-routing",
+  "proof_kind": "kernel-routed-stable-core",
+  "protocol_version": "1.0.0",
+  "subject": {
+    "kind": "source",
+    "source_revision": "90441d867b6921ef3a7deff8679d5971307f5d40",
+    "source_tree_sha256": "f62f1f38beda9c44fe591082d6ef3a8e372b0f12bee675ab2436de12319ed21b",
+    "inventory_sha256": null,
+    "payload_sha256": null,
+    "version": "10.2.0"
+  },
+  "command": {
+    "identity": "mainframe.reviewed-broker.kernel-route.v1",
+    "argv": [
+      "python3",
+      "-I",
+      "-S",
+      "-B",
+      "tests/control_plane/test_stable_core.py"
+    ]
+  },
+  "environment": {
+    "os": "darwin",
+    "architecture": "arm64",
+    "runner_class": "maintainer-local"
+  },
+  "issued_at": "2026-08-21T14:33:31Z",
+  "expires_at": "2026-08-22T14:33:31Z",
+  "evidence": [
+    {
+      "path": "config/stable-core.json",
+      "sha256": "481c5df1bae3f46d67c0b382a5763d3775d167926ab36db888d0ba5ef0c7dfa4",
+      "role": "source-evidence"
+    },
+    {
+      "path": "tests/control_plane/public_cli.bats",
+      "sha256": "09fe201fbee135df28113a15f9ec3ee04f79d220f71d1ad32f5e1914bcdf3da2",
+      "role": "source-evidence"
+    }
+  ],
+  "result": "pass",
+  "authority": {
+    "class": "local-verifier",
+    "signer_id": "scripts/check-control-plane-claim.py",
+    "independence": "project",
+    "signature": null
+  },
+  "limitations": [
+    "Local source proof covers only the reviewed stable-core kernel route; it is not installed-host or mutation authority evidence."
+  ]
+}

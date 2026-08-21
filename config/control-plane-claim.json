@@ -1,0 +1,253 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.1.0",
+  "receipt_schema": "config/control-plane-claim-receipt.schema.json",
+  "target_claim": "category-claim",
+  "advertised_claim": "source-candidate",
+  "promotions": {
+    "source-candidate": [
+      "release-integrity",
+      "semantic-authority",
+      "runtime-closure"
+    ],
+    "control-plane-preview": [
+      "release-integrity",
+      "semantic-authority",
+      "runtime-closure",
+      "durable-authority-kernel",
+      "reviewed-broker-routing",
+      "coding-agent-contract",
+      "project-memory-contract"
+    ],
+    "host-preview": [
+      "release-integrity",
+      "semantic-authority",
+      "runtime-closure",
+      "durable-authority-kernel",
+      "reviewed-broker-routing",
+      "coding-agent-contract",
+      "project-memory-contract",
+      "adapter-contract",
+      "host-conformance"
+    ],
+    "stable-release": [
+      "release-integrity",
+      "semantic-authority",
+      "runtime-closure",
+      "durable-authority-kernel",
+      "reviewed-broker-routing",
+      "coding-agent-contract",
+      "project-memory-contract",
+      "adapter-contract",
+      "host-conformance",
+      "immutable-distribution"
+    ],
+    "category-claim": [
+      "release-integrity",
+      "semantic-authority",
+      "runtime-closure",
+      "durable-authority-kernel",
+      "reviewed-broker-routing",
+      "coding-agent-contract",
+      "project-memory-contract",
+      "adapter-contract",
+      "host-conformance",
+      "immutable-distribution",
+      "independent-outcomes"
+    ]
+  },
+  "gates": {
+    "release-integrity": {
+      "summary": "Release inventory and archive reproducibility must be rerun against the final source candidate.",
+      "evidence_paths": [
+        "scripts/dev/release.sh",
+        "scripts/dev/release-payload.sh",
+        "scripts/generate-sbom.sh",
+        "scripts/build-release-archive.sh",
+        "tests/release-archive.bats",
+        "config/release-attestation-exclusions.txt",
+        "SHA256SUMS"
+      ],
+      "receipt_refs": [
+        {
+          "path": "config/control-plane-claim-receipts/release-integrity.json",
+          "sha256": "20254b06874fc2c616db88791e872269c4ab3abb0845b201d23f50fcc0b13809"
+        },
+        {
+          "path": "config/control-plane-claim-receipts/release-integrity-archive-reproducibility.json",
+          "sha256": "2c10d3e5bdc9443385448925a8def2d514dea2b74c16c9cde4d0bbabe940f210"
+        }
+      ],
+      "remaining": []
+    },
+    "semantic-authority": {
+      "summary": "Reviewed invocation contracts require a fresh content-bound parity proof for this exact source tree.",
+      "evidence_paths": [
+        "config/semantic-trust-policy.json",
+        "scripts/generate-manifest.py",
+        "tests/owner-parity.bats"
+      ],
+      "receipt_refs": [
+        {
+          "path": "config/control-plane-claim-receipts/semantic-authority.json",
+          "sha256": "d3ff929f5d8f59df10342524149753e8bc5b2f20325e57f80d28ec2ebb92116e"
+        }
+      ],
+      "remaining": []
+    },
+    "runtime-closure": {
+      "summary": "The generated runtime closure requires a fresh content-bound drift proof for this exact source tree.",
+      "evidence_paths": [
+        "config/runtime-closure.json",
+        "scripts/generate-runtime-closure.py",
+        "tests/runtime_closure.bats"
+      ],
+      "receipt_refs": [
+        {
+          "path": "config/control-plane-claim-receipts/runtime-closure.json",
+          "sha256": "86dee8edca878ba46ff205259b63d22171de993db43993af11209a8a2cb49c7d"
+        }
+      ],
+      "remaining": []
+    },
+    "durable-authority-kernel": {
+      "summary": "Durable authority requires lifecycle, atomic routing, supervised cleanup, and external coding-approval authority for edit, test, and build effects.",
+      "evidence_paths": [
+        "control_plane/mainframe_control_plane/kernel.py",
+        "control_plane/mainframe_control_plane/executor.py",
+        "control_plane/mainframe_control_plane/worker.py",
+        "tests/control_plane/test_kernel.py",
+        "tests/control_plane/test_policy_lifecycle.py",
+        "tests/control_plane/test_stable_core.py",
+        "tests/control_plane/test_supervised_executor.py"
+      ],
+      "receipt_refs": [],
+      "remaining": [
+        "Prove lifecycle and atomic stable-core behavior with fixed local verifiers.",
+        "Close worker-death cleanup without expected failures or skipped assertions.",
+        "Obtain external installed-host coding-approval-authority verification for edit, test, and build effects."
+      ]
+    },
+    "reviewed-broker-routing": {
+      "summary": "All reviewed stable-core calls must prove atomic kernel routing with no alternate adapter executor.",
+      "evidence_paths": [
+        "config/stable-core.json",
+        "tests/control_plane/public_cli.bats"
+      ],
+      "receipt_refs": [
+        {
+          "path": "config/control-plane-claim-receipts/reviewed-broker-routing.json",
+          "sha256": "66bbdb0e9d960aefa953449e8b876e3f6447e88b8890450369fa29c292d68a49"
+        }
+      ],
+      "remaining": []
+    },
+    "coding-agent-contract": {
+      "summary": "The public coding-agent source surface must prove workspace-bound read/search and fail-closed approval-required edit, test, and build behavior without granting mutation authority.",
+      "evidence_paths": [
+        "control_plane/mainframe_control_plane/coding.py",
+        "control_plane/mainframe_control_plane/cli.py",
+        "control_plane/mainframe_control_plane/kernel.py",
+        "tests/control_plane/test_coding_agent.py",
+        "tests/control_plane/test_coding_public.py"
+      ],
+      "receipt_refs": [
+        {
+          "path": "config/control-plane-claim-receipts/coding-agent-contract-public-safe-read-search.json",
+          "sha256": "a8dd03521a5bf9b9e5f6b09e95974763a21c9da67e173a4b88736faa9ff72567"
+        },
+        {
+          "path": "config/control-plane-claim-receipts/coding-agent-contract-approval-required-fail-closed.json",
+          "sha256": "c2903d9a7a7998a915019180a7d5d98b29c0f1805e6a6122a910c800509acaf3"
+        }
+      ],
+      "remaining": []
+    },
+    "project-memory-contract": {
+      "summary": "All six durable project-memory mutations and six read-plane operations must prove exact routing, metadata-only durability, transient privacy, crash recovery, and no legacy fallback.",
+      "evidence_paths": [
+        "bin/mainframe",
+        "lib/durable_awm.sh",
+        "control_plane/mainframe_control_plane/memory.py",
+        "control_plane/mainframe_control_plane/memory_executor.py",
+        "control_plane/mainframe_control_plane/memory_transient.py",
+        "control_plane/mainframe_control_plane/cli.py",
+        "control_plane/mainframe_control_plane/kernel.py",
+        "tests/control_plane/test_project_memory.py",
+        "tests/control_plane/test_project_memory_reads.py",
+        "tests/control_plane/test_project_memory_integration.py",
+        "tests/durable_project_memory_route.bats"
+      ],
+      "receipt_refs": [
+        {
+          "path": "config/control-plane-claim-receipts/project-memory-contract-twelve-operation-route.json",
+          "sha256": "94f4a3a1102149331cab17f8bfcc084ed70584e4c3d03efada16cc5a82a3718b"
+        },
+        {
+          "path": "config/control-plane-claim-receipts/project-memory-contract-privacy-recovery-no-fallback.json",
+          "sha256": "3d118d627a6b2b8da694619577f4a5ca304b6ad50dbfafa74c254fa93c337f51"
+        }
+      ],
+      "remaining": []
+    },
+    "adapter-contract": {
+      "summary": "Generated instructions and protocol adapters require kernel-route and durable-correlation proof.",
+      "evidence_paths": [
+        "config/host-capabilities.json",
+        "scripts/generate-host-adapters.sh",
+        "tests/host_capabilities.bats"
+      ],
+      "receipt_refs": [
+        {
+          "path": "config/control-plane-claim-receipts/adapter-contract-instruction-contract.json",
+          "sha256": "ecd7d6cee9c466e38f77d230a86beb7b26497a2b784fac0e2231cb7ad410692a"
+        },
+        {
+          "path": "config/control-plane-claim-receipts/adapter-contract-kernel-routed-adapters.json",
+          "sha256": "4b352994a0d223132404a7b85d30703976aff76f6c3dace7ef281cbe460e8367"
+        },
+        {
+          "path": "config/control-plane-claim-receipts/adapter-contract-durable-correlation.json",
+          "sha256": "70e6896df93b8c15a710c4897a2aa80cd458f460b68d56f10fcc4f94c6122cbf"
+        }
+      ],
+      "remaining": []
+    },
+    "host-conformance": {
+      "summary": "Installed-host conformance remains external to source-only evidence.",
+      "evidence_paths": [
+        "config/host-capabilities.json",
+        "tests/native_host_certification.bats",
+        "tests/pi_cell_evidence.bats"
+      ],
+      "receipt_refs": [],
+      "remaining": [
+        "Obtain externally verified installed-host conformance receipts without upgrading non-intercepted tool classes."
+      ]
+    },
+    "immutable-distribution": {
+      "summary": "Immutable release and channel recovery require externally verifiable distribution attestations.",
+      "evidence_paths": [
+        "scripts/build-release-archive.sh",
+        "scripts/dev/release-candidate.sh",
+        "tests/release-archive.bats"
+      ],
+      "receipt_refs": [],
+      "remaining": [
+        "Publish and cryptographically verify the exact release payload.",
+        "Verify install, upgrade, rollback, removal, and clean-machine recovery for each promoted channel."
+      ]
+    },
+    "independent-outcomes": {
+      "summary": "Outcome and adoption claims require independent evaluators and cannot be derived from local authored JSON.",
+      "evidence_paths": [
+        "docs/AGENT_IMPACT_EVALUATION.md",
+        "docs/CLAIMS_AND_BENCHMARKS.md"
+      ],
+      "receipt_refs": [],
+      "remaining": [
+        "Obtain a cryptographically verifiable independent outcome-study attestation for the frozen release."
+      ]
+    }
+  }
+}

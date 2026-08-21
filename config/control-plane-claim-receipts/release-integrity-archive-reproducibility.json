@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "receipt_type": "mainframe-control-plane-gate-receipt",
+  "receipt_id": "release-integrity-archive-reproducibility-local-20260821",
+  "gate_id": "release-integrity",
+  "proof_kind": "archive-reproducibility",
+  "protocol_version": "1.0.0",
+  "subject": {
+    "kind": "source",
+    "source_revision": "90441d867b6921ef3a7deff8679d5971307f5d40",
+    "source_tree_sha256": "f62f1f38beda9c44fe591082d6ef3a8e372b0f12bee675ab2436de12319ed21b",
+    "inventory_sha256": null,
+    "payload_sha256": null,
+    "version": "10.2.0"
+  },
+  "command": {
+    "identity": "mainframe.release-integrity.archive.v1",
+    "argv": [
+      "/bin/bash",
+      "--noprofile",
+      "--norc",
+      "-p",
+      "scripts/build-release-archive.sh",
+      "--verify"
+    ]
+  },
+  "environment": {
+    "os": "darwin",
+    "architecture": "arm64",
+    "runner_class": "maintainer-local"
+  },
+  "issued_at": "2026-08-21T14:33:31Z",
+  "expires_at": "2026-08-22T14:33:31Z",
+  "evidence": [
+    {
+      "path": "scripts/dev/release.sh",
+      "sha256": "06d675a6c358b933aaf1ded5e661c92bcf253d032bd9269c551a4965817325f2",
+      "role": "source-evidence"
+    },
+    {
+      "path": "scripts/dev/release-payload.sh",
+      "sha256": "4f3e956c004dd246a5bbaeea5bb19da7fbd532026605406cd7dad189f5dd0a14",
+      "role": "source-evidence"
+    },
+    {
+      "path": "scripts/generate-sbom.sh",
+      "sha256": "1b1fa6de4f4fd996df65cfefa1bbe937bb271b440ee724386bdc90eadb9a2bbc",
+      "role": "source-evidence"
+    },
+    {
+      "path": "scripts/build-release-archive.sh",
+      "sha256": "1c8880c190d142b5c13f127d06c209b5ff292e63365296c1880ab655a8092143",
+      "role": "source-evidence"
+    },
+    {
+      "path": "tests/release-archive.bats",
+      "sha256": "dd491cf5cec6628b1c808fb1db54fd3bf7b65067212fa71e262c3bfd2bdb3307",
+      "role": "source-evidence"
+    },
+    {
+      "path": "config/release-attestation-exclusions.txt",
+      "sha256": "c26b3e5a4c6821295535d6042be4eadf29d6dcf7de8426c850fbbf54ea85df95",
+      "role": "source-evidence"
+    },
+    {
+      "path": "SHA256SUMS",
+      "sha256": "e80b093cb2388822df2cd92d6abeb3b2cc47bafe157f87ba79bf3d0c2ba868c2",
+      "role": "inventory"
+    }
+  ],
+  "result": "pass",
+  "authority": {
+    "class": "local-verifier",
+    "signer_id": "scripts/check-control-plane-claim.py",
+    "independence": "project",
+    "signature": null
+  },
+  "limitations": [
+    "Local reproducibility verification only; this is not a published archive attestation."
+  ]
+}

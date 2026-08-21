@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "receipt_type": "mainframe-control-plane-gate-receipt",
+  "receipt_id": "coding-agent-contract-public-safe-read-search-local-20260821",
+  "gate_id": "coding-agent-contract",
+  "proof_kind": "public-safe-read-search",
+  "protocol_version": "1.0.0",
+  "subject": {
+    "kind": "source",
+    "source_revision": "90441d867b6921ef3a7deff8679d5971307f5d40",
+    "source_tree_sha256": "f62f1f38beda9c44fe591082d6ef3a8e372b0f12bee675ab2436de12319ed21b",
+    "inventory_sha256": null,
+    "payload_sha256": null,
+    "version": "10.2.0"
+  },
+  "command": {
+    "identity": "mainframe.coding-agent.public-safe-reads.v1",
+    "argv": [
+      "python3",
+      "-I",
+      "-S",
+      "-B",
+      "tests/control_plane/test_coding_public.py"
+    ]
+  },
+  "environment": {
+    "os": "darwin",
+    "architecture": "arm64",
+    "runner_class": "maintainer-local"
+  },
+  "issued_at": "2026-08-21T14:33:31Z",
+  "expires_at": "2026-08-22T14:33:31Z",
+  "evidence": [
+    {
+      "path": "control_plane/mainframe_control_plane/coding.py",
+      "sha256": "4efa61f24a31bc025fd5cc1c27e02380579e7c5e7bef56e82fe9a9c2aec5d5dd",
+      "role": "source-evidence"
+    },
+    {
+      "path": "control_plane/mainframe_control_plane/cli.py",
+      "sha256": "aa7988bef84175d823cfa7bbd75060f4a427eef0008cc6e90524f91e28df02c6",
+      "role": "source-evidence"
+    },
+    {
+      "path": "control_plane/mainframe_control_plane/kernel.py",
+      "sha256": "4d0b55809f1e0c10cef6bce239943293bdf40c6664ace44185361fcf2e47ec6f",
+      "role": "source-evidence"
+    },
+    {
+      "path": "tests/control_plane/test_coding_agent.py",
+      "sha256": "8abc6c5d87b843913fee767ffc038419be101e2e445b61d3fc098f529eca6880",
+      "role": "source-evidence"
+    },
+    {
+      "path": "tests/control_plane/test_coding_public.py",
+      "sha256": "90cc03dd709e9049da97a094c5c8f9e81f5bc9b9311f14fed607c79b2590be42",
+      "role": "source-evidence"
+    }
+  ],
+  "result": "pass",
+  "authority": {
+    "class": "local-verifier",
+    "signer_id": "scripts/check-control-plane-claim.py",
+    "independence": "project",
+    "signature": null
+  },
+  "limitations": [
+    "Local source proof covers reviewed coding read and search behavior only; it does not authorize edit, test, or build effects."
+  ]
+}

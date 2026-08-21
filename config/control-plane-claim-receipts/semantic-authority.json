@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "receipt_type": "mainframe-control-plane-gate-receipt",
+  "receipt_id": "semantic-authority-source-suite-local-20260821",
+  "gate_id": "semantic-authority",
+  "proof_kind": "source-suite",
+  "protocol_version": "1.0.0",
+  "subject": {
+    "kind": "source",
+    "source_revision": "90441d867b6921ef3a7deff8679d5971307f5d40",
+    "source_tree_sha256": "f62f1f38beda9c44fe591082d6ef3a8e372b0f12bee675ab2436de12319ed21b",
+    "inventory_sha256": null,
+    "payload_sha256": null,
+    "version": "10.2.0"
+  },
+  "command": {
+    "identity": "mainframe.semantic-authority.source.v1",
+    "argv": [
+      "python3",
+      "-I",
+      "-S",
+      "-B",
+      "scripts/check-owner-parity.py"
+    ]
+  },
+  "environment": {
+    "os": "darwin",
+    "architecture": "arm64",
+    "runner_class": "maintainer-local"
+  },
+  "issued_at": "2026-08-21T14:33:31Z",
+  "expires_at": "2026-08-22T14:33:31Z",
+  "evidence": [
+    {
+      "path": "config/semantic-trust-policy.json",
+      "sha256": "06bd5b1230fbd0a2ffae2ae7e7eb809ef7b65783efeb85b9402626c0189b2d8f",
+      "role": "source-evidence"
+    },
+    {
+      "path": "scripts/generate-manifest.py",
+      "sha256": "b2d70f135e73d5bbf21aebab4f8830b24d677b161d2b61efca56a270fff660e2",
+      "role": "source-evidence"
+    },
+    {
+      "path": "tests/owner-parity.bats",
+      "sha256": "b855312e2eace361e5b810dba3b1a5bb6be251bb654d91b1278bfa33233107f3",
+      "role": "source-evidence"
+    }
+  ],
+  "result": "pass",
+  "authority": {
+    "class": "local-verifier",
+    "signer_id": "scripts/check-control-plane-claim.py",
+    "independence": "project",
+    "signature": null
+  },
+  "limitations": [
+    "All public owner-parity checks completed with zero disagreements; nine private-name collision probes were non-applicable.",
+    "This source receipt is not installed-host or public-function execution coverage."
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "receipt_type": "mainframe-control-plane-gate-receipt",
+  "receipt_id": "runtime-closure-source-suite-local-20260821",
+  "gate_id": "runtime-closure",
+  "proof_kind": "source-suite",
+  "protocol_version": "1.0.0",
+  "subject": {
+    "kind": "source",
+    "source_revision": "90441d867b6921ef3a7deff8679d5971307f5d40",
+    "source_tree_sha256": "f62f1f38beda9c44fe591082d6ef3a8e372b0f12bee675ab2436de12319ed21b",
+    "inventory_sha256": null,
+    "payload_sha256": null,
+    "version": "10.2.0"
+  },
+  "command": {
+    "identity": "mainframe.runtime-closure.source.v1",
+    "argv": [
+      "python3",
+      "-I",
+      "-S",
+      "-B",
+      "scripts/generate-runtime-closure.py",
+      "--check"
+    ]
+  },
+  "environment": {
+    "os": "darwin",
+    "architecture": "arm64",
+    "runner_class": "maintainer-local"
+  },
+  "issued_at": "2026-08-21T14:33:31Z",
+  "expires_at": "2026-08-22T14:33:31Z",
+  "evidence": [
+    {
+      "path": "config/runtime-closure.json",
+      "sha256": "ca11a2fdb6258c787ee1fe43f25b7d5c2d2d39540339a4158407e9ef4fce66a8",
+      "role": "source-evidence"
+    },
+    {
+      "path": "scripts/generate-runtime-closure.py",
+      "sha256": "6f06b879c88b796d00f3221dfb577b0aae188ac51faceb6a201152af11f9637f",
+      "role": "source-evidence"
+    },
+    {
+      "path": "tests/runtime_closure.bats",
+      "sha256": "8d8f6a1866c7fc16bb93a6160279d6a496806cc71d4b29eb5ff4c159599f0e93",
+      "role": "source-evidence"
+    }
+  ],
+  "result": "pass",
+  "authority": {
+    "class": "local-verifier",
+    "signer_id": "scripts/check-control-plane-claim.py",
+    "independence": "project",
+    "signature": null
+  },
+  "limitations": [
+    "Local source closure verification only; this is not installed-runtime or host enforcement evidence."
+  ]
+}
