@@ -828,6 +828,27 @@ class ClaimGatePolicyShapeTests(unittest.TestCase):
                 f"checkout at workflow line {index + 1} must fetch the parent",
             )
 
+    def test_unavailable_optional_verifier_cannot_promote_or_block_source(self) -> None:
+        fixture = ClaimReceiptFixture()
+        self.addCleanup(fixture.cleanup)
+        original = self.checker.LOCAL_VERIFIER_CANDIDATES["bats"]
+        self.checker.LOCAL_VERIFIER_CANDIDATES["bats"] = (
+            "/definitely/missing/mainframe-test-bats",
+        )
+        try:
+            fixture_root = fixture.root.resolve(strict=True)
+            output = self.checker.validate_contract(
+                self.checker.load_contract(
+                    fixture_root / "config/control-plane-claim.json"
+                ),
+                fixture_root,
+            )
+        finally:
+            self.checker.LOCAL_VERIFIER_CANDIDATES["bats"] = original
+        self.assertEqual(output["highest_eligible_claim"], "source-candidate")
+        self.assertEqual(output["gate_states"]["project-memory-contract"], "red")
+        self.assertEqual(output["gate_states"]["adapter-contract"], "amber")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

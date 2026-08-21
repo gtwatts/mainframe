@@ -267,6 +267,10 @@ class ContractError(ValueError):
     """The claim contract is malformed or overclaims its evidence."""
 
 
+class VerifierUnavailable(RuntimeError):
+    """A reviewed local verifier is not safely executable on this host."""
+
+
 class CheckResult(TypedDict):
     ok: bool
     schema_version: int
@@ -474,7 +478,9 @@ def resolve_safe_executable(candidates: tuple[str, ...], label: str) -> str:
         ):
             continue
         return str(resolved)
-    fail(f"local verifier requires a fixed safe {label} executable")
+    raise VerifierUnavailable(
+        f"local verifier requires a fixed safe {label} executable"
+    )
 
 
 def resolve_fixed_bash() -> str:
@@ -482,7 +488,7 @@ def resolve_fixed_bash() -> str:
     for candidate in FIXED_BASH_CANDIDATES:
         try:
             executable = resolve_safe_executable((candidate,), "Bash")
-        except ClaimError:
+        except VerifierUnavailable:
             continue
         try:
             probe = subprocess.run(
@@ -505,25 +511,30 @@ def resolve_fixed_bash() -> str:
             continue
         if probe.returncode == 0 and (major, minor) >= MINIMUM_BASH_VERSION:
             return executable
-    fail("local verifier requires fixed safe Bash 4.4 or newer")
+    raise VerifierUnavailable(
+        "local verifier requires fixed safe Bash 4.4 or newer"
+    )
 
 
 def execute_local_verifier(
     root: Path,
     argv: tuple[str, ...],
     forbidden_output: tuple[str, ...],
-    cache: dict[tuple[tuple[str, ...], tuple[str, ...]], bool],
-) -> bool:
+    cache: dict[tuple[tuple[str, ...], tuple[str, ...]], bool | None],
+) -> bool | None:
     cache_key = (argv, forbidden_output)
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return cached
+    if cache_key in cache:
+        return cache[cache_key]
     executable = argv[0]
     candidates = LOCAL_VERIFIER_CANDIDATES.get(executable)
-    if candidates is not None:
-        executable = resolve_safe_executable(candidates, executable)
-    elif not executable.startswith("/"):
-        fail(f"local verifier executable is not fixed: {executable}")
+    try:
+        if candidates is not None:
+            executable = resolve_safe_executable(candidates, executable)
+        elif not executable.startswith("/"):
+            fail(f"local verifier executable is not fixed: {executable}")
+    except VerifierUnavailable:
+        cache[cache_key] = None
+        return None
     command = (executable,) + argv[1:]
     environment = os.environ.copy()
     for key in tuple(environment):
@@ -533,7 +544,11 @@ def execute_local_verifier(
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     environment["PATH"] = FIXED_VERIFIER_PATH
     if argv[0] == "bats":
-        fixed_bash = resolve_fixed_bash()
+        try:
+            fixed_bash = resolve_fixed_bash()
+        except VerifierUnavailable:
+            cache[cache_key] = None
+            return None
         command = (fixed_bash, executable) + argv[1:]
         environment["BATS_TEST_SHELL"] = fixed_bash
     try:
@@ -681,8 +696,10 @@ def validate_receipt(
     document: dict[str, object], *, root: Path, gate_id: str,
     policy: dict[str, object], revision: str, version: str,
     inventory_digest: str, source_tree_digest: str,
-    verifier_cache: dict[tuple[tuple[str, ...], tuple[str, ...]], bool],
-) -> tuple[str, str]:
+    verifier_cache: dict[
+        tuple[tuple[str, ...], tuple[str, ...]], bool | None
+    ],
+) -> tuple[str, str, bool]:
     receipt = require_closed_object(document, RECEIPT_KEYS, "receipt")
     if receipt["schema_version"] != 1:
         fail("receipt schema_version must be 1")
@@ -830,9 +847,11 @@ def validate_receipt(
     actual_pass = execute_local_verifier(
         root, tuple(argv), proof_policy["forbidden_output"], verifier_cache
     )
+    if actual_pass is None:
+        return receipt_id, proof_kind, True
     if (result == "pass") != actual_pass:
         fail(f"gate {gate_id} receipt result does not match fixed verifier execution")
-    return receipt_id, proof_kind if actual_pass else ""
+    return receipt_id, proof_kind if actual_pass else "", False
 
 
 def validate_contract(document: dict[str, object], root: Path) -> CheckResult:
@@ -860,7 +879,9 @@ def validate_contract(document: dict[str, object], root: Path) -> CheckResult:
     release_version = project_version(root)
     inventory_digest = validate_release_inventory(root)
     source_tree_digest = source_tree_sha256(root)
-    verifier_cache: dict[tuple[tuple[str, ...], tuple[str, ...]], bool] = {}
+    verifier_cache: dict[
+        tuple[tuple[str, ...], tuple[str, ...]], bool | None
+    ] = {}
     gate_states: dict[str, str] = {}
     seen_receipt_paths: set[str] = set()
     seen_receipt_ids: set[str] = set()
@@ -877,6 +898,7 @@ def validate_contract(document: dict[str, object], root: Path) -> CheckResult:
         if not isinstance(refs_value, list):
             fail(f"gate {gate_id} receipt_refs must be an array")
         passing_proofs: set[str] = set()
+        unavailable_proofs: set[str] = set()
         for index, raw_ref in enumerate(refs_value):
             ref = require_closed_object(raw_ref, RECEIPT_REF_KEYS, f"gate {gate_id} receipt_ref {index}")
             relative = require_string(ref["path"], f"gate {gate_id} receipt_ref path")
@@ -889,7 +911,7 @@ def validate_contract(document: dict[str, object], root: Path) -> CheckResult:
             path = validate_relative_regular_file(root, relative, f"gate {gate_id} receipt")
             if sha256_file(path) != claimed_digest:
                 fail(f"gate {gate_id} receipt digest mismatch: {relative}")
-            receipt_id, passing_proof = validate_receipt(
+            receipt_id, observed_proof, verifier_unavailable = validate_receipt(
                 load_json_file(path, f"gate {gate_id} receipt"), root=root,
                 gate_id=gate_id, policy=policy, revision=revision, version=release_version,
                 inventory_digest=inventory_digest, source_tree_digest=source_tree_digest,
@@ -898,10 +920,12 @@ def validate_contract(document: dict[str, object], root: Path) -> CheckResult:
             if receipt_id in seen_receipt_ids:
                 fail(f"receipt_id is reused: {receipt_id}")
             seen_receipt_ids.add(receipt_id)
-            if passing_proof:
-                if passing_proof in passing_proofs:
-                    fail(f"gate {gate_id} repeats proof_kind {passing_proof}")
-                passing_proofs.add(passing_proof)
+            if verifier_unavailable:
+                unavailable_proofs.add(observed_proof)
+            elif observed_proof:
+                if observed_proof in passing_proofs:
+                    fail(f"gate {gate_id} repeats proof_kind {observed_proof}")
+                passing_proofs.add(observed_proof)
         required = set(policy["required"])
         allowed = required | set(policy["partial"])
         if not passing_proofs.issubset(allowed):
@@ -914,7 +938,7 @@ def validate_contract(document: dict[str, object], root: Path) -> CheckResult:
             state = "red"
         if state == "green" and remaining:
             fail(f"derived-green gate {gate_id} cannot retain remaining proof")
-        if state != "green" and not remaining:
+        if state != "green" and not remaining and not unavailable_proofs:
             fail(f"derived non-green gate {gate_id} must name remaining proof")
         gate_states[gate_id] = state
 
