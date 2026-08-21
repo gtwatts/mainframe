@@ -771,6 +771,42 @@ class ClaimGatePolicyShapeTests(unittest.TestCase):
         self.assertTrue(external["external_verifier"])
         self.assertEqual(external["authorities"], ("host-operator",))
 
+    def test_ci_checkouts_include_the_attested_subject_parent(self) -> None:
+        workflow = (PROJECT_ROOT / ".github/workflows/test.yml").read_text(
+            encoding="utf-8"
+        ).splitlines()
+        checkout_indexes = [
+            index
+            for index, line in enumerate(workflow)
+            if "uses: actions/checkout@" in line
+        ]
+        self.assertGreater(len(checkout_indexes), 0)
+        for index in checkout_indexes:
+            uses_indent = len(workflow[index]) - len(workflow[index].lstrip())
+            step_indent = uses_indent - 2
+            block: list[str] = []
+            for line in workflow[index + 1 :]:
+                stripped = line.lstrip()
+                indent = len(line) - len(stripped)
+                if stripped.startswith("- name:") and indent == step_indent:
+                    break
+                block.append(line)
+            depths = [
+                line.split(":", 1)[1].strip()
+                for line in block
+                if line.strip().startswith("fetch-depth:")
+            ]
+            self.assertEqual(
+                len(depths),
+                1,
+                f"checkout at workflow line {index + 1} must set one fetch-depth",
+            )
+            self.assertIn(
+                depths[0],
+                {"2", "0"},
+                f"checkout at workflow line {index + 1} must fetch the parent",
+            )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

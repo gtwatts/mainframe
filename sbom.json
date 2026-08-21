@@ -4,7 +4,7 @@
   "serialNumber": "urn:uuid:bb655e27-3de6-52cc-b50e-09f54107ccb9",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-08-19T16:04:22Z",
+    "timestamp": "2026-08-21T14:36:04Z",
     "component": {
       "type": "library",
       "bom-ref": "mainframe@10.2.0",
