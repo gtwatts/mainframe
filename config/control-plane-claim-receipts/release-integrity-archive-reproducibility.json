@@ -7,8 +7,8 @@
   "protocol_version": "1.0.0",
   "subject": {
     "kind": "source",
-    "source_revision": "b70c81893cc57c68a0e833d39a9b8b3ac441a481",
-    "source_tree_sha256": "a1b25b46c8e3c1194c8f67a78e720606ec7c2184cb0c58aff0eb67d81a50223e",
+    "source_revision": "6ac7fa3be8939252ec8d092ae80bb0a259ebdda1",
+    "source_tree_sha256": "788ec303372cdcc41dd174f759b65e0d2aea1aeda27c73db9053cde107b8bc22",
     "inventory_sha256": null,
     "payload_sha256": null,
     "version": "10.2.0"
@@ -29,8 +29,8 @@
     "architecture": "arm64",
     "runner_class": "maintainer-local"
   },
-  "issued_at": "2026-08-21T15:11:33Z",
-  "expires_at": "2026-08-22T15:11:33Z",
+  "issued_at": "2026-08-21T15:35:28Z",
+  "expires_at": "2026-08-22T15:35:28Z",
   "evidence": [
     {
       "path": "scripts/dev/release.sh",
@@ -44,7 +44,7 @@
     },
     {
       "path": "scripts/generate-sbom.sh",
-      "sha256": "1b1fa6de4f4fd996df65cfefa1bbe937bb271b440ee724386bdc90eadb9a2bbc",
+      "sha256": "c62460dd973db6c776f11e472630c1df983c7b7e7d9dc6417208f3e6af94da14",
       "role": "source-evidence"
     },
     {
@@ -54,7 +54,7 @@
     },
     {
       "path": "tests/release-archive.bats",
-      "sha256": "dd491cf5cec6628b1c808fb1db54fd3bf7b65067212fa71e262c3bfd2bdb3307",
+      "sha256": "ce41fe4425fcdee643ba1b7f630dd607e2c2f88326eeb94c55ef78c15b39b3e3",
       "role": "source-evidence"
     },
     {
@@ -64,7 +64,7 @@
     },
     {
       "path": "SHA256SUMS",
-      "sha256": "9ec97a92ee3ececb479b9c1004c8b64614cf5812bf3de2e9f07fe7b1df124606",
+      "sha256": "131dec2e4df23f8a6a45d37e426805a9a3d00879b7aad1828a895cd66f009eb3",
       "role": "inventory"
     }
   ],
