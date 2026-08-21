@@ -7,8 +7,8 @@
   "protocol_version": "1.0.0",
   "subject": {
     "kind": "source",
-    "source_revision": "d212596d4cd31e9bb0eb6878a3c2e050d1f06161",
-    "source_tree_sha256": "01d6f92aa81a5621a0f4b58628216bfb06b84899cae5c83e13c2f4a1ecc2ccc9",
+    "source_revision": "b70c81893cc57c68a0e833d39a9b8b3ac441a481",
+    "source_tree_sha256": "a1b25b46c8e3c1194c8f67a78e720606ec7c2184cb0c58aff0eb67d81a50223e",
     "inventory_sha256": null,
     "payload_sha256": null,
     "version": "10.2.0"
@@ -28,8 +28,8 @@
     "architecture": "arm64",
     "runner_class": "maintainer-local"
   },
-  "issued_at": "2026-08-21T15:01:34Z",
-  "expires_at": "2026-08-22T15:01:34Z",
+  "issued_at": "2026-08-21T15:11:33Z",
+  "expires_at": "2026-08-22T15:11:33Z",
   "evidence": [
     {
       "path": "control_plane/mainframe_control_plane/coding.py",
