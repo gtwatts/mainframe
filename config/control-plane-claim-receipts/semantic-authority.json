@@ -7,8 +7,8 @@
   "protocol_version": "1.0.0",
   "subject": {
     "kind": "source",
-    "source_revision": "860fce206e2b4176eee05af4fe3c1a73ffecd28b",
-    "source_tree_sha256": "d1158e3b879ce410ac8e32b17b37bff9d2267d1134d9fb74d7497c69156ddb4b",
+    "source_revision": "95319fa1e55252b1d8e0f3384dedd352250b2427",
+    "source_tree_sha256": "f7cd7e3f1f9a29075a32541c253f0fbcecd0a1532588954499f5641e990f38ba",
     "inventory_sha256": null,
     "payload_sha256": null,
     "version": "10.2.0"
@@ -28,8 +28,8 @@
     "architecture": "arm64",
     "runner_class": "maintainer-local"
   },
-  "issued_at": "2026-08-21T17:00:16Z",
-  "expires_at": "2026-08-22T17:00:16Z",
+  "issued_at": "2026-08-21T18:18:52Z",
+  "expires_at": "2026-08-22T18:18:52Z",
   "evidence": [
     {
       "path": "config/semantic-trust-policy.json",
