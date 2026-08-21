@@ -7,8 +7,8 @@
   "protocol_version": "1.0.0",
   "subject": {
     "kind": "source",
-    "source_revision": "95319fa1e55252b1d8e0f3384dedd352250b2427",
-    "source_tree_sha256": "f7cd7e3f1f9a29075a32541c253f0fbcecd0a1532588954499f5641e990f38ba",
+    "source_revision": "87d9c252ed38e4169a8b684797ae6d0e37411911",
+    "source_tree_sha256": "9effc09754399f98d92eff2143f84efbbed5940250318d8bd6fc25ff0484a90d",
     "inventory_sha256": null,
     "payload_sha256": null,
     "version": "10.2.0"
@@ -25,8 +25,8 @@
     "architecture": "arm64",
     "runner_class": "maintainer-local"
   },
-  "issued_at": "2026-08-21T18:18:52Z",
-  "expires_at": "2026-08-22T18:18:52Z",
+  "issued_at": "2026-08-21T19:23:20Z",
+  "expires_at": "2026-08-22T19:23:20Z",
   "evidence": [
     {
       "path": "bin/mainframe",
