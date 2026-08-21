@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:9bb8ec42-d803-56ab-9015-61ef2d49b842",
+  "serialNumber": "urn:uuid:8aaffe70-1b99-5264-8e99-d59bc00873a5",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-08-21T15:01:41Z",
+    "timestamp": "2026-08-21T15:11:40Z",
     "component": {
       "type": "library",
       "bom-ref": "mainframe@10.2.0",
@@ -515,7 +515,7 @@
     {"type": "file", "name": "scripts/generate-manifest.py", "hashes": [{"alg": "SHA-256", "content": "b2d70f135e73d5bbf21aebab4f8830b24d677b161d2b61efca56a270fff660e2"}], "properties": [{"name": "size", "value": "41103"}]},
     {"type": "file", "name": "scripts/generate-promo-assets.py", "hashes": [{"alg": "SHA-256", "content": "99c3e9bcad69b30c6d688b119a495cb526303df49e31bf5d796dd071e2aa8132"}], "properties": [{"name": "size", "value": "12012"}]},
     {"type": "file", "name": "scripts/generate-runtime-closure.py", "hashes": [{"alg": "SHA-256", "content": "6f06b879c88b796d00f3221dfb577b0aae188ac51faceb6a201152af11f9637f"}], "properties": [{"name": "size", "value": "10721"}]},
-    {"type": "file", "name": "scripts/generate-sbom.sh", "hashes": [{"alg": "SHA-256", "content": "1b1fa6de4f4fd996df65cfefa1bbe937bb271b440ee724386bdc90eadb9a2bbc"}], "properties": [{"name": "size", "value": "7661"}]},
+    {"type": "file", "name": "scripts/generate-sbom.sh", "hashes": [{"alg": "SHA-256", "content": "c62460dd973db6c776f11e472630c1df983c7b7e7d9dc6417208f3e6af94da14"}], "properties": [{"name": "size", "value": "9431"}]},
     {"type": "file", "name": "scripts/git/branch-cleanup.sh", "hashes": [{"alg": "SHA-256", "content": "2adafdf785ad82d48ac619b8c233aa0c5964087ce63469907578827fc4039843"}], "properties": [{"name": "size", "value": "6353"}]},
     {"type": "file", "name": "scripts/git/git-worktree-picker.sh", "hashes": [{"alg": "SHA-256", "content": "0375cbd0014af978eb022deebb8d55053aa4c5673933ecb31276f2da4b8a6969"}], "properties": [{"name": "size", "value": "2360"}]},
     {"type": "file", "name": "scripts/git/pr-summary.sh", "hashes": [{"alg": "SHA-256", "content": "c323bb1d3d156461acd4221d44d9adf2ddd8455f2a0b648a0eb16d229f4692e7"}], "properties": [{"name": "size", "value": "7858"}]},

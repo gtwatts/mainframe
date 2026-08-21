@@ -457,6 +457,21 @@ BASH
     ' "$first/sbom.json" >/dev/null
 }
 
+@test "release SBOM regeneration preserves an unchanged attested timestamp" {
+    create_release_source
+    local before="$TEST_DIR/sbom-before.json"
+
+    run env SOURCE_DATE_EPOCH=0 \
+        "$BASH_BIN" "$RELEASE_SOURCE/scripts/generate-sbom.sh"
+    [[ "$status" -eq 0 ]]
+    cp "$RELEASE_SOURCE/sbom.json" "$before"
+
+    run env SOURCE_DATE_EPOCH=1 \
+        "$BASH_BIN" "$RELEASE_SOURCE/scripts/generate-sbom.sh"
+    [[ "$status" -eq 0 ]]
+    cmp -s "$before" "$RELEASE_SOURCE/sbom.json"
+}
+
 @test "release SBOM validator rejects runtime contract drift" {
     create_release_source
     local valid_dir="$TEST_DIR/sbom-runtime-contract"

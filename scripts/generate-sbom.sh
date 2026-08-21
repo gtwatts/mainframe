@@ -160,6 +160,55 @@ PYEOF
     printf '}\n'
 } > "$tmp_sbom"
 
+# A checked-in SBOM is part of the attested source tree. Later commits that do
+# not change its semantic subject must not rewrite only metadata.timestamp when
+# release builders set SOURCE_DATE_EPOCH to the new commit time. Preserve the
+# existing valid timestamp only when every other JSON field is byte-independent
+# and equal; a real subject change still receives the requested source epoch.
+if [[ -f "$OUT_DIR/sbom.json" ]]; then
+    "$MAINFRAME_RELEASE_PYTHON" -I -S -B - \
+        "$OUT_DIR/sbom.json" "$tmp_sbom" <<'PYEOF'
+import json
+from pathlib import Path
+import re
+import sys
+
+existing_path = Path(sys.argv[1])
+candidate_path = Path(sys.argv[2])
+
+try:
+    existing = json.loads(existing_path.read_text(encoding="utf-8"))
+    candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
+except (OSError, UnicodeError, json.JSONDecodeError):
+    raise SystemExit(0)
+
+existing_metadata = existing.get("metadata")
+candidate_metadata = candidate.get("metadata")
+if not isinstance(existing_metadata, dict) or not isinstance(candidate_metadata, dict):
+    raise SystemExit(0)
+
+timestamp = existing_metadata.get("timestamp")
+if not isinstance(timestamp, str) or re.fullmatch(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", timestamp
+) is None:
+    raise SystemExit(0)
+
+existing_metadata.pop("timestamp", None)
+candidate_metadata.pop("timestamp", None)
+if existing != candidate:
+    raise SystemExit(0)
+
+text = candidate_path.read_text(encoding="utf-8")
+pattern = re.compile(r'(?m)^    "timestamp": "[^"]+",$')
+if len(pattern.findall(text)) != 1:
+    raise SystemExit("generated SBOM timestamp line is not unique")
+candidate_path.write_text(
+    pattern.sub(f'    "timestamp": {json.dumps(timestamp)},', text),
+    encoding="utf-8",
+)
+PYEOF
+fi
+
 if (( CHECK )); then
     drift=0
     if [[ -f "$OUT_DIR/SHA256SUMS" ]]; then
