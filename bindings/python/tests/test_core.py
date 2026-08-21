@@ -46,6 +46,9 @@ _DURABLE_CLOSURE_FILES = (
     "control_plane/mainframe_control_plane/executor.py",
     "control_plane/mainframe_control_plane/kernel.py",
     "control_plane/mainframe_control_plane/memory.py",
+    "control_plane/mainframe_control_plane/memory_executor.py",
+    "control_plane/mainframe_control_plane/memory_transient.py",
+    "control_plane/mainframe_control_plane/memory_worker.py",
     "control_plane/mainframe_control_plane/transient.py",
     "control_plane/mainframe_control_plane/worker.py",
 )
@@ -245,6 +248,11 @@ def _nested_group_broker_source(
 class TestMainframeDetection:
     """Tests for MAINFRAME root detection."""
 
+    def test_fixture_tracks_exact_durable_closure(self):
+        import mainframe_bash.core as core
+
+        assert _DURABLE_CLOSURE_FILES == core._DURABLE_CLOSURE_FILES
+
     def test_get_mainframe_root_finds_installation(self):
         """Should find MAINFRAME installation."""
         root = get_mainframe_root()
@@ -278,11 +286,26 @@ class TestMainframeDetection:
         assert _validate_mainframe_root(tmp_path) is False
         assert _validate_mainframe_root(tmp_path / "nonexistent") is False
 
-    def test_managed_launcher_without_durable_closure_is_rejected(self, monkeypatch):
+    def test_managed_launcher_without_durable_closure_is_rejected(
+        self, monkeypatch, tmp_path
+    ):
         import mainframe_bash.core as core
 
-        launcher = Path.home() / ".local" / "bin" / "mainframe"
-        managed = launcher.resolve(strict=True).parent.parent
+        home = tmp_path / "home"
+        managed = tmp_path / "managed"
+        target = managed / "bin" / "mainframe"
+        target.parent.mkdir(parents=True)
+        target.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        target.chmod(0o755)
+        (managed / "lib").mkdir()
+        (managed / "lib" / "common.sh").write_text("# fixture\n", encoding="utf-8")
+        (managed / "MANIFEST.json").write_text("{}\n", encoding="utf-8")
+
+        launcher = home / ".local" / "bin" / "mainframe"
+        launcher.parent.mkdir(parents=True)
+        launcher.symlink_to(target)
+
+        monkeypatch.setenv("HOME", str(home))
         monkeypatch.delenv("MAINFRAME_ROOT", raising=False)
         core._mainframe_root = None
 
