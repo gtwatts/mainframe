@@ -624,12 +624,23 @@ class ClaimReceiptAuthorityTests(unittest.TestCase):
         )
         self.assert_rejected("receipt is expired")
 
-    def test_environment_and_ttl_are_recomputed_not_trusted(self) -> None:
+    def test_environment_is_provenance_and_ttl_is_not_trusted(self) -> None:
         self.fixture.mutate_receipt(
             "semantic-authority",
             lambda receipt: receipt["environment"].update(os="linux" if platform.system() == "Darwin" else "darwin"),
         )
-        self.assert_rejected("environment does not match the local verifier")
+        status, output = self.fixture.check()
+        self.assertEqual(status, 0, output)
+        self.assertEqual(output["highest_eligible_claim"], "source-candidate")
+
+        self.fixture.cleanup()
+        self.fixture = ClaimReceiptFixture()
+        self.addCleanup(self.fixture.cleanup)
+        self.fixture.mutate_receipt(
+            "semantic-authority",
+            lambda receipt: receipt["environment"].update(os="unknown"),
+        )
+        self.assert_rejected("receipt environment os is unknown")
 
         self.fixture.cleanup()
         self.fixture = ClaimReceiptFixture()

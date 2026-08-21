@@ -9,7 +9,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import platform
 import re
 import stat
 import subprocess
@@ -450,24 +449,6 @@ def source_tree_sha256(root: Path) -> str:
     return digest.hexdigest()
 
 
-def actual_environment() -> tuple[str, str]:
-    os_name = platform.system()
-    if os_name == "Darwin":
-        normalized_os = "darwin"
-    elif os_name == "Linux":
-        normalized_os = "linux"
-    else:
-        fail(f"unsupported verifier operating system: {os_name}")
-    machine = platform.machine().lower()
-    if machine in {"arm64", "aarch64"}:
-        architecture = "arm64"
-    elif machine in {"x86_64", "amd64"}:
-        architecture = "x86_64"
-    else:
-        fail(f"unsupported verifier architecture: {machine}")
-    return normalized_os, architecture
-
-
 def resolve_safe_executable(candidates: tuple[str, ...], label: str) -> str:
     """Resolve one fixed, owner-trusted, non-writable executable."""
     for candidate_value in candidates:
@@ -694,7 +675,6 @@ def validate_receipt(
     document: dict[str, object], *, root: Path, gate_id: str,
     policy: dict[str, object], revision: str, version: str,
     inventory_digest: str, source_tree_digest: str,
-    verifier_environment: tuple[str, str],
     verifier_cache: dict[tuple[tuple[str, ...], tuple[str, ...]], bool],
 ) -> tuple[str, str]:
     receipt = require_closed_object(document, RECEIPT_KEYS, "receipt")
@@ -772,9 +752,10 @@ def validate_receipt(
         fail("receipt environment architecture is unknown")
     if environment["runner_class"] not in {"maintainer-local", "repository-ci", "installed-host", "release-verifier", "independent-lab"}:
         fail("receipt environment runner_class is unknown")
-    actual_os, actual_architecture = verifier_environment
-    if environment["os"] != actual_os or environment["architecture"] != actual_architecture:
-        fail(f"gate {gate_id} receipt environment does not match the local verifier")
+    # Environment is issuance provenance, not current execution authority.
+    # Every source proof is content-bound and rerun below, so a receipt issued
+    # on Darwin can be independently checked on Linux (and vice versa) without
+    # trusting its authored result.
 
     issued_at = parse_timestamp(receipt["issued_at"], "receipt issued_at")
     expires_at = parse_timestamp(receipt["expires_at"], "receipt expires_at")
@@ -873,7 +854,6 @@ def validate_contract(document: dict[str, object], root: Path) -> CheckResult:
     release_version = project_version(root)
     inventory_digest = validate_release_inventory(root)
     source_tree_digest = source_tree_sha256(root)
-    verifier_environment = actual_environment()
     verifier_cache: dict[tuple[tuple[str, ...], tuple[str, ...]], bool] = {}
     gate_states: dict[str, str] = {}
     seen_receipt_paths: set[str] = set()
@@ -907,7 +887,7 @@ def validate_contract(document: dict[str, object], root: Path) -> CheckResult:
                 load_json_file(path, f"gate {gate_id} receipt"), root=root,
                 gate_id=gate_id, policy=policy, revision=revision, version=release_version,
                 inventory_digest=inventory_digest, source_tree_digest=source_tree_digest,
-                verifier_environment=verifier_environment, verifier_cache=verifier_cache,
+                verifier_cache=verifier_cache,
             )
             if receipt_id in seen_receipt_ids:
                 fail(f"receipt_id is reused: {receipt_id}")
