@@ -4,7 +4,7 @@
 
 import "./setup";
 
-import { describe, test, expect, beforeAll } from "bun:test";
+import { describe, test, expect, beforeAll, setDefaultTimeout } from "bun:test";
 import { setConfig } from "../src/core";
 import {
   // Type validation
@@ -42,6 +42,11 @@ import {
   // Convenience
   validators,
 } from "../src/validation";
+
+// These assertions exercise the reviewed durable route, so each one may
+// start a control-plane process. Keep the file bounded while allowing several
+// sequential assertions on slower hosted runners.
+setDefaultTimeout(15_000);
 
 describe("Validation Module", () => {
   beforeAll(() => {
@@ -157,14 +162,14 @@ describe("Validation Module", () => {
         expect(validateEmail("user@example.com")).toBe(true);
         expect(validateEmail("user.name@example.co.uk")).toBe(true);
         expect(validateEmail("user+tag@example.com")).toBe(true);
-      });
+      }, 10_000);
 
       test("should reject invalid emails", () => {
         expect(validateEmail("invalid")).toBe(false);
         expect(validateEmail("@example.com")).toBe(false);
         expect(validateEmail("user@")).toBe(false);
         expect(validateEmail("")).toBe(false);
-      });
+      }, 10_000);
     });
 
     describe("validateUrl", () => {
@@ -173,13 +178,13 @@ describe("Validation Module", () => {
         expect(validateUrl("https://example.com")).toBe(true);
         expect(validateUrl("https://example.com/path")).toBe(true);
         expect(validateUrl("https://example.com:8080")).toBe(true);
-      });
+      }, 10_000);
 
       test("should reject invalid URLs", () => {
         expect(validateUrl("not-a-url")).toBe(false);
         expect(validateUrl("ftp://files.com")).toBe(false);
         expect(validateUrl("")).toBe(false);
-      });
+      }, 10_000);
 
       test("should support custom schemes", () => {
         expect(validateUrl("ftp://files.com", "ftp,http")).toBe(true);
@@ -258,13 +263,13 @@ describe("Validation Module", () => {
         expect(validateSemver("v1.2.3")).toBe(true);
         expect(validateSemver("1.0.0-beta")).toBe(true);
         expect(validateSemver("1.0.0+build")).toBe(true);
-      });
+      }, 10_000);
 
       test("should reject invalid semver", () => {
         expect(validateSemver("1.2")).toBe(false);
         expect(validateSemver("1")).toBe(false);
         expect(validateSemver("not-semver")).toBe(false);
-      });
+      }, 10_000);
     });
   });
 

@@ -28,10 +28,11 @@ _mainframe_completions() {
 
     # Top-level commands (including aliases). Keep this in parity with the
     # dispatch table in bin/mainframe; tests/unit/installer.bats enforces it.
-    local commands="version functions funcs list operations ops run invoke help info describe search find grep awm work count quickref qr signatures sigs fzf fuzzy browse explore tui doctor check health shell agent-hook agent-gateway protect host pi control-plane setup onboard launch activate deactivate benchmark bench test tests update upgrade release uninstall new init build"
+    local commands="version functions funcs list operations ops run invoke code help info describe search find grep awm work count quickref qr signatures sigs fzf fuzzy browse explore tui doctor check health shell agent-hook agent-gateway protect host pi control-plane claim setup onboard launch activate deactivate benchmark bench test tests update upgrade release uninstall new init build"
 
     # Quickref options
     local quickref_opts="--list -l --all -a --search -s --json -j"
+    local code_actions="read search edit test build help --help -h"
     local awm_commands="project init resume checkpoint discovery progress get summary context find handoff list status doctor export inspect migrate"
     local awm_project_actions="ensure session status checkpoint get discovery progress summary context find handoff close"
     local onboard_hosts="codex claude-code copilot gemini"
@@ -106,6 +107,25 @@ _mainframe_completions() {
         return
     fi
 
+    if [[ "${words[1]:-}" == "code" ]]; then
+        if (( cword == 2 )); then
+            COMPREPLY=( $(compgen -W "$code_actions" -- "$cur") )
+            return
+        fi
+        case "$prev" in
+            --preimage-sha256) return ;;
+        esac
+        case "${words[2]:-}" in
+            read|search)
+                COMPREPLY=( $(compgen -W "--json --" -- "$cur") )
+                ;;
+            edit)
+                COMPREPLY=( $(compgen -W "--preimage-sha256 --" -- "$cur") )
+                ;;
+        esac
+        return
+    fi
+
     if [[ "${words[1]:-}" == "release" ]]; then
         if (( cword == 2 )); then
             COMPREPLY=()
@@ -128,6 +148,11 @@ _mainframe_completions() {
         fi
         COMPREPLY=( $(compgen -W \
             "--ledger $control_plane_actions --help -h" -- "$cur") )
+        return
+    fi
+
+    if [[ "${words[1]:-}" == "claim" ]]; then
+        COMPREPLY=( $(compgen -W "--json --help -h" -- "$cur") )
         return
     fi
 

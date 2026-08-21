@@ -637,7 +637,10 @@ _mainframe_invoke_capture_size() {
             size="$("$_MAINFRAME_INVOKE_STAT" -f '%z' "/dev/fd/$fd" 2>/dev/null)" || return 1
             ;;
         Linux)
-            size="$("$_MAINFRAME_INVOKE_STAT" -c '%s' "/proc/self/fd/$fd" 2>/dev/null)" || return 1
+            # /proc/self/fd entries are symlinks. GNU stat does not
+            # dereference them by default, so without -L an empty capture is
+            # misreported as the non-zero length of its link target.
+            size="$("$_MAINFRAME_INVOKE_STAT" -L -c '%s' "/proc/self/fd/$fd" 2>/dev/null)" || return 1
             ;;
         *) return 1 ;;
     esac

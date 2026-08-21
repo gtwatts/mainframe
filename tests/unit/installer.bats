@@ -133,6 +133,12 @@ assert_unsafe_install_target_stops_at_preflight() {
 
 canonical_cli_commands() {
     awk '
+        /^if \[\[ "\$\{1:-\}" == "[A-Za-z][A-Za-z0-9-]*" \]\]; then$/ {
+            public_command = $0
+            sub(/^.*== "/, "", public_command)
+            sub(/".*$/, "", public_command)
+            print public_command
+        }
         /^case "\$\{1:-help\}" in$/ {
             in_dispatch = 1
             next
@@ -182,6 +188,35 @@ zsh_completion_commands() {
             done
         }
         words=(mainframe "")
+        _mainframe
+    ' _ "$PROJECT_ROOT/completions/mainframe.zsh" | LC_ALL=C sort -u
+}
+
+bash_completion_code_actions() {
+    bash -c '
+        source "$1"
+        COMP_WORDS=(mainframe code "")
+        COMP_CWORD=2
+        _mainframe_completions
+        printf "%s\n" "${COMPREPLY[@]}"
+    ' _ "$PROJECT_ROOT/completions/mainframe.bash" | LC_ALL=C sort -u
+}
+
+zsh_completion_code_actions() {
+    zsh -f -c '
+        compdef() { :; }
+        source "$1"
+        _describe() {
+            local specs_name="${@: -1}"
+            local -a specs
+            local spec
+            specs=("${(@P)specs_name}")
+            for spec in "${specs[@]}"; do
+                print -r -- "${spec%%:*}"
+            done
+        }
+        words=(mainframe code "")
+        CURRENT=3
         _mainframe
     ' _ "$PROJECT_ROOT/completions/mainframe.zsh" | LC_ALL=C sort -u
 }
@@ -561,6 +596,16 @@ zsh_completion_awm_project_value() {
     fi
 }
 
+@test "bash and zsh complete the durable coding facade actions" {
+    local expected
+    expected=$(printf '%s\n' --help -h build edit help read search test | LC_ALL=C sort -u)
+
+    [[ "$(bash_completion_code_actions)" == "$expected" ]]
+    if command -v zsh >/dev/null 2>&1; then
+        [[ "$(zsh_completion_code_actions)" == "$expected" ]]
+    fi
+}
+
 @test "bash and zsh complete the canonical AWM workflow commands" {
     local expected
     expected=$(printf '%s\n' \
@@ -784,6 +829,7 @@ EOF
     mkdir -p "$INSTALL_DIR/bin" "$INSTALL_DIR/lib" "$INSTALL_DIR/scripts" "$BIN_DIR"
     cp "$PROJECT_ROOT/bin/mainframe" "$INSTALL_DIR/bin/mainframe"
     cp "$PROJECT_ROOT/lib/common.sh" "$INSTALL_DIR/lib/common.sh"
+    cp "$PROJECT_ROOT/lib/runtime-closure.generated.bash" "$INSTALL_DIR/lib/runtime-closure.generated.bash"
     cp "$PROJECT_ROOT/scripts/upgrade-release.sh" "$INSTALL_DIR/scripts/upgrade-release.sh"
     chmod 755 "$INSTALL_DIR/bin/mainframe" "$INSTALL_DIR/scripts/upgrade-release.sh"
     ln -s "$INSTALL_DIR/bin/mainframe" "$BIN_DIR/mainframe"

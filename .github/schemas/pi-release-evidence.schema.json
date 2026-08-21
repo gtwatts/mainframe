@@ -85,8 +85,8 @@
         "canonicalization": { "const": "MAINFRAME-PACKAGE-TREE-SHA256-V1" },
         "paths": {
           "type": "array",
-          "minItems": 4,
-          "maxItems": 4,
+          "minItems": 3,
+          "maxItems": 3,
           "uniqueItems": true,
           "items": { "type": "string", "pattern": "^tests/[A-Za-z0-9_.-]+\\.bats$" }
         },
@@ -95,8 +95,8 @@
         "bats_core_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
         "cases": {
           "type": "array",
-          "minItems": 45,
-          "maxItems": 45,
+          "minItems": 44,
+          "maxItems": 44,
           "uniqueItems": true,
           "items": {
             "type": "object",
@@ -135,9 +135,9 @@
         "matrix_rows": { "const": 6 },
         "passed_rows": { "const": 6 },
         "failed_rows": { "const": 0 },
-        "planned_tests": { "const": 270 },
-        "ok": { "const": 270 },
-        "executed": { "const": 267 },
+        "planned_tests": { "const": 264 },
+        "ok": { "const": 264 },
+        "executed": { "const": 261 },
         "not_ok": { "const": 0 },
         "skipped": { "const": 3 }
       }

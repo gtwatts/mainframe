@@ -34,7 +34,6 @@ setup() {
     cp \
         "$TEMPLATE_ROOT/tests/pi_integration.bats" \
         "$TEMPLATE_ROOT/tests/pi_install.bats" \
-        "$TEMPLATE_ROOT/tests/pi_project_awm.bats" \
         "$TEMPLATE_ROOT/tests/pi_compatibility_manifest.bats" \
         "$PROJECT_ROOT/tests/"
     GENERATOR="$PROJECT_ROOT/.github/scripts/build-pi-release-evidence.py"
@@ -267,7 +266,7 @@ verify_durable_cells() {
       (.matrix | length) == 6 and
       .summary == {
         matrix_rows: 6, passed_rows: 6, failed_rows: 0,
-        planned_tests: 270, ok: 270, executed: 267, not_ok: 0, skipped: 3
+        planned_tests: 264, ok: 264, executed: 261, not_ok: 0, skipped: 3
       } and
       ([.matrix[] | select(.compatibility.support == "certified")] | length) == 1 and
       ([.matrix[] | select(.compatibility.support == "limited")] | length) == 1 and

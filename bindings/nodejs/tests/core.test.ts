@@ -48,6 +48,9 @@ const DURABLE_CLOSURE_FILES = [
   "control_plane/mainframe_control_plane/executor.py",
   "control_plane/mainframe_control_plane/kernel.py",
   "control_plane/mainframe_control_plane/memory.py",
+  "control_plane/mainframe_control_plane/memory_executor.py",
+  "control_plane/mainframe_control_plane/memory_transient.py",
+  "control_plane/mainframe_control_plane/memory_worker.py",
   "control_plane/mainframe_control_plane/transient.py",
   "control_plane/mainframe_control_plane/worker.py",
 ] as const;
@@ -434,17 +437,33 @@ describe("Core Module", () => {
     });
 
     test("should reject a managed launcher that lacks the durable closure", () => {
-      const originalRoot = process.env.MAINFRAME_ROOT;
-      const launcher = join(homedir(), ".local", "bin", "mainframe");
-      const managed = dirname(dirname(realpathSync(launcher)));
-      const expected = realpathSync(join(import.meta.dir, "../../.."));
-      delete process.env.MAINFRAME_ROOT;
+      const tempDir = mkdtempSync(join(tmpdir(), "mainframe-node-managed-root-"));
+      const home = join(tempDir, "home");
+      const managed = join(tempDir, "managed");
+      const launcherDirectory = join(home, ".local", "bin");
       try {
-        expect(realpathSync(detectMainframeRoot() ?? "")).toBe(expected);
-        expect(realpathSync(detectMainframeRoot() ?? "")).not.toBe(managed);
+        writeDurableClosureFixture(managed);
+        rmSync(join(managed, "control_plane", "mainframe_control_plane", "memory_worker.py"));
+        mkdirSync(launcherDirectory, { recursive: true });
+        symlinkSync(join(managed, "bin", "mainframe"), join(launcherDirectory, "mainframe"));
+
+        const coreUrl = new URL("../src/core.ts", import.meta.url).href;
+        const childEnvironment = { ...process.env, HOME: home };
+        delete childEnvironment.MAINFRAME_ROOT;
+        const result = spawnSync(
+          process.execPath,
+          [
+            "-e",
+            `import { detectMainframeRoot } from ${JSON.stringify(coreUrl)}; console.log(JSON.stringify(detectMainframeRoot()));`,
+          ],
+          { encoding: "utf8", env: childEnvironment },
+        );
+
+        expect(result.status).toBe(0);
+        expect(result.stderr).toBe("");
+        expect(result.stdout.trim()).toBe("null");
       } finally {
-        if (originalRoot === undefined) delete process.env.MAINFRAME_ROOT;
-        else process.env.MAINFRAME_ROOT = originalRoot;
+        rmSync(tempDir, { recursive: true, force: true });
       }
     });
 

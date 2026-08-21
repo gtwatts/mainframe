@@ -31,6 +31,9 @@ setup() {
         '    printf -v block "%*s" 60000 ""' \
         '    printf "%s" "${block// /x}"' \
         '}' \
+        'durable_exit() {' \
+        '    return 0' \
+        '}' \
         'durable_slow_output() {' \
         '    printf "%s" "$1"' \
         '    printf "%s" "$BASHPID" > "$2"' \
@@ -74,7 +77,7 @@ contracts[canonical_id] = {
 
 # The production broker pins the reviewed stable-core closure to 26 contracts.
 # Inert entries keep the fixture structurally valid without widening execution.
-for index in range(23):
+for index in range(22):
     name = f"unused_fixture_{index}"
     canonical_id = f"mf:std:fixture:{name}"
     name_index[name] = canonical_id
@@ -99,8 +102,9 @@ for index in range(23):
         "output_limit": 65536,
     }
 
-for name, properties, required, arguments in (
-    ("durable_near_limit", {}, [], []),
+for name, properties, required, arguments, result_kind in (
+    ("durable_near_limit", {}, [], [], "stdout"),
+    ("durable_exit", {}, [], [], "exit"),
     (
         "durable_slow_output",
         {"sentinel": {"type": "string"}, "ready": {"type": "string"}},
@@ -109,6 +113,7 @@ for name, properties, required, arguments in (
             {"field": "sentinel", "mode": "scalar"},
             {"field": "ready", "mode": "scalar"},
         ],
+        "stdout",
     ),
 ):
     canonical_id = f"mf:std:fixture:{name}"
@@ -122,7 +127,7 @@ for name, properties, required, arguments in (
         "platforms": ["linux", "macos"],
         "bash_identifier": True,
         "contract_status": "reviewed",
-        "result": {"kind": "stdout"},
+        "result": {"kind": result_kind},
         "input_schema": {
             "type": "object",
             "properties": properties,
@@ -224,6 +229,25 @@ run_hidden_with_clean_liveness() {
         .[0].timed_out == false and .[0].output_exceeded == false and
         .[0].input_bytes > 0
     ' "$audit_log"
+    [[ "$status" -eq 0 ]]
+}
+
+@test "invoke: fixed adapter preserves an exit-only empty stdout capture" {
+    run run_hidden_with_clean_liveness \
+        env XDG_STATE_HOME="$BATS_TEST_TMPDIR/exit-state" \
+        "$FIXTURE_ROOT/bin/mainframe" __kernel-stable-core-broker-v1 \
+        mf:std:fixture:durable_exit \
+        --input-json - \
+        --profile stable-core \
+        --format broker-json-v1 \
+        --caller control-plane \
+        <<<'{}'
+
+    [[ "$status" -eq 0 ]]
+    run jq -e '
+        .ok == true and .status == "success" and .exit_code == 0 and
+        .stdout_b64 == "" and .stderr_b64 == ""
+    ' <<<"$output"
     [[ "$status" -eq 0 ]]
 }
 

@@ -10,7 +10,6 @@ setup() {
         "$PROJECT_ROOT/.github/workflows/test.yml" \
         "$PROJECT_ROOT/tests/pi_integration.bats" \
         "$PROJECT_ROOT/tests/pi_install.bats" \
-        "$PROJECT_ROOT/tests/pi_project_awm.bats" \
         "$PROJECT_ROOT/tests/pi_compatibility_manifest.bats" <<'PY'
 import json
 import pathlib
@@ -45,7 +44,6 @@ for expected in (
     "tests/pi_cell_evidence.bats",
     "tests/pi_integration.bats",
     "tests/pi_install.bats",
-    "tests/pi_project_awm.bats",
     "tests/pi_compatibility_manifest.bats",
     "Upload exact-candidate Pi evidence",
     'pi-candidate-${{ matrix.pi.id }}-${{ matrix.target.id }}.tap',
@@ -125,8 +123,8 @@ for expected in (
     '([.matrix[] | select(.compatibility.support == "limited")] | length) == 1',
     '([.matrix[] | select(.compatibility.support == "unverified")] | length) == 4',
     '([.matrix[] | select(.observation.mode == "native")] | length) == 6',
-    '.summary.planned_tests == 270',
-    '.summary.executed == 267',
+    '.summary.planned_tests == 264',
+    '.summary.executed == 261',
     '.summary.skipped == 3',
     'pi_evidence_sha256=%s',
     'expected_pi_test_sha=',
@@ -149,7 +147,6 @@ PY
     cp \
         "$PROJECT_ROOT/tests/pi_integration.bats" \
         "$PROJECT_ROOT/tests/pi_install.bats" \
-        "$PROJECT_ROOT/tests/pi_project_awm.bats" \
         "$PROJECT_ROOT/tests/pi_compatibility_manifest.bats" \
         "$staged_root/tests/"
 

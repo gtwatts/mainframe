@@ -134,6 +134,9 @@ create_release_interpreter_sibling_fixture() {
         'mainframe_release_payload_files() {' \
         '  printf "%s\\n" VERSION' \
         '}' \
+        'mainframe_release_subject_files() {' \
+        '  mainframe_release_payload_files "$@"' \
+        '}' \
         'mainframe_release_payload_git_pathspecs() {' \
         '  printf ":(top,literal)VERSION\\0"' \
         '}' > "$root/scripts/dev/release-payload.sh"
@@ -229,7 +232,12 @@ names = sorted(
     (
         str(path.relative_to(payload))
         for path in payload.rglob("*")
-        if path.is_file() and path.name not in {"SHA256SUMS", "sbom.json"}
+        if path.is_file()
+        and path.name not in {"SHA256SUMS", "sbom.json"}
+        and str(path.relative_to(payload)) != "config/control-plane-claim.json"
+        and not str(path.relative_to(payload)).startswith(
+            "config/control-plane-claim-receipts/"
+        )
     ),
     key=lambda name: name.encode("utf-8"),
 )
@@ -338,7 +346,8 @@ create_verifiable_candidate_inputs() {
         lib/agent_safety.sh \
         lib/launch.sh \
         security/gate-rules.json \
-        security/gate-normalizer.mjs; do
+        security/gate-normalizer.mjs \
+        config/release-attestation-exclusions.txt; do
         mkdir -p "$CANDIDATE_PAYLOAD/$(dirname "$source")"
         cp -p "$PROJECT_ROOT/$source" "$CANDIDATE_PAYLOAD/$source"
     done
@@ -882,6 +891,56 @@ PY
     [[ "$status" -ne 0 ]]
     [[ "$output" == *"SBOM file inventory does not match archive payload"* ]]
     [[ "$output" == *"invented: invented.txt"* ]]
+    [[ ! -e "$manifest" ]]
+}
+
+@test "candidate verifier packages detached claims outside the SBOM subject" {
+    local manifest="$TEST_DIR/mainframe-${PROJECT_VERSION}.candidate.json"
+
+    create_verifiable_candidate_inputs
+    mkdir -p "$CANDIDATE_PAYLOAD/config/control-plane-claim-receipts"
+    printf '%s\n' '{"schema_version":2}' \
+        > "$CANDIDATE_PAYLOAD/config/control-plane-claim.json"
+    printf '%s\n' '{"receipt_type":"fixture"}' \
+        > "$CANDIDATE_PAYLOAD/config/control-plane-claim-receipts/fixture.json"
+    write_verifiable_fixture_sbom
+    cp "$SBOM" "$CANDIDATE_PAYLOAD/sbom.json"
+    package_verifiable_candidate_inputs
+
+    run python3 "$CANDIDATE_VERIFIER" \
+        --version "$PROJECT_VERSION" \
+        --archive "$ARCHIVE" \
+        --checksum "$CHECKSUM" \
+        --sbom "$SBOM" \
+        --formula "$FORMULA" \
+        --manifest "$manifest"
+
+    [[ "$status" -eq 0 ]]
+    [[ -f "$manifest" ]]
+    ! jq -e '.components[] | select(.type == "file") | .name |
+        select(. == "config/control-plane-claim.json" or
+          startswith("config/control-plane-claim-receipts/"))' \
+        "$SBOM" >/dev/null
+}
+
+@test "candidate verifier rejects a forged attestation exclusion registry" {
+    local manifest="$TEST_DIR/mainframe-${PROJECT_VERSION}.candidate.json"
+
+    create_verifiable_candidate_inputs
+    printf '%s\n' 'config/unreviewed-exclusion/' \
+        >> "$CANDIDATE_PAYLOAD/config/release-attestation-exclusions.txt"
+    package_verifiable_candidate_inputs
+
+    run python3 "$CANDIDATE_VERIFIER" \
+        --version "$PROJECT_VERSION" \
+        --archive "$ARCHIVE" \
+        --checksum "$CHECKSUM" \
+        --sbom "$SBOM" \
+        --formula "$FORMULA" \
+        --manifest "$manifest"
+
+    [[ "$status" -ne 0 ]]
+    [[ "$output" == *"release attestation exclusion registry has unexpected entries"* ]]
     [[ ! -e "$manifest" ]]
 }
 

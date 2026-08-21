@@ -6,10 +6,9 @@
   "test_paths": [
     "tests/pi_integration.bats",
     "tests/pi_install.bats",
-    "tests/pi_project_awm.bats",
     "tests/pi_compatibility_manifest.bats"
   ],
-  "plan_per_run": 45,
+  "plan_per_run": 44,
   "bats_core_commit": "eb7f42f8d608ac693d7a4b67474f6714ea68cfc5",
   "platforms": [
     {

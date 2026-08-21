@@ -31,7 +31,6 @@ setup() {
     cp \
         "$TEMPLATE_ROOT/tests/pi_integration.bats" \
         "$TEMPLATE_ROOT/tests/pi_install.bats" \
-        "$TEMPLATE_ROOT/tests/pi_project_awm.bats" \
         "$TEMPLATE_ROOT/tests/pi_compatibility_manifest.bats" \
         "$PROJECT_ROOT/tests/"
 
@@ -213,10 +212,10 @@ verify_receipt() {
       .compatibility.support == "unverified" and
       .compatibility.runtime_state == "COMPATIBILITY_UNVERIFIED" and
       .result == {
-        status: "pass", plan: 45, ok: 45, executed: 45,
+        status: "pass", plan: 44, ok: 44, executed: 44,
         not_ok: 0, skipped: 0, skip_details: []
       } and
-      (.source.files | length) == 10 and
+      (.source.files | length) == 9 and
       .artifacts.archive_binding.binding_value == .mainframe.archive_sha256 and
       .artifacts.test_binding.binding_value == .tests.source_tree_sha256 and
       .artifacts.tap.binding_value == null

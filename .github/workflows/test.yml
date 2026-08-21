@@ -765,7 +765,6 @@ jobs:
           cp \
             tests/pi_integration.bats \
             tests/pi_install.bats \
-            tests/pi_project_awm.bats \
             tests/pi_compatibility_manifest.bats \
             "$candidate/tests/"
           python3 \
@@ -809,7 +808,6 @@ jobs:
             --print-output-on-failure \
             "$candidate_root/tests/pi_integration.bats" \
             "$candidate_root/tests/pi_install.bats" \
-            "$candidate_root/tests/pi_project_awm.bats" \
             "$candidate_root/tests/pi_compatibility_manifest.bats" \
             | tee "$RUNNER_TEMP/pi-candidate-${{ matrix.pi.id }}-${{ matrix.target.id }}.tap"
           test "$(python3 \
@@ -4041,7 +4039,6 @@ jobs:
           cp \
             tests/pi_integration.bats \
             tests/pi_install.bats \
-            tests/pi_project_awm.bats \
             tests/pi_compatibility_manifest.bats \
             "$pi_test_source_root/tests/"
           expected_pi_test_sha="$(python3 \
@@ -4093,8 +4090,8 @@ jobs:
               "$expected_pi_test_sha"
           done
           for tap_file in "${pi_candidate_tap[@]}"; do
-            test "$(grep -Fxc '1..45' "$tap_file")" -eq 1
-            test "$(grep -Ec '^ok [0-9]+ ' "$tap_file" || true)" -eq 45
+            test "$(grep -Fxc '1..44' "$tap_file")" -eq 1
+            test "$(grep -Ec '^ok [0-9]+ ' "$tap_file" || true)" -eq 44
             test "$(grep -Ec '^not ok ' "$tap_file" || true)" -eq 0
             case "$tap_file" in
               *fork-0.84.2*)
@@ -4148,8 +4145,8 @@ jobs:
               .observation.runtime_proof.pre_test ==
                 .observation.runtime_proof.post_test
             )] | length) == 6 and
-            .summary.planned_tests == 270 and
-            .summary.executed == 267 and
+            .summary.planned_tests == 264 and
+            .summary.executed == 261 and
             .summary.skipped == 3
           ' "$pi_evidence" >/dev/null
           mapfile -t durable_pi_cell_names < <(

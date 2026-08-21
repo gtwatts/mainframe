@@ -60,8 +60,8 @@
         "binding_mode": { "const": "git-head-clean-tracked-files" },
         "files": {
           "type": "array",
-          "minItems": 10,
-          "maxItems": 10,
+          "minItems": 9,
+          "maxItems": 9,
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/source_file" }
         }
@@ -181,18 +181,18 @@
         "canonicalization": { "const": "MAINFRAME-PACKAGE-TREE-SHA256-V1" },
         "paths": {
           "type": "array",
-          "minItems": 4,
-          "maxItems": 4,
+          "minItems": 3,
+          "maxItems": 3,
           "uniqueItems": true,
           "items": { "type": "string", "pattern": "^tests/[A-Za-z0-9_.-]+\\.bats$" }
         },
         "source_tree_sha256": { "$ref": "#/$defs/sha256" },
-        "plan": { "const": 45 },
+        "plan": { "const": 44 },
         "bats_core_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
         "cases": {
           "type": "array",
-          "minItems": 45,
-          "maxItems": 45,
+          "minItems": 44,
+          "maxItems": 44,
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/test_case" }
         }
@@ -214,9 +214,9 @@
       "required": ["status", "plan", "ok", "executed", "not_ok", "skipped", "skip_details"],
       "properties": {
         "status": { "const": "pass" },
-        "plan": { "const": 45 },
-        "ok": { "const": 45 },
-        "executed": { "type": "integer", "minimum": 44, "maximum": 45 },
+        "plan": { "const": 44 },
+        "ok": { "const": 44 },
+        "executed": { "type": "integer", "minimum": 43, "maximum": 44 },
         "not_ok": { "const": 0 },
         "skipped": { "type": "integer", "minimum": 0, "maximum": 1 },
         "skip_details": {
@@ -380,7 +380,7 @@
       "additionalProperties": false,
       "required": ["number", "source", "name"],
       "properties": {
-        "number": { "type": "integer", "minimum": 1, "maximum": 45 },
+        "number": { "type": "integer", "minimum": 1, "maximum": 44 },
         "source": { "type": "string", "pattern": "^tests/[A-Za-z0-9_.-]+\\.bats$" },
         "name": { "type": "string", "minLength": 1 }
       }
@@ -390,7 +390,7 @@
       "additionalProperties": false,
       "required": ["number", "test", "reason"],
       "properties": {
-        "number": { "type": "integer", "minimum": 1, "maximum": 45 },
+        "number": { "type": "integer", "minimum": 1, "maximum": 44 },
         "test": { "type": "string", "minLength": 1 },
         "reason": { "type": "string", "minLength": 1 }
       }

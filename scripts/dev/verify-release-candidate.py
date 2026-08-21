@@ -50,6 +50,12 @@ SOURCE_KEYS = (
     "change_path_set_sha256",
     "path_disclosure",
 )
+ATTESTATION_EXCLUSIONS_PATH = "config/release-attestation-exclusions.txt"
+EXPECTED_ATTESTATION_EXCLUSIONS = (
+    "SHA256SUMS",
+    "config/control-plane-claim.json",
+    "config/control-plane-claim-receipts/",
+)
 
 
 class GitUnavailable(RuntimeError):
@@ -595,6 +601,29 @@ def summarize_names(names: set[str]) -> str:
     return shown
 
 
+def parse_attestation_exclusions(contents: bytes) -> tuple[str, ...]:
+    try:
+        lines = contents.decode("utf-8").splitlines()
+    except UnicodeDecodeError as error:
+        fail(f"release attestation exclusion registry is not UTF-8: {error}")
+    exclusions = tuple(
+        line for line in lines if line and not line.startswith("#")
+    )
+    if exclusions != EXPECTED_ATTESTATION_EXCLUSIONS:
+        fail("release attestation exclusion registry has unexpected entries")
+    return exclusions
+
+
+def is_attestation_metadata(name: str, exclusions: tuple[str, ...]) -> bool:
+    for excluded in exclusions:
+        if excluded.endswith("/"):
+            if name.startswith(excluded):
+                return True
+        elif name == excluded:
+            return True
+    return False
+
+
 def verify_sbom_archive_identity(
     document: dict[str, object],
     version: str,
@@ -670,6 +699,7 @@ def verify_archive(
                 "lib/launch.sh",
                 "security/gate-rules.json",
                 "security/gate-normalizer.mjs",
+                ATTESTATION_EXCLUSIONS_PATH,
             }
             missing = required.difference(by_name)
             if missing:
@@ -711,6 +741,9 @@ def verify_archive(
                     fail(f"critical archive JSON version mismatch: {name}")
 
             records = parse_inner_checksums(read_member("SHA256SUMS"))
+            attestation_exclusions = parse_attestation_exclusions(
+                read_member(ATTESTATION_EXCLUSIONS_PATH)
+            )
             payload_names = set(names).difference({"SHA256SUMS"})
             if set(records) != payload_names:
                 fail("archive SHA256SUMS does not exactly cover the payload")
@@ -722,10 +755,15 @@ def verify_archive(
                     fail(f"archive payload checksum mismatch: {name}")
                 if name != "sbom.json":
                     payload_identity[name] = (actual, len(contents))
+            subject_identity = {
+                name: identity
+                for name, identity in payload_identity.items()
+                if not is_attestation_metadata(name, attestation_exclusions)
+            }
             verify_sbom_archive_identity(
                 sbom_document,
                 version,
-                payload_identity,
+                subject_identity,
             )
     except (OSError, tarfile.TarError) as error:
         fail(f"archive cannot be inspected: {error}")

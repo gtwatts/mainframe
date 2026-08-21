@@ -68,6 +68,7 @@ _mainframe() {
         'ops:Alias for operations'
         'run:Run a bundled operation script'
         'invoke:Invoke one reviewed canonical manifest export'
+        'code:Use the durable coding control-plane facade'
         'help:Show detailed help for a function'
         'info:Alias for help'
         'describe:Alias for help'
@@ -96,6 +97,7 @@ _mainframe() {
         'host:Inspect, acquire, and manage private coding-agent host runtimes'
         'pi:Inspect, install, or remove the native Pi package integration'
         'control-plane:Operate durable runs, calls, approvals, and evidence'
+        'claim:Verify the evidence-bound control-plane promotion claim'
         'setup:Discover local shells and hosts or onboard one explicit host'
         'onboard:Safely configure and verify MAINFRAME for a coding-agent host'
         'launch:Preflight and start one onboarded coding-agent host'
@@ -192,6 +194,44 @@ _mainframe() {
                 '*--format[result format]:format:(raw broker-json-v1)' \
                 '*--caller[audit-only adapter label]:caller:' \
                 '(-h --help)'{-h,--help}'[show canonical invocation help]'
+            return
+            ;;
+
+        code)
+            if (( CURRENT == 3 )); then
+                local -a code_actions
+                code_actions=(
+                    'read:Read a workspace-relative file through the durable control plane'
+                    'search:Search workspace-relative text through the durable control plane'
+                    'edit:Request an approval-gated atomic edit using stdin content'
+                    'test:Request an approval-gated reviewed test run'
+                    'build:Request an approval-gated reviewed build'
+                    'help:Show durable coding facade help'
+                    '--help:Show durable coding facade help'
+                    '-h:Show durable coding facade help'
+                )
+                _describe -t code-actions 'coding action' code_actions
+                return
+            fi
+            case "${words[3]:-}" in
+                read|search)
+                    _values 'coding option' \
+                        '--json[durable structured control-plane result]' \
+                        '--[end option parsing]'
+                    ;;
+                edit)
+                    _values 'coding option' \
+                        '--preimage-sha256[exact lowercase SHA-256 preimage digest]' \
+                        '--[end option parsing]'
+                    ;;
+            esac
+            return
+            ;;
+
+        claim)
+            _arguments \
+                '(- *)--json[closed JSON claim-check result]' \
+                '(-h --help)'{-h,--help}'[show claim-check help]'
             return
             ;;
 

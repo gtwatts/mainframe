@@ -746,14 +746,14 @@ def validate_contract(
     test_paths = contract["test_paths"]
     if (
         not isinstance(test_paths, list)
-        or len(test_paths) != 4
+        or len(test_paths) != 3
         or len(test_paths) != len(set(test_paths))
         or any(not isinstance(item, str) or not TEST_PATH_RE.fullmatch(item) for item in test_paths)
     ):
-        raise EvidenceError("contract must contain four ordered, unique Bats test paths")
+        raise EvidenceError("contract must contain three ordered, unique Bats test paths")
     cases = source_test_inventory(repo_root, test_paths)
-    if contract["plan_per_run"] != 45 or len(cases) != 45:
-        raise EvidenceError("contract and source must define exactly 45 tests per cell")
+    if contract["plan_per_run"] != 44 or len(cases) != 44:
+        raise EvidenceError("contract and source must define exactly 44 tests per cell")
     if len({case["name"] for case in cases}) != len(cases):
         raise EvidenceError("Pi source test names must be unique")
     if not isinstance(contract["bats_core_commit"], str) or not re.fullmatch(

@@ -3039,6 +3039,52 @@ PY
       "Gemini AWM host failure status is captured before evidence checks" ]]
 }
 
+@test "combined AWM certifier emits bounded Codex diagnostics before session failure" {
+    local certifier="$PROJECT_ROOT/scripts/dev/certify-native-awm-chain.sh"
+
+    run python3 - "$certifier" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+text = Path(sys.argv[1]).read_text()
+match = re.search(
+    r'^emit_codex_diagnostics\(\) \{\n(?P<body>.*?)^\}',
+    text,
+    re.MULTILINE | re.DOTALL,
+)
+assert match is not None
+body = match.group('body')
+for expected in (
+    '--- Codex AWM host log',
+    '--- Codex AWM fixture server log',
+    '--- Codex AWM fixture server state',
+    "sed -n '1,240p'",
+):
+    assert expected in body, expected
+assert 'cat ' not in body
+
+negative = (
+    'run_codex chain.missing codex-negative missing-predecessor || {\n'
+    '    emit_codex_diagnostics codex-negative\n'
+    '    die "fresh-state Codex wrong-predecessor probe did not complete exactly"\n'
+    '}'
+)
+positive = (
+    'run_codex chain.gemini codex success || {\n'
+    '    emit_codex_diagnostics codex\n'
+    '    die "Codex native AWM-chain session failed"\n'
+    '}'
+)
+assert negative in text
+assert positive in text
+print('Codex AWM failures emit bounded retained diagnostics before exit')
+PY
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == \
+      "Codex AWM failures emit bounded retained diagnostics before exit" ]]
+}
+
 @test "combined AWM Gemini version probe binds system administration tools and reports failure" {
     local certifier="$PROJECT_ROOT/scripts/dev/certify-native-awm-chain.sh"
 

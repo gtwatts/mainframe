@@ -723,6 +723,28 @@ finish_server() {
          .user_credential_header_seen == false
        end)' "$workdir/hosts/$run_label/server-state.json" >/dev/null
 }
+emit_codex_diagnostics() {
+    local run_label="$1" diagnostic
+    case "$run_label" in
+        codex|codex-negative) ;;
+        *) return 1 ;;
+    esac
+    diagnostic="$workdir/hosts/$run_label/host.log"
+    if [[ -f "$diagnostic" && ! -L "$diagnostic" ]]; then
+        printf '%s\n' '--- Codex AWM host log (first 240 lines) ---' >&2
+        sed -n '1,240p' "$diagnostic" >&2
+    fi
+    diagnostic="$workdir/hosts/$run_label/server.log"
+    if [[ -f "$diagnostic" && ! -L "$diagnostic" ]]; then
+        printf '%s\n' '--- Codex AWM fixture server log (first 240 lines) ---' >&2
+        sed -n '1,240p' "$diagnostic" >&2
+    fi
+    diagnostic="$workdir/hosts/$run_label/server-state.json"
+    if [[ -f "$diagnostic" && ! -L "$diagnostic" ]]; then
+        printf '%s\n' '--- Codex AWM fixture server state (first 240 lines) ---' >&2
+        sed -n '1,240p' "$diagnostic" >&2
+    fi
+}
 validate_audit() {
     local host="$1" event="$2" tool="$3" run_label="${4:-$1}"
     local audit="$workdir/hosts/$run_label/agent-gateway.jsonl"
@@ -945,8 +967,10 @@ gemini_chain_value="$expected_value"
 # Every positive certificate binds this exact failed-predecessor receipt. It
 # runs after Gemini and before the positive Codex session, with entirely fresh
 # Codex host state but the same project, UID, TMPDIR, AWM root, and session.
-run_codex chain.missing codex-negative missing-predecessor ||
+run_codex chain.missing codex-negative missing-predecessor || {
+    emit_codex_diagnostics codex-negative
     die "fresh-state Codex wrong-predecessor probe did not complete exactly"
+}
 [[ ! -e "$awm_root/sessions/native-awm-cert/$session_id/data/chain.codex" ]] ||
     die "wrong-predecessor probe wrote a Codex checkpoint"
 [[ -f "$awm_root/native-chain-codex-negative.scratch" &&
@@ -975,7 +999,10 @@ if [[ "$negative_wrong_predecessor" == true ]]; then
     exit 0
 fi
 
-run_codex chain.gemini codex success || die "Codex native AWM-chain session failed"
+run_codex chain.gemini codex success || {
+    emit_codex_diagnostics codex
+    die "Codex native AWM-chain session failed"
+}
 expected_value="$expected_value:codex"
 [[ "$("${awm_env[@]}" "$mainframe_bin" awm get --session "$session_id" chain.codex)" == "$expected_value" ]] ||
     die "Codex checkpoint did not derive from the Gemini checkpoint"
