@@ -444,7 +444,13 @@ def source_tree_sha256(root: Path) -> str:
             fail(f"cannot inspect source path {relative}: {exc}")
         if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
             fail(f"source tree path must be a regular non-symlink file: {relative}")
-        digest.update(encoded + b"\0" + f"{metadata.st_mode & 0o777:04o}".encode("ascii") + b"\0")
+        # Git records only the executable class for regular files. Normalize
+        # owner/group/world read bits so a clean 0600/0700 maintainer checkout
+        # and Git's reconstructed 0644/0755 checkout bind the same source.
+        canonical_mode = 0o755 if metadata.st_mode & 0o111 else 0o644
+        digest.update(
+            encoded + b"\0" + f"{canonical_mode:04o}".encode("ascii") + b"\0"
+        )
         digest.update(bytes.fromhex(sha256_file(path)))
     return digest.hexdigest()
 

@@ -222,7 +222,8 @@ def source_tree_sha256(root: Path) -> str:
         if is_attestation_metadata(root, relative):
             continue
         path = root / relative
-        mode = os.lstat(path).st_mode & 0o777
+        actual_mode = os.lstat(path).st_mode
+        mode = 0o755 if actual_mode & 0o111 else 0o644
         digest.update(encoded + b"\0" + f"{mode:04o}".encode("ascii") + b"\0")
         digest.update(hashlib.sha256(path.read_bytes()).digest())
     return digest.hexdigest()
@@ -680,6 +681,15 @@ class ClaimReceiptAuthorityTests(unittest.TestCase):
         path = self.fixture.root / "unbound.txt"
         path.write_text("unbound drift\n", encoding="utf-8")
         self.assert_rejected("source tree digest does not match the current working tree")
+
+    def test_source_digest_normalizes_only_non_git_permission_bits(self) -> None:
+        path = self.fixture.root / "docs/unrelated.md"
+        path.chmod(0o600)
+        restrictive = source_tree_sha256(self.fixture.root)
+        path.chmod(0o644)
+        self.assertEqual(source_tree_sha256(self.fixture.root), restrictive)
+        path.chmod(0o700)
+        self.assertNotEqual(source_tree_sha256(self.fixture.root), restrictive)
 
     def test_missing_and_self_asserted_authority_are_rejected(self) -> None:
         self.fixture.mutate_receipt("runtime-closure", lambda receipt: receipt.pop("authority"))
