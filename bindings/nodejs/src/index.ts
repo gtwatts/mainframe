@@ -39,6 +39,8 @@ export {
   type UsopEnvelope,
   type MainframeResult,
   type BrokerEnvelopeV1,
+  type BrokerReceiptV1,
+  type ControlPlaneInvocationV1,
   type BrokerInvocationResult,
   type BrokerInvokeOptions,
 } from "./core.js";

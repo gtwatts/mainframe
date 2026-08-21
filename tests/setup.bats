@@ -22,14 +22,19 @@ setup() {
     PROOF_INVOKE_AUDIT_LOG="$TEST_DIR/state/proof-invocations.jsonl"
     PROOF_XDG_STATE_HOME="$TEST_DIR/proof-xdg-state"
     PROOF_XDG_CONFIG_HOME="$TEST_DIR/proof-xdg-config"
+    XDG_STATE_HOME="$TEST_DIR/state"
 
     mkdir -p \
         "$PROJECT_DIR" \
         "$CLI_DIR" \
         "$TEST_HOME" \
+        "$XDG_STATE_HOME" \
         "$PI_AGENT_DIR" \
         "$RUNTIME_ROOT/bin" \
+        "$RUNTIME_ROOT/config" \
         "$RUNTIME_ROOT/hooks" \
+        "$RUNTIME_ROOT/security" \
+        "$RUNTIME_ROOT/skills" \
         "$RUNTIME_ROOT/scripts/dev/native-host"
     cp "$PROJECT_ROOT/bin/mainframe" "$RUNTIME_ROOT/bin/mainframe"
     cp "$PROJECT_ROOT/hooks/agent-gateway.sh" \
@@ -49,15 +54,24 @@ setup() {
         "$RUNTIME_ROOT/hooks/agent-gateway.sh" \
         "$RUNTIME_ROOT/scripts/dev/native-host/hash-package-tree.mjs" \
         "$RUNTIME_ROOT/scripts/dev/native-host/hash-package-tree.py"
-    ln -s "$PROJECT_ROOT/lib" "$RUNTIME_ROOT/lib"
+    cp -R "$PROJECT_ROOT/lib" "$RUNTIME_ROOT/lib"
+    cp -R "$PROJECT_ROOT/control_plane" "$RUNTIME_ROOT/control_plane"
+    cp "$PROJECT_ROOT/config/host-capabilities.json" "$RUNTIME_ROOT/config/host-capabilities.json"
+    cp "$PROJECT_ROOT/config/pi-compatibility.json" "$RUNTIME_ROOT/config/pi-compatibility.json"
+    cp "$PROJECT_ROOT/package.json" "$RUNTIME_ROOT/package.json"
+    cp "$PROJECT_ROOT/VERSION" "$RUNTIME_ROOT/VERSION"
+    cp "$PROJECT_ROOT/security/gate-rules.json" "$RUNTIME_ROOT/security/gate-rules.json"
+    cp "$PROJECT_ROOT/security/gate-normalizer.mjs" "$RUNTIME_ROOT/security/gate-normalizer.mjs"
+    cp -R "$PROJECT_ROOT/skills/codex" "$RUNTIME_ROOT/skills/codex"
+    cp -R "$PROJECT_ROOT/skills/pi" "$RUNTIME_ROOT/skills/pi"
     ln -s "$PROJECT_ROOT/FUNCTIONS.json" "$RUNTIME_ROOT/FUNCTIONS.json"
     ln -s "$RUNTIME_ROOT/bin/mainframe" "$CLI_DIR/mainframe"
 
-    chmod 700 "$TEST_HOME" "$TEST_HOME/.pi" "$PI_AGENT_DIR"
+    chmod 700 "$TEST_HOME" "$TEST_HOME/.pi" "$PI_AGENT_DIR" "$XDG_STATE_HOME"
     export PROJECT_ROOT BASH_BIN TEST_DIR PROJECT_DIR CLI_DIR RUNTIME_ROOT
     export TEST_HOME PI_AGENT_DIR BASE_PATH FAKE_HOST_LOG FAKE_HOST_PROBE_LOG
     export FAKE_PI_LOG PROOF_INVOKE_AUDIT_LOG
-    export PROOF_XDG_STATE_HOME PROOF_XDG_CONFIG_HOME
+    export PROOF_XDG_STATE_HOME PROOF_XDG_CONFIG_HOME XDG_STATE_HOME
     export HOME="$TEST_HOME"
     export MAINFRAME_PI_AGENT_DIR="$PI_AGENT_DIR"
     export AWM_ROOT="$TEST_HOME/.mainframe/awm"
@@ -249,7 +263,8 @@ make_pi_cli() {
     [[ "$output" == *"Mode: zero-residue mechanism proof"* ]]
     [[ "$output" == *"Install health:     PASS"* ]]
     [[ "$output" == *"Reviewed invocation: PASS (fixed pure contract; output=hello agent)"* ]]
-    [[ "$output" == *"Durable memory:     PASS (fixed key retrieved by a fresh Bash process)"* ]]
+    [[ "$output" == *"Session continuity: PASS (ephemeral untrusted record; fresh Bash process)"* ]]
+    [[ "$output" != *"Durable memory:"* ]]
     [[ "$output" == *"Temporary state:    REMOVED (private mode 700)"* ]]
     [[ "$output" == *"Shell policy:       PASS (classification only; canary not executed; rule=terraform-destroy)"* ]]
     [[ "$output" == *"Pi package:"*"CLI found; not executed"* ]]
@@ -267,6 +282,45 @@ make_pi_cli() {
     [[ -z "$(find "$PROJECT_DIR" -mindepth 1 -print -quit)" ]]
 }
 
+@test "setup proof ignores corrupt ambient control-plane state and removes its isolated state" {
+    local ambient_state="$TEST_DIR/ambient-xdg-state"
+    local ambient_config="$TEST_DIR/ambient-xdg-config"
+    local ambient_audit="$TEST_DIR/ambient-invoke-audit.jsonl"
+    local ledger="$ambient_state/mainframe/control-plane.jsonl"
+    local config_file="$ambient_config/mainframe.conf"
+    local ledger_digest config_digest audit_digest
+    local proof_dirs_before proof_dirs_after
+
+    mkdir -p "$ambient_state/mainframe" "$ambient_config"
+    printf '%s\n' '{"schema_version":1,"event":"corrupt-ambient-sentinel"}' > "$ledger"
+    printf '%s\n' '# ambient config sentinel' > "$config_file"
+    printf '%s\n' '{"ambient":"audit sentinel"}' > "$ambient_audit"
+    ledger_digest="$(sha256_file "$ledger")"
+    config_digest="$(sha256_file "$config_file")"
+    audit_digest="$(sha256_file "$ambient_audit")"
+    proof_dirs_before="$(setup_proof_temp_dirs)"
+
+    run env \
+        PATH="$DISCOVERY_PATH" \
+        HOME="$TEST_HOME" \
+        XDG_STATE_HOME="$ambient_state" \
+        XDG_CONFIG_HOME="$ambient_config" \
+        MAINFRAME_CONFIG="$config_file" \
+        MAINFRAME_INVOKE_AUDIT_LOG="$ambient_audit" \
+        MAINFRAME_ROOT="$PROJECT_ROOT" \
+        "$BASH_BIN" --noprofile --norc -p \
+            "$PROJECT_ROOT/bin/mainframe" setup --project "$PROJECT_DIR" --proof
+    proof_dirs_after="$(setup_proof_temp_dirs)"
+
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"Reviewed invocation: PASS (fixed pure contract; output=hello agent)"* ]]
+    [[ "$(sha256_file "$ledger")" == "$ledger_digest" ]]
+    [[ "$(sha256_file "$config_file")" == "$config_digest" ]]
+    [[ "$(sha256_file "$ambient_audit")" == "$audit_digest" ]]
+    [[ "$proof_dirs_after" == "$proof_dirs_before" ]]
+    [[ -z "$(find "$PROJECT_DIR" -mindepth 1 -print -quit)" ]]
+}
+
 @test "setup proof removes ephemeral AWM after forced fresh-process retrieval failure" {
     local proof_dirs_before proof_dirs_after
 
@@ -277,7 +331,7 @@ make_pi_cli() {
     proof_dirs_after="$(setup_proof_temp_dirs)"
 
     [[ "$status" -eq 1 ]]
-    [[ "$output" == *"ephemeral AWM fresh-process retrieval failed"* ]]
+    [[ "$output" == *"ephemeral untrusted session fresh-process retrieval failed"* ]]
     [[ "$output" != *"Durable memory:     PASS"* ]]
     [[ ! "$output" =~ [0-9a-f]{32} ]]
     [[ "$proof_dirs_after" == "$proof_dirs_before" ]]
@@ -461,7 +515,7 @@ make_pi_cli() {
     [[ "$output" == *'action=install'* ]]
     [[ "$output" == *'dry_run=true'* ]]
     [[ "$output" == *'would_change=true'* ]]
-    [[ "$output" == *"would_set_package_source=$PROJECT_ROOT"* ]]
+    [[ "$output" == *"would_set_package_source=$RUNTIME_ROOT"* ]]
     [[ ! -e "$FAKE_PI_LOG" ]]
     assert_no_setup_state
 }
@@ -475,7 +529,7 @@ make_pi_cli() {
     [[ "$output" == *'changed=true'* ]]
     [[ "$output" == *"agent_dir=$PI_AGENT_DIR"* ]]
     [[ "$output" == *'restart_needed=true'* ]]
-    jq -e --arg root "$PROJECT_ROOT" \
+    jq -e --arg root "$RUNTIME_ROOT" \
         '.packages == [$root]' "$PI_AGENT_DIR/settings.json" >/dev/null
     [[ ! -e "$PROJECT_DIR/AGENTS.md" ]]
     [[ ! -e "$PROJECT_DIR/.codex/hooks.json" ]]
@@ -668,7 +722,9 @@ make_pi_cli() {
     [[ "$output" == *"MAINFRAME onboarding complete"* ]]
     [[ -f "$PROJECT_DIR/AGENTS.md" ]]
     [[ -f "$PROJECT_DIR/.codex/hooks.json" ]]
-    [[ -d "$AWM_ROOT" ]]
+    [[ ! -e "$AWM_ROOT" ]]
+    [[ -f "$XDG_STATE_HOME/mainframe/control-plane.jsonl" ]]
+    [[ -n "$(find "$XDG_STATE_HOME" -type f -path '*/awm/projects/*.json' -print -quit)" ]]
     [[ -f "$MAINFRAME_AGENT_AUDIT_LOG" ]]
     [[ ! -e "$FAKE_HOST_LOG" ]]
     [[ ! -e "$FAKE_HOST_PROBE_LOG" ]]

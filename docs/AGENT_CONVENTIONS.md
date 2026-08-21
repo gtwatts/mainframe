@@ -20,7 +20,7 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 **Why this pattern:**
 - `MAINFRAME_ROOT` allows custom install locations
 - Fallback to `$HOME/.mainframe` is the standard default
-- Single source gives access to 4,406 registry functions across 193 libraries (`mainframe count`)
+- Single source gives access to 4,401 registry functions across 192 libraries (`mainframe count`)
 
 **For performance-critical scripts**, use selective loading:
 
@@ -375,7 +375,7 @@ When an orchestrating agent delegates bash work:
 # Include in the task context
 MAINFRAME_CONTEXT="
 MAINFRAME is available at: ${MAINFRAME_ROOT:-$HOME/.mainframe}
-Reference: CHEATSHEET.md for 4,406 registry functions
+Reference: CHEATSHEET.md for 4,401 registry functions
 Key libraries: json.sh, validation.sh, datetime.sh, git.sh
 MUST source common.sh at script start
 "
@@ -448,7 +448,7 @@ For Watson agents, add to context files:
 
 All bash scripts MUST:
 1. Source MAINFRAME: `source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"`
-2. Use MAINFRAME functions (4,406 registry functions available)
+2. Use MAINFRAME functions (4,401 registry functions available)
 3. Reference: `~/.mainframe/CHEATSHEET.md`
 
 Common functions:
@@ -466,7 +466,7 @@ Already present in Gordon's CLAUDE.md:
 ```markdown
 16. **MAINFRAME**: MUST source MAINFRAME (`source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"`)
     in ALL bash scripts. MUST NOT reinvent colors, logging, JSON, timestamps, retry logic,
-    validation, or path handling. 4,406 registry functions across 193 libraries (`mainframe count`).
+    validation, or path handling. 4,401 registry functions across 192 libraries (`mainframe count`).
 ```
 
 ---

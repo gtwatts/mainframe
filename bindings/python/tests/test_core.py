@@ -2,8 +2,11 @@
 Tests for mainframe_bash.core module.
 """
 
+import base64
+import hashlib
 import json
 import os
+import shlex
 import signal
 import subprocess
 import sys
@@ -29,6 +32,97 @@ from mainframe_bash.core import (
     invoke_canonical,
 )
 
+_DURABLE_CLOSURE_FILES = (
+    "bin/mainframe",
+    "lib/common.sh",
+    "lib/durable_invoke.sh",
+    "control_plane/mainframe-control-plane",
+    "control_plane/mainframe_control_plane/__init__.py",
+    "control_plane/mainframe_control_plane/cli.py",
+    "control_plane/mainframe_control_plane/coding.py",
+    "control_plane/mainframe_control_plane/contracts.py",
+    "control_plane/mainframe_control_plane/durability.py",
+    "control_plane/mainframe_control_plane/errors.py",
+    "control_plane/mainframe_control_plane/executor.py",
+    "control_plane/mainframe_control_plane/kernel.py",
+    "control_plane/mainframe_control_plane/memory.py",
+    "control_plane/mainframe_control_plane/transient.py",
+    "control_plane/mainframe_control_plane/worker.py",
+)
+
+
+def _write_durable_closure_fixture(root: Path) -> None:
+    for relative in _DURABLE_CLOSURE_FILES:
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.exists():
+            path.write_text("# fixture\n", encoding="utf-8")
+        if relative in {"bin/mainframe", "control_plane/mainframe-control-plane"}:
+            path.chmod(0o755)
+
+
+def _control_plane_response_fixture(
+    envelope: dict[str, object], input_json: str = '{"value":"hello"}'
+) -> dict[str, object]:
+    stdout = base64.b64decode(str(envelope.get("stdout_b64", "")), validate=True)
+    stderr = base64.b64decode(str(envelope.get("stderr_b64", "")), validate=True)
+    error = b"" if envelope.get("error") is None else str(envelope["error"]).encode()
+    receipt = {
+        key: envelope[key]
+        for key in (
+            "schema_version", "ok", "status", "canonical_id", "name", "owner",
+            "exit_code", "timed_out", "output_exceeded", "duration_ms", "audit_id",
+        )
+    }
+    receipt.update({
+        "stdout_bytes": len(stdout),
+        "stdout_sha256": hashlib.sha256(stdout).hexdigest(),
+        "stderr_bytes": len(stderr),
+        "stderr_sha256": hashlib.sha256(stderr).hexdigest(),
+        "error_bytes": len(error),
+        "error_sha256": hashlib.sha256(error).hexdigest(),
+    })
+    return {
+        "ok": True,
+        "command": "canonical-invoke",
+        "result": {
+            "schema_version": 1,
+            "status": "completed",
+            "client_correlation_id": "__CID__",
+            "run_id": "run-11111111111111111111111111111111",
+            "call_id": "call-22222222222222222222222222222222",
+            "decision_id": "decision-33333333333333333333333333333333",
+            "evidence_id": "evidence-44444444444444444444444444444444",
+            "input_digest": hashlib.sha256(input_json.encode()).hexdigest(),
+            "outcome": "succeeded" if envelope.get("ok") is True else (
+                "timed_out" if envelope.get("timed_out") is True else "failed"
+            ),
+            "result_available": True,
+            "broker_receipt": receipt,
+            "broker_envelope": envelope,
+        },
+    }
+
+
+def _control_plane_fixture_source(
+    envelope: dict[str, object], checks: str = ""
+) -> str:
+    serialized = json.dumps(
+        _control_plane_response_fixture(envelope), separators=(",", ":")
+    )
+    return _control_plane_raw_fixture_source(serialized, checks)
+
+
+def _control_plane_raw_fixture_source(serialized: str, checks: str = "") -> str:
+    before, after = serialized.split("__CID__")
+    return (
+        "#!/bin/sh\n"
+        f"{checks}\n"
+        "IFS= read -r payload\n"
+        "[ \"$payload\" = '{\"value\":\"hello\"}' ] || exit 70\n"
+        f"printf '%s%s%s\\n' {shlex.quote(before)} \"${{12}}\" {shlex.quote(after)}\n"
+    )
+
 
 def _write_broker_fixture(
     root: Path,
@@ -38,6 +132,7 @@ def _write_broker_fixture(
     executable_source: str | None = None,
 ) -> str:
     canonical_id = "mf:data:json:json_string"
+    _write_durable_closure_fixture(root)
     contract = {
         "name": "json_string",
         "owner": "json",
@@ -68,9 +163,9 @@ def _write_broker_fixture(
     elif malformation == "argument-extra":
         contract["call_shape"]["arguments"][0]["extra"] = True
 
-    (root / "lib").mkdir()
+    (root / "lib").mkdir(exist_ok=True)
     (root / "lib" / "common.sh").write_text("# fixture\n")
-    (root / "bin").mkdir()
+    (root / "bin").mkdir(exist_ok=True)
     executable = root / "bin" / "mainframe"
     executable.write_text(
         executable_source
@@ -158,10 +253,8 @@ class TestMainframeDetection:
 
     def test_get_mainframe_root_respects_env_var(self, monkeypatch, tmp_path):
         """Should use MAINFRAME_ROOT environment variable."""
-        # Create fake installation
-        lib_dir = tmp_path / "lib"
-        lib_dir.mkdir()
-        (lib_dir / "common.sh").write_text("# fake")
+        # Create a fake installation with the exact durable execution closure.
+        _write_durable_closure_fixture(tmp_path)
 
         # Clear cache
         import mainframe_bash.core as core
@@ -185,15 +278,17 @@ class TestMainframeDetection:
         assert _validate_mainframe_root(tmp_path) is False
         assert _validate_mainframe_root(tmp_path / "nonexistent") is False
 
-    def test_managed_launcher_wins_over_stale_legacy_root(self, monkeypatch):
+    def test_managed_launcher_without_durable_closure_is_rejected(self, monkeypatch):
         import mainframe_bash.core as core
 
         launcher = Path.home() / ".local" / "bin" / "mainframe"
-        expected = launcher.resolve(strict=True).parent.parent
+        managed = launcher.resolve(strict=True).parent.parent
         monkeypatch.delenv("MAINFRAME_ROOT", raising=False)
         core._mainframe_root = None
 
-        assert get_mainframe_root().resolve() == expected
+        with pytest.raises(MainframeNotFoundError, match="installation not found"):
+            get_mainframe_root()
+        assert _validate_mainframe_root(managed) is False
 
     def test_explicit_invalid_root_never_falls_back_or_uses_cache(
         self, monkeypatch, tmp_path
@@ -550,21 +645,12 @@ class TestInvokeCanonical:
 
     def test_returns_strict_identity_and_decoded_output(self, tmp_path):
         state_dir = tmp_path / "state"
-        state_dir.mkdir()
+        state_dir.mkdir(mode=0o700)
+        state_dir.chmod(0o700)
         result = invoke_canonical(
             "mf:data:json:json_object",
             {"pairs": ["name=John"]},
             env={"XDG_STATE_HOME": str(state_dir)},
-        )
-
-        audit_records = [
-            json.loads(line)
-            for line in (state_dir / "mainframe" / "invocations.jsonl")
-            .read_text(encoding="utf-8")
-            .splitlines()
-        ]
-        audit = next(
-            record for record in audit_records if record["audit_id"] == result.audit_id
         )
 
         assert result.schema_version == 1
@@ -578,7 +664,18 @@ class TestInvokeCanonical:
         assert result.audit_id.startswith("inv-")
         assert result.stdout == '{"name":"John"}'
         assert result.stderr == ""
-        assert audit["caller"] == "python"
+        assert result.control_plane_status == "completed"
+        assert result.outcome == "succeeded"
+        assert result.result_available is True
+        assert result.client_correlation_id is not None
+        assert result.client_correlation_id.startswith("client-python-")
+        assert result.run_id is not None and result.run_id.startswith("run-")
+        assert result.call_id is not None and result.call_id.startswith("call-")
+        assert result.decision_id is not None and result.decision_id.startswith("decision-")
+        assert result.evidence_id is not None and result.evidence_id.startswith("evidence-")
+        assert result.input_digest is not None and len(result.input_digest) == 64
+        assert result.broker_receipt is not None
+        assert result.broker_receipt["audit_id"] == result.audit_id
 
     def test_rejects_undeclared_input_before_execution(self):
         with pytest.raises(MainframeBrokerError, match="undeclared field"):
@@ -586,6 +683,16 @@ class TestInvokeCanonical:
                 "mf:data:json:json_string",
                 {"value": "ok", "surprise": "not allowed"},
             )
+
+    def test_binds_schema_defaults_before_durable_input_digest(self):
+        result = invoke_canonical(
+            "mf:std:validation:validate_int", {"value": "42"}
+        )
+
+        assert result.ok is True
+        assert result.input_digest == hashlib.sha256(
+            b'{"max":"","min":"","value":"42"}'
+        ).hexdigest()
 
     def test_passes_exact_canonical_argv_and_python_caller(
         self, monkeypatch, tmp_path
@@ -596,19 +703,16 @@ class TestInvokeCanonical:
         envelope = _broker_envelope_fixture(
             ok=True, status="success", exit_code=0
         )
-        serialized = json.dumps(envelope, separators=(",", ":"))
-        executable_source = (
-            "#!/bin/sh\n"
-            '[ "$#" -eq 10 ] &&\n'
+        executable_source = _control_plane_fixture_source(
+            envelope,
+            '[ "$#" -eq 12 ] &&\n'
             '[ "$1" = invoke ] &&\n'
             '[ "$2" = mf:data:json:json_string ] &&\n'
             '[ "$3" = --input-json ] && [ "$4" = - ] &&\n'
             '[ "$5" = --profile ] && [ "$6" = stable-core ] &&\n'
-            '[ "$7" = --format ] && [ "$8" = broker-json-v1 ] &&\n'
-            '[ "$9" = --caller ] || exit 70\n'
-            'shift 9\n[ "$1" = python ] || exit 70\n'
-            'IFS= read -r payload\n[ "$payload" = \'{"value":"hello"}\' ] || exit 70\n'
-            f"printf '%s\\n' {serialized!r}\n"
+            '[ "$7" = --format ] && [ "$8" = control-plane-json-v1 ] &&\n'
+            '[ "$9" = --caller ] && [ "${10}" = python ] &&\n'
+            '[ "${11}" = --client-correlation-id ] && [ -n "${12}" ] || exit 70'
         )
         canonical_id = _write_broker_fixture(
             tmp_path, marker, executable_source=executable_source
@@ -758,12 +862,7 @@ class TestInvokeCanonical:
         import mainframe_bash.core as core
 
         marker = tmp_path / "unused"
-        serialized = json.dumps(envelope, separators=(",", ":"))
-        executable_source = (
-            "#!/bin/sh\n"
-            f"printf '%s\\n' {serialized!r}\n"
-            f"exit {exit_code}\n"
-        )
+        executable_source = _control_plane_fixture_source(envelope)
         canonical_id = _write_broker_fixture(
             tmp_path, marker, executable_source=executable_source
         )
@@ -773,6 +872,35 @@ class TestInvokeCanonical:
         with pytest.raises(
             MainframeBrokerError, match="identity or semantic validation"
         ):
+            invoke_canonical(canonical_id, {"value": "hello"})
+
+    @pytest.mark.parametrize(
+        "tamper", ["duplicate-key", "input-digest", "receipt-digest"]
+    )
+    def test_control_plane_tampering_fails_closed(
+        self, tamper, monkeypatch, tmp_path
+    ):
+        import mainframe_bash.core as core
+
+        marker = tmp_path / "unused"
+        envelope = _broker_envelope_fixture(ok=True, status="success", exit_code=0)
+        response = _control_plane_response_fixture(envelope)
+        if tamper == "input-digest":
+            response["result"]["input_digest"] = "0" * 64
+        elif tamper == "receipt-digest":
+            response["result"]["broker_receipt"]["stdout_sha256"] = "0" * 64
+        serialized = json.dumps(response, separators=(",", ":"))
+        if tamper == "duplicate-key":
+            serialized = serialized.replace('"ok":true', '"ok":true,"ok":true', 1)
+        canonical_id = _write_broker_fixture(
+            tmp_path,
+            marker,
+            executable_source=_control_plane_raw_fixture_source(serialized),
+        )
+        monkeypatch.setenv("MAINFRAME_ROOT", str(tmp_path))
+        core._mainframe_root = None
+
+        with pytest.raises(MainframeBrokerError):
             invoke_canonical(canonical_id, {"value": "hello"})
 
 

@@ -15,7 +15,10 @@ setup() {
     NPM_CACHE="$TEST_ROOT/npm-cache"
     PACK_DIR="$TEST_ROOT/packs"
     EXTRACT_DIR="$TEST_ROOT/extracted"
+    XDG_STATE_HOME="$TEST_ROOT/state"
     mkdir -p "$NPM_HOME" "$NPM_CACHE" "$PACK_DIR" "$EXTRACT_DIR"
+    mkdir -m 0700 "$XDG_STATE_HOME"
+    export XDG_STATE_HOME
 }
 
 teardown() {
@@ -113,11 +116,15 @@ expected_allowlist = [
     "INVOCATION_INDEX.json",
     "MANIFEST.json",
     "bin/mainframe",
+    "control_plane/mainframe-control-plane",
+    "control_plane/mainframe_control_plane/*.py",
     "config/invocation-policy.json",
     "config/pi-compatibility.json",
+    "config/semantic-trust-policy.json",
     "config/stable-core.json",
     "hooks/agent-gateway.sh",
     "lib/**/*.sh",
+    "lib/runtime-closure.generated.bash",
     "security/gate-normalizer.mjs",
     "security/gate-rules.json",
     "skills/pi/SKILL.md",
@@ -142,8 +149,24 @@ required = {
     "MANIFEST.json",
     "package.json",
     "bin/mainframe",
+    "control_plane/mainframe-control-plane",
+    "control_plane/mainframe_control_plane/__init__.py",
+    "control_plane/mainframe_control_plane/cli.py",
+    "control_plane/mainframe_control_plane/coding.py",
+    "control_plane/mainframe_control_plane/contracts.py",
+    "control_plane/mainframe_control_plane/durability.py",
+    "control_plane/mainframe_control_plane/errors.py",
+    "control_plane/mainframe_control_plane/executor.py",
+    "control_plane/mainframe_control_plane/kernel.py",
+    "control_plane/mainframe_control_plane/memory.py",
+    "control_plane/mainframe_control_plane/memory_executor.py",
+    "control_plane/mainframe_control_plane/memory_transient.py",
+    "control_plane/mainframe_control_plane/memory_worker.py",
+    "control_plane/mainframe_control_plane/transient.py",
+    "control_plane/mainframe_control_plane/worker.py",
     "config/invocation-policy.json",
     "config/pi-compatibility.json",
+    "config/semantic-trust-policy.json",
     "config/stable-core.json",
     "hooks/agent-gateway.sh",
     "security/gate-normalizer.mjs",
@@ -173,6 +196,7 @@ allowed_roots = {
     "MANIFEST.json",
     "package.json",
     "bin",
+    "control_plane",
     "config",
     "hooks",
     "lib",
@@ -183,9 +207,27 @@ unexpected_roots = sorted({path.split("/", 1)[0] for path in paths} - allowed_ro
 assert not unexpected_roots, f"unexpected package roots: {unexpected_roots}"
 
 assert {path for path in paths if path.startswith("bin/")} == {"bin/mainframe"}
+assert {path for path in paths if path.startswith("control_plane/")} == {
+    "control_plane/mainframe-control-plane",
+    "control_plane/mainframe_control_plane/__init__.py",
+    "control_plane/mainframe_control_plane/cli.py",
+    "control_plane/mainframe_control_plane/coding.py",
+    "control_plane/mainframe_control_plane/contracts.py",
+    "control_plane/mainframe_control_plane/durability.py",
+    "control_plane/mainframe_control_plane/errors.py",
+    "control_plane/mainframe_control_plane/executor.py",
+    "control_plane/mainframe_control_plane/kernel.py",
+    "control_plane/mainframe_control_plane/memory.py",
+    "control_plane/mainframe_control_plane/memory_executor.py",
+    "control_plane/mainframe_control_plane/memory_transient.py",
+    "control_plane/mainframe_control_plane/memory_worker.py",
+    "control_plane/mainframe_control_plane/transient.py",
+    "control_plane/mainframe_control_plane/worker.py",
+}
 assert {path for path in paths if path.startswith("config/")} == {
     "config/invocation-policy.json",
     "config/pi-compatibility.json",
+    "config/semantic-trust-policy.json",
     "config/stable-core.json",
 }
 # npm-packlist automatically carries ancestor README files when an explicitly
@@ -208,6 +250,7 @@ source_libraries = {
     str(path.relative_to(manifest_path.parent))
     for path in (manifest_path.parent / "lib").rglob("*.sh")
 }
+source_libraries.add("lib/runtime-closure.generated.bash")
 assert packed_libraries == source_libraries, {
     "missing": sorted(source_libraries - packed_libraries),
     "extra": sorted(packed_libraries - source_libraries),
@@ -376,7 +419,16 @@ const executed = await execTool.execute(
 );
 if (executed?.details?.result?.code !== 0 ||
     !executed?.details?.result?.stdout?.includes('"packed":true') ||
-    executed?.details?.broker?.status !== "success") {
+    executed?.details?.broker?.status !== "success" ||
+    executed?.details?.controlPlane?.status !== "completed" ||
+    executed?.details?.controlPlane?.outcome !== "succeeded" ||
+    executed?.details?.controlPlane?.resultAvailable !== true ||
+    !/^client-pi-[0-9a-f]{32}$/.test(executed?.details?.controlPlane?.clientCorrelationId || "") ||
+    !/^run-[0-9a-f]{32}$/.test(executed?.details?.controlPlane?.runId || "") ||
+    !/^call-[0-9a-f]{32}$/.test(executed?.details?.controlPlane?.callId || "") ||
+    !/^decision-[0-9a-f]{32}$/.test(executed?.details?.controlPlane?.decisionId || "") ||
+    !/^evidence-[0-9a-f]{32}$/.test(executed?.details?.controlPlane?.evidenceId || "") ||
+    executed?.details?.controlPlane?.brokerReceipt?.audit_id !== executed?.details?.broker?.auditId) {
   throw new Error(`packed broker execution failed: ${JSON.stringify(executed)}`);
 }
 

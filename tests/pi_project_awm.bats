@@ -1,7 +1,12 @@
 #!/usr/bin/env bats
+# Historical end-to-end coverage for Pi's removed direct-storage project path.
+# The active twelve-operation durable route and session compatibility contract
+# lives in pi_project_awm_kernel_gate.bats; keep this only as a migration
+# reference for the retired implementation.
 
 setup() {
-    PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd -P)"
+	skip "legacy direct Pi project storage contract removed; durable route covered separately"
+	PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd -P)"
     TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mainframe-pi-project-awm.XXXXXX")"
     TEST_ROOT="$(cd "$TEST_ROOT" && pwd -P)"
 }

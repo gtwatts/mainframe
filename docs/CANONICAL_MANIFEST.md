@@ -16,8 +16,8 @@ Before Phase 0, MAINFRAME's function identity was not canonical. The current
 candidate adds a deterministic, provisional owner map and uses it for the
 reviewed stable-core broker path; the broader surface migration is incomplete:
 
-- `FUNCTIONS.json` (the generated registry) records **4,475 registrations**
-  but only **4,406 unique names**: **76 collisions** (67 public, 9 private per
+- `FUNCTIONS.json` (the generated registry) records **4,470 registrations**
+  but only **4,401 unique names**: **76 collisions** (67 public, 9 private per
   the approved policy).
 - A collision means two or more libraries register the same Bash name
   (e.g. `abs` in `functional` and `pure-util`, `agent_broadcast` in `agent`
@@ -39,8 +39,8 @@ else generated.
 
 | Term | Meaning |
 |---|---|
-| **Registration** | One library's record of a function it defines. 4,475 exist today. |
-| **Unique name** | A distinct Bash-visible function name. 4,406 exist today. |
+| **Registration** | One library's record of a function it defines. 4,470 exist today. |
+| **Unique name** | A distinct Bash-visible function name. 4,401 exist today. |
 | **Collision** | A unique name with more than one registration. 76 exist today. |
 | **Owner** | The single module a canonical ID binds a name to. |
 | **Canonical ID** | The stable, globally unique identifier for an export (see §4). |
@@ -62,13 +62,16 @@ duplicate field inside the value:
 | `params` | array of param objects | yes | Ordered registry metadata with name, position, required state, and default. Broker adapters use the reviewed `input_schema` and `call_shape` instead. |
 | `result` | object | yes | Result contract: `{kind: "stdout"\|"none"\|"exit"}` in the current generated candidate. |
 | `effects` | array of enum | yes | Provisional registry-derived effect metadata; the reviewed stable-core subset narrows this below. |
-| `dependencies` | array of module IDs | yes | Currently generated as an empty array; a validated loader graph remains future work. |
+| `dependencies` | array of module IDs | yes | Per-export dependency metadata; currently empty pending review. The separate runtime closure has a validated module dependency graph. |
 | `platforms` | array of enum | yes | `linux` and `macos` in the current candidate. Exact release evidence remains platform-specific. |
 | `stability` | enum | yes | `stable`, `beta`, `experimental`, `deprecated`. |
 | `aliases` | array of strings | yes | Additional names that may eventually resolve to this ID; currently generated empty. |
 | `pack` | string | yes | Owning current pack (`core`, `std`, `agent`, `data`, `network`, `devops`, or `security`). |
 | `profiles` | array of strings | yes | Current closures containing this export: `stable-core`, `core`, and/or `full`. |
-| `ownership` | string | yes | `provisional` while ownership is derived from registry plus collision policy/probe. |
+| `ownership` | string | yes | `reviewed` for the 26 collision-free stable-core contracts; `provisional` for discovery-only exports derived from registry plus collision policy/probe. |
+| `execution_exposure` | enum | yes | `trusted` only for the reviewed stable-core invocation set; otherwise `discovery-only`. |
+| `semantic_status` | enum | yes | `reviewed` or `unreviewed`; unreviewed exports cannot become executable. |
+| `declared_effects` | array of enum | yes | Policy-side effect classification. Reviewed invocation effects are copied exactly; discovery records remain non-authorizing. |
 | `signature`, `idempotent`, `bash_identifier` | mixed | yes | Compatibility and adapter metadata retained from the generated registry. |
 
 The 26 stable-core exports have an additional reviewed invocation contract.
@@ -175,10 +178,11 @@ surface `S` in `{runtime, MCP, LSP, nodejs binding, python binding, docs}`:
 > `P`, and every exposed name resolves to the same canonical ID as
 > `name_index`.
 
-The current Phase 0 parity gate verifies canonical ownership, the exact
-26-export stable-core closure, its MCP default-tier closure, and the reviewed
-contract sidecar. Complete profile-by-profile parity across every surface in
-the statement above remains a migration target.
+The current parity gate verifies canonical ownership, the exact 26-export
+stable-core closure, its sole MCP execution tier, the reviewed contract
+sidecar, semantic trust classification, generated runtime dependency closure,
+and LSP discovery classification. Complete profile-by-profile parity across
+every binding and documentation surface remains a migration target.
 
 ## 8. Generation and migration path
 
@@ -186,9 +190,10 @@ the statement above remains a migration target.
    keeps) machine-readable export annotations; the generator merges them into
    pack fragments, then `MANIFEST.json`. Until annotations exist, the
    generator derives fragments from the current `FUNCTIONS.json` plus the
-   approved collision policy, marking derived ownership `provisional`. The
-   reviewed stable-core invocation fields come only from the closed
-   `config/invocation-policy.json` sidecar.
+   approved collision policy, marking discovery-only ownership `provisional`.
+   The reviewed stable-core invocation fields and reviewed ownership come only
+   from the closed, collision-free `config/invocation-policy.json` and
+   `config/stable-core.json` pair.
 2. **Collision resolution.** For each of the 67 public collisions, the
    approved policy records the chosen owner; the generator emits exactly one
    `name_index` entry and, where required, schedules (not performs) the

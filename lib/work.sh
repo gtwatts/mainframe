@@ -115,8 +115,8 @@ _mainframe_work_private_scratch() {
 mainframe_work() {
     local project='.' task='' tokens="$_MAINFRAME_WORK_DEFAULT_TOKENS"
     local format='prompt' seen_project=false seen_tokens=false seen_format=false
-    local canonical_project session_id session_state context_json safe_context
-    local context_bytes max_context_bytes scratch quoted_project
+    local canonical_project session_id session_state status_json context_json safe_context
+    local context_bytes max_context_bytes quoted_project cli jq_path
     local checkpoint_template handoff_template renewal_template
 
     while [[ $# -gt 0 ]]; do
@@ -205,7 +205,11 @@ mainframe_work() {
             ;;
     esac
 
-    canonical_project="$(_awm_project_discover_root "$project" 2>/dev/null)" || {
+    declare -F _mainframe_durable_awm_discover_root >/dev/null 2>&1 || {
+        _mainframe_work_error 'durable project-memory discovery is unavailable'
+        return 1
+    }
+    canonical_project="$(_mainframe_durable_awm_discover_root "$project" 2>/dev/null)" || {
         _mainframe_work_error 'could not resolve a safe canonical project root; no state was changed'
         return 1
     }
@@ -215,7 +219,12 @@ mainframe_work() {
         return 1
     }
 
-    if ! awm_project_session "$canonical_project" >/dev/null 2>&1; then
+    cli="$MAINFRAME_ROOT/bin/mainframe"
+    [[ -f "$cli" && ! -L "$cli" && -x "$cli" ]] || {
+        _mainframe_work_error 'durable project-memory launcher is unavailable'
+        return 1
+    }
+    if ! session_id="$("$cli" awm project session --project "$canonical_project")"; then
         _mainframe_work_error \
             'no valid existing private project-memory mapping; work refused to initialize, renew, or repair it'
         printf 'Next safe read-only check: mainframe setup --project %q\n' \
@@ -224,8 +233,27 @@ mainframe_work() {
             "$canonical_project" >&2
         return 1
     fi
-    session_id="$_AWM_SESSION_ID"
-    session_state="$(_awm_manifest_field "$session_id" status 2>/dev/null || true)"
+    [[ "$session_id" =~ ^[0-9a-f]{12}$ ]] || {
+        _mainframe_work_error 'project-memory session route returned an invalid identity'
+        return 1
+    }
+    if ! status_json="$("$cli" awm project status --project "$canonical_project")"; then
+        _mainframe_work_error 'project-memory status route failed closed'
+        return 1
+    fi
+    jq_path="$(_awm_strict_jq_path 2>/dev/null)" || {
+        _mainframe_work_error 'strict JSON parser is unavailable'
+        return 1
+    }
+    session_state="$(builtin printf '%s' "$status_json" | "$jq_path" -er \
+        --arg sid "$session_id" '
+          if .status == "mapped" and .private == true and .session_id == $sid and
+             (.session.status == "active" or .session.status == "completed")
+          then .session.status else error("invalid project status") end
+        ' 2>/dev/null)" || {
+        _mainframe_work_error 'project-memory status route returned an invalid binding'
+        return 1
+    }
     case "$session_state" in
         active|completed) ;;
         *)
@@ -234,16 +262,8 @@ mainframe_work() {
             ;;
     esac
 
-    scratch="$(_mainframe_work_private_scratch)" || {
-        _mainframe_work_error 'could not establish private temporary space for bounded retrieval'
-        return 1
-    }
-    _mainframe_cleanup_dirs+=("$scratch")
-    if ! context_json="$(
-        umask 077
-        TMPDIR="$scratch" AWM_CHARS_PER_TOKEN=4 \
-            awm_context_for "$task" --tokens "$tokens" --format json
-    )"; then
+    if ! context_json="$("$cli" awm project context \
+        --project "$canonical_project" -- "$task" --tokens "$tokens" --format json)"; then
         _mainframe_work_error 'bounded project-memory retrieval failed; no durable state was changed'
         return 1
     fi

@@ -4,8 +4,8 @@
 **Scope**: how MAINFRAME integrates with agent harnesses, multi-agent
 systems, and operator tooling — and the performance contract for each.
 
-The registry planned for this candidate contains **4,406 unique functions,
-4,475 registrations, and 193 libraries**. These are source-candidate facts,
+The registry planned for this candidate contains **4,401 unique functions,
+4,470 registrations, and 192 libraries**. These are source-candidate facts,
 not claims about the assets in the public v10.1.0 release.
 
 ---
@@ -96,7 +96,7 @@ executions or completed cross-platform release certification. WSL is untested.
 
 | Surface | Mechanism | State |
 |---------|-----------|-------|
-| Metadata | `FUNCTIONS.lsp.json` — 4,406 owner-filtered entries from 193 libraries for the planned candidate | Candidate metadata |
+| Metadata | `FUNCTIONS.lsp.json` — 4,401 owner-filtered entries from 192 libraries for the planned candidate | Candidate metadata |
 | Consumers | signature help / hover in LSP-capable editors | ✅ present |
 
 ### 6. Multi-agent systems

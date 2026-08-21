@@ -1,0 +1,27 @@
+flowchart LR
+    Request[Caller-controlled stable-core request]
+    Caller[Authorized caller]
+    Kernel[Control-plane kernel]
+    Ledger[(Metadata-only ledger and Evidence)]
+    Input[(Owner-private bounded transient input)]
+    Worker[Per-request supervisor]
+    Fixed[Fixed executable, argv, env, deadline]
+    Broker[Stable-core broker]
+    Result[(Owner-private bounded transient result)]
+
+    Request --> Caller
+    subgraph PrivateBoundary[Owner-private control-plane boundary]
+        Kernel --> Ledger
+        Input -->|consume once| Worker
+        Worker -->|policy-bound call| Kernel
+        Worker --> Fixed
+        Fixed -->|metadata receipt| Kernel
+        Kernel --> Ledger
+        Fixed -->|consume-once envelope| Result
+    end
+    Caller -->|reserve exact identity and digest| Kernel
+    Caller -->|stage raw input; never durable| Input
+    Fixed --> Broker
+    Broker -->|raw stdout/stderr in memory only| Fixed
+    Result --> Caller
+    Caller -. retry may return result_available=false .-> Kernel

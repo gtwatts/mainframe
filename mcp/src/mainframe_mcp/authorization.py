@@ -7,8 +7,9 @@ executor. Anything not explicitly permitted is rejected:
   2. The function name must be a valid bash identifier (no metacharacters,
      spaces, path separators, or command substitutions).
   3. The function must be registered in FUNCTIONS.json (registry membership).
-  4. The function must be inside the active tier's advertised tool set, so a
-     caller cannot invoke tools that ``list_tools`` did not advertise.
+  4. The function must be inside the sole reviewed ``stable-core`` surface, so
+     discovery profiles can never be promoted into execution policy by a
+     library caller.
 
 No exception to these rules exists; unknown names never reach a shell.
 """
@@ -31,7 +32,11 @@ REASON_TIER_VIOLATION = 'function_outside_active_tier'
 REASON_INVALID_TIER = 'invalid_active_tier'
 REASON_INVALID_ARGUMENTS = 'invalid_arguments'
 
-VALID_TIERS = frozenset({'stable-core', 'core', 'full'})
+# ``core`` and ``full`` remain useful manifest discovery profiles, but they are
+# deliberately not MCP execution tiers.  Keeping the executable set singular
+# prevents an importable helper from bypassing the public CLI's stable-core
+# boundary.
+VALID_TIERS = frozenset({'stable-core'})
 DEFAULT_TIER = 'stable-core'
 
 # Shared MCP surface rules. The canonical manifest generator imports the same
@@ -109,7 +114,7 @@ def authorize_invocation(registry, tool_name: str, tier: str = DEFAULT_TIER) -> 
     Args:
         registry: Loaded ToolRegistry instance.
         tool_name: Raw tool name from the MCP client (e.g. 'mainframe_json_get').
-        tier: Active tier ('core' or 'full').
+        tier: Active execution tier. Only ``stable-core`` is valid.
 
     Returns:
         The registry metadata dict for the authorized function.

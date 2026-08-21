@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mainframe.local/schemas/control-plane-claim-receipt-v1.json",
+  "title": "MAINFRAME control-plane gate receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "receipt_type",
+    "receipt_id",
+    "gate_id",
+    "proof_kind",
+    "protocol_version",
+    "subject",
+    "command",
+    "environment",
+    "issued_at",
+    "expires_at",
+    "evidence",
+    "result",
+    "authority",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "receipt_type": {"const": "mainframe-control-plane-gate-receipt"},
+    "receipt_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{7,127}$"},
+    "gate_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,63}$"},
+    "proof_kind": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,63}$"},
+    "protocol_version": {"const": "1.0.0"},
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "source_revision",
+        "source_tree_sha256",
+        "inventory_sha256",
+        "payload_sha256",
+        "version"
+      ],
+      "properties": {
+        "kind": {"enum": ["source", "payload"]},
+        "source_revision": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "source_tree_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "inventory_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "payload_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "version": {"type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$"}
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "argv"],
+      "properties": {
+        "identity": {"type": "string", "pattern": "^mainframe\\.[a-z0-9.-]+\\.v[1-9][0-9]*$"},
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os", "architecture", "runner_class"],
+      "properties": {
+        "os": {"enum": ["darwin", "linux"]},
+        "architecture": {"enum": ["arm64", "x86_64"]},
+        "runner_class": {"enum": ["maintainer-local", "repository-ci", "installed-host", "release-verifier", "independent-lab"]}
+      }
+    },
+    "issued_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256", "role"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "role": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,63}$"}
+        }
+      }
+    },
+    "result": {"enum": ["pass", "fail"]},
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "signer_id", "independence", "signature"],
+      "properties": {
+        "class": {
+          "enum": [
+            "project-maintainer",
+            "repository-ci",
+            "local-verifier",
+            "host-operator",
+            "release-authority",
+            "independent-evaluator",
+            "self-asserted"
+          ]
+        },
+        "signer_id": {"type": "string", "minLength": 3},
+        "independence": {"enum": ["project", "external"]},
+        "signature": {"type": ["string", "null"], "minLength": 16}
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}

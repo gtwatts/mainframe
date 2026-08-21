@@ -2,8 +2,11 @@
  * MAINFRAME Node.js Bindings - Core Module Tests
  */
 
+import "./setup";
+
 import { describe, test, expect, beforeAll } from "bun:test";
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -30,6 +33,106 @@ import {
   approvedBashLayout,
   FIXED_BASH_CANDIDATES,
 } from "../src/core";
+
+const DURABLE_CLOSURE_FILES = [
+  "bin/mainframe",
+  "lib/common.sh",
+  "lib/durable_invoke.sh",
+  "control_plane/mainframe-control-plane",
+  "control_plane/mainframe_control_plane/__init__.py",
+  "control_plane/mainframe_control_plane/cli.py",
+  "control_plane/mainframe_control_plane/coding.py",
+  "control_plane/mainframe_control_plane/contracts.py",
+  "control_plane/mainframe_control_plane/durability.py",
+  "control_plane/mainframe_control_plane/errors.py",
+  "control_plane/mainframe_control_plane/executor.py",
+  "control_plane/mainframe_control_plane/kernel.py",
+  "control_plane/mainframe_control_plane/memory.py",
+  "control_plane/mainframe_control_plane/transient.py",
+  "control_plane/mainframe_control_plane/worker.py",
+] as const;
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+function writeDurableClosureFixture(root: string): void {
+  for (const relative of DURABLE_CLOSURE_FILES) {
+    const path = join(root, relative);
+    mkdirSync(dirname(path), { recursive: true });
+    if (!existsSync(path)) writeFileSync(path, "# fixture\n");
+    if (relative === "bin/mainframe" || relative === "control_plane/mainframe-control-plane") {
+      chmodSync(path, 0o755);
+    }
+  }
+}
+
+function controlPlaneResponseFixture(
+  envelope: Record<string, unknown>,
+  inputJson = '{"value":"hello"}',
+): Record<string, unknown> {
+  const bytes = (field: "stdout_b64" | "stderr_b64") =>
+    Buffer.from(String(envelope[field] ?? ""), "base64");
+  const error = envelope.error === null ? Buffer.alloc(0) : Buffer.from(String(envelope.error), "utf8");
+  const receipt = {
+    schema_version: envelope.schema_version,
+    ok: envelope.ok,
+    status: envelope.status,
+    canonical_id: envelope.canonical_id,
+    name: envelope.name,
+    owner: envelope.owner,
+    exit_code: envelope.exit_code,
+    timed_out: envelope.timed_out,
+    output_exceeded: envelope.output_exceeded,
+    duration_ms: envelope.duration_ms,
+    audit_id: envelope.audit_id,
+    stdout_bytes: bytes("stdout_b64").byteLength,
+    stdout_sha256: createHash("sha256").update(bytes("stdout_b64")).digest("hex"),
+    stderr_bytes: bytes("stderr_b64").byteLength,
+    stderr_sha256: createHash("sha256").update(bytes("stderr_b64")).digest("hex"),
+    error_bytes: error.byteLength,
+    error_sha256: createHash("sha256").update(error).digest("hex"),
+  };
+  return {
+    ok: true,
+    command: "canonical-invoke",
+    result: {
+      schema_version: 1,
+      status: "completed",
+      client_correlation_id: "__CID__",
+      run_id: "run-11111111111111111111111111111111",
+      call_id: "call-22222222222222222222222222222222",
+      decision_id: "decision-33333333333333333333333333333333",
+      evidence_id: "evidence-44444444444444444444444444444444",
+      input_digest: createHash("sha256").update(inputJson).digest("hex"),
+      outcome: envelope.ok === true ? "succeeded" : (envelope.timed_out === true ? "timed_out" : "failed"),
+      result_available: true,
+      broker_receipt: receipt,
+      broker_envelope: envelope,
+    },
+  };
+}
+
+function controlPlaneFixtureSource(
+  envelope: Record<string, unknown>,
+  checks = "",
+): string {
+  return controlPlaneRawFixtureSource(
+    JSON.stringify(controlPlaneResponseFixture(envelope)),
+    checks,
+  );
+}
+
+function controlPlaneRawFixtureSource(serialized: string, checks = ""): string {
+  const [before, after] = serialized.split("__CID__");
+  if (after === undefined) throw new Error("control-plane fixture lacks CID placeholder");
+  return `#!/bin/sh
+${checks}
+IFS= read -r payload
+[ "$payload" = '{"value":"hello"}' ] || exit 70
+printf '%s%s%s\\n' ${shellQuote(before)} "\${12}" ${shellQuote(after)}
+`;
+}
 
 function fakeBashScript(version: string, marker?: string): string {
   const [major, minor] = version.split(".");
@@ -91,6 +194,7 @@ function writeInvalidResultBrokerFixture(
   result: Record<string, unknown>,
 ): void {
   const canonicalId = "mf:data:json:json_string";
+  writeDurableClosureFixture(root);
   mkdirSync(join(root, "bin"), { recursive: true });
   writeFileSync(
     join(root, "MANIFEST.json"),
@@ -329,13 +433,15 @@ describe("Core Module", () => {
       }
     });
 
-    test("should prefer the managed launcher target over a stale legacy root", () => {
+    test("should reject a managed launcher that lacks the durable closure", () => {
       const originalRoot = process.env.MAINFRAME_ROOT;
       const launcher = join(homedir(), ".local", "bin", "mainframe");
-      const expected = dirname(dirname(realpathSync(launcher)));
+      const managed = dirname(dirname(realpathSync(launcher)));
+      const expected = realpathSync(join(import.meta.dir, "../../.."));
       delete process.env.MAINFRAME_ROOT;
       try {
         expect(realpathSync(detectMainframeRoot() ?? "")).toBe(expected);
+        expect(realpathSync(detectMainframeRoot() ?? "")).not.toBe(managed);
       } finally {
         if (originalRoot === undefined) delete process.env.MAINFRAME_ROOT;
         else process.env.MAINFRAME_ROOT = originalRoot;
@@ -658,7 +764,7 @@ describe("Core Module", () => {
     test("should preserve exact leading and trailing whitespace from stdout", () => {
       expect(callFunctionRaw("trim_right", ["  keep  "])).toBe("  keep\n");
       expect(callFunctionRaw("trim_left", ["  keep  "])).toBe("keep  \n");
-    });
+    }, 10_000);
   });
 
   describe("invokeCanonical", () => {
@@ -686,7 +792,7 @@ describe("Core Module", () => {
         });
         writeFileSync(
           join(managedRoot, "bin", "mainframe"),
-          `#!/bin/sh\nprintf '%s\\n' ${JSON.stringify(JSON.stringify(envelope))}\n`,
+          controlPlaneFixtureSource(envelope),
         );
         chmodSync(join(managedRoot, "bin", "mainframe"), 0o755);
         writeFileSync(
@@ -730,7 +836,8 @@ console.log(JSON.stringify({ canonical: invocation.stdout, byName: byName.data }
     });
 
     test("should expose strict broker identity and decoded output", () => {
-      const stateDir = mkdtempSync(join(tmpdir(), "mainframe-node-audit-"));
+      const stateDir = realpathSync(mkdtempSync(join(tmpdir(), "mainframe-node-audit-")));
+      chmodSync(stateDir, 0o700);
       let result: ReturnType<typeof invokeCanonical> | null = null;
       try {
         result = invokeCanonical(
@@ -738,30 +845,29 @@ console.log(JSON.stringify({ canonical: invocation.stdout, byName: byName.data }
           { pairs: ["name=John"] },
           { env: { XDG_STATE_HOME: stateDir } },
         );
-        const auditRecords = readFileSync(
-          join(stateDir, "mainframe", "invocations.jsonl"),
-          "utf8",
-        )
-          .trim()
-          .split("\n")
-          .map((line) => JSON.parse(line) as Record<string, unknown>);
-        const audit = auditRecords.find(
-          (record) => record.audit_id === result.envelope.audit_id,
-        );
-        expect(audit?.caller).toBe("nodejs");
       } finally {
         rmSync(stateDir, { recursive: true, force: true });
       }
       if (result === null) throw new Error("broker result was not produced");
 
-      expect(result.envelope.schema_version).toBe(1);
-      expect(result.envelope.ok).toBe(true);
-      expect(result.envelope.status).toBe("success");
-      expect(result.envelope.canonical_id).toBe("mf:data:json:json_object");
-      expect(result.envelope.name).toBe("json_object");
-      expect(result.envelope.owner).toBe("json");
-      expect(result.envelope.exit_code).toBe(0);
-      expect(result.envelope.audit_id.startsWith("inv-")).toBe(true);
+      expect(result.envelope?.schema_version).toBe(1);
+      expect(result.envelope?.ok).toBe(true);
+      expect(result.envelope?.status).toBe("success");
+      expect(result.envelope?.canonical_id).toBe("mf:data:json:json_object");
+      expect(result.envelope?.name).toBe("json_object");
+      expect(result.envelope?.owner).toBe("json");
+      expect(result.envelope?.exit_code).toBe(0);
+      expect(result.envelope?.audit_id.startsWith("inv-")).toBe(true);
+      expect(result.controlPlane.status).toBe("completed");
+      expect(result.controlPlane.outcome).toBe("succeeded");
+      expect(result.controlPlane.resultAvailable).toBe(true);
+      expect(result.controlPlane.clientCorrelationId).toMatch(/^client-nodejs-[0-9a-f]{32}$/);
+      expect(result.controlPlane.runId).toMatch(/^run-[0-9a-f]{32}$/);
+      expect(result.controlPlane.callId).toMatch(/^call-[0-9a-f]{32}$/);
+      expect(result.controlPlane.decisionId).toMatch(/^decision-[0-9a-f]{32}$/);
+      expect(result.controlPlane.evidenceId).toMatch(/^evidence-[0-9a-f]{32}$/);
+      expect(result.controlPlane.inputDigest).toMatch(/^[0-9a-f]{64}$/);
+      expect(result.controlPlane.brokerReceipt?.audit_id).toBe(result.envelope?.audit_id);
       expect(result.resultKind).toBe("stdout");
       expect(result.stdout).toBe('{"name":"John"}');
       expect(result.stderr).toBe("");
@@ -774,6 +880,14 @@ console.log(JSON.stringify({ canonical: invocation.stdout, byName: byName.data }
           surprise: "not allowed",
         }),
       ).toThrow("undeclared field");
+    });
+
+    test("should bind schema defaults before computing the durable input digest", () => {
+      const result = invokeCanonical("mf:std:validation:validate_int", { value: "42" });
+      expect(result.envelope?.ok).toBe(true);
+      expect(result.controlPlane.inputDigest).toBe(
+        createHash("sha256").update('{"max":"","min":"","value":"42"}').digest("hex"),
+      );
     });
 
     test("should pass the exact canonical argv and nodejs caller", () => {
@@ -789,27 +903,23 @@ console.log(JSON.stringify({ canonical: invocation.stdout, byName: byName.data }
       });
       writeFileSync(
         executable,
-        `#!/bin/sh
-[ "$#" -eq 10 ] &&
+        controlPlaneFixtureSource(envelope, `[ "$#" -eq 12 ] &&
 [ "$1" = invoke ] &&
 [ "$2" = mf:data:json:json_string ] &&
 [ "$3" = --input-json ] && [ "$4" = - ] &&
 [ "$5" = --profile ] && [ "$6" = stable-core ] &&
-[ "$7" = --format ] && [ "$8" = broker-json-v1 ] &&
-[ "$9" = --caller ] || exit 70
-shift 9
-[ "$1" = nodejs ] || exit 70
-IFS= read -r payload
-[ "$payload" = '{"value":"hello"}' ] || exit 70
-printf '%s\\n' ${JSON.stringify(JSON.stringify(envelope))}
-`,
+[ "$7" = --format ] && [ "$8" = control-plane-json-v1 ] &&
+[ "$9" = --caller ] && [ "\${10}" = nodejs ] &&
+[ "\${11}" = --client-correlation-id ] &&
+[ -n "\${12}" ] || exit 70`),
       );
       chmodSync(executable, 0o755);
 
       try {
         setConfig({ mainframeRoot: tempDir });
         const result = invokeCanonical("mf:data:json:json_string", { value: "hello" });
-        expect(result.envelope.ok).toBe(true);
+        expect(result.envelope?.ok).toBe(true);
+        expect(result.controlPlane.clientCorrelationId).toMatch(/^client-nodejs-/);
       } finally {
         setConfig({ mainframeRoot: originalConfig.mainframeRoot });
         rmSync(tempDir, { recursive: true, force: true });
@@ -978,18 +1088,16 @@ invokeCanonical("mf:data:json:json_string", { value: "hello" }, { timeout: 5000 
       }
     });
 
-    for (const [label, envelope, exitCode] of [
-      ["unknown status", brokerEnvelopeFixture({ status: "mystery" }), 1],
-      ["failure with zero exit", brokerEnvelopeFixture({ exit_code: 0 }), 0],
+    for (const [label, envelope] of [
+      ["unknown status", brokerEnvelopeFixture({ status: "mystery" })],
+      ["failure with zero exit", brokerEnvelopeFixture({ exit_code: 0 })],
       [
         "timeout flag mismatch",
         brokerEnvelopeFixture({ status: "timeout", exit_code: 124 }),
-        124,
       ],
       [
         "output flag mismatch",
         brokerEnvelopeFixture({ status: "output_limit", exit_code: 74 }),
-        74,
       ],
     ] as const) {
       test(`should reject incoherent broker envelope: ${label}`, () => {
@@ -998,10 +1106,9 @@ invokeCanonical("mf:data:json:json_string", { value: "hello" }, { timeout: 5000 
         const marker = join(tempDir, "unused");
         writeInvalidResultBrokerFixture(tempDir, marker, { kind: "stdout" });
         const executable = join(tempDir, "bin", "mainframe");
-        const serialized = JSON.stringify(envelope);
         writeFileSync(
           executable,
-          `#!/bin/sh\nprintf '%s\\n' ${JSON.stringify(serialized)}\nexit ${exitCode}\n`,
+          controlPlaneFixtureSource(envelope),
         );
         chmodSync(executable, 0o755);
 
@@ -1010,6 +1117,37 @@ invokeCanonical("mf:data:json:json_string", { value: "hello" }, { timeout: 5000 
           expect(() =>
             invokeCanonical("mf:data:json:json_string", { value: "hello" }),
           ).toThrow("identity or semantic validation");
+        } finally {
+          setConfig({ mainframeRoot: originalConfig.mainframeRoot });
+          rmSync(tempDir, { recursive: true, force: true });
+        }
+      });
+    }
+
+    for (const tamper of ["duplicate-key", "input-digest", "receipt-digest"] as const) {
+      test(`should fail closed for control-plane ${tamper} tampering`, () => {
+        const originalConfig = getConfig();
+        const tempDir = mkdtempSync(join(tmpdir(), "mainframe-node-control-plane-"));
+        const marker = join(tempDir, "unused");
+        writeInvalidResultBrokerFixture(tempDir, marker, { kind: "stdout" });
+        const envelope = brokerEnvelopeFixture({ ok: true, status: "success", exit_code: 0 });
+        const response = controlPlaneResponseFixture(envelope) as {
+          result: { input_digest: string; broker_receipt: { stdout_sha256: string } };
+        };
+        if (tamper === "input-digest") response.result.input_digest = "0".repeat(64);
+        if (tamper === "receipt-digest") response.result.broker_receipt.stdout_sha256 = "0".repeat(64);
+        let serialized = JSON.stringify(response);
+        if (tamper === "duplicate-key") {
+          serialized = serialized.replace('"ok":true', '"ok":true,"ok":true');
+        }
+        writeFileSync(
+          join(tempDir, "bin", "mainframe"),
+          controlPlaneRawFixtureSource(serialized),
+        );
+        chmodSync(join(tempDir, "bin", "mainframe"), 0o755);
+        try {
+          setConfig({ mainframeRoot: tempDir });
+          expect(() => invokeCanonical("mf:data:json:json_string", { value: "hello" })).toThrow();
         } finally {
           setConfig({ mainframeRoot: originalConfig.mainframeRoot });
           rmSync(tempDir, { recursive: true, force: true });

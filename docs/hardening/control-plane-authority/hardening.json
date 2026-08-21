@@ -1,0 +1,512 @@
+{
+  "documentType": "codex-security.hardening-analysis",
+  "schemaVersion": "1.0",
+  "analysisId": "hardening_20260820_control_plane_authority",
+  "sourceEvidence": {
+    "kind": "source_collection",
+    "label": "MAINFRAME stable-core execution authority source collection",
+    "collectionSha256": "eeb2a638331c545ccfc20964ed1695d36046464712456c4e9cac50c9d668953d",
+    "artifactCount": 16,
+    "sourceDrift": "present",
+    "targetRevision": "ce0069e0e41c44ceae019e917da74c39efda587e",
+    "collectedAt": "2026-08-21T00:08:24Z",
+    "contextPath": "context.md"
+  },
+  "assessment": {
+    "outcome": "opportunities_identified",
+    "summary": "The source supports centralizing stable-core execution under a kernel-owned metadata-only authority, but the selected supervised route and caller migrations remain in progress."
+  },
+  "constraints": {
+    "profile": "balanced",
+    "changeHorizons": [
+      "incremental",
+      "foundational"
+    ],
+    "nonNegotiables": [
+      "The kernel owns durable Run, ToolCall, PolicyDecision, and Evidence identity for stable-core execution.",
+      "The ledger and Evidence never retain raw input, stdout, stderr, or a raw broker envelope.",
+      "Raw input and result values use bounded owner-private transient channels.",
+      "A running or terminal correlation is never automatically re-executed.",
+      "A terminal retry may return result_available=false when the transient result is unavailable.",
+      "Unsupported non-shell routes remain unverified without qualifying interception evidence."
+    ],
+    "assumptions": [
+      "No measured latency, memory, or concurrency budget was supplied.",
+      "The incremental design must work without installing a permanent service.",
+      "Owner-private transport narrows accidental and cross-user exposure but is not a same-user sandbox.",
+      "The reviewed stable-core contract remains the only execution inventory in scope."
+    ]
+  },
+  "opportunities": [
+    {
+      "opportunityId": "centralize-execution-authority",
+      "title": "Centralize stable-core execution authority",
+      "summary": "Move reservation, policy, fixed execution, terminal recovery, and metadata-only Evidence behind one kernel-owned boundary.",
+      "diagnosis": "Caller-local sequencing splits intent, execution, retry, and durable Evidence across processes, so crashes and adapter drift can make replay safety and authority ambiguous.",
+      "evidence": [
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E001",
+          "path": "bin/mainframe",
+          "claim": "Lines 583-630 introduce a fixed hidden broker grammar and a public durable bridge, while lines 2855-2860 fail closed before broad legacy dispatch; these are drifting worktree bytes."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E002",
+          "path": "lib/durable_invoke.sh",
+          "claim": "Lines 48-66, 124-138, and 177-350 bound and clean caller-side temporary transport around the control-plane route."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E003",
+          "path": "control_plane/mainframe_control_plane/kernel.py",
+          "claim": "Lines 170-185, 307-348, 475-493, and 2475-2577 model canonical metadata, metadata-only broker receipts, transient result delivery, and interrupted recovery without replay."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E004",
+          "path": "control_plane/mainframe_control_plane/transient.py",
+          "claim": "Lines 31-198 implement bounded owner-private consume-once input and result files bound to the durable request."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E005",
+          "path": "control_plane/mainframe_control_plane/executor.py",
+          "claim": "Lines 57-104 and 179-454 fix executable, argv, environment, process group, deadline, cancellation endpoint, and capture bounds without providing an OS sandbox."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E006",
+          "path": "control_plane/mainframe_control_plane/worker.py",
+          "claim": "Lines 47-139 bind a per-correlation worker, consume transient input, drive policy/execution, publish transient output, and refuse to retry running or terminal calls."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E007",
+          "path": "control_plane/mainframe_control_plane/cli.py",
+          "claim": "Lines 245-317 and 347-433 bind retries to canonical reservation, supervise a worker, recover an unresponsive running call, and expose result_available separately from terminal outcome."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E008",
+          "path": "mcp/src/mainframe_mcp/executor.py",
+          "claim": "Lines 623-726, together with skills/pi/extensions/mainframe.ts:2487-2567, retain caller-specific invocation and broker-envelope handling, so both migrations remain open."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E009",
+          "path": "config/host-capabilities.json",
+          "claim": "Lines 44-65, 69-124, and 143-215 keep evidence levels route-specific and do not promote shell-only evidence into non-shell enforcement."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "coverage",
+          "evidenceId": "E010",
+          "path": "tests/control_plane/test_stable_core.py",
+          "claim": "Line 147 still expects a durable broker_envelope while the collected kernel persists broker_receipt, establishing source/test drift rather than a passing gate."
+        },
+        {
+          "claimType": "inferred",
+          "sourceKind": "source",
+          "evidenceId": "E011",
+          "path": "bin/mainframe",
+          "claim": "Because reservation, execution, and recording are sequenced by independent caller processes, caller-local coordination cannot eliminate every execution-versus-Evidence crash window."
+        },
+        {
+          "claimType": "inferred",
+          "sourceKind": "source",
+          "evidenceId": "E012",
+          "path": "control_plane/mainframe_control_plane/executor.py",
+          "claim": "A long-lived authority could centralize queueing and lifecycle further, but the collected source does not establish sufficient demand or actual isolated-worker support."
+        }
+      ],
+      "desiredInvariants": [
+        "The kernel durably binds one correlation to one canonical request, Run, ToolCall, policy decision, and terminal Evidence chain.",
+        "The durable chain contains metadata and cryptographic bindings only; raw input, stdout, stderr, and broker envelopes remain transient.",
+        "Only a fixed reviewed executable, argv, environment, workspace, deadline, and output bound can execute.",
+        "Running and terminal requests are never automatically re-executed.",
+        "A terminal retry can safely report result_available=false without implying that execution did not occur.",
+        "Host and release claims never exceed their qualifying evidence."
+      ],
+      "proposalPath": "proposals/centralize-execution-authority.md",
+      "options": [
+        {
+          "optionId": "legacy-local-sequencing",
+          "title": "Caller-local sequencing around the legacy broker",
+          "kind": "baseline",
+          "summary": "Have every adapter reserve, invoke, and append records in its own process.",
+          "diagramPaths": {
+            "before": "diagrams/centralize-execution-authority-before.mmd",
+            "after": "diagrams/centralize-execution-authority-legacy-local-sequencing-after.mmd"
+          },
+          "evidenceCoverage": [
+            {
+              "evidenceId": "E001",
+              "effect": "mitigates",
+              "tacticalFixRequired": true,
+              "rationale": "The fixed hidden grammar narrows the leaf route, but local sequencing still owns the durable boundary."
+            },
+            {
+              "evidenceId": "E008",
+              "effect": "unaffected",
+              "tacticalFixRequired": true,
+              "rationale": "MCP and Pi would each retain duplicated sequencing and need direct bounds while migration is pending."
+            },
+            {
+              "evidenceId": "E011",
+              "effect": "unaffected",
+              "tacticalFixRequired": true,
+              "rationale": "No caller-local sequence can close the cross-process crash window."
+            }
+          ],
+          "tradeoffs": [
+            {
+              "dimension": "security",
+              "direction": "improves",
+              "confidence": "medium",
+              "basis": "source-derived",
+              "assessment": "Exact local guards narrow misuse, but authority and Evidence still drift between callers.",
+              "validationPlan": "Fault-inject every caller between reserve, broker spawn, completion, and record append; reject the option if any state permits ambiguous replay."
+            },
+            {
+              "dimension": "performance",
+              "direction": "neutral",
+              "confidence": "medium",
+              "basis": "source-derived",
+              "assessment": "No new supervisor or service hop is required beyond existing caller and broker work.",
+              "validationPlan": "Measure p50/p95 end-to-end latency for the current public invoke path as the baseline."
+            },
+            {
+              "dimension": "memory",
+              "direction": "neutral",
+              "confidence": "medium",
+              "basis": "source-derived",
+              "assessment": "Only current caller and broker buffers are retained, subject to existing bounds.",
+              "validationPlan": "Measure peak RSS and captured bytes for maximum-size stable-core results."
+            },
+            {
+              "dimension": "reliability",
+              "direction": "regresses",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "A crash can leave execution completion and durable recording inconsistent, making retry safety ambiguous.",
+              "validationPlan": "Use an execution counter under crash injection and require deterministic recovery without a second execution."
+            },
+            {
+              "dimension": "operability",
+              "direction": "regresses",
+              "confidence": "medium",
+              "basis": "source-derived",
+              "assessment": "Each adapter needs separate diagnostics, reconciliation, and drift control.",
+              "validationPlan": "Inventory adapter-specific state machines and compare their error/result schemas for exact parity."
+            },
+            {
+              "dimension": "migration",
+              "direction": "neutral",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "This preserves current caller shapes and has the smallest immediate migration, but defers the structural change.",
+              "validationPlan": "Run existing compatibility suites while confirming no new route or state format is introduced."
+            }
+          ],
+          "residualRisks": [
+            "Reservation, execution, and Evidence are not one authority boundary.",
+            "Adapter-specific retry and policy logic can drift.",
+            "Raw values cross more caller-owned paths."
+          ],
+          "implementationReadiness": {
+            "affectedComponents": [
+              "bin/mainframe",
+              "lib/invoke.sh",
+              "mcp/src/mainframe_mcp/executor.py",
+              "skills/pi/extensions/mainframe.ts"
+            ],
+            "workPackages": [
+              "Keep fixed broker grammar and per-route bounds as tactical protections."
+            ],
+            "acceptanceCriteria": [
+              "This baseline is not accepted as the terminal architecture."
+            ],
+            "migrationNotes": [
+              "Retain only during bounded migration to the selected route."
+            ],
+            "rollback": "Restore the last reviewed legacy release only as a stopgap; do not claim centralized authority."
+          }
+        },
+        {
+          "optionId": "supervised-kernel",
+          "title": "Per-request kernel reservation and supervised fixed executor",
+          "kind": "incremental",
+          "summary": "Reserve exact identities in the kernel, execute through a fixed short-lived supervisor, keep raw values transient, and persist metadata-only Evidence.",
+          "status": "in_progress",
+          "diagramPaths": {
+            "before": "diagrams/centralize-execution-authority-before.mmd",
+            "after": "diagrams/centralize-execution-authority-supervised-kernel-after.mmd"
+          },
+          "evidenceCoverage": [
+            {
+              "evidenceId": "E003",
+              "effect": "addresses",
+              "tacticalFixRequired": false,
+              "rationale": "The kernel becomes the durable identity, outcome, recovery, and Evidence owner."
+            },
+            {
+              "evidenceId": "E004",
+              "effect": "addresses",
+              "tacticalFixRequired": false,
+              "rationale": "Bounded consume-once transport keeps raw values outside durable state."
+            },
+            {
+              "evidenceId": "E005",
+              "effect": "mitigates",
+              "tacticalFixRequired": false,
+              "rationale": "Fixed supervision narrows process invocation but does not provide strong sandbox isolation."
+            },
+            {
+              "evidenceId": "E006",
+              "effect": "addresses",
+              "tacticalFixRequired": false,
+              "rationale": "The worker refuses to execute a running or terminal correlation again."
+            },
+            {
+              "evidenceId": "E008",
+              "effect": "mitigates",
+              "tacticalFixRequired": true,
+              "rationale": "MCP and Pi migrations are still required, so their current paths need tactical bounds."
+            },
+            {
+              "evidenceId": "E010",
+              "effect": "unknown",
+              "tacticalFixRequired": true,
+              "rationale": "Drifting test expectations must be reconciled before completion can be evaluated."
+            },
+            {
+              "evidenceId": "E011",
+              "effect": "addresses",
+              "tacticalFixRequired": false,
+              "rationale": "Kernel reservation and terminal Evidence replace the caller-local crash boundary."
+            }
+          ],
+          "tradeoffs": [
+            {
+              "dimension": "security",
+              "direction": "improves",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "Identity, policy, fixed execution, and metadata-only Evidence converge in one kernel-owned flow; raw values remain transient. Same-user IPC and non-sandboxed process risk remain.",
+              "validationPlan": "Prove exact binding and fixed execution, scan ledger bytes for secret sentinels, and run same-user path/mode/link tamper cases."
+            },
+            {
+              "dimension": "performance",
+              "direction": "regresses",
+              "confidence": "medium",
+              "basis": "source-derived",
+              "assessment": "Each call adds reservation/ledger synchronization, transient-file operations, a worker spawn, and supervision.",
+              "validationPlan": "Compare p50/p95/p99 public-invoke latency for representative small and maximum inputs against the legacy baseline; set the threshold before release."
+            },
+            {
+              "dimension": "memory",
+              "direction": "regresses",
+              "confidence": "medium",
+              "basis": "source-derived",
+              "assessment": "A bounded worker and bounded pipe capture exist per active request, but no resident service is introduced.",
+              "validationPlan": "Measure peak combined RSS and buffered bytes at one and the maximum supported concurrent call count; reject unbounded growth."
+            },
+            {
+              "dimension": "reliability",
+              "direction": "improves",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "At-most-once execution and terminal recovery remove ambiguous replay. Raw-result availability intentionally regresses after result consumption or loss, yielding result_available=false.",
+              "validationPlan": "Fault-inject every lifecycle boundary, assert the execution counter remains one, and verify terminal retries return metadata without replay when the result is absent."
+            },
+            {
+              "dimension": "operability",
+              "direction": "improves",
+              "confidence": "medium",
+              "basis": "source-derived",
+              "assessment": "Durable identities, receipts, and recovery improve local diagnosis, while unavailable-result reconciliation and transient cleanup need explicit tooling.",
+              "validationPlan": "Exercise operator lookup and cleanup workflows for success, denial, timeout, cancellation, interrupted execution, and lost results."
+            },
+            {
+              "dimension": "migration",
+              "direction": "regresses",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "Bash, MCP, Pi, and tests must converge on one closed result contract and remove direct legacy authority paths.",
+              "validationPlan": "Add direct-path negative tests per adapter and require clean candidate plus installed-candidate parity before promotion."
+            }
+          ],
+          "residualRisks": [
+            "A compromised same-user process may still target owner-private transient paths or sockets.",
+            "The supervised subprocess is constrained but not sandboxed.",
+            "A consumed or lost raw result is intentionally unavailable even though durable terminal metadata remains.",
+            "MCP and Pi remain migration seams until their direct paths are removed."
+          ],
+          "implementationReadiness": {
+            "status": "in_progress",
+            "affectedComponents": [
+              "control_plane/mainframe_control_plane/kernel.py",
+              "control_plane/mainframe_control_plane/transient.py",
+              "control_plane/mainframe_control_plane/executor.py",
+              "control_plane/mainframe_control_plane/worker.py",
+              "control_plane/mainframe_control_plane/cli.py",
+              "bin/mainframe",
+              "lib/durable_invoke.sh",
+              "mcp/src/mainframe_mcp/executor.py",
+              "mcp/src/mainframe_mcp/server.py",
+              "skills/pi/extensions/mainframe.ts"
+            ],
+            "workPackages": [
+              "Freeze request/result/receipt contracts.",
+              "Prove metadata-only durable storage.",
+              "Finish transient lifecycle and supervisor recovery.",
+              "Close the public Bash route.",
+              "Migrate MCP and Pi.",
+              "Pass clean candidate, installed candidate, and separate release gates."
+            ],
+            "acceptanceCriteria": [
+              "Fault-injection execution counters never exceed one per correlation.",
+              "Secret sentinels and raw envelopes never appear in the durable ledger or Evidence.",
+              "Terminal retries can return result_available=false and never replay.",
+              "All supported callers use the kernel-owned route and direct routes fail closed."
+            ],
+            "migrationNotes": [
+              "Land public CLI/Bash first, then MCP, then Pi.",
+              "Keep unsupported non-shell and absent live/release claims unverified."
+            ],
+            "rollback": "Disable stable-core invocation or restore the last reviewed release; never fall back from a failed kernel binding to direct broker execution."
+          }
+        },
+        {
+          "optionId": "owner-private-daemon",
+          "title": "Owner-private long-lived daemon with isolated workers",
+          "kind": "foundational",
+          "summary": "Put policy, dispatch, cancellation, recovery, and metadata Evidence in a resident owner-private service that launches isolated short-lived workers.",
+          "diagramPaths": {
+            "before": "diagrams/centralize-execution-authority-before.mmd",
+            "after": "diagrams/centralize-execution-authority-owner-private-daemon-after.mmd"
+          },
+          "evidenceCoverage": [
+            {
+              "evidenceId": "E003",
+              "effect": "addresses",
+              "tacticalFixRequired": false,
+              "rationale": "The daemon can host the existing kernel identity and metadata model."
+            },
+            {
+              "evidenceId": "E004",
+              "effect": "mitigates",
+              "tacticalFixRequired": false,
+              "rationale": "The same privacy invariant can be carried over, but daemon-safe transient IPC is new work."
+            },
+            {
+              "evidenceId": "E005",
+              "effect": "mitigates",
+              "tacticalFixRequired": true,
+              "rationale": "Fixed execution is reusable, but isolated-worker enforcement has not been demonstrated."
+            },
+            {
+              "evidenceId": "E012",
+              "effect": "unknown",
+              "tacticalFixRequired": false,
+              "rationale": "The foundational benefit remains hypothetical until load, lifecycle, and isolation evidence exists."
+            }
+          ],
+          "tradeoffs": [
+            {
+              "dimension": "security",
+              "direction": "improves",
+              "confidence": "low",
+              "basis": "hypothetical",
+              "assessment": "One resident authority can reduce caller trust and add real worker isolation, but the daemon becomes a high-value target and no isolation mechanism is selected or proven.",
+              "validationPlan": "Threat-model peer identity, upgrades, socket access, daemon compromise, and platform isolation; run platform-specific escape tests before making an isolation claim."
+            },
+            {
+              "dimension": "performance",
+              "direction": "unknown",
+              "confidence": "low",
+              "basis": "hypothetical",
+              "assessment": "Kernel startup may be amortized, while IPC, queueing, and worker isolation add costs whose balance depends on concurrency.",
+              "validationPlan": "Benchmark serial and concurrent workloads against Option 2, comparing p50/p95/p99 latency and throughput at a predeclared concurrency threshold."
+            },
+            {
+              "dimension": "memory",
+              "direction": "regresses",
+              "confidence": "medium",
+              "basis": "analogous",
+              "assessment": "A resident daemon, queue, health state, and worker bookkeeping create the highest steady-state footprint.",
+              "validationPlan": "Measure idle RSS, per-worker growth, queue growth under backpressure, and post-load return to baseline."
+            },
+            {
+              "dimension": "reliability",
+              "direction": "unknown",
+              "confidence": "low",
+              "basis": "hypothetical",
+              "assessment": "Central backpressure can improve recovery, while daemon crashes, stale sockets, upgrades, and client/server skew create new availability modes.",
+              "validationPlan": "Run crash/restart, upgrade/downgrade, stale-socket, queue saturation, and split-version campaigns without duplicate execution."
+            },
+            {
+              "dimension": "operability",
+              "direction": "regresses",
+              "confidence": "high",
+              "basis": "analogous",
+              "assessment": "Installation, service lifecycle, health, upgrades, recovery, privacy-safe logging, and cross-platform launch integration become permanent responsibilities.",
+              "validationPlan": "Prototype install/start/upgrade/rollback on supported macOS and Linux hosts and measure manual recovery steps."
+            },
+            {
+              "dimension": "migration",
+              "direction": "regresses",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "All clients need a versioned IPC protocol, dual-route rollout, state adoption, and fallback rules.",
+              "validationPlan": "Prove mixed-version compatibility and rollback from a staged daemon candidate without enabling legacy execution fallback."
+            }
+          ],
+          "residualRisks": [
+            "The daemon becomes an availability dependency and a high-value same-user target.",
+            "A private socket does not itself provide sandbox isolation.",
+            "Cross-platform service lifecycle and upgrade recovery remain unproven."
+          ],
+          "implementationReadiness": {
+            "status": "future_foundational",
+            "affectedComponents": [
+              "future versioned local daemon",
+              "future isolated worker launcher",
+              "all supported clients"
+            ],
+            "workPackages": [
+              "Gather concurrency and lifecycle requirements.",
+              "Threat-model and prototype a versioned owner-private protocol.",
+              "Select and prove platform-specific worker isolation."
+            ],
+            "acceptanceCriteria": [
+              "Option 3 is not accepted without measured need and isolation evidence."
+            ],
+            "migrationNotes": [
+              "Revisit only if Option 2 startup, concurrency, or lifecycle measurements fail declared thresholds."
+            ],
+            "rollback": "Stop the daemon and return to the proven Option 2 public route using compatible metadata state; never fall back to caller-local execution."
+          }
+        }
+      ],
+      "recommendedOptionId": "supervised-kernel",
+      "recommendation": "Select the supervised kernel under the current balanced constraints because it closes the authority and at-most-once gap without a resident service; keep its status in progress until tests, MCP/Pi migration, clean candidate, and installed evidence are complete."
+    }
+  ],
+  "openQuestions": [
+    "What bounded cleanup horizon should apply to an unconsumed transient result?",
+    "How should CLI, MCP, and Pi present terminal result_available=false without triggering automatic replay?",
+    "Which same-user attacker capabilities are in scope for transient files and Unix sockets?",
+    "What measured concurrency or startup threshold would justify the daemon option?"
+  ]
+}

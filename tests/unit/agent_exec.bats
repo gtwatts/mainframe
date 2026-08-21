@@ -242,9 +242,13 @@ teardown() {
 
 @test "agent_undo_all: executes undo in LIFO order" {
     local log="${TEST_TEMP_DIR}/undo_log"
-    agent_undo_register "first" "echo first >> '${log}'"
-    agent_undo_register "second" "echo second >> '${log}'"
-    agent_undo_register "third" "echo third >> '${log}'"
+    record_undo() {
+        printf '%s\n' "$1" >> "$2"
+    }
+    agent_allow_command record_undo
+    agent_undo_register "first" "record_undo first '${log}'"
+    agent_undo_register "second" "record_undo second '${log}'"
+    agent_undo_register "third" "record_undo third '${log}'"
 
     agent_undo_all
 
@@ -252,6 +256,16 @@ teardown() {
     local first_line
     first_line=$(head -1 "$log")
     [[ "$first_line" == "third" ]]
+}
+
+@test "agent_undo_all: rejects OR command chaining without side effects" {
+    local marker="${TEST_TEMP_DIR}/or_injection"
+    agent_undo_register "reject_or" "false || touch '${marker}'"
+
+    run agent_undo_all
+
+    assert_failure
+    [[ ! -e "$marker" ]]
 }
 
 @test "agent_undo_clear: empties the undo stack" {
@@ -302,6 +316,41 @@ EOF
     assert_failure
 }
 
+@test "agent_transaction: rejects AND command chaining without side effects" {
+    local marker="${TEST_TEMP_DIR}/and_injection"
+
+    run agent_transaction --label "reject_and" <<EOF
+do: true && touch '${marker}'
+EOF
+
+    assert_failure
+    [[ ! -e "$marker" ]]
+}
+
+@test "agent_transaction: rejects semicolon command chaining without side effects" {
+    local marker="${TEST_TEMP_DIR}/semicolon_injection"
+
+    run agent_transaction --label "reject_semicolon" <<EOF
+do: true; touch '${marker}'
+EOF
+
+    assert_failure
+    [[ ! -e "$marker" ]]
+}
+
+@test "agent_transaction: rejects interpreter entry points without side effects" {
+    local marker="${TEST_TEMP_DIR}/interpreter_injection"
+    local script="${TEST_TEMP_DIR}/interpreter_payload.py"
+    printf 'from pathlib import Path\nPath("%s").touch()\n' "$marker" > "$script"
+
+    run agent_transaction --label "reject_interpreter" <<EOF
+do: python3 '${script}'
+EOF
+
+    assert_failure
+    [[ ! -e "$marker" ]]
+}
+
 # =============================================================================
 # RECOVERY PLAYBOOKS
 # =============================================================================
@@ -318,6 +367,16 @@ EOF
     run agent_recover "my_cmd" "Something Error XYZ happened"
     assert_success
     [[ -f "$marker" ]]
+}
+
+@test "agent_recover: rejects command substitution without side effects" {
+    local marker="${TEST_TEMP_DIR}/substitution_injection"
+    agent_recovery_register "Explode" "echo \$(touch '${marker}')"
+
+    run agent_recover "failed" "Explode now"
+
+    [[ $status -eq 2 ]]
+    [[ ! -e "$marker" ]]
 }
 
 @test "agent_recover: returns 1 when no pattern matches" {

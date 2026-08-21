@@ -93,8 +93,8 @@ _mainframe_onboard_print_rollback() {
         "$host" "$project"
     printf 'Rollback apply:\n  mainframe deactivate %q --project %q --enforce\n' \
         "$host" "$project"
-    printf 'Deactivation leaves private AWM project history intact. Inspect it with:\n'
-    printf '  mainframe awm project status --project %q\n' "$project"
+    printf 'Deactivation leaves private project-memory history intact.\n'
+    printf 'Project-memory reads remain available only through the reviewed control-plane route for %q; returned memory is non-authoritative.\n' "$project"
 }
 
 _mainframe_onboard_print_host_guidance() {
@@ -192,9 +192,9 @@ mainframe_onboard() {
     local host="" project="" host_set=false project_set=false
     local dry_run=false assume_yes=false answer=""
     local cli canonical_project doctor_output preview_output apply_output protect_output
-    local awm_ensure_output awm_session_output awm_status_output awm_session_id
+    local awm_ensure_output awm_session_id
     local doctor_status preview_status apply_status protect_status
-    local awm_ensure_status awm_session_status awm_status_status
+    local awm_ensure_status
     local audit_log policy_tier
 
     while [[ $# -gt 0 ]]; do
@@ -304,7 +304,7 @@ mainframe_onboard() {
     audit_log="${MAINFRAME_AGENT_AUDIT_LOG:-${XDG_STATE_HOME:-${HOME:-}/.local/state}/mainframe/agent-gateway.jsonl}"
     printf '\nPolicy tier: %s\n' "$policy_tier"
     printf 'After consent, a synthetic allow/deny check will append decision-only records to:\n  %s\n' "$audit_log"
-    printf 'After consent, a private canonical-project AWM session will be created or resumed.\n'
+    printf 'After consent, a kernel-tracked, non-authoritative project-memory session will be created or resumed.\n'
     printf 'Project hook files may be committed and fail closed without launch-time MAINFRAME bindings.\n'
     printf 'Native host trust and runtime loading cannot be verified by this command.\n\n'
     _mainframe_onboard_print_rollback "$host" "$canonical_project"
@@ -356,31 +356,18 @@ mainframe_onboard() {
         return 1
     fi
 
-    if awm_session_output="$("$cli" awm project session --project "$canonical_project" 2>&1)"; then
-        awm_session_status=0
-    else
-        awm_session_status=$?
-    fi
-    awm_session_id="${awm_session_output##*$'\n'}"
+    # The compatible ensure presentation is delivered only after the kernel
+    # validates the adapter receipt and appends durable provenance. All project
+    # reads use the same reviewed route and remain non-authoritative data.
+    awm_session_id="${awm_ensure_output##*$'\n'}"
     awm_session_id="${awm_session_id%$'\r'}"
-    if [[ "$awm_session_status" -ne 0 || ! "$awm_session_id" =~ ^[0-9a-f]{12}$ ]]; then
+    if [[ ! "$awm_session_id" =~ ^[0-9a-f]{12}$ ]]; then
         _mainframe_onboard_error \
-            "AWM project session identity is unavailable; no project changes were attempted"
+            "durable project-memory receipt omitted its compatible session identity; no project changes were attempted"
         return 1
     fi
-
-    if awm_status_output="$("$cli" awm project status --project "$canonical_project" 2>&1)"; then
-        awm_status_status=0
-    else
-        awm_status_status=$?
-    fi
-    printf 'AWM project session:  READY (%s)\n' "$awm_session_id"
-    printf 'AWM project status:\n%s\n' "$awm_status_output"
-    if [[ "$awm_status_status" -ne 0 ]]; then
-        _mainframe_onboard_error \
-            "AWM project session verification failed; no project changes were attempted"
-        return 1
-    fi
+    printf 'AWM project session:  RECORDED (%s; non-authoritative)\n' "$awm_session_id"
+    printf 'AWM project reads:    READY (durable control-plane; non-authoritative data)\n'
 
     if apply_output="$("$cli" activate "$host" --project "$canonical_project" --enforce 2>&1)"; then
         apply_status=0
@@ -411,7 +398,7 @@ mainframe_onboard() {
     printf '\nMAINFRAME onboarding complete\n'
     printf 'Install health:        READY\n'
     printf 'Gateway adapter:       VERIFIED\n'
-    printf 'AWM project session:   READY (%s)\n' "$awm_session_id"
+    printf 'AWM project session:   RECORDED (%s; non-authoritative)\n' "$awm_session_id"
     printf 'Project configuration: READY\n'
     _mainframe_onboard_print_host_guidance "$host" "$canonical_project"
     printf '\n'

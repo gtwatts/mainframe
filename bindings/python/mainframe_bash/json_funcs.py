@@ -8,8 +8,8 @@ import json
 from typing import Any, cast
 
 from .core import MainframeFunctionError
-from .core import _legacy_call_function as call_function
-from .core import _legacy_call_function_json as call_function_json
+from .core import _fixed_convenience_call as call_function
+from .core import _fixed_convenience_json as call_function_json
 
 
 def json_object(**kwargs: str | int | float | bool | None) -> dict[str, Any]:

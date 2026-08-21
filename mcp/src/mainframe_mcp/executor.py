@@ -2,6 +2,7 @@
 
 import base64
 import binascii
+import hashlib
 import json
 import os
 import re
@@ -17,15 +18,6 @@ from .authorization import AuthorizationError, validate_function_name
 from .runtime_root import RuntimeIdentity, resolve_mainframe_root
 
 
-MINIMUM_BASH_VERSION = (4, 4)
-FIXED_BASH_CANDIDATES = (
-    '/opt/homebrew/bin/bash',
-    '/usr/local/bin/bash',
-    '/run/current-system/sw/bin/bash',
-    '/nix/var/nix/profiles/default/bin/bash',
-    '/usr/bin/bash',
-    '/bin/bash',
-)
 TRUSTED_DEPENDENCY_PATH = os.pathsep.join((
     '/opt/homebrew/bin',
     '/opt/homebrew/sbin',
@@ -115,144 +107,55 @@ BROKER_FIXED_STATUS_EXIT_CODES = {
     'broker_error': 70,
 }
 BROKER_RESULT_KINDS = frozenset({'stdout', 'exit', 'none'})
+CONTROL_PLANE_OUTER_FIELDS = frozenset({'ok', 'command', 'result'})
+CONTROL_PLANE_RESULT_FIELDS = frozenset({
+    'schema_version',
+    'status',
+    'client_correlation_id',
+    'run_id',
+    'call_id',
+    'decision_id',
+    'evidence_id',
+    'input_digest',
+    'outcome',
+    'result_available',
+    'broker_receipt',
+    'broker_envelope',
+})
+CONTROL_PLANE_RECEIPT_FIELDS = frozenset({
+    'schema_version',
+    'ok',
+    'status',
+    'canonical_id',
+    'name',
+    'owner',
+    'exit_code',
+    'timed_out',
+    'output_exceeded',
+    'duration_ms',
+    'audit_id',
+    'stdout_bytes',
+    'stdout_sha256',
+    'stderr_bytes',
+    'stderr_sha256',
+    'error_bytes',
+    'error_sha256',
+})
+CONTROL_PLANE_ID_PATTERNS = {
+    'run_id': re.compile(r'^run-[0-9a-f]{32}$'),
+    'call_id': re.compile(r'^call-[0-9a-f]{32}$'),
+    'decision_id': re.compile(r'^decision-[0-9a-f]{32}$'),
+    'evidence_id': re.compile(r'^evidence-[0-9a-f]{32}$'),
+}
+CONTROL_PLANE_CLIENT_ID_RE = re.compile(
+    r'^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
+)
+SHA256_RE = re.compile(r'^[0-9a-f]{64}$')
 
-# Values controlled by the caller are passed after this fixed script as Bash
-# positional parameters. Neither MAINFRAME_ROOT nor argv is interpolated into
-# shell source text.
-EXECUTION_SCRIPT = r'''
-export MAINFRAME_LIBS="all"
-mainframe_common_sh=$1
-mainframe_func=$2
-shift 2
-if ! source "$mainframe_common_sh" 2>/dev/null; then
-    printf "invocation denied: MAINFRAME initialization failed\n" >&2
-    exit 126
-fi
-export MAINFRAME_OUTPUT=json
-if declare -F -- "$mainframe_func" >/dev/null 2>&1; then
-    "$mainframe_func" "$@"
-else
-    printf "invocation denied: '%s' is not a declared MAINFRAME function\n" \
-        "$mainframe_func" >&2
-    exit 127
-fi
-'''
-
-
-def _bash_layout_is_known(candidate: str) -> bool:
-    """Match the fixed Bash layouts reviewed by the CLI and Pi adapter."""
-    if candidate in {
-        '/bin/bash',
-        '/usr/bin/bash',
-        '/usr/local/bin/bash',
-        '/opt/local/bin/bash',
-    }:
-        return True
-    return any(
-        pattern.fullmatch(candidate)
-        for pattern in (
-            re.compile(r'/nix/store/[^/]+/bin/bash'),
-            re.compile(r'/opt/homebrew/Cellar/bash/[^/]+/bin/bash'),
-            re.compile(r'/usr/local/Cellar/bash/[^/]+/bin/bash'),
-            re.compile(
-                r'/home/linuxbrew/\.linuxbrew/Cellar/bash/[^/]+/bin/bash'
-            ),
-        )
-    )
-
-
-def _resolve_safe_bash_candidate(candidate: str) -> Optional[str]:
-    """Canonicalize and authenticate a Bash path without executing it."""
-    if (
-        not isinstance(candidate, str)
-        or not os.path.isabs(candidate)
-        or any(ord(character) < 32 or ord(character) == 127 for character in candidate)
-    ):
-        return None
-    try:
-        resolved = str(Path(candidate).resolve(strict=True))
-        candidate_stat = os.stat(resolved)
-    except (OSError, RuntimeError):
-        return None
-    if (
-        not _bash_layout_is_known(resolved)
-        or not os.path.isfile(resolved)
-        or os.path.islink(resolved)
-        or not os.access(resolved, os.X_OK)
-    ):
-        return None
-    mode = candidate_stat.st_mode & 0o7777
-    if (
-        candidate_stat.st_uid not in {0, os.geteuid()}
-        or mode & 0o022
-        or mode & 0o7000
-        or not mode & 0o100
-    ):
-        return None
-    return resolved
-
-
-def _probe_bash_version(candidate: str) -> Optional[Tuple[int, int]]:
-    """Probe one already-authenticated Bash executable."""
-
-    try:
-        result = subprocess.run(
-            [
-                candidate,
-                '--noprofile',
-                '--norc',
-                '-p',
-                '-c',
-                'printf "%s %s" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}"',
-            ],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            env={'PATH': '/usr/bin:/bin', 'LC_ALL': 'C'},
-        )
-        if result.returncode != 0:
-            return None
-        major, minor = (int(value) for value in result.stdout.split())
-        return major, minor
-    except (OSError, subprocess.SubprocessError, TypeError, ValueError):
-        return None
-
-
-def _resolve_bash() -> str:
-    """Resolve a trusted-location Bash 4.4+ executable or fail closed.
-
-    MAINFRAME libraries require modern Bash features. Every path is
-    canonicalized and checked for a reviewed CLI/Pi layout, trusted ownership,
-    and non-writable mode before its first version probe. PATH is never used.
-    """
-    override = os.environ.get('MAINFRAME_BASH')
-    if override:
-        if not os.path.isabs(override):
-            raise RuntimeError('MAINFRAME_BASH must be an absolute path')
-        resolved = _resolve_safe_bash_candidate(override)
-        if resolved is None:
-            raise RuntimeError(
-                'MAINFRAME_BASH must resolve to a safe supported Bash installation'
-            )
-        version = _probe_bash_version(resolved)
-        if version is None or version < MINIMUM_BASH_VERSION:
-            raise RuntimeError('MAINFRAME_BASH must be executable Bash 4.4 or newer')
-        return resolved
-
-    for candidate in FIXED_BASH_CANDIDATES:
-        resolved = _resolve_safe_bash_candidate(candidate)
-        if resolved is None:
-            continue
-        version = _probe_bash_version(resolved)
-        if version is not None and version >= MINIMUM_BASH_VERSION:
-            return resolved
-
-    raise RuntimeError(
-        'MAINFRAME MCP requires Bash 4.4 or newer at a supported absolute path'
-    )
-
-
-def _execution_environment(mainframe_root: str) -> dict[str, str]:
+def _execution_environment(
+    mainframe_root: str,
+    development_state_home: Optional[str] = None,
+) -> dict[str, str]:
     """Preserve normal user context while removing interpreter injection hooks."""
     env = os.environ.copy()
     for key in tuple(env):
@@ -265,9 +168,15 @@ def _execution_environment(mainframe_root: str) -> dict[str, str]:
             env.pop(key, None)
     env['MAINFRAME_ROOT'] = mainframe_root
     env['PATH'] = TRUSTED_DEPENDENCY_PATH
-    # The MCP process chooses the broker's private state directory; callers
-    # cannot redirect read/pure invocation audits into an arbitrary file.
-    state_home = _account_state_home()
+    # Production always uses the login account's private state directory.
+    # An explicit development-root server may use the operator-selected state
+    # root captured at startup so source tests remain isolated; MCP request
+    # metadata still cannot redirect durable records.
+    state_home = (
+        Path(development_state_home)
+        if development_state_home is not None
+        else _account_state_home()
+    )
     env['XDG_STATE_HOME'] = str(state_home)
     return env
 
@@ -457,8 +366,12 @@ def _decode_broker_envelope(
     expected_owner: str,
     contract_output_limit: int,
     expected_result_kind: str,
+    *,
+    identity_out: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bool, str, str]:
-    """Strictly validate broker-json-v1 and restore legacy return semantics."""
+    """Validate the kernel's nested broker envelope and decode its text result."""
+    if identity_out is not None:
+        identity_out.clear()
     if stderr_bytes:
         return _protocol_failure('broker wrote outside its result envelope')
     try:
@@ -573,13 +486,335 @@ def _decode_broker_envelope(
     except UnicodeDecodeError:
         return _protocol_failure('broker payload is not UTF-8 text')
 
+    if identity_out is not None:
+        identity_out.update({
+            'audit_id': audit_id,
+            'status': status,
+            'duration_ms': duration_ms,
+        })
     if not ok and error:
         stderr = f'{error}\n{stderr}' if stderr else error
     return ok, stdout, stderr
 
 
+def _control_plane_protocol_failure(detail: str) -> Tuple[bool, str, str]:
+    return (
+        False,
+        '',
+        f'invocation denied: control-plane protocol error: {detail}',
+    )
+
+
+def _valid_kernel_id(field: str, value: Any) -> bool:
+    pattern = CONTROL_PLANE_ID_PATTERNS[field]
+    return isinstance(value, str) and pattern.fullmatch(value) is not None
+
+
+def _expected_broker_receipt(envelope: Dict[str, Any]) -> Dict[str, Any]:
+    stdout = _decode_canonical_base64(envelope['stdout_b64'], 'stdout_b64')
+    stderr = _decode_canonical_base64(envelope['stderr_b64'], 'stderr_b64')
+    error_value = envelope['error']
+    if error_value is None:
+        error = b''
+    elif isinstance(error_value, str):
+        error = error_value.encode('utf-8')
+    else:
+        raise ValueError('broker error is not text')
+    return {
+        field: envelope[field]
+        for field in (
+            'schema_version',
+            'ok',
+            'status',
+            'canonical_id',
+            'name',
+            'owner',
+            'exit_code',
+            'timed_out',
+            'output_exceeded',
+            'duration_ms',
+            'audit_id',
+        )
+    } | {
+        'stdout_bytes': len(stdout),
+        'stdout_sha256': hashlib.sha256(stdout).hexdigest(),
+        'stderr_bytes': len(stderr),
+        'stderr_sha256': hashlib.sha256(stderr).hexdigest(),
+        'error_bytes': len(error),
+        'error_sha256': hashlib.sha256(error).hexdigest(),
+    }
+
+
+def _valid_standalone_receipt(
+    receipt: Any,
+    canonical_id: str,
+    func_name: str,
+    expected_owner: str,
+) -> bool:
+    if not isinstance(receipt, dict) or set(receipt) != CONTROL_PLANE_RECEIPT_FIELDS:
+        return False
+    if (
+        type(receipt['schema_version']) is not int
+        or receipt['schema_version'] != 1
+        or type(receipt['ok']) is not bool
+        or receipt['status'] not in BROKER_STATUSES
+        or receipt['canonical_id'] != canonical_id
+        or receipt['name'] != func_name
+        or receipt['owner'] != expected_owner
+        or type(receipt['exit_code']) is not int
+        or not 0 <= receipt['exit_code'] <= 255
+        or type(receipt['timed_out']) is not bool
+        or type(receipt['output_exceeded']) is not bool
+        or receipt['timed_out'] and receipt['output_exceeded']
+        or type(receipt['duration_ms']) is not int
+        or receipt['duration_ms'] < 0
+        or not isinstance(receipt['audit_id'], str)
+        or BROKER_AUDIT_ID_RE.fullmatch(receipt['audit_id']) is None
+    ):
+        return False
+    fixed_exit_code = BROKER_FIXED_STATUS_EXIT_CODES.get(receipt['status'])
+    if (
+        (fixed_exit_code is not None and receipt['exit_code'] != fixed_exit_code)
+        or (receipt['ok'] != (receipt['status'] == 'success'))
+        or (receipt['timed_out'] != (receipt['status'] == 'timeout'))
+        or (receipt['output_exceeded'] != (receipt['status'] == 'output_limit'))
+    ):
+        return False
+    for prefix in ('stdout', 'stderr', 'error'):
+        byte_count = receipt[f'{prefix}_bytes']
+        digest = receipt[f'{prefix}_sha256']
+        if (
+            type(byte_count) is not int
+            or byte_count < 0
+            or not isinstance(digest, str)
+            or SHA256_RE.fullmatch(digest) is None
+        ):
+            return False
+    return True
+
+
+def _decode_control_plane_envelope(
+    stdout_bytes: bytes,
+    stderr_bytes: bytes,
+    return_code: int,
+    canonical_id: str,
+    func_name: str,
+    expected_owner: str,
+    contract_output_limit: int,
+    expected_result_kind: str,
+    client_correlation_id: str,
+    expected_input_digest: str,
+    *,
+    identity_out: Optional[Dict[str, Any]] = None,
+) -> Tuple[bool, str, str]:
+    """Validate control-plane-json-v1 before exposing durable identities."""
+    if identity_out is not None:
+        identity_out.clear()
+    if stderr_bytes:
+        return _control_plane_protocol_failure(
+            'public invoke wrote outside its JSON result envelope'
+        )
+    try:
+        document = json.loads(
+            stdout_bytes.decode('utf-8'),
+            object_pairs_hook=_json_object_without_duplicates,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return _control_plane_protocol_failure(
+            'public invoke returned invalid JSON'
+        )
+    if return_code != 0:
+        return _control_plane_protocol_failure(
+            'public invoke did not return a completed success envelope'
+        )
+    if (
+        not isinstance(document, dict)
+        or set(document) != CONTROL_PLANE_OUTER_FIELDS
+        or document.get('ok') is not True
+        or document.get('command') != 'canonical-invoke'
+        or not isinstance(document.get('result'), dict)
+    ):
+        return _control_plane_protocol_failure(
+            'control-plane envelope shape is invalid'
+        )
+    result = document['result']
+    if set(result) != CONTROL_PLANE_RESULT_FIELDS:
+        return _control_plane_protocol_failure(
+            'control-plane result shape is invalid'
+        )
+    if (
+        type(result['schema_version']) is not int
+        or result['schema_version'] != 1
+        or result['status'] not in {'in_progress', 'completed'}
+        or result['client_correlation_id'] != client_correlation_id
+    ):
+        return _control_plane_protocol_failure(
+            'client correlation or protocol version is invalid'
+        )
+    if not all(
+        _valid_kernel_id(field, result[field])
+        for field in ('run_id', 'call_id', 'decision_id')
+    ):
+        return _control_plane_protocol_failure(
+            'kernel durable identity is invalid'
+        )
+    if (
+        not isinstance(result['input_digest'], str)
+        or result['input_digest'] != expected_input_digest
+        or SHA256_RE.fullmatch(result['input_digest']) is None
+    ):
+        return _control_plane_protocol_failure(
+            'kernel input digest does not match the request'
+        )
+
+    identity = {
+        'client_correlation_id': result['client_correlation_id'],
+        'run_id': result['run_id'],
+        'call_id': result['call_id'],
+        'decision_id': result['decision_id'],
+        'evidence_id': result['evidence_id'],
+        'input_digest': result['input_digest'],
+        'outcome': result['outcome'],
+        'result_available': result['result_available'],
+        'broker_receipt': result['broker_receipt'],
+    }
+    if result['status'] == 'in_progress':
+        if (
+            result['evidence_id'] is not None
+            or result['outcome'] is not None
+            or result['result_available'] is not False
+            or result['broker_receipt'] is not None
+            or result['broker_envelope'] is not None
+        ):
+            return _control_plane_protocol_failure(
+                'in-progress result carries terminal fields'
+            )
+        if identity_out is not None:
+            identity_out.update(identity)
+        return _control_plane_protocol_failure(
+            'durable execution is still in progress'
+        )
+
+    if (
+        not _valid_kernel_id('evidence_id', result['evidence_id'])
+        or result['outcome'] not in {
+            'succeeded', 'failed', 'timed_out', 'interrupted'
+        }
+        or type(result['result_available']) is not bool
+    ):
+        return _control_plane_protocol_failure(
+            'terminal durable identity is invalid'
+        )
+    receipt = result['broker_receipt']
+    envelope = result['broker_envelope']
+    if receipt is not None and not _valid_standalone_receipt(
+        receipt,
+        canonical_id,
+        func_name,
+        expected_owner,
+    ):
+        return _control_plane_protocol_failure(
+            'durable broker receipt is invalid'
+        )
+    if (
+        isinstance(receipt, dict)
+        and receipt['stdout_bytes'] + receipt['stderr_bytes']
+        > contract_output_limit
+    ):
+        return _control_plane_protocol_failure(
+            'durable broker receipt exceeds its reviewed output ceiling'
+        )
+    if identity_out is not None:
+        identity_out.update(identity)
+    if result['result_available'] is False:
+        if envelope is not None:
+            if identity_out is not None:
+                identity_out.clear()
+            return _control_plane_protocol_failure(
+                'unavailable transient result carries a broker envelope'
+            )
+        return _control_plane_protocol_failure(
+            'terminal transient result is unavailable; execution will not be retried'
+        )
+    if not isinstance(receipt, dict) or not isinstance(envelope, dict):
+        if identity_out is not None:
+            identity_out.clear()
+        return _control_plane_protocol_failure(
+            'available result lacks its receipt or broker envelope'
+        )
+    try:
+        inner_bytes = json.dumps(
+            envelope,
+            ensure_ascii=False,
+            separators=(',', ':'),
+            sort_keys=True,
+        ).encode('utf-8')
+    except (TypeError, ValueError, UnicodeEncodeError):
+        if identity_out is not None:
+            identity_out.clear()
+        return _control_plane_protocol_failure(
+            'broker envelope cannot be canonically encoded'
+        )
+    raw_exit_code = envelope.get('exit_code')
+    if type(raw_exit_code) is not int:
+        if identity_out is not None:
+            identity_out.clear()
+        return _control_plane_protocol_failure(
+            'broker envelope exit code is invalid'
+        )
+    broker_identity: Dict[str, Any] = {}
+    inner_ok, stdout, stderr = _decode_broker_envelope(
+        inner_bytes,
+        b'',
+        raw_exit_code,
+        canonical_id,
+        func_name,
+        expected_owner,
+        contract_output_limit,
+        expected_result_kind,
+        identity_out=broker_identity,
+    )
+    if broker_identity == {}:
+        if identity_out is not None:
+            identity_out.clear()
+        return _control_plane_protocol_failure(
+            f'inner {stderr}'
+        )
+    if inner_ok and result['outcome'] != 'succeeded':
+        if identity_out is not None:
+            identity_out.clear()
+        return _control_plane_protocol_failure(
+            'broker envelope contradicts the durable outcome'
+        )
+    if (
+        not inner_ok
+        and result['outcome']
+        != ('timed_out' if envelope.get('status') == 'timeout' else 'failed')
+    ):
+        if identity_out is not None:
+            identity_out.clear()
+        return _control_plane_protocol_failure(
+            'broker envelope contradicts the durable outcome'
+        )
+    try:
+        expected_receipt = _expected_broker_receipt(envelope)
+    except (KeyError, ValueError):
+        if identity_out is not None:
+            identity_out.clear()
+        return _control_plane_protocol_failure(
+            'broker receipt cannot be derived from the envelope'
+        )
+    if receipt != expected_receipt:
+        if identity_out is not None:
+            identity_out.clear()
+        return _control_plane_protocol_failure(
+            'durable broker receipt does not bind the transient envelope'
+        )
+    return inner_ok, stdout, stderr
+
+
 class BashExecutor:
-    """Executes MAINFRAME bash functions via subprocess."""
+    """Executes reviewed MAINFRAME calls through the public control plane."""
 
     def __init__(
         self,
@@ -594,23 +829,30 @@ class BashExecutor:
             if runtime is not None
             else resolve_mainframe_root(mainframe_root)
         )
-        self.common_sh = os.path.join(self.mainframe_root, 'lib', 'common.sh')
         self.mainframe_cli = os.path.join(
             self.mainframe_root, 'bin', 'mainframe'
         )
-        self._bash: Optional[str] = None
-        self.timeout = 30  # Default timeout in seconds
+        self.development_state_home: Optional[str] = None
+        if runtime is not None and runtime.integrity == 'explicit-development-root':
+            raw_state_home = os.environ.get('XDG_STATE_HOME')
+            if raw_state_home is not None:
+                if (
+                    not os.path.isabs(raw_state_home)
+                    or any(
+                        ord(character) < 32 or ord(character) == 127
+                        for character in raw_state_home
+                    )
+                ):
+                    raise RuntimeError(
+                        'development XDG_STATE_HOME must be an absolute safe path'
+                    )
+                self.development_state_home = str(
+                    Path(raw_state_home).resolve(strict=False)
+                )
         self.broker_timeout = BROKER_OUTER_TIMEOUT_SECONDS
         self.broker_output_limit = BROKER_OUTER_OUTPUT_LIMIT
 
-    @property
-    def bash(self) -> str:
-        """Resolve Bash only when the explicit legacy executor needs it."""
-        if self._bash is None:
-            self._bash = _resolve_bash()
-        return self._bash
-
-    def execute_broker(
+    def execute_control_plane(
         self,
         func_name: str,
         canonical_id: str,
@@ -618,8 +860,13 @@ class BashExecutor:
         expected_owner: str,
         contract_output_limit: int,
         expected_result_kind: str,
+        client_correlation_id: str,
+        *,
+        identity_out: Optional[Dict[str, Any]] = None,
     ) -> Tuple[bool, str, str]:
-        """Delegate a stable-core call to the canonical invocation broker."""
+        """Execute one reviewed call through the public atomic kernel route."""
+        if identity_out is not None:
+            identity_out.clear()
         if self.runtime is not None:
             self.runtime.assert_current()
         try:
@@ -628,38 +875,44 @@ class BashExecutor:
             return False, '', f'invocation denied ({error.reason}): {error.detail}'
         if (
             not isinstance(canonical_id, str)
-            or not BROKER_CANONICAL_ID_RE.fullmatch(canonical_id)
+            or BROKER_CANONICAL_ID_RE.fullmatch(canonical_id) is None
         ):
             return False, '', 'invocation denied: canonical ID is invalid'
         if (
             not isinstance(expected_owner, str)
-            or not BROKER_OWNER_RE.fullmatch(expected_owner)
+            or BROKER_OWNER_RE.fullmatch(expected_owner) is None
             or not isinstance(contract_output_limit, int)
             or isinstance(contract_output_limit, bool)
             or not 1 <= contract_output_limit <= BROKER_DECODED_OUTPUT_LIMIT
             or expected_result_kind not in BROKER_RESULT_KINDS
         ):
-            return False, '', 'invocation denied: reviewed broker contract is invalid'
+            return False, '', 'invocation denied: reviewed control-plane contract is invalid'
+        if (
+            not isinstance(client_correlation_id, str)
+            or CONTROL_PLANE_CLIENT_ID_RE.fullmatch(client_correlation_id) is None
+        ):
+            return False, '', 'invocation denied: client correlation is invalid'
         if not isinstance(arguments, dict):
-            return False, '', 'invocation denied: broker requires a JSON object'
+            return False, '', 'invocation denied: control-plane input must be an object'
         if (
             not os.path.isabs(self.mainframe_cli)
             or not os.path.isfile(self.mainframe_cli)
             or not os.access(self.mainframe_cli, os.X_OK)
         ):
-            return False, '', 'invocation denied: canonical broker is unavailable'
-
+            return False, '', 'invocation denied: public control-plane route is unavailable'
         try:
             input_bytes = json.dumps(
                 arguments,
+                allow_nan=False,
                 ensure_ascii=False,
                 separators=(',', ':'),
+                sort_keys=True,
             ).encode('utf-8')
         except (TypeError, ValueError, UnicodeEncodeError):
-            return False, '', 'invocation denied: arguments are not valid JSON'
+            return False, '', 'invocation denied: arguments are not canonical JSON'
         if len(input_bytes) > BROKER_INPUT_LIMIT:
             return False, '', 'invocation denied: JSON request exceeds 32768 bytes'
-
+        input_digest = hashlib.sha256(input_bytes).hexdigest()
         command = [
             self.mainframe_cli,
             'invoke',
@@ -669,37 +922,48 @@ class BashExecutor:
             '--profile',
             'stable-core',
             '--format',
-            'broker-json-v1',
+            'control-plane-json-v1',
             '--caller',
             'mcp',
+            '--client-correlation-id',
+            client_correlation_id,
         ]
+        if identity_out is not None:
+            identity_out.update({
+                'client_correlation_id': client_correlation_id,
+                'binding_status': 'adapter-local-unverified',
+            })
         try:
             return_code, stdout, stderr, timed_out, output_exceeded = (
                 _bounded_broker_run(
                     command,
                     input_bytes,
-                    _execution_environment(self.mainframe_root),
+                    _execution_environment(
+                        self.mainframe_root,
+                        self.development_state_home,
+                    ),
                     self.broker_timeout,
                     self.broker_output_limit,
                 )
             )
-        except Exception as error:
-            return False, '', f'Execution error: {str(error)}'
-
+        except Exception:
+            return False, '', (
+                'invocation denied: public control-plane execution failed; '
+                f'client correlation {client_correlation_id} is non-authorizing '
+                'lookup/retry metadata and no legacy fallback was attempted'
+            )
         if timed_out:
-            return (
-                False,
-                '',
-                f'Function {func_name} timed out at the outer broker boundary '
-                f'after {self.broker_timeout:g}s',
+            return False, '', (
+                f'Function {func_name} exceeded the MCP outer wait boundary; '
+                'cancellation is not claimed and durable execution may still settle; '
+                f'use client correlation {client_correlation_id} for public '
+                'control-plane lookup/retry; no legacy fallback was attempted'
             )
         if output_exceeded:
-            return (
-                False,
-                '',
-                f'Function {func_name} exceeded the outer broker output ceiling',
+            return False, '', (
+                f'Function {func_name} exceeded the control-plane output ceiling'
             )
-        return _decode_broker_envelope(
+        return _decode_control_plane_envelope(
             stdout,
             stderr,
             return_code,
@@ -708,60 +972,7 @@ class BashExecutor:
             expected_owner,
             contract_output_limit,
             expected_result_kind,
+            client_correlation_id,
+            input_digest,
+            identity_out=identity_out,
         )
-
-    def execute(
-        self, func_name: str, argv: Sequence[str]
-    ) -> Tuple[bool, str, str]:
-        """Execute a MAINFRAME function.
-
-        Args:
-            func_name: Name of the function to call
-            argv: Prepared positional string arguments. Raw MCP mappings are
-                rejected and must first pass server-side metadata validation.
-
-        Returns:
-            Tuple of (success, stdout, stderr)
-        """
-        if self.runtime is not None:
-            self.runtime.assert_current()
-
-        # Defense-in-depth: even if a caller bypasses the server-layer
-        # authorization gate, never interpolate a non-identifier into bash.
-        try:
-            validate_function_name(func_name)
-        except AuthorizationError as e:
-            return False, '', f'invocation denied ({e.reason}): {e.detail}'
-
-        if not isinstance(argv, (list, tuple)) or any(
-            not isinstance(value, str) for value in argv
-        ):
-            return False, '', 'invocation denied: executor requires prepared argv'
-
-        try:
-            result = subprocess.run(
-                [
-                    self.bash,
-                    '--noprofile',
-                    '--norc',
-                    '-p',
-                    '-c',
-                    EXECUTION_SCRIPT,
-                    'mainframe-mcp',
-                    self.common_sh,
-                    func_name,
-                    *argv,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=self.timeout,
-                env=_execution_environment(self.mainframe_root),
-            )
-
-            success = result.returncode == 0
-            return success, result.stdout, result.stderr
-
-        except subprocess.TimeoutExpired:
-            return False, '', f'Function {func_name} timed out after {self.timeout}s'
-        except Exception as e:
-            return False, '', f'Execution error: {str(e)}'

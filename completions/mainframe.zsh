@@ -95,6 +95,7 @@ _mainframe() {
         'protect:Inspect project host-hook enforcement readiness'
         'host:Inspect, acquire, and manage private coding-agent host runtimes'
         'pi:Inspect, install, or remove the native Pi package integration'
+        'control-plane:Operate durable runs, calls, approvals, and evidence'
         'setup:Discover local shells and hosts or onboard one explicit host'
         'onboard:Safely configure and verify MAINFRAME for a coding-agent host'
         'launch:Preflight and start one onboarded coding-agent host'
@@ -522,6 +523,14 @@ _mainframe() {
                     '(-h --help)'{-h,--help}'[show help]' \
                     '--json[emit one machine-readable readiness object]'
             fi
+            return
+            ;;
+
+        control-plane)
+            _arguments \
+                '(-h --help)'{-h,--help}'[show help]' \
+                '--ledger[owner-private JSONL ledger]:ledger file:_files' \
+                '1:control-plane command:(run-create run-transition call-create call-request-approval approval-grant approval-consume trace-execute disposable-write-execute show)'
             return
             ;;
 

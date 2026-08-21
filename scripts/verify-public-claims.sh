@@ -448,6 +448,52 @@ PY
 verify_generated_count_claims
 verify_generated_gate_claims
 
+verify_control_plane_claim() {
+    local python_bin='' claim_json advertised
+    local candidate
+
+    for candidate in \
+        "${MAINFRAME_PYTHON:-}" \
+        /opt/homebrew/bin/python3 \
+        /usr/local/bin/python3 \
+        /home/linuxbrew/.linuxbrew/bin/python3 \
+        /usr/bin/python3; do
+        [[ -n "$candidate" && "$candidate" == /* && -x "$candidate" ]] || continue
+        python_bin="$candidate"
+        break
+    done
+    if [[ -z "$python_bin" ]]; then
+        printf 'FAIL: Python 3 is required to verify the control-plane claim contract\n\n' >&2
+        failures=$((failures + 1))
+        return
+    fi
+    if ! claim_json="$("$python_bin" -I -S -B \
+        "$PROJECT_ROOT/scripts/check-control-plane-claim.py" \
+        --root "$PROJECT_ROOT" --json)"; then
+        printf 'FAIL: control-plane claim contract is invalid\n%s\n\n' \
+            "$claim_json" >&2
+        failures=$((failures + 1))
+        return
+    fi
+    advertised="$("$python_bin" -I -S -B - "$claim_json" <<'PY'
+import json
+import sys
+
+print(json.loads(sys.argv[1])["advertised_claim"])
+PY
+)" || advertised=''
+    if [[ -z "$advertised" ]]; then
+        printf 'FAIL: control-plane advertised claim could not be read\n\n' >&2
+        failures=$((failures + 1))
+        return
+    fi
+    CONTROL_PLANE_ADVERTISED_CLAIM="$advertised"
+    printf 'Control-plane claim contract passed: advertised=%s.\n' "$advertised"
+}
+
+CONTROL_PLANE_ADVERTISED_CLAIM=''
+verify_control_plane_claim
+
 reject "Bash 4.0 is below the supported runtime" 'bash[[:space:]]+4\.0\+'
 reject "Do not describe the whole product as dependency-free" '(^|[^[:alnum:]])zero dependencies([^[:alnum:]]|$)'
 reject "Do not describe the whole product as externally dependency-free" 'zero external dependencies'
@@ -463,6 +509,9 @@ reject "Universal speedup ranges require a published benchmark" '20[[:space:]]*-
 reject "Verification and recovery targets are not shipped guarantees" 'catch 90%|recover from 70%'
 reject "The public MCP runner no longer supports legacy tier selection" 'MAINFRAME_MCP_TIER[[:space:]]*=[[:space:]]*(core|full)|explicit MCP [`'"'"']?(core|full)|MCP [`'"'"']?(core|full)[`'"'"']? tier'
 reject "The language bindings are not published registry packages" '(pip|npm)[[:space:]]+install[[:space:]]+mainframe-bash'
+if [[ "$CONTROL_PLANE_ADVERTISED_CLAIM" != category-claim ]]; then
+    reject "Ultimate control-plane language requires the category-claim gate" 'MAINFRAME[[:space:]]+(is|has[[:space:]]+become)[[:space:]]+(the[[:space:]]+)?ultimate|ultimate[[:space:]]+AI([[:space:]-]+coding)?[[:space:]-]+agent[[:space:]]+control[[:space:]-]+plane'
+fi
 
 if (( failures > 0 )); then
     printf 'Public claim verification failed with %d rule(s).\n' "$failures" >&2

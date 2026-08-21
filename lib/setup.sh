@@ -134,8 +134,8 @@ _mainframe_setup_proof_nonce() {
 }
 
 _mainframe_setup_proof_awm_exec() {
-    local env_bin="$1" bash_bin="$2" cli="$3" proof_dir="$4" project="$5"
-    shift 5
+    local env_bin="$1" bash_bin="$2" cli="$3" proof_dir="$4"
+    shift 4
 
     "$env_bin" -i \
         HOME="$proof_dir/home" \
@@ -152,19 +152,18 @@ _mainframe_setup_proof_awm_exec() {
         MAINFRAME_QUIET=1 \
         MAINFRAME_ROOT="$MAINFRAME_ROOT" \
         LC_ALL=C \
-        "$bash_bin" --noprofile --norc -p "$cli" awm project "$@" \
-            --project "$project"
+        "$bash_bin" --noprofile --norc -p "$cli" awm "$@"
 }
 
 _mainframe_setup_proof_awm_retrieve() {
-    local env_bin="$1" bash_bin="$2" cli="$3" proof_dir="$4" project="$5"
+    local env_bin="$1" bash_bin="$2" cli="$3" proof_dir="$4" session_id="$5"
 
     # This helper deliberately has no nonce argument or nonce environment.
     # The fresh protected Bash receives only the fixed lookup key and isolated
     # state paths; its result is compared with the nonce by the parent process.
     _mainframe_setup_proof_awm_exec \
-        "$env_bin" "$bash_bin" "$cli" "$proof_dir" "$project" \
-        get mainframe-first-run-continuity
+        "$env_bin" "$bash_bin" "$cli" "$proof_dir" \
+        get --session "$session_id" mainframe-first-run-continuity
 }
 
 _mainframe_setup_proof_host_summary() {
@@ -256,7 +255,7 @@ _mainframe_setup_proof_pi_summary() {
 _mainframe_setup_proof() (
     local project="$1" discovery_path="$2"
     local cli proof_base proof_dir="" mktemp_bin mkdir_bin env_bin
-    local broker_output classification nonce retrieved retrieval_status
+    local broker_output classification nonce retrieved retrieval_status session_id
     local private_path private_mode
     local next_action=""
 
@@ -355,7 +354,12 @@ _mainframe_setup_proof() (
     }
 
     if ! broker_output="$(
+        HOME="$proof_dir/home" \
         TMPDIR="$proof_dir/tmp" \
+        XDG_STATE_HOME="$proof_dir/state" \
+        XDG_CONFIG_HOME="$proof_dir/config" \
+        MAINFRAME_CONFIG="$proof_dir/config/mainframe.conf" \
+        MAINFRAME_ROOT="$MAINFRAME_ROOT" \
         MAINFRAME_INVOKE_AUDIT_LOG="$proof_dir/invocations.jsonl" \
             "$cli" invoke mf:std:pure-string:to_lower \
                 --input-json '{"value":"HELLO Agent"}' 2>/dev/null
@@ -368,23 +372,24 @@ _mainframe_setup_proof() (
         return 1
     fi
 
-    if ! _mainframe_setup_proof_awm_exec \
-        "$env_bin" "$BASH" "$cli" "$proof_dir" "$project" \
-        ensure >/dev/null 2>&1; then
+    if ! session_id="$(_mainframe_setup_proof_awm_exec \
+        "$env_bin" "$BASH" "$cli" "$proof_dir" \
+        init mainframe-first-run-proof --namespace proof 2>/dev/null)" ||
+       [[ ! "$session_id" =~ ^[0-9a-f]{12}$ ]]; then
         if _mainframe_setup_proof_cleanup "$proof_base" "$proof_dir"; then
             proof_dir=""
         fi
-        _mainframe_setup_error 'ephemeral AWM continuity proof could not initialize'
+        _mainframe_setup_error 'ephemeral untrusted session proof could not initialize'
         return 1
     fi
     if ! _mainframe_setup_proof_awm_exec \
-        "$env_bin" "$BASH" "$cli" "$proof_dir" "$project" \
-        checkpoint mainframe-first-run-continuity "$nonce" \
+        "$env_bin" "$BASH" "$cli" "$proof_dir" \
+        checkpoint --session "$session_id" mainframe-first-run-continuity "$nonce" \
         --importance high >/dev/null 2>&1; then
         if _mainframe_setup_proof_cleanup "$proof_base" "$proof_dir"; then
             proof_dir=""
         fi
-        _mainframe_setup_error 'ephemeral AWM continuity proof could not checkpoint'
+        _mainframe_setup_error 'ephemeral untrusted session proof could not checkpoint'
         return 1
     fi
 
@@ -394,7 +399,7 @@ _mainframe_setup_proof() (
         retrieval_status=97
         retrieved=""
     elif retrieved="$(_mainframe_setup_proof_awm_retrieve \
-        "$env_bin" "$BASH" "$cli" "$proof_dir" "$project" 2>/dev/null)"; then
+        "$env_bin" "$BASH" "$cli" "$proof_dir" "$session_id" 2>/dev/null)"; then
         :
     else
         retrieval_status=$?
@@ -403,7 +408,7 @@ _mainframe_setup_proof() (
         if _mainframe_setup_proof_cleanup "$proof_base" "$proof_dir"; then
             proof_dir=""
         fi
-        _mainframe_setup_error 'ephemeral AWM fresh-process retrieval failed'
+        _mainframe_setup_error 'ephemeral untrusted session fresh-process retrieval failed'
         return 1
     fi
 
@@ -414,7 +419,7 @@ _mainframe_setup_proof() (
     proof_dir=""
     trap - EXIT HUP INT TERM
     printf 'Reviewed invocation: PASS (fixed pure contract; output=%s)\n' "$broker_output"
-    printf 'Durable memory:     PASS (fixed key retrieved by a fresh Bash process)\n'
+    printf 'Session continuity: PASS (ephemeral untrusted record; fresh Bash process)\n'
     printf 'Temporary state:    REMOVED (private mode 700)\n'
 
     declare -F agent_gate_classify >/dev/null 2>&1 || {
@@ -808,7 +813,7 @@ _mainframe_setup_discovery() {
     if [[ "$doctor_state" == reload-required ]]; then
         printf '  Next: start a fresh shell or restart the parent app, then run mainframe doctor.\n'
     fi
-    printf 'Project AWM:    %s (read-only status)\n\n' "$awm_state"
+    printf 'Project AWM:    %s (non-authorizing; control-plane reads pending)\n\n' "$awm_state"
     _mainframe_setup_shell_report "$project" "$discovery_path"
     _mainframe_setup_pi_report "$project" "$discovery_path"
 

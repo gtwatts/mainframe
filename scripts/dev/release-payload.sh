@@ -11,6 +11,7 @@ MAINFRAME_RELEASE_PAYLOAD_ROOTS=(
     INVOCATION_INDEX.json
     sbom.json
     mainframe
+    control_plane
     bin
     lib
     config
@@ -46,7 +47,71 @@ MAINFRAME_RELEASE_PAYLOAD_EXCLUDED_TREES=(
 MAINFRAME_RELEASE_PAYLOAD_EXCLUDED_FILES=(
     docs/MAINFRAME_Technical_Report.md
     docs/VALUE_PROOF.md
+    # MCP is distributed only through the separately built, runtime-bound
+    # Python package. Keep the retired shell server out if it is reintroduced.
+    lib/mcp_server.sh
+    skills/claude-code/mcp-server.sh
+    # macOS/iCloud conflict copies are not authoritative generators. This
+    # exact stale alternate existed in the source tree and must never be
+    # signed or shipped alongside the canonical contract-bound generator.
+    "scripts/generate-host-adapters 2.sh"
+    "config/invocation-policy 2.json"
 )
+
+# Mutable claim receipts and their reference-bearing contract are detached
+# attestations over the release subject. They remain package metadata, but
+# including them in that subject would create a digest cycle:
+# inventory -> receipt -> contract receipt_ref -> inventory.
+MAINFRAME_RELEASE_ATTESTATION_EXCLUSIONS_FILE="config/release-attestation-exclusions.txt"
+MAINFRAME_RELEASE_EXPECTED_ATTESTATION_EXCLUSIONS=(
+    SHA256SUMS
+    config/control-plane-claim.json
+    config/control-plane-claim-receipts/
+)
+MAINFRAME_RELEASE_ATTESTATION_EXCLUSIONS=()
+
+mainframe_release_load_attestation_exclusions() {
+    local root="${1:?release root is required}"
+    local registry="$root/$MAINFRAME_RELEASE_ATTESTATION_EXCLUSIONS_FILE"
+    local line index
+    local -a loaded=()
+
+    if [[ ! -f "$registry" || -L "$registry" ]]; then
+        printf 'release attestation exclusion registry is missing or unsafe: %s\n' \
+            "$MAINFRAME_RELEASE_ATTESTATION_EXCLUSIONS_FILE" >&2
+        return 1
+    fi
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -z "$line" || "$line" == \#* ]] && continue
+        loaded+=("$line")
+    done < "$registry"
+    if (( ${#loaded[@]} != ${#MAINFRAME_RELEASE_EXPECTED_ATTESTATION_EXCLUSIONS[@]} )); then
+        printf 'release attestation exclusion registry has unexpected entries\n' >&2
+        return 1
+    fi
+    for ((index = 0; index < ${#loaded[@]}; index++)); do
+        if [[ "${loaded[index]}" != \
+              "${MAINFRAME_RELEASE_EXPECTED_ATTESTATION_EXCLUSIONS[index]}" ]]; then
+            printf 'release attestation exclusion registry has unexpected entries\n' >&2
+            return 1
+        fi
+    done
+    MAINFRAME_RELEASE_ATTESTATION_EXCLUSIONS=("${loaded[@]}")
+}
+
+mainframe_release_path_is_attestation_metadata() {
+    local relative="${1:?release path is required}"
+    local excluded
+
+    for excluded in "${MAINFRAME_RELEASE_ATTESTATION_EXCLUSIONS[@]}"; do
+        if [[ "$excluded" == */ ]]; then
+            [[ "$relative" == "$excluded"* ]] && return 0
+        elif [[ "$relative" == "$excluded" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
 
 # These repository-only reports preserve historical research, but their
 # productivity, token, benchmark, and agent-outcome figures were never promoted
@@ -120,6 +185,8 @@ mainframe_release_payload_files() {
     local root="${1:?release root is required}"
     local path required_runtime
 
+    mainframe_release_load_attestation_exclusions "$root" || return 1
+
     for path in "${MAINFRAME_RELEASE_PAYLOAD_ROOTS[@]}"; do
         if [[ ! -e "$root/$path" ]]; then
             printf 'required release payload is missing: %s\n' "$path" >&2
@@ -129,6 +196,7 @@ mainframe_release_payload_files() {
 
     for required_runtime in \
         bin/mainframe \
+        control_plane/mainframe-control-plane \
         install.sh \
         scripts/upgrade-release.sh
     do
@@ -142,6 +210,10 @@ mainframe_release_payload_files() {
     if find "${MAINFRAME_RELEASE_PAYLOAD_ROOTS[@]/#/$root/}" \
         -path "$root/docs/MAINFRAME_Technical_Report.md" -prune -o \
         -path "$root/docs/VALUE_PROOF.md" -prune -o \
+        -path "$root/lib/mcp_server.sh" -prune -o \
+        -path "$root/skills/claude-code/mcp-server.sh" -prune -o \
+        -path "$root/scripts/generate-host-adapters 2.sh" -prune -o \
+        -path "$root/config/invocation-policy 2.json" -prune -o \
         -path "$root/evals/agent-impact/private" -prune -o \
         -path "$root/evals/agent-impact/runs" -prune -o \
         -path '*/node_modules' -prune -o \
@@ -158,6 +230,10 @@ mainframe_release_payload_files() {
             -path 'docs/research' -prune -o \
             -path 'docs/MAINFRAME_Technical_Report.md' -prune -o \
             -path 'docs/VALUE_PROOF.md' -prune -o \
+            -path 'lib/mcp_server.sh' -prune -o \
+            -path 'skills/claude-code/mcp-server.sh' -prune -o \
+            -path 'scripts/generate-host-adapters 2.sh' -prune -o \
+            -path 'config/invocation-policy 2.json' -prune -o \
             -path 'evals/agent-impact/private' -prune -o \
             -path 'evals/agent-impact/runs' -prune -o \
             -path '*/node_modules' -prune -o \
@@ -166,4 +242,21 @@ mainframe_release_payload_files() {
             -type f -print \
             | LC_ALL=C sort
     )
+}
+
+mainframe_release_subject_files() {
+    local root="${1:?release root is required}"
+    local inventory path
+
+    inventory=$(mktemp "${TMPDIR:-/tmp}/mainframe-release-subject.XXXXXX") || \
+        return 1
+    if ! mainframe_release_payload_files "$root" > "$inventory"; then
+        rm -f "$inventory"
+        return 1
+    fi
+    while IFS= read -r path; do
+        mainframe_release_path_is_attestation_metadata "$path" || \
+            printf '%s\n' "$path"
+    done < "$inventory"
+    rm -f "$inventory"
 }

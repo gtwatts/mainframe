@@ -5,6 +5,7 @@ import copy
 import json
 import os
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -97,8 +98,41 @@ class TestCanonicalRegistry:
         registry._manifest['exports'][canonical_id] = stale_export
 
         assert registry.generate_all_tools(tier='stable-core') == []
-        # Explicit legacy tiers remain available during migration.
-        assert registry.generate_all_tools(tier='core')
+        # Historical discovery profiles are never executable MCP tiers.
+        assert registry.generate_all_tools(tier='core') == []
+        assert registry.generate_all_tools(tier='full') == []
+
+    def test_reviewed_tools_publish_only_contract_derived_read_annotations(self):
+        registry = ToolRegistry(mainframe_root=PROJECT_ROOT)
+        tools = registry.generate_all_tools(tier='stable-core')
+
+        assert len(tools) == 26
+        for tool in tools:
+            function = registry.get_function(tool['name'].removeprefix('mainframe_'))
+            export = function['manifest_export']
+            assert set(tool) == {
+                'name', 'description', 'inputSchema', 'outputSchema',
+                'annotations', '_meta',
+            }
+            assert tool['annotations'] == {'readOnlyHint': True}
+            assert tool['_meta'] == {
+                'mainframe': {
+                    'schema_version': 2,
+                    'canonical_id': function['canonical_id'],
+                    'contract_status': 'reviewed',
+                    'effects': export['effects'],
+                    'capabilities': [],
+                    'result_kind': export['result']['kind'],
+                }
+            }
+            assert set(export['effects']) <= {'pure', 'read'}
+            assert tool['outputSchema']['additionalProperties'] is False
+            assert tool['outputSchema']['properties']['canonical_id'] == {
+                'const': function['canonical_id']
+            }
+            assert tool['outputSchema']['properties']['effect_contract'][
+                'properties'
+            ]['effects'] == {'const': export['effects']}
 
     @pytest.mark.parametrize(
         'malformed_result',
@@ -124,125 +158,45 @@ class TestCanonicalRegistry:
         assert registry.generate_all_tools(tier=tier) == []
 
 
+class TestMcpCorrelation:
+    def test_client_durable_ids_are_data_only_and_strictly_validated(self):
+        context = SimpleNamespace(
+            meta=SimpleNamespace(
+                model_extra={
+                    'mainframe': {
+                        'run_id': 'run:one',
+                        'call_id': 'call.one',
+                        'evidence_id': 'evidence-one',
+                    }
+                }
+            )
+        )
+        assert server_module._client_correlation(context) == {
+            'call_id': 'call.one',
+            'evidence_id': 'evidence-one',
+            'run_id': 'run:one',
+        }
+
+        for invalid in (
+            {'run_id': '../not-an-id'},
+            {'run_id': 'valid', 'approval_granted': True},
+            ['run-id'],
+        ):
+            context.meta.model_extra['mainframe'] = invalid
+            with pytest.raises(
+                RuntimeError, match='correlation metadata is invalid'
+            ):
+                server_module._client_correlation(context)
+
+
 class TestBrokerExecutor:
-    def test_stable_broker_never_resolves_poisoned_bash(
-        self, monkeypatch, tmp_path
-    ):
-        marker = tmp_path / 'poisoned-bash-ran'
-        poisoned_bash = tmp_path / 'bash'
-        poisoned_bash.write_text(
-            '#!/bin/sh\n'
-            f': > "{marker}"\n'
-            'printf "5 3"\n',
-            encoding='utf-8',
-        )
-        poisoned_bash.chmod(0o755)
-        monkeypatch.setenv('MAINFRAME_BASH', str(poisoned_bash))
+    def test_executor_exposes_no_legacy_execution_route(self):
         executor = BashExecutor(mainframe_root=PROJECT_ROOT)
-        assert executor._bash is None
-        assert not marker.exists()
-
-        monkeypatch.setattr(
-            executor_module,
-            '_bounded_broker_run',
-            lambda *args: (0, _envelope(), b'', False, False),
-        )
-        ok, stdout, stderr = executor.execute_broker(
-            'json_get',
-            'mf:data:json:json_get',
-            {'json': '{}', 'key': 'name'},
-            'json',
-            65_536,
-            'stdout',
-        )
-
-        assert ok and stdout == 'Ada' and stderr == ''
-        assert executor._bash is None
-        assert not marker.exists()
-
-    def test_exact_command_and_raw_argument_object_are_delegated(
-        self, monkeypatch
-    ):
-        executor = BashExecutor(mainframe_root=PROJECT_ROOT)
-        captured = {}
-
-        def fake_bounded_run(command, input_bytes, environment, timeout, limit):
-            captured['command'] = command
-            captured['input'] = input_bytes
-            captured['environment'] = environment
-            captured['timeout'] = timeout
-            captured['limit'] = limit
-            return 0, _envelope(), b'', False, False
-
-        monkeypatch.setattr(
-            executor_module, '_bounded_broker_run', fake_bounded_run
-        )
-        arguments = {'key': 'name', 'json': '{"name":"Ada"}'}
-        ok, stdout, stderr = executor.execute_broker(
-            'json_get',
-            'mf:data:json:json_get',
-            arguments,
-            'json',
-            65_536,
-            'stdout',
-        )
-
-        assert ok and stdout == 'Ada' and stderr == ''
-        assert captured['command'] == [
-            os.path.join(PROJECT_ROOT, 'bin', 'mainframe'),
-            'invoke',
-            'mf:data:json:json_get',
-            '--input-json',
-            '-',
-            '--profile',
-            'stable-core',
-            '--format',
-            'broker-json-v1',
-            '--caller',
-            'mcp',
-        ]
-        assert json.loads(captured['input']) == arguments
-        assert captured['environment']['MAINFRAME_ROOT'] == PROJECT_ROOT
-        assert captured['timeout'] == executor.broker_timeout
-        assert captured['limit'] == executor.broker_output_limit
-
-    def test_live_broker_round_trip_decodes_envelope(self, monkeypatch, tmp_path):
-        account_home = tmp_path / 'account-home'
-        account_home.mkdir()
-        poison_home = tmp_path / 'poison-home'
-        poison_home.mkdir()
-        monkeypatch.setenv('HOME', str(poison_home))
-        monkeypatch.setattr(
-            executor_module,
-            '_account_state_home',
-            lambda: account_home / '.local' / 'state',
-        )
-        poison = tmp_path / 'poison-audit.log'
-        poison.write_text('preserve\n', encoding='utf-8')
-        poison.chmod(0o600)
-        monkeypatch.setenv('XDG_STATE_HOME', str(tmp_path / 'poison-state'))
-        monkeypatch.setenv('MAINFRAME_INVOKE_AUDIT_LOG', str(poison))
-        executor = BashExecutor(mainframe_root=PROJECT_ROOT)
-
-        ok, stdout, stderr = executor.execute_broker(
-            'json_get',
-            'mf:data:json:json_get',
-            {'json': '{"name":"Ada"}', 'key': 'name'},
-            'json',
-            65_536,
-            'stdout',
-        )
-
-        assert ok, stderr
-        assert stdout == 'Ada'
-        assert stderr == ''
-        audit_log = (
-            account_home / '.local' / 'state' / 'mainframe' / 'invocations.jsonl'
-        )
-        assert audit_log.is_file()
-        assert poison.read_text(encoding='utf-8') == 'preserve\n'
-        assert not (tmp_path / 'poison-state').exists()
-        assert not (poison_home / '.local' / 'state').exists()
+        assert hasattr(executor, 'execute_control_plane')
+        assert not hasattr(executor, 'execute_broker')
+        assert not hasattr(executor, 'execute')
+        assert not hasattr(executor, 'bash')
+        assert not hasattr(executor_module, 'EXECUTION_SCRIPT')
 
     @pytest.mark.parametrize(
         ('stdout', 'stderr', 'return_code', 'expected'),
@@ -276,6 +230,41 @@ class TestBrokerExecutor:
         assert not ok and output == ''
         assert 'protocol error' in error
         assert expected in error
+
+    def test_only_a_fully_validated_envelope_exports_broker_identity(self):
+        identity = {'stale': 'must-be-cleared'}
+        ok, output, error = executor_module._decode_broker_envelope(
+            _envelope(audit_id='inv-mcp-validated', duration_ms=7),
+            b'',
+            0,
+            'mf:data:json:json_get',
+            'json_get',
+            'json',
+            65_536,
+            'stdout',
+            identity_out=identity,
+        )
+
+        assert ok and output == 'Ada' and error == ''
+        assert identity == {
+            'audit_id': 'inv-mcp-validated',
+            'status': 'success',
+            'duration_ms': 7,
+        }
+
+        ok, output, error = executor_module._decode_broker_envelope(
+            _envelope(audit_id='not valid!'),
+            b'',
+            0,
+            'mf:data:json:json_get',
+            'json_get',
+            'json',
+            65_536,
+            'stdout',
+            identity_out=identity,
+        )
+        assert not ok and output == '' and 'protocol error' in error
+        assert identity == {}
 
     def test_decoded_output_cannot_exceed_reviewed_contract_limit(self):
         ok, output, error = executor_module._decode_broker_envelope(
@@ -399,21 +388,20 @@ class TestBrokerExecutor:
             'sleep 5\n',
         )
         monkeypatch.setenv('BROKER_TEST_MARKER', str(marker))
-        executor = BashExecutor(mainframe_root=str(root))
-        executor.broker_timeout = 0.05
-
-        ok, stdout, stderr = executor.execute_broker(
-            'json_get',
-            'mf:data:json:json_get',
-            {},
-            'json',
-            65_536,
-            'stdout',
+        return_code, stdout, stderr, timed_out, output_exceeded = (
+            executor_module._bounded_broker_run(
+                [str(root / 'bin' / 'mainframe')],
+                b'{}',
+                os.environ.copy(),
+                0.05,
+                65_536,
+            )
         )
         time.sleep(0.5)
 
-        assert not ok and stdout == ''
-        assert 'outer broker boundary' in stderr
+        assert return_code != 0
+        assert stdout == b'' and stderr == b''
+        assert timed_out and not output_exceeded
         assert not marker.exists()
 
     def test_outer_output_ceiling_terminates_broker(self, tmp_path):
@@ -422,21 +410,19 @@ class TestBrokerExecutor:
             '#!/bin/sh\n'
             'while :; do printf 0123456789abcdef; done\n',
         )
-        executor = BashExecutor(mainframe_root=str(root))
-        executor.broker_output_limit = 1024
-        executor.broker_timeout = 2
-
-        ok, stdout, stderr = executor.execute_broker(
-            'json_get',
-            'mf:data:json:json_get',
-            {},
-            'json',
-            65_536,
-            'stdout',
+        return_code, stdout, stderr, timed_out, output_exceeded = (
+            executor_module._bounded_broker_run(
+                [str(root / 'bin' / 'mainframe')],
+                b'{}',
+                os.environ.copy(),
+                2,
+                1024,
+            )
         )
 
-        assert not ok and stdout == ''
-        assert 'output ceiling' in stderr
+        assert return_code != 0
+        assert stdout == b'' and stderr == b''
+        assert output_exceeded and not timed_out
 
 
 class TestSuccessTextRepresentation:

@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "description": "Fail-closed execution trust policy. Reviewed invocation contracts are trusted; every other registry export is discovery-only until its semantics are reviewed.",
+  "default": {
+    "execution_exposure": "discovery-only",
+    "semantic_status": "unreviewed",
+    "stability": "stable",
+    "declared_effects": []
+  },
+  "module_overrides": {
+    "agent_exec": {
+      "execution_exposure": "discovery-only",
+      "semantic_status": "unreviewed",
+      "stability": "experimental",
+      "declared_effects": [
+        "process",
+        "write",
+        "destructive"
+      ],
+      "rationale": "Legacy transaction, recovery, and direct argv execution helpers remain outside the reviewed broker until per-command argument contracts replace their broad executable policy."
+    },
+    "agent_loop": {
+      "execution_exposure": "discovery-only",
+      "semantic_status": "unreviewed",
+      "stability": "experimental",
+      "declared_effects": [
+        "process",
+        "write"
+      ],
+      "rationale": "The current loop implementation simulates provider work and is not a trusted agent runtime."
+    },
+    "orchestrate": {
+      "execution_exposure": "discovery-only",
+      "semantic_status": "unreviewed",
+      "stability": "experimental",
+      "declared_effects": [
+        "process",
+        "network",
+        "write"
+      ],
+      "rationale": "The current implementation is host-specific and may use tmux, Redis, processes, and mutable coordination state."
+    },
+    "otel": {
+      "execution_exposure": "discovery-only",
+      "semantic_status": "unreviewed",
+      "stability": "experimental",
+      "declared_effects": [
+        "network",
+        "write"
+      ],
+      "rationale": "Telemetry initialization and export require explicit endpoint, data, and network contracts before trusted execution."
+    }
+  }
+}

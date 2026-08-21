@@ -57,6 +57,13 @@ validate_source() {
         "$ROOT_DIR/scripts/check-owner-parity.py"
     "$MAINFRAME_RELEASE_PYTHON" -I -S -B \
         "$ROOT_DIR/scripts/export-gate-rules.py" --check
+    "$MAINFRAME_RELEASE_PYTHON" -I -S -B \
+        "$ROOT_DIR/scripts/generate-runtime-closure.py" --check
+    "$MAINFRAME_RELEASE_BASH" --noprofile --norc -p \
+        "$ROOT_DIR/scripts/generate-host-adapters.sh" --check
+    "$MAINFRAME_RELEASE_PYTHON" -I -S -B \
+        "$ROOT_DIR/scripts/check-control-plane-claim.py" \
+        --root "$ROOT_DIR"
 }
 
 validate_sbom() {

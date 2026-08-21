@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "kind": "mainframe-host-release-attestation",
+  "version": "10.2.0",
+  "archive_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "attestation_uri": "https://example.invalid/mainframe/attestation.json"
+}

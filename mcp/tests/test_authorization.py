@@ -3,7 +3,7 @@
 Every case is a regression test for a defect reproduced before the fix
 (commits 1beefef, 21a234e): unregistered invocations, external executables,
 shell metacharacter injection, schema violations, and tier violations must
-all be denied; only advertised functions may execute.
+all be denied; only advertised functions may reach the public atomic route.
 """
 
 import json
@@ -15,6 +15,7 @@ from mainframe_mcp.authorization import (
     AuthorizationError,
     DEFAULT_TIER,
     REASON_INVALID_ARGUMENTS,
+    REASON_INVALID_TIER,
     REASON_INVALID_NAME,
     REASON_NOT_REGISTERED,
     REASON_TIER_VIOLATION,
@@ -87,16 +88,6 @@ def executor():
     return BashExecutor(mainframe_root=PROJECT_ROOT)
 
 
-@pytest.fixture(scope='module')
-def full_only_function(registry):
-    """A registered function advertised in 'full' but not in 'core'."""
-    core = {t['name'][10:] for t in registry.generate_all_tools(tier='core')}
-    full = {t['name'][10:] for t in registry.generate_all_tools(tier='full')}
-    outside = sorted(full - core)
-    assert outside, 'expected at least one full-only function'
-    return outside[0]
-
-
 # --------------------------------------------------------------------------
 # Unknown / unregistered tool names
 # --------------------------------------------------------------------------
@@ -129,14 +120,6 @@ class TestExternalExecutables:
             authorize_invocation(registry, f'mainframe_{binary}')
         assert exc.value.reason == REASON_NOT_REGISTERED
 
-    @pytest.mark.parametrize('binary', ['ls', 'id', 'uname'])
-    def test_external_binary_denied_in_executor(self, executor, binary):
-        """Defense-in-depth: even bypassing the gate, PATH binaries never run."""
-        ok, out, err = executor.execute(binary, [])
-        assert not ok
-        assert 'denied' in err
-
-
 # --------------------------------------------------------------------------
 # Shell metacharacter injection (before-repro: 'mainframe_true;echo X' ran)
 # --------------------------------------------------------------------------
@@ -160,13 +143,6 @@ class TestMetacharInjection:
             authorize_invocation(registry, tool_name)
         assert exc.value.reason in (REASON_INVALID_NAME, REASON_UNKNOWN_TOOL)
 
-    @pytest.mark.parametrize('payload', ['true;echo PWNED', '$(id)', 'a|id', 'a b'])
-    def test_injection_denied_in_executor(self, executor, payload):
-        ok, out, err = executor.execute(payload, [])
-        assert not ok
-        assert 'PWNED' not in out
-        assert 'denied' in err
-
     @pytest.mark.parametrize('name', ['0abc', 'a-b', 'a.b', 'A_upper', ''])
     def test_invalid_identifiers_rejected(self, name):
         with pytest.raises(AuthorizationError) as exc:
@@ -188,7 +164,7 @@ class TestSchemaValidation:
         )
 
     def test_generated_schemas_are_closed(self, registry):
-        for tool in registry.generate_all_tools(tier='full'):
+        for tool in registry.generate_all_tools(tier='stable-core'):
             assert tool['inputSchema']['additionalProperties'] is False
 
     def test_missing_required_param_fails_validation(self, registry):
@@ -240,7 +216,7 @@ class TestSchemaValidation:
 
     def test_generated_schemas_are_valid_json_schema(self, registry):
         jsonschema = pytest.importorskip('jsonschema')
-        for tool in registry.generate_all_tools(tier='core')[:50]:
+        for tool in registry.generate_all_tools(tier='stable-core'):
             jsonschema.Draft7Validator.check_schema(tool['inputSchema'])
 
     def test_every_advertised_tool_has_a_preparable_call_shape(self, registry):
@@ -255,22 +231,16 @@ class TestSchemaValidation:
             def generate_all_tools(self, tier):
                 return [self.tool]
 
-        for tier in ('stable-core', 'core', 'full'):
-            for tool in registry.generate_all_tools(tier=tier):
-                func_name = tool['name'][len('mainframe_'):]
-                isolated_registry = SingleAdvertisedToolRegistry(registry, tool)
-                func = authorize_invocation(
-                    isolated_registry, tool['name'], tier=tier
-                )
-                assert func['name'] == func_name
-                arguments = {
-                    name: 'value'
-                    for name in tool['inputSchema'].get('required', [])
-                }
-                if tier == 'stable-core':
-                    validate_broker_invocation_arguments(func, arguments)
-                else:
-                    prepare_invocation_arguments(func, arguments)
+        for tool in registry.generate_all_tools(tier='stable-core'):
+            func_name = tool['name'][len('mainframe_'):]
+            isolated_registry = SingleAdvertisedToolRegistry(registry, tool)
+            func = authorize_invocation(isolated_registry, tool['name'])
+            assert func['name'] == func_name
+            arguments = {
+                name: 'value'
+                for name in tool['inputSchema'].get('required', [])
+            }
+            validate_broker_invocation_arguments(func, arguments)
 
     def test_stable_core_schemas_come_from_reviewed_manifest_contracts(
         self, registry
@@ -294,7 +264,7 @@ class TestSchemaValidation:
     def test_incomplete_metadata_is_not_advertised(self, registry):
         names = {
             tool['name']
-            for tool in registry.generate_all_tools(tier='full')
+            for tool in registry.generate_all_tools(tier='stable-core')
         }
         assert 'mainframe_agent_info_v' not in names
 
@@ -306,30 +276,26 @@ class TestSchemaValidation:
             assert func is not None
             assert func['library'] == expected_owner
 
-        for tier in ('stable-core', 'core', 'full'):
-            names = {
-                tool['name'][len('mainframe_'):]
-                for tool in registry.generate_all_tools(tier=tier)
-            }
-            assert not (UNREVIEWED_CALL_SHAPE_OWNERS.keys() & names)
+        names = {
+            tool['name'][len('mainframe_'):]
+            for tool in registry.generate_all_tools(tier='stable-core')
+        }
+        assert not (UNREVIEWED_CALL_SHAPE_OWNERS.keys() & names)
 
-        for tier in ('stable-core', 'core', 'full'):
-            for name in UNREVIEWED_CALL_SHAPE_OWNERS:
-                assert registry.generate_tool_schema(name, tier=tier) is None
-                with pytest.raises(AuthorizationError) as exc:
-                    authorize_invocation(
-                        registry, f'mainframe_{name}', tier=tier
-                    )
-                assert exc.value.reason == REASON_TIER_VIOLATION
+        for name in UNREVIEWED_CALL_SHAPE_OWNERS:
+            assert registry.generate_tool_schema(name) is None
+            with pytest.raises(AuthorizationError) as exc:
+                authorize_invocation(registry, f'mainframe_{name}')
+            assert exc.value.reason == REASON_TIER_VIOLATION
 
     def test_noncanonical_function_name_is_not_advertised(self, registry):
         names = {
             tool['name']
-            for tool in registry.generate_all_tools(tier='full')
+            for tool in registry.generate_all_tools(tier='stable-core')
         }
         assert 'mainframe_ci::is_ci' not in names
         with pytest.raises(AuthorizationError) as exc:
-            authorize_invocation(registry, 'mainframe_ci::is_ci', tier='full')
+            authorize_invocation(registry, 'mainframe_ci::is_ci')
         assert exc.value.reason == REASON_INVALID_NAME
 
     def test_array_join_has_reviewed_variadic_schema(self, registry):
@@ -339,7 +305,12 @@ class TestSchemaValidation:
         assert func['mcp_call_shape'] == 'reviewed_variadic'
         assert func['registry_params'][0]['position'] == 2
         assert func['params'] == []
-        assert set(schema['properties']) == {'args'}
+        assert set(schema['properties']) == {'delimiter', 'items'}
+        assert schema['properties']['items'] == {
+            'type': 'array',
+            'items': {'type': 'string'},
+            'default': [],
+        }
         assert is_mcp_core_export('array_join', func['category'], func)
 
     @pytest.mark.parametrize(
@@ -362,16 +333,17 @@ class TestSchemaValidation:
             'array_every',
         ],
     )
-    def test_incomplete_call_shape_is_not_an_mcp_core_export(
+    def test_incomplete_call_shape_is_not_an_executable_mcp_export(
         self, registry, func_name
     ):
         func = registry.get_function(func_name)
         assert not is_mcp_core_export(func_name, func['category'], func)
-        core_names = {
+        reviewed_names = {
             tool['name'][len('mainframe_'):]
-            for tool in registry.generate_all_tools(tier='core')
+            for tool in registry.generate_all_tools(tier='stable-core')
         }
-        assert func_name not in core_names
+        assert func_name not in reviewed_names
+        assert registry.generate_all_tools(tier='core') == []
 
 
 # --------------------------------------------------------------------------
@@ -493,141 +465,16 @@ class TestArgumentPreparation:
         assert exc.value.reason == REASON_INVALID_ARGUMENTS
 
 
-class TestPreparedExecutorBoundary:
-    def test_bash_override_must_be_absolute(self, monkeypatch):
-        monkeypatch.setenv('MAINFRAME_BASH', 'bash')
-        with pytest.raises(RuntimeError, match='absolute path'):
-            executor_module._resolve_bash()
+class TestControlPlaneExecutorBoundary:
+    def test_executor_has_only_the_public_atomic_route(self, executor):
+        assert hasattr(executor, 'execute_control_plane')
+        assert not hasattr(executor, 'execute_broker')
+        assert not hasattr(executor, 'execute')
+        assert not hasattr(executor, 'bash')
 
-    def test_old_explicit_bash_fails_closed(self, monkeypatch):
-        monkeypatch.setenv('MAINFRAME_BASH', '/usr/local/bin/bash')
-        monkeypatch.setattr(
-            executor_module,
-            '_resolve_safe_bash_candidate',
-            lambda _: '/usr/local/bin/bash',
-        )
-        monkeypatch.setattr(
-            executor_module, '_probe_bash_version', lambda _: (4, 3)
-        )
-        with pytest.raises(RuntimeError, match='4.4 or newer'):
-            executor_module._resolve_bash()
-
-    def test_missing_supported_bash_fails_closed(self, monkeypatch):
-        monkeypatch.delenv('MAINFRAME_BASH', raising=False)
-        monkeypatch.setattr(
-            executor_module, 'FIXED_BASH_CANDIDATES', ('/missing/bash',)
-        )
-        with pytest.raises(RuntimeError, match='requires Bash 4.4'):
-            executor_module._resolve_bash()
-
-    def test_poisoned_unsupported_bash_is_rejected_before_probe(
-        self, monkeypatch, tmp_path
+    def test_control_plane_uses_sanitized_environment(
+        self, executor, monkeypatch
     ):
-        marker = tmp_path / 'poisoned-bash-ran'
-        poisoned_bash = tmp_path / 'bash'
-        poisoned_bash.write_text(
-            '#!/bin/sh\n'
-            f': > "{marker}"\n'
-            'printf "5 3"\n',
-            encoding='utf-8',
-        )
-        poisoned_bash.chmod(0o755)
-        monkeypatch.setenv('MAINFRAME_BASH', str(poisoned_bash))
-
-        with pytest.raises(RuntimeError, match='safe supported'):
-            executor_module._resolve_bash()
-
-        assert not marker.exists()
-
-    def test_writable_bash_is_rejected_before_version_probe(
-        self, monkeypatch, tmp_path
-    ):
-        marker = tmp_path / 'version-probe-ran'
-        writable_bash = tmp_path / 'bash'
-        writable_bash.write_text('#!/bin/sh\nexit 0\n', encoding='utf-8')
-        writable_bash.chmod(0o777)
-        monkeypatch.setenv('MAINFRAME_BASH', str(writable_bash))
-        monkeypatch.setattr(
-            executor_module, '_bash_layout_is_known', lambda _: True
-        )
-
-        def poisoned_probe(_):
-            marker.write_text('ran', encoding='utf-8')
-            return 5, 3
-
-        monkeypatch.setattr(
-            executor_module, '_probe_bash_version', poisoned_probe
-        )
-        with pytest.raises(RuntimeError, match='safe supported'):
-            executor_module._resolve_bash()
-
-        assert not marker.exists()
-
-    def test_executor_rejects_unprepared_argument_mapping(self, executor):
-        ok, out, err = executor.execute('json_object', {'args': ['k=v']})
-        assert not ok
-        assert not out
-        assert 'prepared argv' in err
-
-    def test_executor_passes_arguments_without_shell_reinterpretation(self, executor):
-        ok, out, err = executor.execute('json_object', ['k=$(id)', 'semi=one;two'])
-        assert ok, err
-        assert json.loads(out) == {'k': '$(id)', 'semi': 'one;two'}
-
-    def test_executor_never_runs_partially_sourced_function(self, tmp_path):
-        lib_dir = tmp_path / 'lib'
-        lib_dir.mkdir()
-        (lib_dir / 'common.sh').write_text(
-            'json_object() { printf "PARTIAL\\n"; }\nreturn 1\n',
-            encoding='utf-8',
-        )
-        isolated_executor = BashExecutor(mainframe_root=str(tmp_path))
-
-        ok, out, err = isolated_executor.execute('json_object', [])
-
-        assert not ok
-        assert 'PARTIAL' not in out
-        assert 'initialization failed' in err
-
-    def test_common_sh_path_is_not_interpreted_as_shell_source(self, tmp_path):
-        unusual_root = tmp_path / "root'; echo PATH_INJECTION; $(id)"
-        lib_dir = unusual_root / 'lib'
-        lib_dir.mkdir(parents=True)
-        (lib_dir / 'common.sh').write_text(
-            'json_object() { printf "SAFE\\n"; }\n',
-            encoding='utf-8',
-        )
-        isolated_executor = BashExecutor(mainframe_root=str(unusual_root))
-
-        ok, out, err = isolated_executor.execute('json_object', [])
-
-        assert ok, err
-        assert out.strip() == 'SAFE'
-        assert 'PATH_INJECTION' not in out
-
-    def test_executor_does_not_run_inherited_path_shim(
-        self, executor, monkeypatch, tmp_path
-    ):
-        shim_dir = tmp_path / 'hostile-bin'
-        shim_dir.mkdir()
-        marker = tmp_path / 'path-shim-ran'
-        shim = shim_dir / 'jq'
-        shim.write_text(
-            f'#!/bin/sh\n: > "{marker}"\nexit 99\n',
-            encoding='utf-8',
-        )
-        shim.chmod(0o755)
-        monkeypatch.setenv('PATH', str(shim_dir))
-
-        ok, _, err = executor.execute('json_valid', ['{}'])
-
-        assert ok, err
-        assert not marker.exists()
-
-    def test_executor_uses_clean_privileged_bash(self, executor, monkeypatch):
-        captured = {}
-        resolved_bash = executor.bash
-
         monkeypatch.setenv('BASH_ENV', '/tmp/hostile-bash-env')
         monkeypatch.setenv('NODE_OPTIONS', '--require=/tmp/hostile-node-hook')
         monkeypatch.setenv('PERL5OPT', '-Mhostile')
@@ -636,31 +483,12 @@ class TestPreparedExecutorBoundary:
         monkeypatch.setenv('DYLD_INSERT_LIBRARIES', '/tmp/hostile-loader')
         monkeypatch.setenv('PATH', '/tmp/hostile-project-bin')
         monkeypatch.setenv('MAINFRAME_TEST_PRESERVED', 'yes')
+        environment = executor_module._execution_environment(
+            executor.mainframe_root
+        )
 
-        def fake_run(command, **kwargs):
-            captured['command'] = command
-            captured['env'] = kwargs['env']
-            return type('Result', (), {'returncode': 0, 'stdout': '', 'stderr': ''})()
-
-        monkeypatch.setattr(executor_module.subprocess, 'run', fake_run)
-        ok, _, _ = executor.execute('json_object', ['k=v'])
-
-        assert ok
-        assert captured['command'][:5] == [
-            resolved_bash,
-            '--noprofile',
-            '--norc',
-            '-p',
-            '-c',
-        ]
-        assert captured['command'][6:] == [
-            'mainframe-mcp',
-            executor.common_sh,
-            'json_object',
-            'k=v',
-        ]
-        assert captured['env']['MAINFRAME_TEST_PRESERVED'] == 'yes'
-        assert captured['env']['PATH'] == executor_module.TRUSTED_DEPENDENCY_PATH
+        assert environment['MAINFRAME_TEST_PRESERVED'] == 'yes'
+        assert environment['PATH'] == executor_module.TRUSTED_DEPENDENCY_PATH
         for key in (
             'BASH_ENV',
             'NODE_OPTIONS',
@@ -669,7 +497,7 @@ class TestPreparedExecutorBoundary:
             'LD_PRELOAD',
             'DYLD_INSERT_LIBRARIES',
         ):
-            assert key not in captured['env']
+            assert key not in environment
 
 
 # --------------------------------------------------------------------------
@@ -701,7 +529,7 @@ class TestStableCoreSafetyFloor:
         )
 
     @pytest.mark.parametrize('function_name', sorted(UNBROKERED_SIDE_EFFECTS))
-    def test_unbrokered_side_effect_denied_by_default_but_kept_opt_in(
+    def test_unbrokered_side_effect_denied_and_legacy_tiers_rejected(
         self, registry, function_name
     ):
         tool_name = f'mainframe_{function_name}'
@@ -710,44 +538,36 @@ class TestStableCoreSafetyFloor:
             authorize_invocation(registry, tool_name)
         assert exc.value.reason == REASON_TIER_VIOLATION
 
-        assert (
-            authorize_invocation(registry, tool_name, tier='core')['name']
-            == function_name
-        )
-        assert (
-            authorize_invocation(registry, tool_name, tier='full')['name']
-            == function_name
-        )
+        for legacy_tier in ('core', 'full'):
+            with pytest.raises(AuthorizationError) as legacy_exc:
+                authorize_invocation(registry, tool_name, tier=legacy_tier)
+            assert legacy_exc.value.reason == REASON_INVALID_TIER
 
 
 class TestTierEnforcement:
-    def test_full_only_function_denied_under_core(self, registry, full_only_function):
+    @pytest.mark.parametrize('legacy_tier', ['core', 'full'])
+    def test_legacy_discovery_profiles_are_not_execution_tiers(
+        self, registry, legacy_tier
+    ):
+        assert registry.generate_all_tools(tier=legacy_tier) == []
+        assert registry.generate_tool_schema('json_object', tier=legacy_tier) is None
         with pytest.raises(AuthorizationError) as exc:
-            authorize_invocation(registry, f'mainframe_{full_only_function}', tier='core')
-        assert exc.value.reason == REASON_TIER_VIOLATION
-
-    def test_full_only_function_allowed_under_full(self, registry, full_only_function):
-        func = authorize_invocation(registry, f'mainframe_{full_only_function}', tier='full')
-        assert func['name'] == full_only_function
+            authorize_invocation(
+                registry, 'mainframe_json_object', tier=legacy_tier
+            )
+        assert exc.value.reason == REASON_INVALID_TIER
 
 
 # --------------------------------------------------------------------------
-# Positive control: a registered, in-tier function authorizes and executes
+# Positive control: a registered, in-tier function authorizes and normalizes
 # --------------------------------------------------------------------------
 
 class TestPositiveControl:
-    def test_registered_core_function_authorized(self, registry):
-        func = authorize_invocation(registry, 'mainframe_json_object', tier='core')
+    def test_registered_reviewed_function_authorized(self, registry):
+        func = authorize_invocation(registry, 'mainframe_json_object')
         assert func['name'] == 'json_object'
 
-    def test_registered_function_executes(self, executor):
-        ok, out, err = executor.execute('json_object', ['k=v'])
-        assert ok, f'legitimate invocation failed: {err}'
-        assert out.strip() == '{"k":"v"}'
-
-    def test_reviewed_array_join_variadic_call_executes(self, registry, executor):
+    def test_reviewed_array_join_variadic_call_normalizes(self, registry):
         func = authorize_invocation(registry, 'mainframe_array_join')
         argv = prepare_invocation_arguments(func, {'args': [',', 'a', 'b']})
-        ok, out, err = executor.execute(func['name'], argv)
-        assert ok, err
-        assert out.strip() == 'a,b'
+        assert argv == (',', 'a', 'b')

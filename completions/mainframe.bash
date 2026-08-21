@@ -28,7 +28,7 @@ _mainframe_completions() {
 
     # Top-level commands (including aliases). Keep this in parity with the
     # dispatch table in bin/mainframe; tests/unit/installer.bats enforces it.
-    local commands="version functions funcs list operations ops run invoke help info describe search find grep awm work count quickref qr signatures sigs fzf fuzzy browse explore tui doctor check health shell agent-hook agent-gateway protect host pi setup onboard launch activate deactivate benchmark bench test tests update upgrade release uninstall new init build"
+    local commands="version functions funcs list operations ops run invoke help info describe search find grep awm work count quickref qr signatures sigs fzf fuzzy browse explore tui doctor check health shell agent-hook agent-gateway protect host pi control-plane setup onboard launch activate deactivate benchmark bench test tests update upgrade release uninstall new init build"
 
     # Quickref options
     local quickref_opts="--list -l --all -a --search -s --json -j"
@@ -46,6 +46,7 @@ _mainframe_completions() {
     local shell_actions="status repair"
     local pi_actions="status doctor install remove restore help"
     local release_actions="readiness help"
+    local control_plane_actions="run-create run-transition call-create call-request-approval approval-grant approval-consume trace-execute disposable-write-execute show"
     local upgrade_opts="--version --allow-downgrade --dry-run --confirm-agents-stopped --recover --journal --help -h"
     local uninstall_opts="--dry-run --purge --purge-state --dir --bin --shell-config --help -h"
 
@@ -117,6 +118,16 @@ _mainframe_completions() {
                 COMPREPLY+=("$candidate")
             done < <(compgen -W "--json --help -h" -- "$cur")
         fi
+        return
+    fi
+
+    if [[ "${words[1]:-}" == "control-plane" ]]; then
+        if [[ "$prev" == "--ledger" ]]; then
+            _filedir 2>/dev/null || COMPREPLY=( $(compgen -f -- "$cur") )
+            return
+        fi
+        COMPREPLY=( $(compgen -W \
+            "--ledger $control_plane_actions --help -h" -- "$cur") )
         return
     fi
 

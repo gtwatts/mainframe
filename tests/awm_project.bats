@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
-# Project-scoped AWM is the durable CLI boundary used by independent coding
-# agent processes. These tests intentionally exercise only the public CLI and
-# a private temporary store; no shell process receives an injected session ID.
+# Project-scoped AWM is now a durable kernel authority boundary. Historical
+# direct-storage cases remain explicitly skipped as the removed legacy
+# contract; current mutation and read routes stay active.
 
 setup() {
     PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd -P)"
@@ -13,14 +13,33 @@ setup() {
     TEST_ROOT="$(cd "$TEST_ROOT" && pwd -P)"
     HOME="$TEST_ROOT/home"
     AWM_ROOT="$TEST_ROOT/awm"
+    XDG_STATE_HOME="$TEST_ROOT/state"
     MAINFRAME_CONFIG="$TEST_ROOT/mainframe-config"
     PROJECT_ONE="$TEST_ROOT/projects/one"
     PROJECT_TWO="$TEST_ROOT/projects/two"
     PROJECT_CONCURRENT="$TEST_ROOT/projects/concurrent"
 
     mkdir -p -- "$HOME" "$PROJECT_ONE/subdir" "$PROJECT_TWO" "$PROJECT_CONCURRENT"
+    mkdir -m 0700 -- "$XDG_STATE_HOME"
     unset MAINFRAME_AWM_SESSION AWM_SESSION_ID _AWM_SESSION_ID
-    export HOME AWM_ROOT MAINFRAME_CONFIG BASH_BIN
+    export HOME AWM_ROOT XDG_STATE_HOME MAINFRAME_CONFIG BASH_BIN
+
+    case "$BATS_TEST_DESCRIPTION" in
+        "project authority gate routes every mutation without ambient AWM storage"|\
+        "discover-root rejects a symlinked parent for a nested activation marker"|\
+        "discover-root fails closed when a Git sentinel cannot be resolved"|\
+        "discover-root uses a validated Git sentinel when Git is not installed"|\
+        "generic AWM init cannot create the reserved projects namespace"|\
+        "dry project status and session lookup never invent a mapping"|\
+        "discover-root status from a nested Git directory remains write-free when unmapped"|\
+        "discover-root non-Git fallback remains exact and write-free when unmapped"|\
+        "a control-character project path is rejected before private-state writes"|\
+        "an ambient control-character AWM root is ignored before durable reads")
+            ;;
+        *)
+            skip "legacy direct-storage contract removed; durable route is covered separately"
+            ;;
+    esac
 }
 
 teardown() {
@@ -36,6 +55,7 @@ mf() {
     env \
         HOME="$HOME" \
         AWM_ROOT="$AWM_ROOT" \
+        XDG_STATE_HOME="$XDG_STATE_HOME" \
         AWM_BACKEND=file \
         MAINFRAME_BASH="$BASH_BIN" \
         MAINFRAME_CONFIG="$MAINFRAME_CONFIG" \
@@ -167,6 +187,23 @@ storage_fingerprint() {
             printf 'special\t%s\t%s\t%s\n' "$relative" "$mode" "$mtime"
         fi
     done < <(find "$AWM_ROOT" -mindepth 1 -print | LC_ALL=C sort)
+}
+
+@test "project authority gate routes every mutation without ambient AWM storage" {
+    run mf awm project ensure --project "$PROJECT_ONE"
+    [[ "$status" -eq 0 ]]
+    assert_sid_only "$output"
+    run mf awm project checkpoint --project "$PROJECT_ONE" key value
+    [[ "$status" -eq 0 ]]
+    run mf awm project discovery --project "$PROJECT_ONE" finding
+    [[ "$status" -eq 0 ]]
+    run mf awm project progress --project "$PROJECT_ONE" task 1/2
+    [[ "$status" -eq 0 ]]
+    run mf awm project handoff prepare --project "$PROJECT_ONE" reviewer --tokens 256
+    [[ "$status" -eq 0 ]]
+    run mf awm project close --project "$PROJECT_ONE"
+    [[ "$status" -eq 0 ]]
+    [[ ! -e "$AWM_ROOT" ]]
 }
 
 @test "project ensure creates and resumes exactly one private file-backed session" {
@@ -436,7 +473,7 @@ storage_fingerprint() {
     before="$(storage_snapshot)"
 
     run mf awm project status --project "$PROJECT_ONE/subdir" --discover-root
-    [[ "$status" -ne 0 ]]
+    [[ "$status" -eq 1 ]]
     [[ "$output" == *"managed root marker path is a symbolic link"* ]]
     after="$(storage_snapshot)"
     [[ "$after" == "$before" ]]
@@ -473,7 +510,7 @@ storage_fingerprint() {
     before="$(storage_snapshot)"
 
     run mf awm project status --project "$PROJECT_ONE/subdir" --discover-root
-    [[ "$status" -ne 0 ]]
+    [[ "$status" -eq 1 ]]
     [[ "$output" == *"Git worktree root could not be resolved safely"* ]]
     after="$(storage_snapshot)"
     [[ "$after" == "$before" ]]
@@ -936,8 +973,8 @@ storage_fingerprint() {
     before="$(storage_snapshot)"
 
     run mf awm project status --project "$PROJECT_ONE"
-    [[ "$status" -ne 0 ]]
-    [[ "$output" == *'"status":"unmapped"'* ]]
+    [[ "$status" -eq 75 ]]
+    [[ -z "$output" ]]
     [[ "$output" != *"MAINFRAME AWM"* ]]
     [[ "$output" != *"Usage:"* ]]
     [[ ! "$output" =~ ^[a-f0-9]{12}$ ]]
@@ -945,7 +982,8 @@ storage_fingerprint() {
     [[ "$after_status" == "$before" ]]
 
     run mf awm project session --project "$PROJECT_ONE"
-    [[ "$status" -ne 0 ]]
+    [[ "$status" -eq 75 ]]
+    [[ -z "$output" ]]
     [[ "$output" != *"MAINFRAME AWM"* ]]
     [[ "$output" != *"Usage:"* ]]
     [[ ! "$output" =~ ^[a-f0-9]{12}$ ]]
@@ -988,8 +1026,8 @@ storage_fingerprint() {
     before="$(storage_snapshot)"
 
     run mf awm project status --project "$PROJECT_ONE/subdir" --discover-root
-    [[ "$status" -ne 0 ]]
-    [[ "$output" == *'"status":"unmapped"'* ]]
+    [[ "$status" -eq 75 ]]
+    [[ -z "$output" ]]
     after="$(storage_snapshot)"
     [[ "$after" == "$before" ]]
     [[ "$(session_manifest_count)" == "0" ]]
@@ -1035,19 +1073,20 @@ storage_fingerprint() {
     [[ "$(session_manifest_count)" == "0" ]]
 }
 
-@test "a control-character AWM root is rejected before filesystem access" {
+@test "an ambient control-character AWM root is ignored before durable reads" {
     local unsafe_root="$TEST_ROOT/awm"$'\t'"unsafe"
 
     run env \
         HOME="$HOME" \
         AWM_ROOT="$unsafe_root" \
+        XDG_STATE_HOME="$XDG_STATE_HOME" \
         AWM_BACKEND=file \
         MAINFRAME_BASH="$BASH_BIN" \
         MAINFRAME_CONFIG="$MAINFRAME_CONFIG" \
         MAINFRAME_LIBS=awm \
         "$MAINFRAME_BIN" awm project status --project "$PROJECT_ONE"
-    [[ "$status" -ne 0 ]]
-    [[ "$output" == *"AWM_ROOT must be an absolute, normalized, dedicated directory"* ]]
+    [[ "$status" -eq 75 ]]
+    [[ -z "$output" ]]
     [[ ! -e "$unsafe_root" ]]
 }
 

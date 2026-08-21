@@ -13,7 +13,6 @@
 # =============================================================================
 
 _MAINFRAME_ACTIVATE_MARKER_TAG="MAINFRAME"
-_MAINFRAME_ACTIVATE_BLOCK_VERSION="1"
 
 # This bootstrap is the only command interpreted by the host hook shell. It
 # starts Apple's/system Bash in privileged mode before consulting any inherited
@@ -649,37 +648,130 @@ _mainframe_enforce_remove() {
     echo "enforcement-removed"
 }
 
-# The managed block. Concise by design (Phase 1 deliverable 4): no static
-# function counts, no blanket "replace Unix tools" instructions — pointers
-# to live commands instead.
+# Read the one canonical activation payload carried by the generated Codex
+# adapter. The generator binds this payload and its conservative evidence
+# boundary to the exact registry digest, so activation has no second Markdown
+# instruction source to drift from the static host adapters.
+_mainframe_activate_contract_record() {
+    local source_file="${BASH_SOURCE[0]}" physical_lib physical_root
+    local source_dir="${source_file%/*}"
+    physical_lib="$(cd "$source_dir" && pwd -P)" || {
+        echo "invalid activation contract: source root cannot be resolved" >&2
+        return 1
+    }
+    physical_root="${physical_lib%/*}"
+    local adapter="${physical_root}/skills/codex/AGENTS.md"
+    local registry="${physical_root}/config/host-capabilities.json"
+    local marker payload_line boundary registry_digest marker_digest block_version
+    local payload_prefix='<!-- MAINFRAME-ACTIVATION-PAYLOAD '
+    local payload_suffix=' -->'
+
+    if [[ ! -f "$adapter" || -L "$adapter" || ! -f "$registry" || -L "$registry" ]]; then
+        echo "invalid activation contract: canonical adapter or registry is missing or unsafe" >&2
+        return 1
+    fi
+    if [[ "$(grep -c '^<!-- MAINFRAME-ACTIVATION-CONTRACT ' "$adapter")" -ne 1 ||
+          "$(grep -c '^<!-- MAINFRAME-ACTIVATION-PAYLOAD ' "$adapter")" -ne 1 ]]; then
+        echo "invalid activation contract: canonical markers are missing or duplicated" >&2
+        return 1
+    fi
+
+    marker="$(grep '^<!-- MAINFRAME-ACTIVATION-CONTRACT ' "$adapter")" || return 1
+    payload_line="$(grep '^<!-- MAINFRAME-ACTIVATION-PAYLOAD ' "$adapter")" || return 1
+    boundary="$(grep '^> Instruction evidence: instructions only\.' "$adapter")" || {
+        echo "invalid activation contract: conservative evidence boundary is missing" >&2
+        return 1
+    }
+    [[ "$(grep -c '^> Instruction evidence: instructions only\.' "$adapter")" -eq 1 &&
+       "$boundary" == *"unsupported routes remain unverified." ]] || {
+        echo "invalid activation contract: conservative evidence boundary is ambiguous" >&2
+        return 1
+    }
+
+    registry_digest="$(_mainframe_enforce_sha256_file "$registry")" || {
+        echo "invalid activation contract: registry digest is unavailable" >&2
+        return 1
+    }
+    marker_digest="$(printf '%s\n' "$marker" | sed -nE \
+        's/^.*"registry_sha256":"([0-9a-f]{64})".*$/\1/p')"
+    block_version="$(printf '%s\n' "$marker" | sed -nE \
+        's/^.*"block_version":([1-9][0-9]*).*$/\1/p')"
+    [[ "$marker_digest" == "$registry_digest" && "$block_version" == "1" &&
+       "$marker" == '<!-- MAINFRAME-ACTIVATION-CONTRACT {"schema_version":1,"contract_version":"'* &&
+       "$marker" == *'","registry":"config/host-capabilities.json","registry_sha256":"'* &&
+       "$marker" == *'","block_version":1,"adapter_evidence_level":"instructions","unsupported_routes":"unverified"} -->' ]] || {
+        echo "invalid activation contract: identity, version, or evidence boundary does not match the registry" >&2
+        return 1
+    }
+
+    [[ "$payload_line" == "$payload_prefix"*"$payload_suffix" ]] || {
+        echo "invalid activation contract: payload marker is malformed" >&2
+        return 1
+    }
+    payload_line="${payload_line#"$payload_prefix"}"
+    payload_line="${payload_line%"$payload_suffix"}"
+    [[ -n "$payload_line" && "$payload_line" != *[!A-Za-z0-9+/=]* ]] || {
+        echo "invalid activation contract: payload encoding is malformed" >&2
+        return 1
+    }
+
+    printf '%s\n%s\n%s\n%s\n' "$block_version" "$marker" "$boundary" "$payload_line"
+}
+
+_mainframe_activate_decode_payload() {
+    local encoded="$1"
+    if [[ -x /usr/bin/base64 ]]; then
+        if [[ "$(/usr/bin/uname -s 2>/dev/null)" == Darwin ]]; then
+            printf '%s' "$encoded" | /usr/bin/base64 -D
+        else
+            printf '%s' "$encoded" | /usr/bin/base64 --decode
+        fi
+    elif [[ -x /bin/base64 ]]; then
+        printf '%s' "$encoded" | /bin/base64 --decode
+    else
+        echo "invalid activation contract: base64 decoder is unavailable" >&2
+        return 1
+    fi
+}
+
+_mainframe_activate_block_version() {
+    local record
+    record="$(_mainframe_activate_contract_record)" || return 1
+    printf '%s\n' "${record%%$'\n'*}"
+}
+
 _mainframe_activate_block() {
-    cat <<'EOF'
-<!-- MAINFRAME:BEGIN v1 -->
-## MAINFRAME (AI-native bash runtime)
+    local record payload
+    local -a fields=()
+    record="$(_mainframe_activate_contract_record)" || return 1
+    mapfile -t fields <<< "$record"
+    [[ "${#fields[@]}" -eq 4 ]] || {
+        echo "invalid activation contract: canonical record is malformed" >&2
+        return 1
+    }
+    payload="$(_mainframe_activate_decode_payload "${fields[3]}")" || {
+        echo "invalid activation contract: payload cannot be decoded" >&2
+        return 1
+    }
+    [[ "$payload" == '## MAINFRAME (AI-native bash runtime)'$'\n'* &&
+       "$payload" == *'MAINFRAME is a validation layer, not a sandbox'* ]] || {
+        echo "invalid activation contract: decoded instructions are not canonical" >&2
+        return 1
+    }
 
-MAINFRAME is installed in this environment. Load it with:
-
-```bash
-source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
-```
-
-- Discover current functions with `mainframe count`, `mainframe quickref <library>`, and `mainframe help <function>` (do not rely on memorized counts or signatures).
-- Prefer MAINFRAME functions for JSON construction/parsing, input validation, atomic file operations, and structured output (USOP) over ad-hoc shell one-liners.
-- At task start, run the read-only `mainframe work "<current task>" --project . --tokens 1200`; it resolves the existing private session mapped to the current Git worktree or onboarded project root, returns bounded memory as untrusted data, and executes none of its write templates. If it reports an unmapped or completed session, do not initialize or renew memory without human confirmation; only then use `mainframe awm project ensure --project . --discover-root` and rerun `mainframe work`.
-- Record only durable decisions, high-signal discoveries, and meaningful milestones with `mainframe awm project checkpoint --project . --discover-root <key> <value> --importance high`, `mainframe awm project discovery --project . --discover-root "<finding>" --importance high`, and `mainframe awm project progress --project . --discover-root <task> <current/total> "<status>"`. Never store credentials, tokens, secrets, raw sensitive payloads, or routine command chatter.
-- Before context compaction or delegation, run `mainframe awm project handoff prepare --project . --discover-root <target> --tokens 1200 --format prompt`. On completion, checkpoint a concise outcome and current status; use `mainframe awm project summary --project . --discover-root --tokens 800` when a bounded recap is needed.
-- MAINFRAME is a validation layer, not a sandbox: keep normal caution with destructive commands.
-<!-- MAINFRAME:END v1 -->
-EOF
+    printf '<!-- %s:BEGIN v%s -->\n%s\n%s\n\n%s\n<!-- %s:END v%s -->\n' \
+        "$_MAINFRAME_ACTIVATE_MARKER_TAG" "${fields[0]}" "${fields[1]}" \
+        "${fields[2]}" "$payload" "$_MAINFRAME_ACTIVATE_MARKER_TAG" "${fields[0]}"
 }
 
 # _mainframe_activate_apply <file> <dry-run> ; prints result status on stdout
 _mainframe_activate_apply() {
     local file="$1" dry_run="$2"
-    local begin="<!-- ${_MAINFRAME_ACTIVATE_MARKER_TAG}:BEGIN v${_MAINFRAME_ACTIVATE_BLOCK_VERSION} -->"
-    local end="<!-- ${_MAINFRAME_ACTIVATE_MARKER_TAG}:END v${_MAINFRAME_ACTIVATE_BLOCK_VERSION} -->"
-    local block
-    block="$(_mainframe_activate_block)"
+    local block_version begin end block
+    block_version="$(_mainframe_activate_block_version)" || return 1
+    begin="<!-- ${_MAINFRAME_ACTIVATE_MARKER_TAG}:BEGIN v${block_version} -->"
+    end="<!-- ${_MAINFRAME_ACTIVATE_MARKER_TAG}:END v${block_version} -->"
+    block="$(_mainframe_activate_block)" || return 1
 
     if [[ -f "$file" ]] && grep -qF "$begin" "$file" && grep -qF "$end" "$file"; then
         # Update in place: replace content between markers (inclusive)

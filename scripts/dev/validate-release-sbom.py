@@ -31,10 +31,13 @@ RUNTIME_CONTRACTS = {
         "name": "Python",
         "version": "3.9",
         "properties": {
-            "mainframe:version-constraint": ">=3.9 for Pi diagnosis and lifecycle",
+            "mainframe:version-constraint": (
+                ">=3.9 for control-plane and Pi diagnosis/lifecycle"
+            ),
             "mainframe:managed-host-version-constraint": ">=3.10",
             "mainframe:requirement": (
-                "Pi diagnosis/lifecycle and managed-host install, remove, and restore"
+                "durable control-plane CLI, Pi diagnosis/lifecycle, and "
+                "managed-host install, remove, and restore"
             ),
         },
     },

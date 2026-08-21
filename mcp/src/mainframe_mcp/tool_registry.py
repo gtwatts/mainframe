@@ -8,7 +8,6 @@ from typing import Dict, List, Any, Optional
 
 from .authorization import (
     is_mcp_advertisable,
-    is_mcp_core_export,
     normalize_invocation_metadata,
     REVIEWED_VARIADIC_CALL_SHAPES,
     VALID_TIERS,
@@ -26,6 +25,149 @@ BROKER_EFFECTS = frozenset({'pure', 'read'})
 BROKER_PLATFORMS = frozenset({'linux', 'macos'})
 BROKER_MAX_TIMEOUT_MS = 30_000
 BROKER_MAX_OUTPUT_LIMIT = 1_048_576
+MCP_RESULT_SCHEMA_VERSION = 2
+
+
+def _broker_receipt_schema(
+    canonical_id: str,
+    func_name: str,
+    owner: str,
+) -> Dict[str, Any]:
+    properties: Dict[str, Any] = {
+        'schema_version': {'const': 1},
+        'ok': {'type': 'boolean'},
+        'status': {'type': 'string'},
+        'canonical_id': {'const': canonical_id},
+        'name': {'const': func_name},
+        'owner': {'const': owner},
+        'exit_code': {'type': 'integer', 'minimum': 0, 'maximum': 255},
+        'timed_out': {'type': 'boolean'},
+        'output_exceeded': {'type': 'boolean'},
+        'duration_ms': {'type': 'integer', 'minimum': 0},
+        'audit_id': {'type': 'string'},
+    }
+    for prefix in ('stdout', 'stderr', 'error'):
+        properties[f'{prefix}_bytes'] = {'type': 'integer', 'minimum': 0}
+        properties[f'{prefix}_sha256'] = {
+            'type': 'string',
+            'pattern': '^[0-9a-f]{64}$',
+        }
+    return {
+        'type': 'object',
+        'properties': properties,
+        'required': list(properties),
+        'additionalProperties': False,
+    }
+
+
+def _structured_output_schema(
+    func_name: str,
+    canonical_id: str,
+    owner: str,
+    effects: List[str],
+    result_kind: str,
+) -> Dict[str, Any]:
+    """Build the closed MCP output contract for one reviewed function."""
+    return {
+        'type': 'object',
+        'properties': {
+            'schema_version': {'const': MCP_RESULT_SCHEMA_VERSION},
+            'kind': {'const': 'mainframe-mcp-result'},
+            'ok': {'const': True},
+            'function': {'const': func_name},
+            'canonical_id': {'const': canonical_id},
+            'effect_contract': {
+                'type': 'object',
+                'properties': {
+                    'effects': {'const': effects},
+                    'read_only': {'const': True},
+                },
+                'required': ['effects', 'read_only'],
+                'additionalProperties': False,
+            },
+            'result': {
+                'type': 'object',
+                'properties': {
+                    'kind': {'const': result_kind},
+                    'encoding': {'const': 'utf-8'},
+                    'stdout': {'type': 'string'},
+                },
+                'required': ['kind', 'encoding', 'stdout'],
+                'additionalProperties': False,
+            },
+            'correlation': {
+                'type': 'object',
+                'properties': {
+                    'mcp_request_id': {
+                        'anyOf': [
+                            {'type': 'integer'},
+                            {'type': 'string'},
+                        ]
+                    },
+                    'client_correlation_id': {
+                        'type': 'string',
+                        'pattern': '^mcp-[0-9a-f]{32}$',
+                    },
+                    'binding_status': {'const': 'kernel-authoritative'},
+                    'client_metadata_status': {
+                        'enum': ['absent', 'ignored-unverified']
+                    },
+                    'run_id': {'type': 'string', 'pattern': '^run-[0-9a-f]{32}$'},
+                    'call_id': {'type': 'string', 'pattern': '^call-[0-9a-f]{32}$'},
+                    'decision_id': {
+                        'type': 'string',
+                        'pattern': '^decision-[0-9a-f]{32}$',
+                    },
+                    'evidence_id': {
+                        'type': 'string',
+                        'pattern': '^evidence-[0-9a-f]{32}$',
+                    },
+                    'input_digest': {
+                        'type': 'string',
+                        'pattern': '^[0-9a-f]{64}$',
+                    },
+                },
+                'required': [
+                    'mcp_request_id',
+                    'client_correlation_id',
+                    'binding_status',
+                    'client_metadata_status',
+                    'run_id',
+                    'call_id',
+                    'decision_id',
+                    'evidence_id',
+                    'input_digest',
+                ],
+                'additionalProperties': False,
+            },
+            'terminal': {
+                'type': 'object',
+                'properties': {
+                    'outcome': {'enum': ['succeeded']},
+                    'result_available': {'const': True},
+                    'broker_receipt': _broker_receipt_schema(
+                        canonical_id,
+                        func_name,
+                        owner,
+                    ),
+                },
+                'required': ['outcome', 'result_available', 'broker_receipt'],
+                'additionalProperties': False,
+            },
+        },
+        'required': [
+            'schema_version',
+            'kind',
+            'ok',
+            'function',
+            'canonical_id',
+            'effect_contract',
+            'result',
+            'correlation',
+            'terminal',
+        ],
+        'additionalProperties': False,
+    }
 
 
 class ToolRegistry:
@@ -395,108 +537,64 @@ class ToolRegistry:
         return self._functions
 
     def generate_tool_schema(
-        self, func_name: str, tier: str = 'full'
+        self, func_name: str, tier: str = 'stable-core'
     ) -> Optional[Dict[str, Any]]:
-        """Generate MCP tool schema for a function."""
+        """Generate a reviewed stable-core MCP tool schema for a function."""
         if tier not in VALID_TIERS:
             return None
         func = self.get_function(func_name)
         if not func or not is_mcp_advertisable(func_name, func):
             return None
 
-        if tier == 'stable-core':
-            if func_name not in self._get_stable_contract_names():
-                return None
-            input_schema = copy.deepcopy(
-                func['manifest_export']['input_schema']
-            )
-            return {
-                'name': f'mainframe_{func_name}',
-                'description': func.get(
-                    'description', f'MAINFRAME function: {func_name}'
-                ),
-                'inputSchema': input_schema,
-            }
-
-        # Build input schema from params
-        properties = {}
-        required = []
-
-        params = sorted(
-            func.get('params', []),
-            key=lambda param: param.get('position', 0),
-        )
-        effective_required_positions = [
-            param['position']
-            for param in params
-            if param.get('required', True) and param.get('default') is None
-        ]
-        last_required_position = max(effective_required_positions, default=0)
-        if params:
-            for param in params:
-                param_name = param.get('name', 'arg')
-                param_required = param.get('required', True)
-                param_default = param.get('default')
-
-                properties[param_name] = {
-                    'type': 'string',
-                    'description': f'Parameter: {param_name}'
-                }
-
-                if param_default is not None:
-                    properties[param_name]['default'] = str(param_default)
-
-                if (
-                    param_required and param_default is None
-                ) or param['position'] < last_required_position:
-                    required.append(param_name)
-        else:
-            # Function with variadic args
-            properties['args'] = {
-                'type': 'array',
-                'items': {'type': 'string'},
-                'description': 'Arguments to pass to the function'
-            }
-
-        input_schema = {
-            'type': 'object',
-            'properties': properties,
-            'additionalProperties': False,
-        }
-        # Only include 'required' if there are required params
-        if required:
-            input_schema['required'] = required
-
+        if func_name not in self._get_stable_contract_names():
+            return None
+        export = func['manifest_export']
+        input_schema = copy.deepcopy(export['input_schema'])
+        effects = copy.deepcopy(export['effects'])
+        result_kind = export['result']['kind']
         return {
             'name': f'mainframe_{func_name}',
-            'description': func.get('description', f'MAINFRAME function: {func_name}'),
-            'inputSchema': input_schema
+            'description': func.get(
+                'description', f'MAINFRAME function: {func_name}'
+            ),
+            'inputSchema': input_schema,
+            'outputSchema': _structured_output_schema(
+                func_name,
+                func['canonical_id'],
+                func['library'],
+                effects,
+                result_kind,
+            ),
+            # Effects are reviewed canonical contracts.  MCP annotations are
+            # merely hints, so publish only what that contract proves.
+            'annotations': {'readOnlyHint': True},
+            '_meta': {
+                'mainframe': {
+                    'schema_version': MCP_RESULT_SCHEMA_VERSION,
+                    'canonical_id': func['canonical_id'],
+                    'contract_status': export['contract_status'],
+                    'effects': effects,
+                    'capabilities': copy.deepcopy(export['capabilities']),
+                    'result_kind': result_kind,
+                }
+            },
         }
 
     def generate_all_tools(self, tier: str = 'stable-core') -> List[Dict[str, Any]]:
         """Generate MCP tool definitions.
 
         Args:
-            tier: 'stable-core' for the curated stable public core (default,
-                  per config/stable-core.json), 'core' for the legacy broad
-                  tier, 'full' for everything.
+            tier: The sole reviewed ``stable-core`` execution surface.
         """
         if tier not in VALID_TIERS or not self.load():
             return []
         tools = []
 
-        stable_names = None
-        if tier == 'stable-core':
-            stable_names = self._get_stable_contract_names()
+        stable_names = self._get_stable_contract_names()
 
-        for func_name, func_data in self._functions.items():
-            if tier == 'stable-core':
-                if func_name not in stable_names:
-                    continue
-            elif tier == 'core':
-                category = func_data.get('category', '')
-                if not is_mcp_core_export(func_name, category, func_data):
-                    continue
+        for func_name in self._functions:
+            if func_name not in stable_names:
+                continue
 
             schema = self.generate_tool_schema(func_name, tier=tier)
             if schema:

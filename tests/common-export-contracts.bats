@@ -87,3 +87,42 @@ assert_common_export_contracts() {
 @test "mainframe_load_all preserves canonical HTTP and date contracts" {
     assert_common_export_contracts load_all
 }
+
+@test "default and full loaders expose the same ordered runtime identity" {
+    run env MAINFRAME_ROOT="$MAINFRAME_ROOT" MAINFRAME_QUIET=1 \
+        BASH_BIN="${BATS_TEST_SHELL:-bash}" \
+        "${BATS_TEST_SHELL:-bash}" --noprofile --norc -c '
+            set -euo pipefail
+            snapshot() {
+                local mode="$1"
+                env -i \
+                    HOME="${HOME:-/tmp}" \
+                    PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin" \
+                    MAINFRAME_ROOT="$MAINFRAME_ROOT" MAINFRAME_QUIET=1 \
+                    "$BASH_BIN" --noprofile --norc -c '\''
+                        set -euo pipefail
+                        if [[ "$1" == full ]]; then
+                            export MAINFRAME_PROFILE=full
+                        fi
+                        source "$MAINFRAME_ROOT/lib/common.sh" >/dev/null 2>&1
+                        mainframe_loaded | LC_ALL=C sort
+                        printf "agent_register="
+                        declare -f agent_register | cksum
+                    '\'' _ "$mode"
+            }
+
+            default_snapshot="$(snapshot default)"
+            full_snapshot="$(snapshot full)"
+            [[ "$default_snapshot" == "$full_snapshot" ]] || {
+                diff -u \
+                    <(printf "%s\n" "$default_snapshot") \
+                    <(printf "%s\n" "$full_snapshot") >&2 || true
+                exit 1
+            }
+        '
+
+    if [[ "$status" -ne 0 ]]; then
+        printf '%s\n' "$output" >&2
+    fi
+    [[ "$status" -eq 0 ]]
+}

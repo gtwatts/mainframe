@@ -8,6 +8,7 @@
 #   version     Show MAINFRAME version
 #   functions   List all available functions
 #   invoke      Invoke one reviewed canonical manifest export
+#   code        Durable workspace read, search, and approval-gated actions
 #   help        Show detailed help for a specific function
 #   search      Search functions by name or description
 #   awm         Agent Working Memory lifecycle, retrieval, and handoff tools
@@ -24,6 +25,8 @@
 #   protect     Inspect project enforcement readiness
 #   host        Inspect or manage private coding-agent host runtimes
 #   pi          Diagnose, install, or remove the native Pi package integration
+#   control-plane  Operate the durable run/approval/evidence kernel
+#   claim       Verify the evidence-bound control-plane promotion claim
 #   setup       Discover shells/hosts or explicitly onboard one host
 #   onboard     Preview, consent to, and verify one protected host setup
 #   launch      Preflight and start one onboarded coding-agent host
@@ -246,6 +249,20 @@ CLI_DIR="${CLI_SOURCE%/*}"
 SCRIPT_DIR="$(cd -- "$CLI_DIR/.." 2>/dev/null && pwd -P)" || exit 1
 export MAINFRAME_ROOT="$SCRIPT_DIR"
 
+# The structured control-plane kernel is a narrow stdlib-Python path and does
+# not depend on the broad Bash library surface. Dispatch it before common.sh so
+# policy and ledger inspection remain available even when the optional runtime
+# closure is unavailable.
+if [[ "${1:-}" == "control-plane" ]]; then
+    shift
+    [[ -f "$MAINFRAME_ROOT/control_plane/mainframe-control-plane" &&
+       -x "$MAINFRAME_ROOT/control_plane/mainframe-control-plane" ]] || {
+        printf '{"ok":false,"command":null,"error":{"code":"configuration_error","message":"control-plane launcher is missing or not executable"}}\n' >&2
+        exit 78
+    }
+    exec "$MAINFRAME_ROOT/control_plane/mainframe-control-plane" "$@"
+fi
+
 # Agent hooks run synchronously before every shell tool call. Dispatch this
 # narrow path before loading the general runtime to minimize latency and the
 # amount of code inside the enforcement boundary.
@@ -370,6 +387,9 @@ _mainframe_cli_tool_layout_is_known() {
         jq:/bin/jq|jq:/usr/bin/jq|jq:/usr/local/bin/jq|jq:/opt/local/bin/jq)
             return 0
             ;;
+        python3:/bin/python3|python3:/usr/bin/python3)
+            return 0
+            ;;
         git:/bin/git|git:/usr/bin/git|git:/opt/local/bin/git)
             return 0
             ;;
@@ -479,6 +499,12 @@ _mainframe_cli_find_trusted_tool() {
                 /usr/bin/git /bin/git
             )
             ;;
+        python3)
+            # The claim checker is stdlib-only. Keep this read-only verification
+            # surface on an OS-owned interpreter rather than ambient PATH or a
+            # package-manager environment.
+            candidates=(/usr/bin/python3 /bin/python3)
+            ;;
         *) return 1 ;;
     esac
 
@@ -500,6 +526,8 @@ _mainframe_cli_find_trusted_tool() {
 
 _MAINFRAME_CLI_JQ="$(_mainframe_cli_find_trusted_tool jq 2>/dev/null || true)"
 readonly _MAINFRAME_CLI_JQ
+_MAINFRAME_CLI_PYTHON="$(_mainframe_cli_find_trusted_tool python3 2>/dev/null || true)"
+readonly _MAINFRAME_CLI_PYTHON
 
 if [[ -n "$_MAINFRAME_CLI_JQ" ]]; then
     jq() {
@@ -507,24 +535,238 @@ if [[ -n "$_MAINFRAME_CLI_JQ" ]]; then
     }
 fi
 
-# Canonical invocation is a narrow trust boundary, not an ordinary runtime
-# command. Dispatch it before common.sh can honor caller profiles, lazy stubs,
-# user config, or a broad MAINFRAME_LIBS selection. The broker itself starts a
-# clean child and loads only the reviewed canonical owner module.
-if [[ "${1:-}" == "invoke" ]]; then
-    _mainframe_cli_invoke="$MAINFRAME_ROOT/lib/invoke.sh"
-    _mainframe_cli_trust_file_is_safe "$_mainframe_cli_invoke" || {
-        echo "MAINFRAME invocation denied: canonical broker is missing or unsafe" >&2
-        exit 126
+# Report the checked-in promotion contract through one fixed, read-only
+# checker. The wrapper deliberately exposes no root/contract override and does
+# not edit or promote the advertised claim.
+if [[ "${1:-}" == "claim" ]]; then
+    shift
+    case "${1:-}" in
+        "") _mainframe_cli_claim_args=() ;;
+        --json) _mainframe_cli_claim_args=(--json); shift ;;
+        -h|--help)
+            printf 'Usage: mainframe claim [--json]\n'
+            exit 0
+            ;;
+        *)
+            printf 'Usage: mainframe claim [--json]\n' >&2
+            exit 64
+            ;;
+    esac
+    (( $# == 0 )) || {
+        printf 'Usage: mainframe claim [--json]\n' >&2
+        exit 64
     }
+    _mainframe_cli_claim_checker="$MAINFRAME_ROOT/scripts/check-control-plane-claim.py"
+    _mainframe_cli_claim_contract="$MAINFRAME_ROOT/config/control-plane-claim.json"
+    [[ -n "$_MAINFRAME_CLI_PYTHON" ]] || {
+        printf 'MAINFRAME claim check failed: trusted system Python is unavailable\n' >&2
+        exit 69
+    }
+    if ! _mainframe_cli_trust_file_is_safe "$_mainframe_cli_claim_checker" ||
+       ! _mainframe_cli_trust_file_is_safe "$_mainframe_cli_claim_contract"; then
+        printf 'MAINFRAME claim check failed: canonical checker or contract is unsafe\n' >&2
+        exit 126
+    fi
+    exec /usr/bin/env -i \
+        HOME="${HOME:-}" \
+        USER="${USER:-}" \
+        LOGNAME="${LOGNAME:-}" \
+        TMPDIR=/tmp \
+        PATH=/usr/bin:/bin:/usr/sbin:/sbin \
+        LC_ALL=C \
+        "$_MAINFRAME_CLI_PYTHON" -I -S -B \
+        "$_mainframe_cli_claim_checker" \
+        --root "$MAINFRAME_ROOT" \
+        --contract "$_mainframe_cli_claim_contract" \
+        "${_mainframe_cli_claim_args[@]}"
+fi
+
+# The durable kernel's canonical executor reaches the reviewed broker through
+# one fixed, non-public adapter grammar.  It accepts only the canonical ID and
+# canonical JSON on stdin; executable paths, Bash function names, output modes,
+# caller labels, evidence, and authority are not caller-selectable here.
+if [[ "${1:-}" == "__kernel-stable-core-broker-v1" ]]; then
+    shift
+    if (( $# != 9 )) ||
+       [[ "${2:-}" != "--input-json" || "${3:-}" != "-" ||
+          "${4:-}" != "--profile" || "${5:-}" != "stable-core" ||
+          "${6:-}" != "--format" || "${7:-}" != "broker-json-v1" ||
+          "${8:-}" != "--caller" || "${9:-}" != "control-plane" ]]; then
+        exit 64
+    fi
+    # The kernel executor alone reserves inherited FD 198 as an anonymous
+    # liveness capability.  No argv or environment value can select it.  This
+    # guardian starts before job control, so it remains in the adapter's fixed
+    # process group and anchors that PGID against reuse.  Worker SIGKILL closes
+    # the pipe: TERM lets the broker trap stop its separate function group,
+    # then fixed-grace KILL removes anything left in the adapter group.
+    [[ -p /dev/fd/198 ]] || exit 126
+    (
+        trap '' HUP TERM
+        if IFS= read -r -n 1 _mainframe_liveness_byte <&198; then
+            exit 0
+        fi
+        kill -TERM -- "-$$" 2>/dev/null || true
+        /bin/sleep 0.25
+        kill -KILL -- "-$$" 2>/dev/null || true
+    ) </dev/null >/dev/null 2>&1 &
+    exec 198<&-
+    _mainframe_cli_invoke="$MAINFRAME_ROOT/lib/invoke.sh"
+    _mainframe_cli_trust_file_is_safe "$_mainframe_cli_invoke" || exit 126
     unset -f _mainframe_cli_resolve_executable _mainframe_cli_tool_layout_is_known
     unset -f _mainframe_cli_owner_mode _mainframe_cli_path_has_no_write_acl
     unset -f _mainframe_cli_find_trusted_tool _mainframe_cli_trust_file_is_safe
     # shellcheck source=lib/invoke.sh
     source "$_mainframe_cli_invoke"
-    shift
     _mainframe_invoke_main "$@"
     exit $?
+fi
+
+# The project-memory kernel owns the only production entry to project-scoped
+# AWM operations. Both hidden spellings are fixed and non-public: the observer
+# is metadata-only, while the executor receives identity and liveness
+# capabilities on reserved descriptors selected only by the Python supervisor.
+if [[ "${1:-}" == "__kernel-project-memory-observer-v1" ||
+      "${1:-}" == "__kernel-project-memory-executor-v1" ]]; then
+    _mainframe_cli_memory_bridge="$MAINFRAME_ROOT/lib/durable_awm.sh"
+    for _mainframe_cli_memory_file in \
+        "$_mainframe_cli_memory_bridge" \
+        "$MAINFRAME_ROOT/lib/awm.sh" \
+        "$MAINFRAME_ROOT/lib/json.sh"; do
+        _mainframe_cli_trust_file_is_safe "$_mainframe_cli_memory_file" || exit 126
+    done
+    # shellcheck source=lib/durable_awm.sh
+    source "$_mainframe_cli_memory_bridge"
+    if [[ "$1" == "__kernel-project-memory-observer-v1" ]]; then
+        (( $# == 5 )) &&
+            [[ "$2" == "--format" && "$3" == "project-memory-observation-json-v1" &&
+               "$4" == "--caller" && "$5" == "control-plane" ]] || exit 64
+        _mainframe_durable_awm_hidden_observer
+        exit $?
+    fi
+    (( $# == 8 )) &&
+        [[ "$3" == "--input-json" && "$4" == "-" &&
+           "$5" == "--format" && "$6" == "project-memory-executor-json-v1" &&
+           "$7" == "--caller" && "$8" == "control-plane" ]] || exit 64
+    case "$2" in
+        mainframe.project_memory.ensure.v1|\
+        mainframe.project_memory.checkpoint.v1|\
+        mainframe.project_memory.discovery.v1|\
+        mainframe.project_memory.progress.v1|\
+        mainframe.project_memory.close.v1|\
+        mainframe.project_memory.handoff.v1|\
+        mainframe.project_memory.session.v1|\
+        mainframe.project_memory.status.v1|\
+        mainframe.project_memory.get.v1|\
+        mainframe.project_memory.summary.v1|\
+        mainframe.project_memory.context.v1|\
+        mainframe.project_memory.find.v1) ;;
+        *) exit 64 ;;
+    esac
+    _mainframe_durable_awm_hidden_executor "$2"
+    exit $?
+fi
+
+# Canonical invocation enters the durable kernel before the fixed hidden broker
+# adapter can run. Validate the complete installed Python/Bash bridge here,
+# before common.sh can honor profiles, user config, or broad library selection.
+if [[ "${1:-}" == "invoke" ]]; then
+    _mainframe_cli_durable="$MAINFRAME_ROOT/lib/durable_invoke.sh"
+    _mainframe_cli_control_launcher="$MAINFRAME_ROOT/control_plane/mainframe-control-plane"
+    if ! _mainframe_cli_trust_file_is_safe "$_mainframe_cli_durable" ||
+       ! _mainframe_cli_trust_file_is_safe "$_mainframe_cli_control_launcher"; then
+        echo "MAINFRAME invocation denied: durable control-plane bridge is missing or unsafe" >&2
+        exit 126
+    fi
+    for _mainframe_cli_control_module in \
+        __init__.py cli.py coding.py contracts.py durability.py errors.py executor.py \
+        kernel.py memory.py memory_executor.py memory_transient.py memory_worker.py \
+        transient.py worker.py; do
+        _mainframe_cli_trust_file_is_safe \
+            "$MAINFRAME_ROOT/control_plane/mainframe_control_plane/$_mainframe_cli_control_module" || {
+            echo "MAINFRAME invocation denied: durable control-plane module is missing or unsafe" >&2
+            exit 126
+        }
+    done
+    # shellcheck source=lib/durable_invoke.sh
+    source "$_mainframe_cli_durable"
+    shift
+    _mainframe_durable_invoke_main "$@"
+    exit $?
+fi
+
+# Public coding operations enter the fixed Python control plane before the
+# general runtime can load profiles, user configuration, or caller-selected
+# libraries. The Bash facade only chooses one reviewed tool ID and constructs
+# its closed JSON input on stdin; Python owns identities, policy, execution,
+# transient presentation, and Evidence.
+if [[ "${1:-}" == "code" ]]; then
+    _mainframe_cli_coding_bridge="$MAINFRAME_ROOT/lib/durable_coding.sh"
+    _mainframe_cli_control_launcher="$MAINFRAME_ROOT/control_plane/mainframe-control-plane"
+    if ! _mainframe_cli_trust_file_is_safe "$_mainframe_cli_coding_bridge" ||
+       ! _mainframe_cli_trust_file_is_safe "$_mainframe_cli_control_launcher"; then
+        echo "MAINFRAME code denied: durable control-plane bridge is missing or unsafe" >&2
+        exit 126
+    fi
+    for _mainframe_cli_control_module in \
+        __init__.py cli.py coding.py contracts.py durability.py errors.py executor.py \
+        kernel.py memory.py memory_executor.py memory_transient.py memory_worker.py \
+        transient.py worker.py; do
+        _mainframe_cli_trust_file_is_safe \
+            "$MAINFRAME_ROOT/control_plane/mainframe_control_plane/$_mainframe_cli_control_module" || {
+            echo "MAINFRAME code denied: durable control-plane module is missing or unsafe" >&2
+            exit 126
+        }
+    done
+    # shellcheck source=lib/durable_coding.sh
+    source "$_mainframe_cli_coding_bridge"
+    shift
+    _mainframe_durable_coding_main "$@"
+    exit $?
+fi
+
+# Preflight the complete fixed project-memory closure before common.sh can
+# honor profiles or load caller-selected libraries. Generic/session AWM stays
+# independent; only the twelve reviewed project operations enter this bridge.
+if [[ "${1:-}" == "awm" && "${2:-}" == "project" ]]; then
+    case "${3:-}" in
+        ensure|checkpoint|discovery|progress|close|handoff|\
+        session|status|get|summary|context|find)
+            _mainframe_cli_memory_bridge="$MAINFRAME_ROOT/lib/durable_awm.sh"
+            _mainframe_cli_control_launcher="$MAINFRAME_ROOT/control_plane/mainframe-control-plane"
+            if ! _mainframe_cli_trust_file_is_safe "$_mainframe_cli_memory_bridge" ||
+               ! _mainframe_cli_trust_file_is_safe "$_mainframe_cli_control_launcher"; then
+                echo "Project memory operation denied: durable control-plane bridge is missing or unsafe" >&2
+                exit 126
+            fi
+            for _mainframe_cli_control_module in \
+                __init__.py cli.py coding.py contracts.py durability.py errors.py executor.py \
+                kernel.py memory.py memory_executor.py memory_transient.py memory_worker.py \
+                transient.py worker.py; do
+                _mainframe_cli_trust_file_is_safe \
+                    "$MAINFRAME_ROOT/control_plane/mainframe_control_plane/$_mainframe_cli_control_module" || {
+                    echo "Project memory operation denied: durable control-plane module is missing or unsafe" >&2
+                    exit 126
+                }
+            done
+            # shellcheck source=lib/durable_awm.sh
+            source "$_mainframe_cli_memory_bridge"
+            ;;
+    esac
+fi
+
+# `work` discovers the same private mapping root as project-memory commands,
+# then performs all retrieval through nested public durable reads. Load only
+# the fixed discovery bridge here; each nested read independently preflights
+# the complete Python/kernel closure before execution.
+if [[ "${1:-}" == "work" ]]; then
+    _mainframe_cli_memory_bridge="$MAINFRAME_ROOT/lib/durable_awm.sh"
+    _mainframe_cli_trust_file_is_safe "$_mainframe_cli_memory_bridge" || {
+        echo "MAINFRAME work denied: durable project-memory bridge is missing or unsafe" >&2
+        exit 126
+    }
+    # shellcheck source=lib/durable_awm.sh
+    source "$_mainframe_cli_memory_bridge"
 fi
 
 # General commands can use the reviewed Git wrapper below. Canonical invoke
@@ -588,6 +830,7 @@ Commands:
   operations  List bundled legacy operation scripts
   run         Run a bundled operation script
   invoke      Invoke one reviewed canonical manifest export
+  code        Durable workspace read, search, and approval-gated actions
   help        Show detailed help for a specific function
   search      Search functions by name pattern
   count       Count total functions available
@@ -605,6 +848,8 @@ Commands:
   protect     Inspect project host-hook enforcement readiness
   host        Inspect, acquire, or manage private coding-agent host runtimes
   pi          Diagnose, install, remove, or restore the native Pi integration
+  control-plane  Operate durable runs, calls, approvals, and evidence
+  claim       Verify the checked-in promotion contract without changing it
   setup       Prove core mechanisms, discover hosts, or explicitly onboard one host
   onboard     Safely onboard one supported host with explicit consent
   launch      Compatibility-gate and start one onboarded coding-agent host
@@ -660,6 +905,7 @@ Examples:
   mainframe host restore codex --quarantine-id removed.0123456789abcdef01 --dry-run
   mainframe pi status
   mainframe pi doctor
+  mainframe control-plane --ledger .mainframe/control-plane.jsonl show
   mainframe pi install --dry-run
   mainframe pi install --yes
   mainframe pi remove --dry-run
@@ -1674,7 +1920,13 @@ _cmd_awm_extract_project() {
     done
 
     if [[ "$discover_root" == "true" ]]; then
-        resolved_project=$(_awm_project_discover_root "$resolved_project") || return 1
+        if declare -F _mainframe_durable_awm_discover_root >/dev/null 2>&1; then
+            resolved_project=$(
+                _mainframe_durable_awm_discover_root "$resolved_project"
+            ) || return 1
+        else
+            resolved_project=$(_awm_project_discover_root "$resolved_project") || return 1
+        fi
     fi
     printf -v "$__target" '%s' "$resolved_project"
     CMD_AWM_PROJECT_ARGS=("${remainder[@]}")
@@ -1988,12 +2240,10 @@ Usage:
   mainframe awm project find --project <dir> [--discover-root] <query> [--kind KIND] [--limit N]
   mainframe awm project handoff prepare --project <dir> [--discover-root] <target> [--tokens N] [--format json|prompt]
 
-`session`, `status`, `get`, `summary`, `context`, and `find` never create a
-project binding. Project writes and `close` serialize with renewal and require
-the currently mapped session to be active; they refuse unmapped, invalid,
-missing, completed, or replaced sessions. Only explicit `ensure` creates or
-renews a binding. Status distinguishes an absent `unmapped` binding from an
-existing unsafe `invalid` binding.
+All six project mutations and all six project reads use the reviewed durable
+control-plane route. Mutations produce kernel-bound, non-authoritative
+MemoryRecord provenance. Reads return one-consumer untrusted output while
+durable Evidence retains metadata only. There is no legacy fallback.
 
 `--discover-root` selects the nearest MAINFRAME-managed project root without
 crossing the current Git worktree boundary. A valid private mapping preserves
@@ -2033,25 +2283,16 @@ cmd_awm_project() {
                         ;;
                 esac
             done
-            awm_project_ensure "$project" "$name"
+            _mainframe_durable_awm_public_mutation ensure "$project" "$name"
             ;;
-        session)
+        session|status)
             _cmd_awm_extract_project project "$action" "$@" || return $?
             set -- "${CMD_AWM_PROJECT_ARGS[@]}"
             [[ $# -eq 0 ]] || {
-                echo "Usage: mainframe awm project session --project <dir> [--discover-root]" >&2
+                echo "Usage: mainframe awm project $action --project <dir> [--discover-root]" >&2
                 return 2
             }
-            awm_project_session "$project"
-            ;;
-        status)
-            _cmd_awm_extract_project project "$action" "$@" || return $?
-            set -- "${CMD_AWM_PROJECT_ARGS[@]}"
-            [[ $# -eq 0 ]] || {
-                echo "Usage: mainframe awm project status --project <dir> [--discover-root]" >&2
-                return 2
-            }
-            awm_project_status "$project"
+            _mainframe_durable_awm_public_read "$action" "$project"
             ;;
         checkpoint|discovery|progress|get|summary|context|find)
             _cmd_awm_extract_project project "$action" "$@" || return $?
@@ -2059,23 +2300,11 @@ cmd_awm_project() {
             _cmd_awm_validate_project_action_args "$action" "$@" || return $?
             case "$action" in
                 checkpoint|discovery|progress)
-                    _awm_project_mutate "$project" "$action" "$@"
+                    _mainframe_durable_awm_public_mutation "$action" "$project" "$@"
                     return $?
                     ;;
             esac
-            awm_project_session "$project" >/dev/null || {
-                echo "Project memory is not initialized or is invalid; run explicit project ensure first" >&2
-                return 1
-            }
-            case "$action" in
-                checkpoint) awm_checkpoint "$@" ;;
-                discovery) awm_discovery "$@" ;;
-                progress) awm_progress "$@" ;;
-                get) awm_get "$@" ;;
-                summary) awm_summary "$@" ;;
-                context) awm_context_for "$@" ;;
-                find) awm_find "$@" ;;
-            esac
+            _mainframe_durable_awm_public_read "$action" "$project" "$@"
             ;;
         close)
             _cmd_awm_extract_project project "$action" "$@" || return $?
@@ -2084,7 +2313,7 @@ cmd_awm_project() {
                 echo "Usage: mainframe awm project close --project <dir> [--discover-root]" >&2
                 return 2
             }
-            _awm_project_mutate "$project" close
+            _mainframe_durable_awm_public_mutation close "$project"
             ;;
         handoff)
             _cmd_awm_extract_project project "$action" "$@" || return $?
@@ -2097,7 +2326,7 @@ cmd_awm_project() {
                 return 2
             fi
             _cmd_awm_validate_project_action_args handoff "$@" || return $?
-            _awm_project_mutate "$project" handoff_prepare "$@"
+            _mainframe_durable_awm_public_mutation handoff "$project" "$@"
             ;;
         *)
             _cmd_awm_project_help >&2
@@ -2751,6 +2980,12 @@ case "${1:-help}" in
         # general runtime loads. Reaching ordinary dispatch is an invariant
         # failure, never permission to invoke through the broad shell surface.
         echo "MAINFRAME invocation denied: canonical broker dispatch was bypassed" >&2
+        exit 126
+        ;;
+    code)
+        # The protected fast path above must consume this command before the
+        # general runtime loads. Reaching ordinary dispatch is fail-closed.
+        echo "MAINFRAME code denied: durable control-plane dispatch was bypassed" >&2
         exit 126
         ;;
     help|info|describe)

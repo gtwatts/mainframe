@@ -6,17 +6,17 @@
  */
 
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import {
   accessSync,
   constants,
-  existsSync,
   lstatSync,
   readFileSync,
   realpathSync,
   statSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 
 // =============================================================================
 // Types
@@ -58,9 +58,46 @@ export interface BrokerEnvelopeV1 {
   error: string | null;
 }
 
+/** Durable metadata-only receipt bound to the validated broker envelope. */
+export interface BrokerReceiptV1 {
+  schema_version: 1;
+  ok: boolean;
+  status: string;
+  canonical_id: string;
+  name: string;
+  owner: string;
+  exit_code: number;
+  timed_out: boolean;
+  output_exceeded: boolean;
+  duration_ms: number;
+  audit_id: string;
+  stdout_bytes: number;
+  stdout_sha256: string;
+  stderr_bytes: number;
+  stderr_sha256: string;
+  error_bytes: number;
+  error_sha256: string;
+}
+
+/** Exact durable result returned by control-plane-json-v1. */
+export interface ControlPlaneInvocationV1 {
+  schemaVersion: 1;
+  status: "in_progress" | "completed";
+  clientCorrelationId: string;
+  runId: string;
+  callId: string;
+  decisionId: string;
+  evidenceId: string | null;
+  inputDigest: string;
+  outcome: "succeeded" | "failed" | "timed_out" | "interrupted" | null;
+  resultAvailable: boolean;
+  brokerReceipt: BrokerReceiptV1 | null;
+}
+
 /** Decoded result from a canonical broker invocation. */
 export interface BrokerInvocationResult {
-  envelope: BrokerEnvelopeV1;
+  controlPlane: ControlPlaneInvocationV1;
+  envelope: BrokerEnvelopeV1 | null;
   resultKind: "stdout" | "exit" | "none";
   stdout: string;
   stderr: string;
@@ -352,10 +389,7 @@ function detectManagedLauncherRoot(): string | null {
     }
     accessSync(target, constants.X_OK);
     const root = dirname(dirname(target));
-    return existsSync(join(root, "lib", "common.sh")) &&
-      existsSync(join(root, "MANIFEST.json"))
-      ? root
-      : null;
+    return durableRootIsUsable(root) ? root : null;
   } catch {
     return null;
   }
@@ -371,9 +405,7 @@ export function detectMainframeRoot(): string | null {
   const configuredRoot = process.env.MAINFRAME_ROOT;
   if (configuredRoot !== undefined) {
     if (configuredRoot.length === 0) return null;
-    return existsSync(join(configuredRoot, "lib", "common.sh"))
-      ? configuredRoot
-      : null;
+    return durableRootIsUsable(configuredRoot) ? configuredRoot : null;
   }
 
   const candidates = [
@@ -384,13 +416,37 @@ export function detectMainframeRoot(): string | null {
   ].filter((p): p is string => typeof p === "string");
 
   for (const candidate of candidates) {
-    const commonPath = join(candidate, "lib", "common.sh");
-    if (existsSync(commonPath)) {
+    if (durableRootIsUsable(candidate)) {
       return candidate;
     }
   }
 
   return null;
+}
+
+function durableRootIsUsable(candidate: string): boolean {
+  try {
+    const canonical = realpathSync(candidate);
+    if (canonical !== resolve(candidate) || !statSync(canonical).isDirectory()) return false;
+    const uid = typeof process.getuid === "function" ? process.getuid() : 0;
+    for (const relative of DURABLE_CLOSURE_FILES) {
+      const path = join(canonical, relative);
+      const metadata = lstatSync(path);
+      if (
+        !metadata.isFile() ||
+        metadata.isSymbolicLink() ||
+        (metadata.uid !== 0 && metadata.uid !== uid) ||
+        (metadata.mode & 0o022) !== 0 ||
+        metadata.nlink !== 1 ||
+        metadata.size <= 0
+      ) return false;
+    }
+    accessSync(join(canonical, "bin", "mainframe"), constants.X_OK);
+    accessSync(join(canonical, "control_plane", "mainframe-control-plane"), constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Select the root for safe broker calls without bypassing explicit choices. */
@@ -515,6 +571,68 @@ const BROKER_ENVELOPE_KEYS = [
   "stdout_b64",
   "timed_out",
 ] as const;
+const CONTROL_PLANE_OUTER_KEYS = ["command", "ok", "result"] as const;
+const CONTROL_PLANE_RESULT_KEYS = [
+  "broker_envelope",
+  "broker_receipt",
+  "call_id",
+  "client_correlation_id",
+  "decision_id",
+  "evidence_id",
+  "input_digest",
+  "outcome",
+  "result_available",
+  "run_id",
+  "schema_version",
+  "status",
+] as const;
+const BROKER_RECEIPT_KEYS = [
+  "audit_id",
+  "canonical_id",
+  "duration_ms",
+  "error_bytes",
+  "error_sha256",
+  "exit_code",
+  "name",
+  "ok",
+  "output_exceeded",
+  "owner",
+  "schema_version",
+  "status",
+  "stderr_bytes",
+  "stderr_sha256",
+  "stdout_bytes",
+  "stdout_sha256",
+  "timed_out",
+] as const;
+const DURABLE_CLOSURE_FILES = [
+  "bin/mainframe",
+  "lib/common.sh",
+  "lib/durable_invoke.sh",
+  "control_plane/mainframe-control-plane",
+  "control_plane/mainframe_control_plane/__init__.py",
+  "control_plane/mainframe_control_plane/cli.py",
+  "control_plane/mainframe_control_plane/coding.py",
+  "control_plane/mainframe_control_plane/contracts.py",
+  "control_plane/mainframe_control_plane/durability.py",
+  "control_plane/mainframe_control_plane/errors.py",
+  "control_plane/mainframe_control_plane/executor.py",
+  "control_plane/mainframe_control_plane/kernel.py",
+  "control_plane/mainframe_control_plane/memory.py",
+  "control_plane/mainframe_control_plane/memory_executor.py",
+  "control_plane/mainframe_control_plane/memory_transient.py",
+  "control_plane/mainframe_control_plane/memory_worker.py",
+  "control_plane/mainframe_control_plane/transient.py",
+  "control_plane/mainframe_control_plane/worker.py",
+] as const;
+const DURABLE_ID_PATTERNS = {
+  run_id: /^run-[0-9a-f]{32}$/,
+  call_id: /^call-[0-9a-f]{32}$/,
+  decision_id: /^decision-[0-9a-f]{32}$/,
+  evidence_id: /^evidence-[0-9a-f]{32}$/,
+} as const;
+const CLIENT_CORRELATION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const DIGEST_PATTERN = /^[0-9a-f]{64}$/;
 
 /*
  * spawnSync cannot create and later kill a dedicated process group itself.
@@ -674,7 +792,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function canonicalMainframeRoot(root: string): string {
   try {
     const canonical = realpathSync(root);
-    if (!statSync(canonical).isDirectory()) throw new Error("not a directory");
+    if (!durableRootIsUsable(canonical)) throw new Error("not a durable installation");
     return canonical;
   } catch {
     throw new Error("MAINFRAME root is missing or invalid");
@@ -969,6 +1087,13 @@ function validateCanonicalInput(
   for (const field of contract.required) {
     if (!(field in normalized)) throw new Error(`Canonical input is missing required field '${field}'`);
   }
+  for (const [field, property] of Object.entries(contract.properties)) {
+    if (!(field in normalized) && property.default !== undefined) {
+      normalized[field] = Array.isArray(property.default)
+        ? property.default.slice()
+        : property.default;
+    }
+  }
   return normalized;
 }
 
@@ -986,12 +1111,88 @@ function decodeCanonicalBase64(value: string, field: string): Buffer {
   return decoded;
 }
 
+function assertNoDuplicateJsonKeys(raw: string): void {
+  let index = 0;
+  const skip = () => { while (/\s/.test(raw[index] ?? "")) index += 1; };
+  const parseString = (): string => {
+    const start = index;
+    if (raw[index] !== '"') throw new Error("expected JSON string");
+    index += 1;
+    while (index < raw.length) {
+      const char = raw[index++];
+      if (char === '"') return JSON.parse(raw.slice(start, index)) as string;
+      if (char === "\\") {
+        const escaped = raw[index++];
+        if (escaped === "u") index += 4;
+      }
+    }
+    throw new Error("unterminated JSON string");
+  };
+  const parseValue = (): void => {
+    skip();
+    const char = raw[index];
+    if (char === "{") {
+      index += 1;
+      skip();
+      const keys = new Set<string>();
+      if (raw[index] === "}") { index += 1; return; }
+      while (true) {
+        skip();
+        const key = parseString();
+        if (keys.has(key)) throw new Error(`duplicate JSON object key: ${key}`);
+        keys.add(key);
+        skip();
+        if (raw[index++] !== ":") throw new Error("missing JSON object colon");
+        parseValue();
+        skip();
+        const separator = raw[index++];
+        if (separator === "}") return;
+        if (separator !== ",") throw new Error("invalid JSON object separator");
+      }
+    }
+    if (char === "[") {
+      index += 1;
+      skip();
+      if (raw[index] === "]") { index += 1; return; }
+      while (true) {
+        parseValue();
+        skip();
+        const separator = raw[index++];
+        if (separator === "]") return;
+        if (separator !== ",") throw new Error("invalid JSON array separator");
+      }
+    }
+    if (char === '"') { parseString(); return; }
+    const match = /^(?:true|false|null|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)/.exec(raw.slice(index));
+    if (!match) throw new Error("invalid JSON scalar");
+    index += match[0].length;
+  };
+  parseValue();
+  skip();
+  if (index !== raw.length) throw new Error("trailing JSON content");
+}
+
+function parseUnambiguousJson(raw: string): unknown {
+  assertNoDuplicateJsonKeys(raw);
+  return JSON.parse(raw) as unknown;
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (isRecord(value)) {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+  }
+  const rendered = JSON.stringify(value);
+  if (rendered === undefined) throw new Error("Canonical input contains an unsupported value");
+  return rendered;
+}
+
 function parseBrokerEnvelope(
   rawOutput: Buffer,
   processStderr: Buffer,
   processExitCode: number | null,
   contract: ReviewedBrokerContract,
-): BrokerInvocationResult {
+): Omit<BrokerInvocationResult, "controlPlane"> & { envelope: BrokerEnvelopeV1 } {
   if (rawOutput.byteLength === 0 || rawOutput.byteLength > BROKER_ENVELOPE_LIMIT) {
     throw new Error("Broker response is empty or exceeds the envelope limit");
   }
@@ -1002,7 +1203,7 @@ function parseBrokerEnvelope(
   const raw = new TextDecoder("utf-8", { fatal: true }).decode(rawOutput).trim();
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw) as unknown;
+    parsed = parseUnambiguousJson(raw);
   } catch {
     throw new Error("Broker response is not valid JSON");
   }
@@ -1071,6 +1272,190 @@ function parseBrokerEnvelope(
   };
 }
 
+function validateDurableId(value: unknown, field: keyof typeof DURABLE_ID_PATTERNS): string {
+  if (typeof value !== "string" || !DURABLE_ID_PATTERNS[field].test(value)) {
+    throw new Error(`Control-plane response contains an invalid ${field}`);
+  }
+  return value;
+}
+
+function validateBrokerReceipt(
+  value: unknown,
+  envelope: BrokerEnvelopeV1 | null,
+  contract: ReviewedBrokerContract,
+): BrokerReceiptV1 | null {
+  if (value === null) return null;
+  if (!isRecord(value) || Object.keys(value).sort().join("\0") !== BROKER_RECEIPT_KEYS.join("\0")) {
+    throw new Error("Control-plane broker receipt fields are not exact");
+  }
+  const receipt = value as unknown as BrokerReceiptV1;
+  for (const field of ["schema_version", "exit_code", "duration_ms", "stdout_bytes", "stderr_bytes", "error_bytes"] as const) {
+    if (!Number.isInteger(receipt[field]) || receipt[field] < 0) {
+      throw new Error("Control-plane broker receipt has invalid numeric fields");
+    }
+  }
+  for (const field of ["ok", "timed_out", "output_exceeded"] as const) {
+    if (typeof receipt[field] !== "boolean") {
+      throw new Error("Control-plane broker receipt has invalid boolean fields");
+    }
+  }
+  if (
+    receipt.schema_version !== 1 ||
+    receipt.canonical_id !== contract.canonicalId ||
+    receipt.name !== contract.name ||
+    receipt.owner !== contract.owner ||
+    typeof receipt.status !== "string" ||
+    typeof receipt.audit_id !== "string"
+  ) throw new Error("Control-plane broker receipt identity is invalid");
+  const expectedExit = BROKER_FIXED_EXIT_CODES[receipt.status];
+  if (
+    !BROKER_STATUSES.has(receipt.status) ||
+    !BROKER_AUDIT_ID_PATTERN.test(receipt.audit_id) ||
+    receipt.exit_code > 255 ||
+    receipt.duration_ms > contract.timeoutMs + 5_000 ||
+    receipt.stdout_bytes + receipt.stderr_bytes > contract.outputLimit ||
+    receipt.error_bytes > 4_096 ||
+    receipt.ok !== (receipt.status === "success") ||
+    (receipt.ok ? receipt.exit_code !== 0 : receipt.exit_code === 0) ||
+    receipt.timed_out !== (receipt.status === "timeout") ||
+    receipt.output_exceeded !== (receipt.status === "output_limit") ||
+    (receipt.status === "function_error"
+      ? receipt.exit_code === 0
+      : (expectedExit === undefined || receipt.exit_code !== expectedExit))
+  ) throw new Error("Control-plane broker receipt semantics are invalid");
+  for (const field of ["stdout_sha256", "stderr_sha256", "error_sha256"] as const) {
+    if (typeof receipt[field] !== "string" || !DIGEST_PATTERN.test(receipt[field])) {
+      throw new Error("Control-plane broker receipt digest is invalid");
+    }
+  }
+  if (envelope === null) return receipt;
+  for (const field of [
+    "schema_version", "ok", "status", "canonical_id", "name", "owner", "exit_code",
+    "timed_out", "output_exceeded", "duration_ms", "audit_id",
+  ] as const) {
+    if (receipt[field] !== envelope[field]) {
+      throw new Error("Control-plane receipt does not bind the broker envelope");
+    }
+  }
+  const payloads = {
+    stdout: decodeCanonicalBase64(envelope.stdout_b64, "stdout_b64"),
+    stderr: decodeCanonicalBase64(envelope.stderr_b64, "stderr_b64"),
+    error: Buffer.from(envelope.error ?? "", "utf8"),
+  };
+  for (const [prefix, payload] of Object.entries(payloads) as ["stdout" | "stderr" | "error", Buffer][]) {
+    if (
+      receipt[`${prefix}_bytes`] !== payload.byteLength ||
+      receipt[`${prefix}_sha256`] !== createHash("sha256").update(payload).digest("hex")
+    ) throw new Error("Control-plane receipt payload digest is invalid");
+  }
+  return receipt;
+}
+
+function parseControlPlaneResponse(
+  rawOutput: Buffer,
+  processStderr: Buffer,
+  processExitCode: number | null,
+  contract: ReviewedBrokerContract,
+  correlationId: string,
+  inputDigest: string,
+): BrokerInvocationResult {
+  if (rawOutput.byteLength === 0 || rawOutput.byteLength > BROKER_ENVELOPE_LIMIT || rawOutput.at(-1) !== 0x0a) {
+    throw new Error("Control-plane response is empty, unterminated, or oversized");
+  }
+  if (processStderr.byteLength !== 0) throw new Error("Control-plane wrote outside its structured response");
+  const raw = new TextDecoder("utf-8", { fatal: true }).decode(rawOutput.subarray(0, -1));
+  let parsed: unknown;
+  try { parsed = parseUnambiguousJson(raw); } catch { throw new Error("Control-plane response is not unambiguous JSON"); }
+  if (!isRecord(parsed)) throw new Error("Control-plane response is not an object");
+  if (processExitCode !== 0) {
+    if (
+      Object.keys(parsed).sort().join("\0") !== ["command", "error", "ok"].join("\0") ||
+      parsed.ok !== false || parsed.command !== "canonical-invoke" || !isRecord(parsed.error) ||
+      Object.keys(parsed.error).sort().join("\0") !== ["code", "message"].join("\0") ||
+      typeof parsed.error.code !== "string" || typeof parsed.error.message !== "string"
+    ) throw new Error("Control-plane error response is invalid");
+    throw new Error(`${parsed.error.code}: ${parsed.error.message}`);
+  }
+  if (
+    Object.keys(parsed).sort().join("\0") !== CONTROL_PLANE_OUTER_KEYS.join("\0") ||
+    parsed.ok !== true || parsed.command !== "canonical-invoke" || !isRecord(parsed.result)
+  ) throw new Error("Control-plane success response fields are not exact");
+  const result = parsed.result;
+  if (Object.keys(result).sort().join("\0") !== CONTROL_PLANE_RESULT_KEYS.join("\0")) {
+    throw new Error("Control-plane durable result fields are not exact");
+  }
+  if (result.schema_version !== 1 || (result.status !== "in_progress" && result.status !== "completed")) {
+    throw new Error("Control-plane schema or durable status is invalid");
+  }
+  if (
+    typeof result.client_correlation_id !== "string" ||
+    !CLIENT_CORRELATION_PATTERN.test(result.client_correlation_id) ||
+    result.client_correlation_id !== correlationId
+  ) throw new Error("Control-plane client correlation binding is invalid");
+  const runId = validateDurableId(result.run_id, "run_id");
+  const callId = validateDurableId(result.call_id, "call_id");
+  const decisionId = validateDurableId(result.decision_id, "decision_id");
+  if (result.input_digest !== inputDigest || !DIGEST_PATTERN.test(inputDigest)) {
+    throw new Error("Control-plane input digest binding is invalid");
+  }
+  if (typeof result.result_available !== "boolean") throw new Error("Control-plane result availability is invalid");
+  let evidenceId: string | null = null;
+  if (result.status === "in_progress") {
+    if (
+      result.evidence_id !== null || result.outcome !== null || result.result_available !== false ||
+      result.broker_receipt !== null || result.broker_envelope !== null
+    ) throw new Error("Control-plane in-progress result is contradictory");
+  } else {
+    evidenceId = validateDurableId(result.evidence_id, "evidence_id");
+    if (!["succeeded", "failed", "timed_out", "interrupted"].includes(String(result.outcome))) {
+      throw new Error("Control-plane terminal outcome is invalid");
+    }
+    if (result.result_available !== (result.broker_envelope !== null)) {
+      throw new Error("Control-plane result availability contradicts its envelope");
+    }
+  }
+  let decoded: ReturnType<typeof parseBrokerEnvelope> | null = null;
+  let envelope: BrokerEnvelopeV1 | null = null;
+  if (result.broker_envelope !== null) {
+    if (!isRecord(result.broker_envelope)) throw new Error("Control-plane broker envelope is invalid");
+    const candidate = result.broker_envelope as unknown as BrokerEnvelopeV1;
+    const candidateCode = typeof candidate.exit_code === "number" ? candidate.exit_code : -1;
+    decoded = parseBrokerEnvelope(
+      Buffer.from(JSON.stringify(candidate), "utf8"), Buffer.alloc(0), candidateCode, contract,
+    );
+    envelope = decoded.envelope;
+    const expectedOutcome = decoded.envelope.ok ? "succeeded" : (decoded.envelope.timed_out ? "timed_out" : "failed");
+    if (result.outcome !== expectedOutcome) throw new Error("Control-plane outcome contradicts the broker envelope");
+  }
+  const receipt = validateBrokerReceipt(result.broker_receipt, envelope, contract);
+  if (envelope !== null && receipt === null) throw new Error("Control-plane available result lacks its durable receipt");
+  if (receipt !== null) {
+    const receiptOutcome = receipt.ok ? "succeeded" : (receipt.timed_out ? "timed_out" : "failed");
+    if (result.outcome !== receiptOutcome) throw new Error("Control-plane outcome contradicts its durable receipt");
+  }
+  const controlPlane: ControlPlaneInvocationV1 = {
+    schemaVersion: 1,
+    status: result.status,
+    clientCorrelationId: result.client_correlation_id,
+    runId,
+    callId,
+    decisionId,
+    evidenceId,
+    inputDigest,
+    outcome: result.outcome as ControlPlaneInvocationV1["outcome"],
+    resultAvailable: result.result_available,
+    brokerReceipt: receipt,
+  };
+  return {
+    controlPlane,
+    envelope,
+    resultKind: contract.resultKind,
+    stdout: decoded?.stdout ?? "",
+    stderr: decoded?.stderr ?? "",
+    raw: decoded?.raw ?? "",
+  };
+}
+
 function runBoundedBrokerProcess(
   executable: string,
   args: string[],
@@ -1112,6 +1497,8 @@ function invokeReviewedContract(
 ): BrokerInvocationResult {
   const normalizedInput = validateCanonicalInput(contract, input);
   const request = Buffer.from(JSON.stringify(normalizedInput), "utf8");
+  const inputDigest = createHash("sha256").update(canonicalJson(normalizedInput), "utf8").digest("hex");
+  const correlationId = `client-nodejs-${randomUUID().replaceAll("-", "")}`;
   if (request.byteLength > BROKER_INPUT_LIMIT) {
     throw new Error("Canonical invocation input exceeds 32768 bytes");
   }
@@ -1139,9 +1526,11 @@ function invokeReviewedContract(
     "--profile",
     "stable-core",
     "--format",
-    "broker-json-v1",
+    "control-plane-json-v1",
     "--caller",
     "nodejs",
+    "--client-correlation-id",
+    correlationId,
   ];
   const result = runBoundedBrokerProcess(
     executable,
@@ -1154,11 +1543,13 @@ function invokeReviewedContract(
   if (result.error) {
     throw new Error(`Broker process failed: ${result.error.message}`);
   }
-  return parseBrokerEnvelope(
+  return parseControlPlaneResponse(
     result.stdout ?? Buffer.alloc(0),
     result.stderr ?? Buffer.alloc(0),
     result.status,
     contract,
+    correlationId,
+    inputDigest,
   );
 }
 
@@ -1258,6 +1649,13 @@ export function callFunction<T = string>(
     const invocation = invokeReviewedContract(root, contract, input);
     const raw = contract.resultKind === "stdout" ? invocation.stdout : "";
 
+    if (!invocation.controlPlane.resultAvailable || invocation.envelope === null) {
+      return {
+        success: false,
+        error: `Durable result is unavailable (outcome=${invocation.controlPlane.outcome ?? invocation.controlPlane.status})`,
+        raw,
+      };
+    }
     if (!invocation.envelope.ok) {
       return {
         success: false,

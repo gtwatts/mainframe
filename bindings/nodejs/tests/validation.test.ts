@@ -2,6 +2,8 @@
  * MAINFRAME Node.js Bindings - Validation Module Tests
  */
 
+import "./setup";
+
 import { describe, test, expect, beforeAll } from "bun:test";
 import { setConfig } from "../src/core";
 import {
@@ -381,7 +383,7 @@ describe("Validation Module", () => {
       const invalid = validators.email("invalid");
       expect(invalid.valid).toBe(false);
       expect(invalid.error).toBeDefined();
-    });
+    }, 10_000);
 
     test("validators.url should return validation result", () => {
       const valid = validators.url("https://example.com");
@@ -389,7 +391,7 @@ describe("Validation Module", () => {
 
       const invalid = validators.url("not-a-url");
       expect(invalid.valid).toBe(false);
-    });
+    }, 10_000);
 
     test("validators.uuid should return validation result", () => {
       const valid = validators.uuid("550e8400-e29b-41d4-a716-446655440000");

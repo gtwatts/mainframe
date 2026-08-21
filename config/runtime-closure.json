@@ -1,0 +1,298 @@
+{
+  "schema_version": 2,
+  "tier_order": [
+    "preload",
+    "core",
+    "standard",
+    "extended",
+    "ai"
+  ],
+  "tiers": {
+    "preload": [
+      "anim",
+      "registry_schema"
+    ],
+    "core": [
+      "pure-string",
+      "pure-array",
+      "pure-util",
+      "pure-file",
+      "json",
+      "ansi",
+      "output",
+      "errors",
+      "hints"
+    ],
+    "standard": [
+      "validation",
+      "path",
+      "env",
+      "datetime",
+      "http",
+      "csv",
+      "git",
+      "github",
+      "github_actions",
+      "github_security",
+      "docker",
+      "crypto",
+      "proc",
+      "args",
+      "config",
+      "log",
+      "structured_log",
+      "error",
+      "tui",
+      "template",
+      "ci",
+      "health",
+      "device",
+      "sysinfo",
+      "service",
+      "retry",
+      "download",
+      "toml",
+      "yaml",
+      "collection",
+      "queue",
+      "regex",
+      "schema",
+      "bun",
+      "audit"
+    ],
+    "extended": [
+      "k8s",
+      "semver",
+      "functional",
+      "compose",
+      "stream",
+      "streaming",
+      "pipe",
+      "procsub",
+      "async",
+      "futures",
+      "meta",
+      "cli",
+      "fzf",
+      "compat",
+      "safe",
+      "guard",
+      "telemetry",
+      "otel",
+      "proptest",
+      "testing",
+      "benchmark",
+      "workpool",
+      "temporal",
+      "state_machine",
+      "graph",
+      "cache",
+      "diff",
+      "scope"
+    ],
+    "ai": [
+      "idempotent",
+      "atomic",
+      "observe",
+      "project",
+      "contract",
+      "perf",
+      "netscan",
+      "parsers",
+      "trace",
+      "forensics",
+      "risk",
+      "dryrun",
+      "undo",
+      "sandbox",
+      "limits",
+      "confirm",
+      "safewrap",
+      "safecontext",
+      "agent",
+      "workflow",
+      "taskstate",
+      "context",
+      "parse_output",
+      "symbols",
+      "agent_exec",
+      "agent_comm",
+      "agent_safety",
+      "agent_ai",
+      "agent_context",
+      "awm",
+      "awm_storage",
+      "awm_tiers",
+      "awm_stream",
+      "llm_tokens",
+      "llm_functions",
+      "llm_stream",
+      "llm_providers",
+      "embeddings",
+      "registry",
+      "vectordb",
+      "rag",
+      "policy",
+      "rbac",
+      "agent_loop",
+      "ammma",
+      "uap",
+      "heal",
+      "predict",
+      "generate",
+      "verify",
+      "intent",
+      "orchestrate",
+      "agent_teams",
+      "tirith",
+      "tirith_url",
+      "tirith_inject",
+      "tirith_pipe",
+      "tirith_ecosystem",
+      "tirith_path",
+      "tirith_hook"
+    ]
+  },
+  "load_time_dependencies": {
+    "agent": [
+      "json"
+    ],
+    "agent_comm": [
+      "json"
+    ],
+    "agent_exec": [
+      "retry",
+      "output"
+    ],
+    "agent_loop": [
+      "json",
+      "proc",
+      "uap",
+      "state"
+    ],
+    "agent_teams": [
+      "awm",
+      "agent"
+    ],
+    "anim": [
+      "ansi"
+    ],
+    "awm": [
+      "json"
+    ],
+    "awm_stream": [
+      "awm_storage"
+    ],
+    "awm_tiers": [
+      "awm_storage",
+      "awm_stream"
+    ],
+    "bun": [
+      "json"
+    ],
+    "collection": [
+      "json",
+      "contract"
+    ],
+    "datetime": [
+      "pure-util"
+    ],
+    "functional": [
+      "pure-string"
+    ],
+    "fuzzy": [],
+    "github": [
+      "git"
+    ],
+    "github_actions": [
+      "git"
+    ],
+    "github_security": [
+      "git",
+      "json"
+    ],
+    "graph": [
+      "parallel_v2",
+      "json",
+      "ansi"
+    ],
+    "log": [
+      "json"
+    ],
+    "netscan": [
+      "http"
+    ],
+    "otel": [
+      "json"
+    ],
+    "output": [
+      "json"
+    ],
+    "parallel_v2": [
+      "ansi",
+      "json"
+    ],
+    "path": [
+      "pure-file"
+    ],
+    "pipe": [
+      "pure-string"
+    ],
+    "predict": [
+      "json",
+      "output",
+      "temporal",
+      "risk"
+    ],
+    "queue": [
+      "json",
+      "contract"
+    ],
+    "rag": [
+      "embeddings",
+      "vectordb",
+      "json"
+    ],
+    "safe": [
+      "validation"
+    ],
+    "state": [],
+    "state_machine": [
+      "json",
+      "state"
+    ],
+    "stream": [
+      "pipe"
+    ],
+    "structured_log": [
+      "json"
+    ],
+    "temporal": [
+      "json",
+      "datetime",
+      "fuzzy"
+    ],
+    "tui": [
+      "ansi",
+      "json"
+    ],
+    "uap": [
+      "json",
+      "pure-util"
+    ],
+    "workpool": [
+      "json"
+    ]
+  },
+  "conditional_tool_time_dependencies": {
+    "awm": [
+      "embeddings",
+      "awm_storage",
+      "awm_stream",
+      "awm_tiers"
+    ],
+    "orchestrate": [
+      "leader"
+    ]
+  }
+}

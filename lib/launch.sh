@@ -536,23 +536,66 @@ _mainframe_launch_host_compatible() {
     return 0
 }
 
+# Resolve the managed block version and host destination from the same
+# digest-bound registry consumed by generated adapters and activation. Launch
+# receives the already-bound jq executable so project PATH never selects the
+# parser for this authority-bearing lookup.
+_mainframe_launch_instruction_contract() {
+    local host="${1:-}" jq_executable="${2:-}"
+    local source_file="${BASH_SOURCE[0]}" physical_lib physical_root
+    local registry block_version relative
+
+    [[ -n "$host" && "$jq_executable" == /* && -x "$jq_executable" ]] || {
+        _mainframe_launch_error 'activation host contract requires a bound parser'
+        return 1
+    }
+    physical_lib="$(cd "${source_file%/*}" && pwd -P)" || {
+        _mainframe_launch_error 'activation host contract root cannot be resolved'
+        return 1
+    }
+    physical_root="${physical_lib%/*}"
+    registry="$physical_root/config/host-capabilities.json"
+
+    # This validates the generated adapter marker against the exact registry
+    # digest before any field from that registry can affect a project path.
+    block_version="$(_mainframe_activate_block_version)" || return 1
+    relative="$("$jq_executable" -er --arg host "$host" '
+        .hosts[$host] as $record
+        | if $record == null then empty
+          else $record.activation_instruction_file
+          end
+        | select(type == "string" and length > 0)
+    ' "$registry" 2>/dev/null)" || {
+        _mainframe_launch_error "unknown activation host destination: $host"
+        return 1
+    }
+    case "$relative" in
+        ""|/*|.|..|./*|../*|*/./*|*/../*|*/.|*/..|*//*|*$'\n'*|*$'\r'*|*$'\t'*)
+            _mainframe_launch_error "unsafe activation host destination for $host"
+            return 1
+            ;;
+    esac
+    printf '%s\t%s\n' "$block_version" "$relative"
+}
+
 # Strictly require one current managed instruction block. Protect status checks
 # the native hook; this separate check preserves MAINFRAME's AWM/use protocol,
 # which is the "better agent" half of the launch contract.
 _mainframe_launch_instruction_current() {
     local host="$1" project="$2" preflight_path="${3:-${PATH:-}}"
-    local rel file counts begin_count end_count
-    local begin='<!-- MAINFRAME:BEGIN v1 -->'
-    local end='<!-- MAINFRAME:END v1 -->'
-    local current expected
+    local jq_executable="${4:-}" contract block_version rel extra
+    local file counts begin_count end_count begin end current expected
 
-    case "$host" in
-        codex) rel='AGENTS.md' ;;
-        claude-code) rel='CLAUDE.md' ;;
-        copilot) rel='.github/copilot-instructions.md' ;;
-        gemini) rel='GEMINI.md' ;;
-        *) return 1 ;;
-    esac
+    if [[ -z "$jq_executable" ]]; then
+        _mainframe_enforce_bind_jq "$project" "${PATH:-}" || return 1
+        jq_executable="$MAINFRAME_AGENT_JQ"
+    fi
+    contract="$(PATH="$preflight_path" \
+        _mainframe_launch_instruction_contract "$host" "$jq_executable")" || return 1
+    IFS=$'\t' read -r block_version rel extra <<< "$contract"
+    [[ -n "$block_version" && -n "$rel" && -z "$extra" ]] || return 1
+    begin="<!-- MAINFRAME:BEGIN v${block_version} -->"
+    end="<!-- MAINFRAME:END v${block_version} -->"
     if ! _mainframe_activate_validate_managed_path \
         "$project" "$rel" >/dev/null 2>&1; then
         return 1
@@ -781,7 +824,7 @@ mainframe_launch() {
     host_hasher_sha="$_MAINFRAME_HOST_HASHER_SHA"
 
     if ! _mainframe_launch_instruction_current \
-        "$host" "$canonical_project" "$preflight_path"; then
+        "$host" "$canonical_project" "$preflight_path" "$bound_jq"; then
         _mainframe_launch_error \
             "the $host managed instruction block is missing, duplicated, stale, or unsafe"
         _mainframe_launch_print_recovery "$host" "$canonical_project"

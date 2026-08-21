@@ -141,6 +141,22 @@ for path in (wheel_path, sdist_path):
             names = archive.getnames()
         prefix = "mainframe_mcp-10.2.0/"
 
+    # A built MCP release may expose only the runtime-bound Python adapter's
+    # compatibility server command. Retired or alternate server executables
+    # must not enter either distribution format.
+    server_entries = sorted(
+        raw_name.rstrip("/")
+        for raw_name in names
+        if "mcp" in PurePosixPath(raw_name.rstrip("/")).name.lower()
+        and "server" in PurePosixPath(raw_name.rstrip("/")).name.lower()
+    )
+    expected_server_entry = (
+        "mainframe_mcp-10.2.0.data/scripts/mainframe-mcp-server"
+        if path.endswith(".whl")
+        else "mainframe_mcp-10.2.0/bin/mainframe-mcp-server"
+    )
+    assert server_entries == [expected_server_entry], (path, server_entries)
+
     assert names and len(names) == len(set(names)), (path, names)
     for raw_name in names:
         name = raw_name.rstrip("/")

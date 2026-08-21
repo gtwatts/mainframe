@@ -17,6 +17,8 @@ canonical owner recorded in MANIFEST.json's name_index:
 Exit 0 only when there are zero owner disagreements for exposed names.
 """
 
+from __future__ import annotations
+
 import json
 import os
 import re
@@ -211,10 +213,15 @@ def main() -> int:
           f'actual={registry_count_contract}')
 
     manifest_stats = manifest.get('stats', {})
+    trusted_execution_count = sum(
+        export.get('execution_exposure') == 'trusted'
+        for export in exports.values())
     manifest_count_contract = {
         'exports': len(registry_names),
         'registrations': registry_registration_count,
         'modules': len(registry_modules),
+        'trusted_execution_exports': trusted_execution_count,
+        'discovery_only_exports': len(exports) - trusted_execution_count,
     }
     check('canonical/manifest-counts',
           all(manifest_stats.get(k) == v
@@ -305,13 +312,14 @@ def main() -> int:
             check('mcp/owner', func is not None and func['library'] == owner,
                   f'{name}: MCP owner {func and func["library"]} != {owner}')
 
-        core_tools = {t['name'][10:] for t in reg.generate_all_tools(tier='core')}
+        core_tools = reg.generate_all_tools(tier='core')
         core_manifest = {
             e['name'] for e in exports.values() if 'core' in e['profiles']
         }
-        check('mcp/core-closure', core_tools == core_manifest,
-              f'core closure drift: only-mcp={sorted(core_tools - core_manifest)[:5]} '
-              f'only-manifest={sorted(core_manifest - core_tools)[:5]}')
+        check('mcp/core-non-executable', core_tools == [],
+              'legacy core discovery profile became an executable MCP tier')
+        check('manifest/core-discovery', bool(core_manifest),
+              'core discovery profile is unexpectedly empty')
     else:
         print('INFO: MCP wheel source is not part of this runtime archive; '
               'package parity is gated by the separate MCP build evidence')
@@ -328,9 +336,25 @@ def main() -> int:
             continue
         cid = name_index[name]
         owner = exports.get(cid, {}).get('owner')
-        got_owner = completions[0].get('data', {}).get('library')
+        data = completions[0].get('data', {})
+        got_owner = data.get('library')
         check('lsp/completion-owner', got_owner == owner,
               f'{name}: LSP owner {got_owner!r} != canonical owner {owner!r}')
+        export = exports.get(cid, {})
+        expected_semantics = {
+            'canonicalId': cid,
+            'executionExposure': export.get('execution_exposure'),
+            'semanticStatus': export.get('semantic_status'),
+            'stability': export.get('stability'),
+            'declaredEffects': export.get('declared_effects'),
+        }
+        observed_semantics = {
+            key: data.get(key) for key in expected_semantics
+        }
+        check('lsp/completion-semantics',
+              observed_semantics == expected_semantics,
+              f'{name}: LSP semantics {observed_semantics!r} != '
+              f'manifest {expected_semantics!r}')
     owner_desc = {(r['module'], r['name']): r['meta'].get('description', '')
                   for r in registrations}
     richness_warnings = []

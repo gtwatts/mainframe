@@ -2,6 +2,8 @@
  * MAINFRAME Node.js Bindings - JSON Module Tests
  */
 
+import "./setup";
+
 import { describe, test, expect, beforeAll } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

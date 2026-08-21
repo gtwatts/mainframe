@@ -12,12 +12,15 @@ setup() {
     PROJECT_DIR="$TEST_DIR/project with spaces"
     CLI_DIR="$TEST_DIR/bin"
     TEST_HOME="$TEST_DIR/home"
+    XDG_STATE_HOME="$TEST_DIR/state"
     BASE_PATH="$PATH"
 
     mkdir -p "$PROJECT_DIR" "$CLI_DIR" "$TEST_HOME"
+    mkdir -m 0700 "$XDG_STATE_HOME"
     ln -s "$PROJECT_ROOT/bin/mainframe" "$CLI_DIR/mainframe"
 
     export PROJECT_ROOT BASH_BIN TEST_DIR PROJECT_DIR CLI_DIR TEST_HOME BASE_PATH
+    export XDG_STATE_HOME
     export HOME="$TEST_HOME"
     export AWM_ROOT="$TEST_HOME/.mainframe/awm"
     export MAINFRAME_ROOT="$PROJECT_ROOT"
@@ -67,6 +70,8 @@ assert_no_codex_activation() {
 
 assert_no_awm_state() {
     [[ ! -e "$AWM_ROOT" ]]
+    [[ ! -e "$XDG_STATE_HOME/mainframe/control-plane.jsonl" ]]
+    [[ -z "$(find "$XDG_STATE_HOME" -type f -path '*/awm/projects/*.json' -print -quit)" ]]
 }
 
 @test "onboard help documents the narrow explicit-consent contract" {
@@ -152,11 +157,13 @@ assert_no_awm_state() {
         [[ "$output" == *"Privileged gateway:"*"VERIFIED"* ]]
         [[ "$output" == *"Gateway allow canary:  PASS"* ]]
         [[ "$output" == *"Gateway deny canary:   PASS"* ]]
-        [[ "$output" == *"AWM project session:"*"READY"* ]]
+        [[ "$output" == *"AWM project session:"*"RECORDED"*"non-authoritative"* ]]
+        [[ "$output" == *"AWM project reads:"*"READY"*"non-authoritative"* ]]
         [[ "$output" == *"Project configuration: READY"* ]]
         [[ "$output" == *"Host runtime load:     UNVERIFIED"* ]]
         [[ "$output" == *"Rollback preview:"*"Rollback apply:"* ]]
-        [[ "$output" == *"Deactivation leaves private AWM project history intact"* ]]
+        [[ "$output" == *"Deactivation leaves private project-memory history intact"* ]]
+        ! grep -Eq '^AWM project session:[[:space:]]+READY' <<< "$output"
 
         case "$host" in
             codex)
@@ -194,24 +201,26 @@ assert_no_awm_state() {
                 ;;
         esac
 
-        grep -Fq 'mainframe awm project ensure --project . --discover-root' "$instruction_file"
-        grep -Fq 'mainframe work "<current task>" --project . --tokens 1200' "$instruction_file"
-        grep -Fq 'do not initialize or renew memory without human confirmation' "$instruction_file"
-        grep -Fq 'mainframe awm project checkpoint --project . --discover-root' "$instruction_file"
-        grep -Fq 'mainframe awm project discovery --project . --discover-root' "$instruction_file"
-        grep -Fq 'mainframe awm project progress --project . --discover-root' "$instruction_file"
-        grep -Fq 'mainframe awm project handoff prepare --project . --discover-root <target> --tokens 1200 --format prompt' "$instruction_file"
-        grep -Fq 'mainframe awm project summary --project . --discover-root --tokens 800' "$instruction_file"
+        grep -Fq 'Neither `common.sh`, `atomic_write`, `atomic_append`, `ensure_dir`, `ensure_file`, nor any direct AWM helper grants broker or project-memory authority.' "$instruction_file"
+        grep -Fq 'durable project-memory mutations (`ensure`, `checkpoint`, `discovery`, `progress`, `close`, and `handoff`) only through the reviewed MAINFRAME control-plane memory route' "$instruction_file"
+        grep -Fq 'durable records are non-authoritative metadata, not trusted facts' "$instruction_file"
+        grep -Fq 'project-memory reads (`session`, `status`, `get`, `summary`, `context`, and `find`) only through the reviewed MAINFRAME control-plane read plane' "$instruction_file"
+        grep -Fq 'project-memory mutation or read route is unavailable, fail closed' "$instruction_file"
+        grep -Fq 'Never fall back to a sourced helper, direct AWM storage, or an ad-hoc shell write.' "$instruction_file"
+        ! grep -Fq 'use the read-only `mainframe awm project handoff prepare' "$instruction_file"
         grep -Fq 'Never store credentials, tokens, secrets, raw sensitive payloads, or routine command chatter.' "$instruction_file"
 
-        run "$BASH_BIN" "$PROJECT_ROOT/bin/mainframe" awm project session --project "$project"
-        [[ "$status" -eq 0 ]]
-        session_id="${output##*$'\n'}"
-        [[ "$session_id" =~ ^[0-9a-f]{12}$ ]]
+        if [[ "$output" =~ RECORDED\ \(([0-9a-f]{12})\; ]]; then
+            session_id="${BASH_REMATCH[1]}"
+        else
+            false
+        fi
 
         run "$BASH_BIN" "$PROJECT_ROOT/bin/mainframe" awm project status --project "$project"
         [[ "$status" -eq 0 ]]
-        [[ "$output" == *"$session_id"* ]]
+        jq -e --arg session_id "$session_id" \
+            '.status == "mapped" and .private == true and .session_id == $session_id' \
+            <<< "$output" >/dev/null
 
         nested="$project/src/agent/work"
         mkdir -p -- "$nested"
@@ -240,7 +249,8 @@ assert_no_awm_state() {
     local instructions_before hooks_before session_before session_after
     instructions_before="$(cksum "$PROJECT_DIR/AGENTS.md")"
     hooks_before="$(cksum "$PROJECT_DIR/.codex/hooks.json")"
-    session_before="$("$BASH_BIN" "$PROJECT_ROOT/bin/mainframe" awm project session --project "$PROJECT_DIR")"
+    [[ "$output" =~ RECORDED\ \(([0-9a-f]{12})\; ]]
+    session_before="${BASH_REMATCH[1]}"
     [[ "$session_before" =~ ^[0-9a-f]{12}$ ]]
 
     run onboard --host codex --project "$PROJECT_DIR" --yes
@@ -250,8 +260,10 @@ assert_no_awm_state() {
     [[ "$output" == *"enforcement-current"* ]]
     [[ "$(cksum "$PROJECT_DIR/AGENTS.md")" == "$instructions_before" ]]
     [[ "$(cksum "$PROJECT_DIR/.codex/hooks.json")" == "$hooks_before" ]]
-    session_after="$("$BASH_BIN" "$PROJECT_ROOT/bin/mainframe" awm project session --project "$PROJECT_DIR")"
+    [[ "$output" =~ RECORDED\ \(([0-9a-f]{12})\; ]]
+    session_after="${BASH_REMATCH[1]}"
     [[ "$session_after" == "$session_before" ]]
+    [[ "$(find "$XDG_STATE_HOME" -type f -path '*/awm/projects/*.json' | wc -l | tr -d ' ')" -eq 1 ]]
     [[ "$(grep -c 'MAINFRAME:BEGIN' "$PROJECT_DIR/AGENTS.md")" -eq 1 ]]
     jq -e --arg command "$CODEX_HOOK_COMMAND" \
         '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[]
@@ -274,17 +286,20 @@ assert_no_awm_state() {
     assert_no_awm_state
 }
 
-@test "onboard verifies the private project session before project-file mutation" {
-    export AWM_ROOT="relative-awm-root"
+@test "onboard ignores ambient legacy AWM storage and uses the private kernel route" {
+    export AWM_ROOT="$TEST_DIR/ambient-legacy-awm"
 
     run onboard --host codex --project "$PROJECT_DIR" --yes
 
-    [[ "$status" -eq 1 ]]
-    [[ "$output" == *"AWM project session setup failed; no project changes were attempted"* ]]
-    assert_no_codex_activation
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"AWM project session:"*"RECORDED"*"non-authoritative"* ]]
+    [[ "$output" == *"AWM project reads:"*"READY"*"non-authoritative"* ]]
+    [[ -f "$PROJECT_DIR/AGENTS.md" ]]
+    [[ -f "$PROJECT_DIR/.codex/hooks.json" ]]
     [[ -f "$MAINFRAME_AGENT_AUDIT_LOG" ]]
     [[ "$(wc -l < "$MAINFRAME_AGENT_AUDIT_LOG" | tr -d ' ')" -eq 2 ]]
-    [[ ! -e "$PROJECT_DIR/relative-awm-root" ]]
+    [[ ! -e "$AWM_ROOT" ]]
+    [[ -f "$XDG_STATE_HOME/mainframe/control-plane.jsonl" ]]
 }
 
 @test "onboard refuses a PATH-first mainframe emulator before mutation" {

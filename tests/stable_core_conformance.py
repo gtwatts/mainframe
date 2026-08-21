@@ -25,6 +25,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from pathlib import Path
 from typing import Any, Callable
 
@@ -72,8 +73,19 @@ CLI_OBSERVATION_FIELDS = frozenset({
     "adapter",
     "case_id",
     "envelope",
+    "control_plane",
     "process_exit_code",
     "process_stderr_b64",
+})
+CONTROL_PLANE_RESULT_FIELDS = frozenset({
+    "schema_version", "status", "client_correlation_id", "run_id", "call_id",
+    "decision_id", "evidence_id", "input_digest", "outcome", "result_available",
+    "broker_receipt", "broker_envelope",
+})
+BROKER_RECEIPT_FIELDS = frozenset({
+    "schema_version", "ok", "status", "canonical_id", "name", "owner", "exit_code",
+    "timed_out", "output_exceeded", "duration_ms", "audit_id", "stdout_bytes",
+    "stdout_sha256", "stderr_bytes", "stderr_sha256", "error_bytes", "error_sha256",
 })
 MCP_OBSERVATION_FIELDS = frozenset({"adapter", "case_id", "response"})
 PI_OBSERVATION_FIELDS = frozenset({
@@ -496,6 +508,7 @@ def run_cli(
     executable = runtime_root / "bin" / "mainframe"
     observations = []
     for case in cases:
+        correlation_id = f"client-conformance-{uuid.uuid4().hex}"
         request = json.dumps(
             case["input"], ensure_ascii=False, separators=(",", ":")
         ).encode("utf-8")
@@ -508,9 +521,11 @@ def run_cli(
             "--profile",
             "stable-core",
             "--format",
-            "broker-json-v1",
+            "control-plane-json-v1",
             "--caller",
             "conformance",
+            "--client-correlation-id",
+            correlation_id,
         ]
         try:
             process = subprocess.run(
@@ -525,17 +540,34 @@ def run_cli(
             )
             if not process.stdout.endswith(b"\n") or process.stdout.count(b"\n") != 1:
                 raise ConformanceFailure("CLI broker response framing is not one JSON line")
-            envelope = _validate_broker_envelope(
-                _parse_json_exact(
+            parsed_outer = _parse_json_exact(
                     process.stdout.decode("utf-8", errors="strict"),
                     f"cli.{case['case_id']}",
-                ),
-                f"cli.{case['case_id']}",
+                )
+            if isinstance(parsed_outer, dict) and set(parsed_outer) == {"ok", "command", "error"}:
+                raise ConformanceFailure(
+                    "CLI control-plane denied invocation: "
+                    + json.dumps(parsed_outer["error"], sort_keys=True)
+                )
+            outer = _require_exact_shape(
+                parsed_outer,
+                frozenset({"ok", "command", "result"}),
+                f"cli.{case['case_id']} control-plane outer",
+            )
+            if outer["ok"] is not True or outer["command"] != "canonical-invoke":
+                raise ConformanceFailure("CLI control-plane outer identity is invalid")
+            control_plane = _require_exact_shape(
+                outer["result"], CONTROL_PLANE_RESULT_FIELDS,
+                f"cli.{case['case_id']} durable result",
+            )
+            envelope = _validate_broker_envelope(
+                control_plane["broker_envelope"], f"cli.{case['case_id']} broker envelope"
             )
             observations.append({
                 "adapter": "cli",
                 "case_id": case["case_id"],
                 "envelope": envelope,
+                "control_plane": control_plane,
                 "process_exit_code": process.returncode,
                 "process_stderr_b64": base64.b64encode(process.stderr).decode("ascii"),
             })
@@ -1080,7 +1112,10 @@ def assert_adapter(
 
 def _require_exact_shape(value: Any, fields: frozenset[str], label: str) -> dict[str, Any]:
     if not isinstance(value, dict) or set(value) != fields:
-        raise ConformanceFailure(f"{label} shape is not exact")
+        actual = sorted(value) if isinstance(value, dict) else type(value).__name__
+        raise ConformanceFailure(
+            f"{label} shape is not exact expected={sorted(fields)!r} actual={actual!r}"
+        )
     return value
 
 
@@ -1104,6 +1139,10 @@ def _assert_cli_observation(
 ) -> None:
     _require_exact_shape(observation, CLI_OBSERVATION_FIELDS, "CLI observation")
     envelope = _validate_broker_envelope(observation["envelope"], "CLI envelope")
+    control_plane = _require_exact_shape(
+        observation["control_plane"], CONTROL_PLANE_RESULT_FIELDS,
+        "CLI durable control-plane result",
+    )
     _canonical_b64(observation["process_stderr_b64"], "CLI process_stderr_b64")
     _assert_expected_fields(
         envelope,
@@ -1126,11 +1165,59 @@ def _assert_cli_observation(
     _assert_expected_fields(
         observation,
         {
-            "process_exit_code": case["expected_exit_code"],
+            "process_exit_code": 0,
             "process_stderr_b64": "",
         },
         "CLI process transport",
     )
+    expected_digest = hashlib.sha256(
+        json.dumps(
+            case["input"], ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    _assert_expected_fields(
+        control_plane,
+        {
+            "schema_version": 1,
+            "status": "completed",
+            "input_digest": expected_digest,
+            "outcome": "succeeded",
+            "result_available": True,
+            "broker_envelope": envelope,
+        },
+        "CLI durable control-plane result",
+    )
+    for field, pattern in {
+        "client_correlation_id": r"^client-conformance-[0-9a-f]{32}$",
+        "run_id": r"^run-[0-9a-f]{32}$",
+        "call_id": r"^call-[0-9a-f]{32}$",
+        "decision_id": r"^decision-[0-9a-f]{32}$",
+        "evidence_id": r"^evidence-[0-9a-f]{32}$",
+    }.items():
+        if not isinstance(control_plane[field], str) or not re.fullmatch(
+            pattern, control_plane[field]
+        ):
+            raise ConformanceFailure(f"CLI durable {field} is invalid")
+    receipt = _require_exact_shape(
+        control_plane["broker_receipt"], BROKER_RECEIPT_FIELDS,
+        "CLI durable broker receipt",
+    )
+    for field in (
+        "schema_version", "ok", "status", "canonical_id", "name", "owner", "exit_code",
+        "timed_out", "output_exceeded", "duration_ms", "audit_id",
+    ):
+        if receipt[field] != envelope[field]:
+            raise ConformanceFailure(f"CLI receipt does not bind envelope field {field}")
+    for prefix, payload in {
+        "stdout": _canonical_b64(envelope["stdout_b64"], "CLI stdout_b64"),
+        "stderr": _canonical_b64(envelope["stderr_b64"], "CLI stderr_b64"),
+        "error": b"" if envelope["error"] is None else envelope["error"].encode("utf-8"),
+    }.items():
+        if (
+            receipt[f"{prefix}_bytes"] != len(payload)
+            or receipt[f"{prefix}_sha256"] != hashlib.sha256(payload).hexdigest()
+        ):
+            raise ConformanceFailure(f"CLI receipt does not bind {prefix} bytes")
 
 
 def _assert_broker_client_observation(
@@ -1194,7 +1281,8 @@ def _assert_mcp_observation(
     if response["jsonrpc"] != "2.0" or type(response["id"]) is not int:
         raise ConformanceFailure("MCP response identity is invalid")
     result = _require_exact_shape(
-        response["result"], frozenset({"content", "isError"}), "MCP result"
+        response["result"], frozenset({"content", "isError", "structuredContent"}),
+        "MCP result",
     )
     if result["isError"] is not False or not isinstance(result["content"], list):
         raise ConformanceFailure("MCP result success shape is invalid")
@@ -1208,6 +1296,108 @@ def _assert_mcp_observation(
     expected_text = _expected_adapter_text(case, "mcp")
     if content["text"] != expected_text:
         raise ConformanceFailure("MCP text does not preserve the reviewed result bytes")
+    structured = _require_exact_shape(
+        result["structuredContent"],
+        frozenset({
+            "schema_version", "kind", "ok", "function", "canonical_id",
+            "effect_contract", "result", "correlation", "terminal",
+        }),
+        "MCP durable structured result",
+    )
+    _assert_expected_fields(
+        structured,
+        {
+            "schema_version": 2,
+            "kind": "mainframe-mcp-result",
+            "ok": True,
+            "function": case["function_name"],
+            "canonical_id": case["canonical_id"],
+            "effect_contract": {
+                "effects": [
+                    "read" if case["canonical_id"] == "mf:std:validation:validate_path" else "pure"
+                ],
+                "read_only": True,
+            },
+        },
+        "MCP durable structured result",
+    )
+    expected_stdout = _canonical_b64(
+        case["expected_stdout_b64"], f"{case['case_id']}.expected_stdout_b64"
+    ).decode("utf-8", errors="strict")
+    if structured["result"] != {
+        "kind": case["result_kind"],
+        "encoding": "utf-8",
+        "stdout": expected_stdout,
+    }:
+        raise ConformanceFailure("MCP structured output changed reviewed result bytes")
+    correlation = _require_exact_shape(
+        structured["correlation"],
+        frozenset({
+            "mcp_request_id", "client_correlation_id", "binding_status",
+            "client_metadata_status", "run_id", "call_id", "decision_id",
+            "evidence_id", "input_digest",
+        }),
+        "MCP durable correlation",
+    )
+    expected_digest = hashlib.sha256(
+        json.dumps(
+            case["input"], ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    _assert_expected_fields(
+        correlation,
+        {
+            "mcp_request_id": response["id"],
+            "binding_status": "kernel-authoritative",
+            "client_metadata_status": "absent",
+            "input_digest": expected_digest,
+        },
+        "MCP durable correlation",
+    )
+    for field, pattern in {
+        "client_correlation_id": r"^mcp-[0-9a-f]{32}$",
+        "run_id": r"^run-[0-9a-f]{32}$",
+        "call_id": r"^call-[0-9a-f]{32}$",
+        "decision_id": r"^decision-[0-9a-f]{32}$",
+        "evidence_id": r"^evidence-[0-9a-f]{32}$",
+    }.items():
+        if not isinstance(correlation[field], str) or not re.fullmatch(
+            pattern, correlation[field]
+        ):
+            raise ConformanceFailure(f"MCP durable {field} is invalid")
+    terminal = _require_exact_shape(
+        structured["terminal"],
+        frozenset({"outcome", "result_available", "broker_receipt"}),
+        "MCP durable terminal result",
+    )
+    if terminal["outcome"] != "succeeded" or terminal["result_available"] is not True:
+        raise ConformanceFailure("MCP terminal result is not a delivered success")
+    receipt = _require_exact_shape(
+        terminal["broker_receipt"], BROKER_RECEIPT_FIELDS,
+        "MCP durable broker receipt",
+    )
+    _assert_expected_fields(
+        receipt,
+        {
+            "schema_version": 1,
+            "ok": True,
+            "status": "success",
+            "canonical_id": case["canonical_id"],
+            "name": case["function_name"],
+            "owner": case["owner"],
+            "exit_code": case["expected_exit_code"],
+            "timed_out": False,
+            "output_exceeded": False,
+        },
+        "MCP durable broker receipt",
+    )
+    expected_payloads = {"stdout": expected_stdout.encode(), "stderr": b"", "error": b""}
+    for prefix, payload in expected_payloads.items():
+        if (
+            receipt[f"{prefix}_bytes"] != len(payload)
+            or receipt[f"{prefix}_sha256"] != hashlib.sha256(payload).hexdigest()
+        ):
+            raise ConformanceFailure(f"MCP receipt does not bind {prefix} bytes")
 
 
 def _assert_pi_observation(
@@ -1226,6 +1416,7 @@ def _assert_pi_observation(
             "canonicalId",
             "result",
             "broker",
+            "controlPlane",
         }),
         "Pi details",
     )
@@ -1261,6 +1452,23 @@ def _assert_pi_observation(
         }),
         "Pi broker metadata",
     )
+    control_plane = _require_exact_shape(
+        details["controlPlane"],
+        frozenset({
+            "schemaVersion",
+            "status",
+            "clientCorrelationId",
+            "runId",
+            "callId",
+            "decisionId",
+            "evidenceId",
+            "inputDigest",
+            "outcome",
+            "resultAvailable",
+            "brokerReceipt",
+        }),
+        "Pi durable control-plane metadata",
+    )
     expected_stdout = _canonical_b64(
         case["expected_stdout_b64"], f"{case['case_id']}.expected_stdout_b64"
     ).decode("utf-8", errors="strict")
@@ -1295,7 +1503,7 @@ def _assert_pi_observation(
             "stderr": "",
             "timedOut": False,
             "command": str(runtime_root / "bin" / "mainframe"),
-            "argumentCount": 10,
+            "argumentCount": 12,
         },
         "Pi public run result",
     )
@@ -1317,6 +1525,36 @@ def _assert_pi_observation(
         or broker["durationMs"] < 0
     ):
         raise ConformanceFailure("Pi broker audit metadata is invalid")
+    expected_digest = hashlib.sha256(
+        json.dumps(
+            case["input"], ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    _assert_expected_fields(
+        control_plane,
+        {
+            "schemaVersion": 1,
+            "status": "completed",
+            "inputDigest": expected_digest,
+            "outcome": "succeeded",
+            "resultAvailable": True,
+        },
+        "Pi durable control-plane metadata",
+    )
+    for field, pattern in {
+        "clientCorrelationId": r"^client-pi-[0-9a-f]{32}$",
+        "runId": r"^run-[0-9a-f]{32}$",
+        "callId": r"^call-[0-9a-f]{32}$",
+        "decisionId": r"^decision-[0-9a-f]{32}$",
+        "evidenceId": r"^evidence-[0-9a-f]{32}$",
+    }.items():
+        if not isinstance(control_plane[field], str) or not re.fullmatch(
+            pattern, control_plane[field]
+        ):
+            raise ConformanceFailure(f"Pi durable {field} is invalid")
+    receipt = control_plane["brokerReceipt"]
+    if not isinstance(receipt, dict) or receipt.get("audit_id") != broker["auditId"]:
+        raise ConformanceFailure("Pi durable receipt is absent or contradicts broker metadata")
     if observation["content_text"] != _expected_adapter_text(case, "pi"):
         raise ConformanceFailure("Pi text does not preserve the reviewed result bytes")
 
@@ -1377,7 +1615,9 @@ def main() -> int:
     )
 
     runners: dict[str, Callable[[], list[dict[str, Any]] | None]] = {}
-    with tempfile.TemporaryDirectory(prefix="mainframe-conformance-") as state_home:
+    with tempfile.TemporaryDirectory(prefix="mainframe-conformance-") as state_home_raw:
+        state_home = str(Path(state_home_raw).resolve(strict=True))
+        os.chmod(state_home, 0o700)
         environment = os.environ.copy()
         environment["MAINFRAME_ROOT"] = str(runtime_root)
         environment["XDG_STATE_HOME"] = state_home

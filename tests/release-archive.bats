@@ -139,6 +139,49 @@ create_release_source() {
     grep -F 'scripts/generate-manifest.py" --verify' "$release_script" >/dev/null
     grep -F 'scripts/check-owner-parity.py"' "$release_script" >/dev/null
     grep -F 'scripts/export-gate-rules.py" --check' "$release_script" >/dev/null
+    grep -F 'scripts/generate-runtime-closure.py" --check' "$release_script" >/dev/null
+    grep -F 'scripts/generate-host-adapters.sh" --check' "$release_script" >/dev/null
+    grep -F 'scripts/check-control-plane-claim.py"' "$release_script" >/dev/null
+}
+
+@test "runtime release payload carries the structured control-plane kernel" {
+    create_release_source
+
+    [[ -x "$RELEASE_SOURCE/control_plane/mainframe-control-plane" ]]
+    [[ -f "$RELEASE_SOURCE/control_plane/mainframe_control_plane/kernel.py" ]]
+    [[ -f "$RELEASE_SOURCE/control_plane/mainframe_control_plane/cli.py" ]]
+
+    run python3 "$RELEASE_SOURCE/control_plane/mainframe-control-plane" \
+        --ledger "$TEST_DIR/release-control-plane.jsonl" show
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *'"ok": true'* ]]
+    [[ "$output" == *'"event_count": 0'* ]]
+}
+
+@test "runtime release payload quarantines alternate servers, generators, and policies" {
+    create_release_source
+
+    # Reintroduce retired alternate implementations to prove the release
+    # boundary itself excludes them; source-tree deletion alone is not enough.
+    printf '%s\n' '#!/usr/bin/env bash' 'exit 97' \
+        > "$RELEASE_SOURCE/skills/claude-code/mcp-server.sh"
+    chmod +x "$RELEASE_SOURCE/skills/claude-code/mcp-server.sh"
+    printf '%s\n' '#!/usr/bin/env bash' 'mcp_server_start() { return 97; }' \
+        > "$RELEASE_SOURCE/lib/mcp_server.sh"
+    printf '%s\n' '#!/usr/bin/env bash' 'exit 97' \
+        > "$RELEASE_SOURCE/scripts/generate-host-adapters 2.sh"
+    printf '%s\n' '{}' > "$RELEASE_SOURCE/config/invocation-policy 2.json"
+
+    run "$BASH_BIN" "$RELEASE_SOURCE/scripts/build-release-archive.sh"
+    [[ "$status" -eq 0 ]]
+    local archive="$RELEASE_SOURCE/dist/mainframe-${PROJECT_VERSION}.tar.gz"
+    run tar -tzf "$archive"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" != *"skills/claude-code/mcp-server.sh"* ]]
+    [[ "$output" != *"lib/mcp_server.sh"* ]]
+    [[ "$output" != *"mcp-server.sh"* ]]
+    [[ "$output" != *"scripts/generate-host-adapters 2.sh"* ]]
+    [[ "$output" != *"config/invocation-policy 2.json"* ]]
 }
 
 @test "release archive is identical across source trees with different mtimes" {
@@ -431,9 +474,9 @@ BASH
         "runtime:bash|version|4.3|runtime:bash version must be '4.4'"
         "runtime:bash|property:mainframe:version-constraint|>=4.0|runtime:bash property 'mainframe:version-constraint' must be '>=4.4'"
         "runtime:python|version|3.11|runtime:python version must be '3.9'"
-        "runtime:python|property:mainframe:version-constraint|>=3.10|runtime:python property 'mainframe:version-constraint' must be '>=3.9 for Pi diagnosis and lifecycle'"
+        "runtime:python|property:mainframe:version-constraint|>=3.10|runtime:python property 'mainframe:version-constraint' must be '>=3.9 for control-plane and Pi diagnosis/lifecycle'"
         "runtime:python|property:mainframe:managed-host-version-constraint|>=3.11|runtime:python property 'mainframe:managed-host-version-constraint' must be '>=3.10'"
-        "runtime:python|property:mainframe:requirement|required only for managed-host install and remove|runtime:python property 'mainframe:requirement' must be 'Pi diagnosis/lifecycle and managed-host install, remove, and restore'"
+        "runtime:python|property:mainframe:requirement|required only for managed-host install and remove|runtime:python property 'mainframe:requirement' must be 'durable control-plane CLI, Pi diagnosis/lifecycle, and managed-host install, remove, and restore'"
         "runtime:jq|property:mainframe:requirement|optional|runtime:jq property 'mainframe:requirement' must be 'required for agent enforcement and full metadata support'"
         "runtime:bash|duplicate|unused|exactly one runtime:bash component is required"
     )
@@ -624,8 +667,11 @@ hook_command_from_tree() {
 
     local onboarded_project="$TEST_DIR/installed-onboarding"
     local onboard_audit="$TEST_DIR/installed-onboarding-audit.jsonl"
-    mkdir -p "$onboarded_project"
+    local onboard_xdg_state="$TEST_DIR/installed-onboarding-xdg-state"
+    mkdir -p "$onboarded_project" "$onboard_xdg_state"
+    chmod 700 "$onboard_xdg_state"
     run env HOME="$TEST_HOME" PATH="$TEST_PATH" \
+        XDG_STATE_HOME="$onboard_xdg_state" \
         MAINFRAME_AGENT_AUDIT_LOG="$onboard_audit" \
         "$TEST_BIN/mainframe" onboard --host codex \
         --project "$onboarded_project" --dry-run
@@ -633,16 +679,20 @@ hook_command_from_tree() {
     [[ "$output" == *"Dry run complete"* ]]
     [[ ! -e "$onboarded_project/AGENTS.md" ]]
     [[ ! -e "$onboard_audit" ]]
+    [[ -z "$(find "$onboard_xdg_state" -mindepth 1 -print -quit)" ]]
 
     run env HOME="$TEST_HOME" PATH="$TEST_PATH" \
+        XDG_STATE_HOME="$onboard_xdg_state" \
         MAINFRAME_AGENT_AUDIT_LOG="$onboard_audit" \
         "$TEST_BIN/mainframe" onboard --host codex \
         --project "$onboarded_project"
     [[ "$status" -eq 2 ]]
     [[ ! -e "$onboarded_project/AGENTS.md" ]]
     [[ ! -e "$onboard_audit" ]]
+    [[ -z "$(find "$onboard_xdg_state" -mindepth 1 -print -quit)" ]]
 
     run env HOME="$TEST_HOME" PATH="$TEST_PATH" \
+        XDG_STATE_HOME="$onboard_xdg_state" \
         MAINFRAME_AGENT_AUDIT_LOG="$onboard_audit" \
         "$TEST_BIN/mainframe" onboard --host codex \
         --project "$onboarded_project" --yes
@@ -652,6 +702,8 @@ hook_command_from_tree() {
     [[ -f "$onboarded_project/AGENTS.md" ]]
     [[ -f "$onboarded_project/.codex/hooks.json" ]]
     [[ -f "$onboard_audit" ]]
+    [[ -f "$onboard_xdg_state/mainframe/control-plane.jsonl" ]]
+    [[ ! -L "$onboard_xdg_state/mainframe/control-plane.jsonl" ]]
 
     local activated_project="$TEST_DIR/installed-activation"
     mkdir -p "$activated_project"

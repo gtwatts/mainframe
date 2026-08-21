@@ -45,18 +45,17 @@ tools, and readiness evidence.
 
 | Agent or host | Current integration |
 |---|---|
-| Pi | First-party package, skill, slash command, protected Bash wrapper, seven guarded tools, AWM, and transactional lifecycle management |
-| OpenAI Codex | Project instructions plus enforced `PreToolUse` Bash policy |
-| Claude Code | Project instructions plus enforced `PreToolUse` Bash policy |
-| GitHub Copilot CLI | Project instructions plus enforced `preToolUse` shell policy |
-| Gemini CLI | Project instructions plus enforced `BeforeTool` shell policy |
-| Cursor, Aider, OpenCode, Kimi | Project rules, conventions, and MAINFRAME instructions |
+| Pi | First-party package, skill, slash command, protected Bash wrapper, seven guarded tools, AWM, and transactional lifecycle management; live evidence is currently limited to the pinned Darwin arm64 cell |
+| OpenAI Codex, Claude Code, GitHub Copilot CLI, Gemini CLI | Generated project instructions and registry-bound shell-hook configuration; current evidence is platform-specific (`configured` or `enforced`), never implied by the instruction file alone |
+| Cursor, Aider, OpenCode, Kimi, JetBrains, Junie | Generated project instructions only; no runtime interception claim |
 | Custom or future agents | Bash libraries, AWM CLI, stable-core broker, MCP server, or Node.js/Python bindings |
 
 If an agent can read project instructions and ask for shell work, it can use
 MAINFRAME's memory and tool surfaces. Native pre-execution enforcement is
-available on the explicitly supported host routes above; unsupported routes
-remain honest inspection or helper surfaces rather than claiming interception.
+available only in the exact host/platform cells recorded in
+[`config/host-capabilities.json`](config/host-capabilities.json). Unsupported
+routes remain honest inspection or helper surfaces rather than claiming
+interception.
 
 ## How MAINFRAME works
 
@@ -107,6 +106,39 @@ Four pieces work together:
 4. **Proof:** doctor, setup, compatibility manifests, receipts, and private
    audit records distinguish “files exist” from “this exact integration is
    ready.”
+
+### Durable control-plane preview
+
+The 10.2.0 source candidate includes a structured local kernel for durable
+runs, tool calls, exact one-time approvals, and correlated evidence:
+
+```bash
+install -d -m 700 "$PWD/.mainframe"
+mainframe control-plane --ledger "$PWD/.mainframe/control-plane.jsonl" show
+```
+
+The low-level `control-plane` namespace retains an injected read-only tracer
+and one approval-bound disposable-workspace writer for explicit kernel testing.
+The public source-candidate routes add four reviewed verticals on top of that
+kernel:
+
+- all 26 stable-core `mainframe invoke` contracts create correlated
+  Run/ToolCall/PolicyDecision/Evidence records before the fixed Bash broker
+  executes;
+- `mainframe code read` and `search` are workspace-confined, while `edit`,
+  `test`, and `build` stop at `awaiting_approval` because no production
+  approval authority or action runner is bundled;
+- all six `mainframe awm project` mutations and all six project read-plane
+  operations use metadata-only durable evidence plus bounded transient result
+  channels; and
+- the MCP, Pi, Node.js, and Python reviewed adapters expose kernel-generated
+  identities and have no legacy retry path for those calls.
+
+Unreviewed registry exports, general network/process execution, native
+non-shell host operations, and ambient same-user tampering are not promoted
+through this preview. See the
+[control-plane preview contract](docs/CONTROL_PLANE_PREVIEW.md) for the exact
+state, filesystem, and crash boundaries.
 
 Read [Why MAINFRAME](docs/COMPARISON.md) for the detailed comparison with a
 raw shell, agent-native controls, and operating-system isolation—including the
@@ -232,10 +264,10 @@ they get MAINFRAME's memory, toolbox, policy, and evidence surfaces.
 - Git only for a source-checkout installation
 - Node.js when `mainframe launch` must authenticate or execute an npm-wrapper
   host; the launcher accepts only an exact executable outside the project
-- A protected fixed-location Python 3.9+ with the standard `json`, `os`,
-  `pathlib`, `stat`, and `sys` modules for Pi diagnosis and lifecycle. The
-  reviewed managed-host install, remove, and restore helpers require Python
-  3.10 or newer.
+- A protected fixed-location Python 3.9+ standard-library runtime for the
+  durable control-plane CLI and Pi diagnosis/lifecycle. The reviewed
+  managed-host install, remove, and restore helpers require Python 3.10 or
+  newer.
 
 macOS ships an older system Bash. Install the current Bash and gateway JSON
 dependency with `brew install bash jq`, then use that Bash executable for
@@ -737,20 +769,23 @@ contract supplies its argument shape, result kind, timeout, and output limit.
 The broker uses a fixed helper `PATH`, kills the child process group on timeout
 or excess output, denies a function that leaves descendants behind, rejects
 ambiguous JSON framing (including duplicate keys, literal NUL, trailing data,
-and oversized input), and writes a private audit record containing invocation
-metadata but no input values. Machine adapters can request the strict
-`broker-json-v1` envelope, whose result kind and exit/status relationship are
-validated at both the broker and adapter boundaries.
+and oversized input), and returns a bounded receipt containing metadata but no
+input values. Public machine adapters request `control-plane-json-v1`; the
+kernel validates the strict inner broker envelope, appends Evidence, and only
+then exposes the correlated identity and one-consumer result.
 
 Pi, the public MCP runner, and the source-candidate Node.js and Python binding
-APIs route these 26 calls through the broker. Pi reports only
-argument counts/sizes/field names after execution; raw non-stable arguments
-appear only in its separate human confirmation preview. The public MCP
-executable exposes exactly the 26 reviewed stable-core tools and rejects the
-retired legacy tier selector. Pi's human-confirmed non-stable-core path and the
-bindings' explicitly trusted raw-Bash escape hatches remain legacy/unbrokered.
-This is a bounded local execution layer, not an OS sandbox or a same-user
-tamper boundary.
+APIs route these 26 calls atomically through the kernel and fixed broker. MCP
+publishes closed input/output schemas, structured content, reviewed effect
+metadata, coarse progress when requested, and kernel-generated Run, ToolCall,
+PolicyDecision, and Evidence IDs. Pi reports only argument
+counts/sizes/field names after execution; raw non-stable arguments appear only
+in its separate human-confirmation preview. The public MCP executable exposes
+exactly the 26 reviewed stable-core tools and rejects the retired legacy tier
+selector. Pi's human-confirmed non-stable-core path and the bindings'
+explicitly trusted raw-Bash escape hatches remain legacy/unbrokered. This is a
+bounded local execution layer, not an OS sandbox or a same-user tamper
+boundary.
 
 ## Agent Working Memory
 
@@ -884,17 +919,14 @@ is present.
 
 | Platform | Integration |
 |---|---|
-| Pi | First-party package and skill with canonical gate parity, brokered stable-core function calls, pre-shell environment scrubbing, a protected Bash wrapper, guarded tools, AWM, and transactional lifecycle management |
-| Claude Code | Project instructions plus enforced `PreToolUse` Bash policy |
-| OpenAI Codex | Project instructions plus enforced, trust-reviewed `PreToolUse` Bash policy |
-| GitHub Copilot CLI | Project instructions plus enforced `preToolUse` shell policy |
-| Gemini CLI | Project instructions plus enforced `BeforeTool` shell policy |
-| Cursor | Project `.mdc` rules |
-| Aider | Convention file |
-| OpenCode, Kimi | Project instructions |
+| Pi | First-party package and skill; the pinned Darwin arm64 cell has live local gate, approval, memory, and audit evidence |
+| Claude Code, OpenAI Codex, GitHub Copilot CLI, Gemini CLI | Generated instructions and registry-bound shell-hook configuration; evidence is exact-host/platform `configured` or `enforced` |
+| Cursor, Aider, OpenCode, Kimi, JetBrains, Junie | Generated instruction artifacts only |
 | Custom agents | Shell, MCP, or language bindings |
 
-Installation alone does not teach an agent to use MAINFRAME. Start with the
+The canonical evidence and unsupported-route boundary are in
+[`config/host-capabilities.json`](config/host-capabilities.json). Installation
+alone does not teach an agent to use MAINFRAME. Start with the
 explicit [onboarding path](docs/ONBOARDING.md), then follow the host-specific
 trust and verification notes in [AI CLI integrations](docs/AI_CLI_INTEGRATIONS.md).
 

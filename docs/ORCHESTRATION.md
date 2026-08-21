@@ -505,7 +505,7 @@ agent=$(orch_agent_spawn "team") || {
 
 ## Agent Teams Integration
 
-Claude Code Agent Teams provides native team lifecycle, task assignment, and mailbox messaging. Mainframe supplements this with capabilities Agent Teams lacks: **persistent cross-agent memory** (AWM), **synchronization primitives** (barriers, locks), and **bash-level orchestration utilities** exposed via MCP.
+Claude Code Agent Teams provides native team lifecycle, task assignment, and mailbox messaging. Mainframe supplements this with **persistent cross-agent memory** (AWM) and **synchronization primitives** (barriers and locks) through the Bash runtime. These mutation and orchestration functions are not exposed by the reviewed MCP stable-core surface.
 
 ### Coexistence Guide
 
@@ -551,9 +551,11 @@ If migrating from Mainframe's TMUX-based orchestration (`orch_agent_spawn`) to A
 4. **Keep** `agent_barrier`, `agent_lock`/`agent_unlock` - Agent Teams has no equivalent
 5. **Add** `agent_teams_awm_init` (lead) and `agent_teams_awm_join` (teammates) for session rendezvous
 
-### MCP Tools
+### MCP Boundary
 
-Teammates can also call orchestration functions as MCP tools (registered via `mcp_register_orchestration_tools`): `awm_init`, `awm_resume`, `awm_checkpoint`, `awm_discovery`, `awm_get`, `awm_summary`, `agent_teams_active`, `agent_teams_awm_join`, `agent_barrier`, `agent_lock`, `agent_unlock`.
+The separately distributed `mainframe-mcp` adapter exposes only reviewed
+stable-core contracts. AWM mutation and team orchestration remain Bash-only
+until they gain explicit effect, capability, approval, and evidence contracts.
 
 ---
 

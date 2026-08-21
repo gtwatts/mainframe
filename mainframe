@@ -1,18 +1,45 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # =============================================================================
 # MAINFRAME compatibility launcher
 # =============================================================================
 # The canonical CLI lives in bin/mainframe. Keep this root entry point for
 # existing scripts and source checkouts that invoke ./mainframe directly.
 
-set -euo pipefail
+set -eu
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+case "$0" in
+    */*) launcher_dir=${0%/*} ;;
+    *) launcher_dir=. ;;
+esac
+CDPATH=
+export CDPATH
+SCRIPT_DIR="$(cd -P "$launcher_dir" 2>/dev/null && pwd -P)" || {
+    printf 'MAINFRAME could not resolve the compatibility launcher directory.\n' >&2
+    exit 1
+}
+unset CDPATH
 CANONICAL_CLI="$SCRIPT_DIR/bin/mainframe"
 
-if [[ ! -x "$CANONICAL_CLI" ]]; then
+if [ ! -x "$CANONICAL_CLI" ]; then
     printf 'MAINFRAME CLI not found or not executable: %s\n' "$CANONICAL_CLI" >&2
     exit 1
 fi
 
-exec "$CANONICAL_CLI" "$@"
+# The compatibility entry point must never select an interpreter through a
+# caller-controlled PATH. Enter the fixed system Bash in protected mode; the
+# canonical Bash 3.2-compatible bootstrap then selects and authenticates the
+# supported Bash 4.4+ runtime (including an explicitly reviewed MAINFRAME_BASH).
+unset BASH_ENV ENV BASH_LOADABLES_PATH BASH_XTRACEFD CDPATH GLOBIGNORE \
+    LD_PRELOAD LD_LIBRARY_PATH DYLD_INSERT_LIBRARIES DYLD_LIBRARY_PATH \
+    NODE_OPTIONS NODE_PATH PYTHONHOME PYTHONPATH PYTHONSTARTUP \
+    PERL5OPT PERL5LIB RUBYOPT RUBYLIB 2>/dev/null || {
+    printf 'MAINFRAME could not clear inherited code-loader environment.\n' >&2
+    exit 1
+}
+
+if [ ! -x /bin/bash ]; then
+    printf 'MAINFRAME requires the fixed system bootstrap at /bin/bash.\n' >&2
+    exit 1
+fi
+
+exec /bin/bash --noprofile --norc -p "$CANONICAL_CLI" "$@"

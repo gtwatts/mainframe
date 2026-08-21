@@ -1,0 +1,23 @@
+flowchart LR
+    Request[Caller-controlled stable-core request]
+    Clients[CLI, MCP, Pi, future hosts]
+    Socket[Owner-private authenticated local socket]
+    Daemon[Long-lived authority daemon]
+    Ledger[(Metadata-only ledger and Evidence)]
+    Queue[Bounded dispatch and backpressure]
+    Workers[Short-lived isolated workers]
+    Fixed[Fixed stable-core executor]
+    Transient[(Bounded transient channels)]
+
+    Request --> Clients
+    Clients --> Socket
+    subgraph PrivateServiceBoundary[Owner-private authority boundary]
+        Socket --> Daemon
+        Daemon --> Ledger
+        Daemon --> Queue
+        Queue --> Workers
+        Workers --> Fixed
+    end
+    Clients <--> Transient
+    Transient <--> Workers
+    Daemon -. lifecycle, cancellation, recovery .-> Workers

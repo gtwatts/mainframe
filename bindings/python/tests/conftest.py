@@ -13,8 +13,8 @@ sys.path.insert(0, str(package_dir))
 
 
 @pytest.fixture(autouse=True)
-def reset_mainframe_cache():
-    """Reset MAINFRAME root cache between tests."""
+def reset_mainframe_cache(tmp_path):
+    """Reset caches and isolate every durable ledger between tests."""
     import os
 
     import mainframe_bash.core as core
@@ -22,8 +22,13 @@ def reset_mainframe_cache():
     original = core._mainframe_root
     original_bash = core._RESOLVED_BASH
     original_env_root = os.environ.get("MAINFRAME_ROOT")
+    original_state_home = os.environ.get("XDG_STATE_HOME")
     repository_root = package_dir.parent.parent
+    state_home = (tmp_path / ".control-plane-state").resolve()
+    state_home.mkdir(mode=0o700)
+    os.chmod(state_home, 0o700)
     os.environ["MAINFRAME_ROOT"] = str(repository_root)
+    os.environ["XDG_STATE_HOME"] = str(state_home)
     core._mainframe_root = None
     yield
     core._mainframe_root = original
@@ -32,6 +37,10 @@ def reset_mainframe_cache():
         os.environ.pop("MAINFRAME_ROOT", None)
     else:
         os.environ["MAINFRAME_ROOT"] = original_env_root
+    if original_state_home is None:
+        os.environ.pop("XDG_STATE_HOME", None)
+    else:
+        os.environ["XDG_STATE_HOME"] = original_state_home
 
 
 @pytest.fixture

@@ -70,6 +70,10 @@ declare -gA _AGENT_BLOCKED_COMMANDS=(
     [shutdown]=1 [reboot]=1 [halt]=1 [init]=1 [systemctl]=1 [service]=1
     [iptables]=1 [firewall-cmd]=1 [ufw]=1
     [passwd]=1 [useradd]=1 [userdel]=1 [usermod]=1 [groupadd]=1
+    # String-form execution must not delegate parsing to another interpreter.
+    [bash]=1 [sh]=1 [zsh]=1 [dash]=1 [ksh]=1 [fish]=1
+    [python]=1 [python3]=1 [node]=1 [bun]=1 [perl]=1 [ruby]=1
+    [php]=1 [lua]=1
 )
 
 # Check if a command is safe to execute
@@ -101,60 +105,121 @@ _agent_is_safe_command() {
     return 1
 }
 
-# Validate a full command string for safety
-# Usage: _agent_validate_command "full command string"
-# Returns: 0=safe, 1=unsafe
-_agent_validate_command() {
-    local cmd="$1"
+# Normalized argv buffer for the legacy string-form public interfaces. The
+# parser honors simple quotes and escapes, but it never evaluates expansions or
+# operators. This preserves simple transaction/undo/recovery commands while
+# making shell composition fail closed.
+declare -ga _AGENT_EXEC_ARGV=()
 
-    # Block command chaining operators
-    if [[ "$cmd" == *';'* ]] || [[ "$cmd" == *'&&'* ]] || [[ "$cmd" == *'||'* ]]; then
-        # Allow && and || in specific safe contexts
-        if [[ "$cmd" == *'&&'* || "$cmd" == *'||'* ]]; then
-            # These are okay for conditional execution, but validate each part
-            :
-        fi
-        # Block semicolons entirely
-        if [[ "$cmd" == *';'* ]]; then
-            _agent_log warn "blocked command chaining with semicolon: $cmd"
-            return 1
-        fi
-    fi
+_agent_tokenize_command() {
+    local input="$1"
+    local current="" char next
+    local token_started=0 in_single_quote=0 in_double_quote=0
+    local i length=${#input}
 
-    # Block backtick command substitution (prefer $())
-    if [[ "$cmd" == *'`'* ]]; then
-        _agent_log warn "blocked backtick command substitution: $cmd"
+    _AGENT_EXEC_ARGV=()
+    for ((i=0; i<length; i++)); do
+        char="${input:i:1}"
+
+        if (( in_single_quote )); then
+            if [[ "$char" == "'" ]]; then
+                in_single_quote=0
+            else
+                current+="$char"
+            fi
+            continue
+        fi
+
+        if (( in_double_quote )); then
+            case "$char" in
+                '"') in_double_quote=0 ;;
+                $'\\')
+                    next="${input:i+1:1}"
+                    if [[ "$next" == '"' || "$next" == $'\\' ]]; then
+                        current+="$next"
+                        ((i++)) || true
+                    else
+                        current+="$char"
+                    fi
+                    ;;
+                '$'|'`')
+                    _agent_log warn "blocked expansion in command string"
+                    return 1
+                    ;;
+                *) current+="$char" ;;
+            esac
+            continue
+        fi
+
+        case "$char" in
+            "'") in_single_quote=1; token_started=1 ;;
+            '"') in_double_quote=1; token_started=1 ;;
+            $'\\')
+                next="${input:i+1:1}"
+                if [[ -z "$next" ]]; then
+                    _agent_log warn "blocked trailing escape in command string"
+                    return 1
+                fi
+                current+="$next"
+                ((i++)) || true
+                token_started=1
+                ;;
+            [[:space:]])
+                if (( token_started )); then
+                    _AGENT_EXEC_ARGV+=("$current")
+                    current=""
+                    token_started=0
+                fi
+                ;;
+            '$'|'`'|'|'|'&'|';'|'<'|'>'|'('|')')
+                _agent_log warn "blocked shell syntax in command string"
+                return 1
+                ;;
+            *) current+="$char"; token_started=1 ;;
+        esac
+    done
+
+    if (( in_single_quote || in_double_quote )); then
+        _agent_log warn "blocked unbalanced quotes in command string"
         return 1
     fi
-
-    # Block process substitution abuse
-    if [[ "$cmd" == *'<('*'rm'* ]] || [[ "$cmd" == *'>('*'rm'* ]]; then
-        _agent_log warn "blocked dangerous process substitution: $cmd"
-        return 1
+    if (( token_started )); then
+        _AGENT_EXEC_ARGV+=("$current")
     fi
+    (( ${#_AGENT_EXEC_ARGV[@]} > 0 ))
+}
 
-    # Extract base command and validate
-    local base_cmd="${cmd%% *}"
+_agent_prepare_command() {
+    local cmd="${1:-}"
+    local base_cmd
+
+    [[ -n "$cmd" ]] || return 1
+    _agent_tokenize_command "$cmd" || return 1
+    base_cmd="${_AGENT_EXEC_ARGV[0]}"
     if ! _agent_is_safe_command "$base_cmd"; then
         _agent_log warn "blocked unsafe command: $base_cmd"
         return 1
     fi
-
-    return 0
 }
 
-# Execute a command string safely via subprocess
-# Usage: _agent_safe_exec "command_string"
-# Security: Validates command allowlist, runs in subprocess
-_agent_safe_exec() {
-    local cmd="$1"
+# Validate one legacy command string without evaluating it.
+# Usage: _agent_validate_command "simple command string"
+# Returns: 0=safe, 1=unsafe
+_agent_validate_command() {
+    _agent_prepare_command "${1:-}"
+}
 
-    if ! _agent_validate_command "$cmd"; then
+# Execute one validated simple command as argv. No shell is started, so command
+# chaining, redirects, substitutions, and interpreter source strings cannot run.
+_agent_safe_exec() {
+    local cmd="${1:-}"
+
+    if ! _agent_prepare_command "$cmd"; then
         _agent_log error "command validation failed: $cmd"
         return 1
     fi
 
-    bash -c "$cmd"
+    "${_AGENT_EXEC_ARGV[@]}"
 }
 
 # Add a command to the allowlist at runtime

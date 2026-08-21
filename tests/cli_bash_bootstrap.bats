@@ -3,6 +3,7 @@
 setup() {
     PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd -P)"
     MAINFRAME_BIN="$PROJECT_ROOT/bin/mainframe"
+    ROOT_LAUNCHER="$PROJECT_ROOT/mainframe"
     TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/mainframe-cli-bash.XXXXXX")"
     MODERN_BASH="${MAINFRAME_BASH:-/opt/homebrew/bin/bash}"
     [[ -x "$MODERN_BASH" ]] || MODERN_BASH="$(command -v bash)"
@@ -10,6 +11,27 @@ setup() {
         (( BASH_VERSINFO[0] > 4 )) ||
         (( BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4 ))
     ' || skip "Bash 4.4+ is unavailable"
+}
+
+@test "root compatibility launcher never executes an ambient PATH Bash" {
+    local fake_bin="$TEST_DIR/ambient-root-bin"
+    local marker="$TEST_DIR/ambient-root-bash-ran"
+    mkdir -p "$fake_bin" "$TEST_DIR/home"
+    printf '%s\n' \
+        '#!/bin/sh' \
+        "printf 'ambient bash executed\\n' > '$marker'" \
+        'exit 97' > "$fake_bin/bash"
+    chmod +x "$fake_bin/bash"
+
+    run env -i \
+        HOME="$TEST_DIR/home" USER=mainframe-test LOGNAME=mainframe-test \
+        PATH="$fake_bin:/usr/bin:/bin" \
+        MAINFRAME_BASH="$MODERN_BASH" \
+        "$ROOT_LAUNCHER" version
+
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"MAINFRAME v"* ]]
+    [[ ! -e "$marker" ]]
 }
 
 teardown() {

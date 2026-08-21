@@ -1,0 +1,25 @@
+flowchart LR
+    Request[Caller-controlled stable-core request]
+    MCP[MCP adapter]
+    Pi[Pi extension]
+    CLI[Public CLI]
+    MSeq[MCP local sequencer]
+    PSeq[Pi local sequencer]
+    CSeq[CLI local sequencer]
+    Broker[Legacy broker]
+    Ledger[(Metadata ledger)]
+
+    Request --> MCP
+    Request --> Pi
+    Request --> CLI
+    subgraph CallerBoundaries[Independent caller-owned boundaries]
+        MCP --> MSeq
+        Pi --> PSeq
+        CLI --> CSeq
+    end
+    MSeq --> Broker
+    PSeq --> Broker
+    CSeq --> Broker
+    MSeq -. best-effort metadata .-> Ledger
+    PSeq -. best-effort metadata .-> Ledger
+    CSeq -. best-effort metadata .-> Ledger

@@ -44,6 +44,7 @@ declare -g _AWM_NAMESPACE=""
 declare -g _AWM_ACTIVE_BACKEND="${AWM_BACKEND:-file}"
 declare -g _AWM_V2_INITIALIZED=0
 declare -g _AWM_EMBEDDINGS_ATTEMPTED=0
+declare -g _AWM_STRICT_JQ=""
 declare -gi _AWM_PROJECT_MUTATION_DEPTH=0
 declare -gA _AWM_DEPRECATION_WARNED=()
 
@@ -550,6 +551,33 @@ _awm_require_payload_size() {
     return 0
 }
 
+# Compute a content identity without consulting the caller's PATH.  AWM uses
+# this only for consistency checks between a private checkpoint value and its
+# sidecar; it does not elevate legacy memory into an authority source.
+_awm_sha256_file() {
+    local file="$1" output digest
+
+    [[ -f "$file" && ! -L "$file" ]] || return 1
+    if [[ -x /usr/bin/sha256sum ]]; then
+        output=$(/usr/bin/sha256sum -- "$file") || return 1
+        digest="${output%%[[:space:]]*}"
+    elif [[ -x /bin/sha256sum ]]; then
+        output=$(/bin/sha256sum -- "$file") || return 1
+        digest="${output%%[[:space:]]*}"
+    elif [[ -x /usr/bin/shasum ]]; then
+        output=$(/usr/bin/shasum -a 256 -- "$file") || return 1
+        digest="${output%%[[:space:]]*}"
+    elif [[ -x /usr/bin/openssl ]]; then
+        output=$(/usr/bin/openssl dgst -sha256 "$file") || return 1
+        digest="${output##* }"
+    else
+        _awm_log error "AWM checkpoint integrity requires a fixed SHA-256 tool"
+        return 1
+    fi
+    [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || return 1
+    printf '%s' "$digest"
+}
+
 _awm_path_mode() {
     local path="$1"
     if [[ "$OSTYPE" == darwin* ]]; then
@@ -557,6 +585,64 @@ _awm_path_mode() {
     else
         stat -c%a "$path" 2>/dev/null
     fi
+}
+
+# Resolve the semantic parser from a closed set of fixed installations.  The
+# caller's PATH is never consulted: checkpoint sidecars are a trust boundary,
+# and the pure-Bash JSON helpers intentionally are not a duplicate-key-aware
+# parser.  AWM fails closed when no authenticated jq is available.
+_awm_strict_jq_path() {
+    local candidate parent canonical_parent result owner mode numeric
+    local -a candidates=()
+
+    [[ -z "${_AWM_STRICT_JQ:-}" ]] || {
+        printf '%s' "$_AWM_STRICT_JQ"
+        return 0
+    }
+    [[ -z "${_MAINFRAME_CLI_JQ:-}" ]] || candidates+=("$_MAINFRAME_CLI_JQ")
+    candidates+=(/usr/bin/jq /bin/jq)
+
+    for candidate in "${candidates[@]}"; do
+        [[ "$candidate" == /* && -f "$candidate" && ! -L "$candidate" &&
+           -x "$candidate" ]] || continue
+        case "$candidate" in
+            /usr/bin/jq|/bin/jq|/usr/local/bin/jq|/opt/local/bin/jq|\
+            /opt/homebrew/Cellar/*/bin/jq|/usr/local/Cellar/*/bin/jq|\
+            /home/linuxbrew/.linuxbrew/Cellar/*/bin/jq|/nix/store/*/bin/jq) ;;
+            *) continue ;;
+        esac
+        parent="${candidate%/*}"
+        canonical_parent="$(builtin cd -- "$parent" 2>/dev/null && builtin pwd -P)" || continue
+        [[ "$candidate" == "${canonical_parent%/}/${candidate##*/}" ]] || continue
+        if [[ -x /usr/bin/stat ]]; then
+            result="$(/usr/bin/stat -c '%u %a' "$candidate" 2>/dev/null ||
+                /usr/bin/stat -f '%u %Mp%Lp' "$candidate" 2>/dev/null)" || continue
+        elif [[ -x /bin/stat ]]; then
+            result="$(/bin/stat -c '%u %a' "$candidate" 2>/dev/null ||
+                /bin/stat -f '%u %Mp%Lp' "$candidate" 2>/dev/null)" || continue
+        else
+            continue
+        fi
+        [[ "$result" =~ ^[0-9]+\ [0-7]{3,4}$ ]] || continue
+        read -r owner mode <<<"$result"
+        [[ ${#mode} -eq 4 && "$mode" == 0* ]] && mode="${mode#0}"
+        [[ "$owner" -eq 0 || "$owner" -eq "$EUID" ]] || continue
+        numeric=$((8#$mode))
+        (( (numeric & 0022) == 0 && (numeric & 07000) == 0 &&
+           (numeric & 0100) != 0 )) || continue
+        _AWM_STRICT_JQ="$candidate"
+        printf '%s' "$candidate"
+        return 0
+    done
+
+    _awm_log error "AWM checkpoint validation requires a trusted fixed jq"
+    return 1
+}
+
+_awm_strict_jq() {
+    local jq_path
+    jq_path="$(_awm_strict_jq_path)" || return 1
+    "$jq_path" "$@"
 }
 
 _awm_atomic_write() {
@@ -1002,6 +1088,50 @@ _awm_record_discovery_entry() {
     return 0
 }
 
+_awm_build_checkpoint_meta() {
+    local sid="$1"
+    local key="$2"
+    local value="$3"
+    local importance="$4"
+    local tags_csv="$5"
+    local ttl="$6"
+    local file="$7"
+    local source_agent="${8:-$(_awm_current_agent)}"
+    local created_at="${9:-$(_awm_iso_timestamp)}"
+    local created_epoch="${10:-$(_awm_epoch)}"
+    local preview tags_json safe_key value_sha256 expires_at_epoch raw
+
+    safe_key=$(_awm_sanitize_key "$key")
+    preview="${value:0:256}"
+    tags_json=$(_awm_tags_json "$tags_csv")
+    value_sha256=$(_awm_sha256_file "$file") || return 1
+    [[ "$created_epoch" =~ ^[0-9]+$ ]] || return 1
+    if (( ttl > 0 )); then
+        expires_at_epoch=$((created_epoch + ttl))
+    else
+        expires_at_epoch=null
+    fi
+
+    raw=$(printf '{"schema_version":1,"timestamp":"%s","created_epoch":%s,"kind":"checkpoint","importance":"%s","tags":%s,"source_agent":"%s","session_id":"%s","storage_key":"%s","key":"%s","preview":"%s","ttl":%s,"trust_label":"untrusted_legacy","authoritative":false,"provenance":{"source":"legacy_awm_v2","run_id":null,"call_id":null,"evidence_id":null,"input_digest":null},"retention":{"ttl_seconds":%s,"expires_at_epoch":%s},"value_sha256":"%s"}' \
+        "$created_at" \
+        "$created_epoch" \
+        "$(_awm_json_escape "$importance")" \
+        "$tags_json" \
+        "$(_awm_json_escape "$source_agent")" \
+        "$sid" \
+        "$safe_key" \
+        "$(_awm_json_escape "$key")" \
+        "$(_awm_json_escape "$preview")" \
+        "${ttl:-0}" \
+        "${ttl:-0}" \
+        "$expires_at_epoch" \
+        "$value_sha256") || return 1
+    # Store one canonical representation.  On read, byte equality with the
+    # parser's canonical form exposes duplicate keys and ambiguous encodings
+    # before any selected field is trusted.
+    printf '%s' "$raw" | _awm_strict_jq -cS .
+}
+
 _awm_record_checkpoint_meta() {
     local sid="$1"
     local key="$2"
@@ -1009,21 +1139,12 @@ _awm_record_checkpoint_meta() {
     local importance="$4"
     local tags_csv="$5"
     local ttl="$6"
-    local preview entry tags_json index_file meta_file safe_key
+    local file="$7"
+    local entry index_file meta_file safe_key
 
     safe_key=$(_awm_sanitize_key "$key")
-    preview="${value:0:256}"
-    tags_json=$(_awm_tags_json "$tags_csv")
-    entry=$(printf '{"timestamp":"%s","ts":%s,"kind":"checkpoint","importance":"%s","tags":%s,"source_agent":"%s","session_id":"%s","key":"%s","preview":"%s","ttl":%s}' \
-        "$(_awm_iso_timestamp)" \
-        "$(_awm_timestamp)" \
-        "$(_awm_json_escape "$importance")" \
-        "$tags_json" \
-        "$(_awm_json_escape "$(_awm_current_agent)")" \
-        "$sid" \
-        "$(_awm_json_escape "$key")" \
-        "$(_awm_json_escape "$preview")" \
-        "${ttl:-0}")
+    entry=$(_awm_build_checkpoint_meta \
+        "$sid" "$key" "$value" "$importance" "$tags_csv" "$ttl" "$file") || return 1
 
     index_file="$(_awm_session_dir "$sid")/logs/checkpoints.jsonl"
     meta_file="$(_awm_session_dir "$sid")/index/${safe_key}.json"
@@ -1033,6 +1154,85 @@ _awm_record_checkpoint_meta() {
     _awm_update_category_index "$sid" "checkpoints" || return 1
     _awm_journal_write "$sid" "checkpoint" "$entry" || return 1
     return 0
+}
+
+_awm_checkpoint_write_unlocked() {
+    local sid="$1" key="$2" value="$3" importance="$4" tags="$5" ttl="$6" file="$7"
+
+    _awm_atomic_write "$file" "$value" || return 1
+    _awm_record_checkpoint_meta \
+        "$sid" "$key" "$value" "$importance" "$tags" "$ttl" "$file"
+}
+
+# Validate the complete legacy sidecar/value binding before retrieval.  Return
+# 0 for a current value, 2 for expired retention, and 3 for malformed/tampered
+# metadata or a value digest mismatch.  Legacy memory always remains explicitly
+# non-authorizing even when this consistency check succeeds.
+_awm_checkpoint_metadata() {
+    local sid="$1" safe_key="$2" file="$3"
+    local meta_file content canonical fields
+    local ttl expires_at_epoch expected_sha actual_sha now
+
+    meta_file="$(_awm_session_dir "$sid")/index/${safe_key}.json" || return 3
+    [[ -f "$meta_file" && ! -L "$meta_file" ]] || return 3
+    _awm_reject_symlink_components "$meta_file" >/dev/null 2>&1 || return 3
+    content=$(<"$meta_file") || return 3
+    canonical=$(printf '%s' "$content" | _awm_strict_jq -cS . 2>/dev/null) || return 3
+    [[ "$content" == "$canonical" ]] || return 3
+    fields=$(printf '%s' "$content" | _awm_strict_jq -er \
+        --arg sid "$sid" --arg storage "$safe_key" '
+        def exact_keys($expected): type == "object" and keys == $expected;
+        def valid:
+          exact_keys(["authoritative", "created_epoch", "importance", "key",
+                      "kind", "preview", "provenance", "retention",
+                      "schema_version", "session_id", "source_agent",
+                      "storage_key", "tags", "timestamp", "trust_label",
+                      "ttl", "value_sha256"]) and
+          .schema_version == 1 and .kind == "checkpoint" and
+          (.timestamp | type == "string" and length > 0 and length <= 64) and
+          (.created_epoch | type == "number" and . >= 0 and floor == .) and
+          (.importance == "low" or .importance == "normal" or
+           .importance == "high" or .importance == "critical") and
+          (.tags | type == "array" and all(.[]; type == "string")) and
+          (.source_agent | type == "string" and length > 0 and length <= 128) and
+          .session_id == $sid and .storage_key == $storage and
+          (.key | type == "string" and length > 0 and length <= 128 and
+           gsub("[^a-zA-Z0-9_.:-]"; "_") == $storage) and
+          (.preview | type == "string") and
+          (.ttl | type == "number" and . >= 0 and . <= 2147483647 and floor == .) and
+          .trust_label == "untrusted_legacy" and .authoritative == false and
+          (.provenance |
+            exact_keys(["call_id", "evidence_id", "input_digest", "run_id", "source"]) and
+            .source == "legacy_awm_v2" and .run_id == null and .call_id == null and
+            .evidence_id == null and .input_digest == null) and
+          (.retention |
+            exact_keys(["expires_at_epoch", "ttl_seconds"]) and
+            (.ttl_seconds | type == "number" and . >= 0 and . <= 2147483647 and floor == .)) and
+          .retention.ttl_seconds == .ttl and
+          ((.ttl == 0 and .retention.expires_at_epoch == null) or
+           (.ttl > 0 and
+            (.retention.expires_at_epoch | type == "number" and floor == .) and
+            .retention.expires_at_epoch == (.created_epoch + .ttl))) and
+          (.value_sha256 | type == "string" and test("^[0-9a-f]{64}$"));
+        if valid then
+          [.retention.ttl_seconds,
+           (if .retention.expires_at_epoch == null then "null"
+            else (.retention.expires_at_epoch | tostring) end),
+           .value_sha256] | @tsv
+        else error("invalid checkpoint sidecar") end
+        ' 2>/dev/null) || return 3
+    IFS=$'\t' read -r ttl expires_at_epoch expected_sha <<<"$fields"
+    [[ "$ttl" =~ ^[0-9]+$ &&
+       ( "$expires_at_epoch" == null || "$expires_at_epoch" =~ ^[0-9]+$ ) &&
+       "$expected_sha" =~ ^[0-9a-f]{64}$ ]] || return 3
+    actual_sha=$(_awm_sha256_file "$file") || return 3
+    [[ "$actual_sha" == "$expected_sha" ]] || return 3
+    if [[ "$expires_at_epoch" != null ]]; then
+        now=$(_awm_epoch)
+        [[ "$now" =~ ^[0-9]+$ ]] || return 3
+        (( now < expires_at_epoch )) || return 2
+    fi
+    printf '%s' "$content"
 }
 
 _awm_snapshot_checkpoint() {
@@ -1215,6 +1415,22 @@ _awm_select_top_results() {
     printf ']'
 
     rm -f "$sorted_file" 2>/dev/null
+}
+
+# Hidden control-plane reads cannot place raw search candidates in named
+# files. This fixed lexical-only selector consumes an already-unlinked read FD;
+# generic AWM keeps the existing optional embedding reranker above.
+_awm_select_top_results_fd() {
+    local input_fd="$1" limit="$2" first=1 payload
+    [[ "$input_fd" =~ ^[0-9]+$ && "$limit" =~ ^[0-9]+$ ]] || return 1
+    printf '['
+    while IFS=$'\t' read -r _ payload; do
+        [[ -n "$payload" ]] || continue
+        [[ $first -eq 1 ]] || printf ','
+        first=0
+        printf '%s' "$payload"
+    done < <(sort -t $'\t' -k1,1nr <&"$input_fd" | head -n "$limit")
+    printf ']'
 }
 
 _awm_progress_summary_json() {
@@ -2533,8 +2749,9 @@ awm_checkpoint() {
     dir=$(_awm_session_dir)
     file="${dir}/data/${safe_key}"
 
-    _awm_with_lock "${dir}/index/data.${safe_key}.lock" _awm_atomic_write "$file" "$value" || return 1
-    _awm_record_checkpoint_meta "$_AWM_SESSION_ID" "$key" "$value" "$importance" "$tags" "$ttl" || return 1
+    _awm_with_lock "${dir}/index/data.${safe_key}.lock" \
+        _awm_checkpoint_write_unlocked \
+        "$_AWM_SESSION_ID" "$key" "$value" "$importance" "$tags" "$ttl" "$file" || return 1
     _awm_update_manifest "$_AWM_SESSION_ID" "active" >/dev/null 2>&1 || true
     return 0
 }
@@ -2715,7 +2932,7 @@ awm_discovery() {
 # Usage: awm_get [SESSION_ID] KEY [DEFAULT]
 awm_get() {
     local sid=""
-    local key default safe_key dir file result
+    local key default safe_key dir file result metadata_rc
 
     if [[ $# -ge 2 ]] && _awm_session_exists "$1"; then
         sid="$1"
@@ -2746,6 +2963,21 @@ awm_get() {
     file="${dir}/data/${safe_key}"
 
     if [[ -f "$file" ]]; then
+        if _awm_checkpoint_metadata "${sid:-$_AWM_SESSION_ID}" "$safe_key" "$file" \
+            >/dev/null; then
+            metadata_rc=0
+        else
+            metadata_rc=$?
+        fi
+        if (( metadata_rc != 0 )); then
+            if (( metadata_rc == 2 )); then
+                _awm_log warn "awm_get: checkpoint retention expired"
+            else
+                _awm_log error "awm_get: checkpoint metadata/value binding is invalid"
+            fi
+            printf '%s' "$default"
+            return 1
+        fi
         result=$(<"$file")
         printf '%s' "$result"
         return 0
@@ -2875,7 +3107,8 @@ awm_find() {
     local kind="mixed"
     local limit="$AWM_FIND_DEFAULT_LIMIT"
     local sid="$_AWM_SESSION_ID"
-    local tmpfile reranked_file dir disc_file log_file file category content score payload preview key value
+    local tmpfile dir disc_file log_file file category content score payload preview key value
+    local metadata ttl expires_at_epoch anonymous=false read_fd='' write_fd='' entries=0
 
     query="${1:-}"
     shift || true
@@ -2912,7 +3145,28 @@ awm_find() {
     }
 
     dir=$(_awm_session_dir "$sid")
-    tmpfile="$(mktemp "${TMPDIR:-/tmp}/awm-find.XXXXXX")"
+    if [[ "${AWM_ANONYMOUS_READS:-0}" == 1 ]]; then
+        anonymous=true
+        tmpfile="$(umask 077; mktemp "${TMPDIR:-/tmp}/awm-find.XXXXXX")" || return 1
+        [[ -f "$tmpfile" && ! -L "$tmpfile" && -O "$tmpfile" ]] || return 1
+        chmod 600 "$tmpfile" 2>/dev/null || { rm -f -- "$tmpfile"; return 1; }
+        exec {read_fd}< "$tmpfile" || { rm -f -- "$tmpfile"; return 1; }
+        exec {write_fd}> "$tmpfile" || {
+            exec {read_fd}<&-
+            rm -f -- "$tmpfile"
+            return 1
+        }
+        # Both independent descriptors are open while the file is empty. Raw
+        # candidates are written only after the pathname has been removed.
+        rm -f -- "$tmpfile" || {
+            exec {read_fd}<&-
+            exec {write_fd}>&-
+            return 1
+        }
+        tmpfile=''
+    else
+        tmpfile="$(mktemp "${TMPDIR:-/tmp}/awm-find.XXXXXX")"
+    fi
 
     if [[ "$kind" == "mixed" || "$kind" == "discovery" ]]; then
         disc_file=$(_awm_discoveries_file "$sid")
@@ -2928,7 +3182,12 @@ awm_find() {
                         "$(_awm_json_escape "$preview")" \
                         "$sid" \
                         "$content")
-                    printf '%s\t%s\n' "$score" "$payload" >> "$tmpfile"
+                    if [[ "$anonymous" == true ]]; then
+                        printf '%s\t%s\n' "$score" "$payload" >&"$write_fd"
+                    else
+                        printf '%s\t%s\n' "$score" "$payload" >> "$tmpfile"
+                    fi
+                    entries=$((entries + 1))
                 fi
             done < "$disc_file"
         fi
@@ -2939,18 +3198,31 @@ awm_find() {
             [[ -f "$file" ]] || continue
             [[ "${file##*/}" != *.lock ]] || continue
             key="${file##*/}"
+            metadata=$(_awm_checkpoint_metadata "$sid" "$key" "$file" 2>/dev/null) || continue
+            ttl=$(printf '%s' "$metadata" | _awm_strict_jq -er \
+                '.retention.ttl_seconds' 2>/dev/null) || continue
+            expires_at_epoch=$(printf '%s' "$metadata" | _awm_strict_jq -r \
+                'if .retention.expires_at_epoch == null then "null"
+                 else (.retention.expires_at_epoch | tostring) end' 2>/dev/null) || continue
             value=$(head -c 512 "$file")
             content="${key} ${value}"
             score=$(_awm_search_score "$query" "$content")
             if [[ $score -gt 0 ]]; then
-                payload=$(printf '{"kind":"checkpoint","score":%s,"title":"%s","preview":"%s","source":"data/%s","session_id":"%s","key":"%s"}' \
+                payload=$(printf '{"kind":"checkpoint","score":%s,"title":"%s","preview":"%s","source":"data/%s","session_id":"%s","key":"%s","trust_label":"untrusted_legacy","authoritative":false,"provenance":{"source":"legacy_awm_v2","run_id":null,"call_id":null,"evidence_id":null,"input_digest":null},"retention":{"ttl_seconds":%s,"expires_at_epoch":%s}}' \
                     "$score" \
                     "$(_awm_json_escape "$key")" \
                     "$(_awm_json_escape "$value")" \
                     "$(_awm_json_escape "$key")" \
                     "$sid" \
-                    "$(_awm_json_escape "$key")")
-                printf '%s\t%s\n' "$score" "$payload" >> "$tmpfile"
+                    "$(_awm_json_escape "$key")" \
+                    "$ttl" \
+                    "$expires_at_epoch")
+                if [[ "$anonymous" == true ]]; then
+                    printf '%s\t%s\n' "$score" "$payload" >&"$write_fd"
+                else
+                    printf '%s\t%s\n' "$score" "$payload" >> "$tmpfile"
+                fi
+                entries=$((entries + 1))
             fi
         done
     fi
@@ -2975,20 +3247,36 @@ awm_find() {
                         "$sid" \
                         "$(_awm_json_escape "$category")" \
                         "$content")
-                    printf '%s\t%s\n' "$score" "$payload" >> "$tmpfile"
+                    if [[ "$anonymous" == true ]]; then
+                        printf '%s\t%s\n' "$score" "$payload" >&"$write_fd"
+                    else
+                        printf '%s\t%s\n' "$score" "$payload" >> "$tmpfile"
+                    fi
+                    entries=$((entries + 1))
                 fi
             done < "$log_file"
         done
     fi
 
-    if [[ ! -s "$tmpfile" ]]; then
-        rm -f "$tmpfile" 2>/dev/null
+    if (( entries == 0 )); then
+        if [[ "$anonymous" == true ]]; then
+            exec {read_fd}<&-
+            exec {write_fd}>&-
+        else
+            rm -f "$tmpfile" 2>/dev/null
+        fi
         printf '[]'
         return 0
     fi
 
-    _awm_select_top_results "$tmpfile" "$limit" "$query"
-    rm -f "$tmpfile" 2>/dev/null
+    if [[ "$anonymous" == true ]]; then
+        exec {write_fd}>&-
+        _awm_select_top_results_fd "$read_fd" "$limit"
+        exec {read_fd}<&-
+    else
+        _awm_select_top_results "$tmpfile" "$limit" "$query"
+        rm -f "$tmpfile" 2>/dev/null
+    fi
 }
 
 # Build task-specific AWM context in JSON or prompt format.

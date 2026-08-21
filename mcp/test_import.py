@@ -63,7 +63,7 @@ def test_registry():
 
 
 def test_executor():
-    """Test BashExecutor basic functionality."""
+    """Test that the adapter exposes only the public control-plane route."""
     print("\nTesting BashExecutor...")
 
     from mainframe_mcp.executor import BashExecutor
@@ -71,30 +71,14 @@ def test_executor():
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     executor = BashExecutor(mainframe_root=project_root)
 
-    common_sh = os.path.join(project_root, 'lib', 'common.sh')
-    if os.path.exists(common_sh):
-        print(f"✓ common.sh found at {common_sh}")
-
-        # Deny-by-default: external executables must be refused
-        success, stdout, stderr = executor.execute('echo', ['test'])
-        if not success and 'denied' in stderr:
-            print("✓ Executor denies external executables")
-        else:
-            print("✗ Executor allowed external executable 'echo'")
-            raise AssertionError("executor allowed external executable 'echo'")
-
-        # Declared MAINFRAME functions must still run
-        success, stdout, stderr = executor.execute('json_object', ['k=v'])
-        if success and stdout.strip() == '{"k":"v"}':
-            print("✓ Executor runs declared MAINFRAME functions")
-        else:
-            print(f"✗ Executor failed on declared function: {stderr.strip()[:100]}")
+    if not hasattr(executor, 'execute_control_plane'):
+        raise AssertionError("executor lacks the public control-plane route")
+    for legacy_route in ('execute', 'execute_broker', 'bash'):
+        if hasattr(executor, legacy_route):
             raise AssertionError(
-                f"executor failed on declared function: {stderr.strip()[:100]}"
+                f"executor still exposes legacy route {legacy_route}"
             )
-    else:
-        print(f"⚠ common.sh not found at {common_sh}")
-        print("  (This is expected if not running from MAINFRAME installation)")
+    print("✓ Executor exposes only the public control-plane route")
 
 
 if __name__ == "__main__":

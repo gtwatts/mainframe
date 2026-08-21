@@ -1,0 +1,25 @@
+flowchart LR
+    Request[Caller-controlled stable-core request]
+    Agent[Agent or host adapter]
+    MCP[MCP adapter]
+    Pi[Pi extension]
+    CLI[Public MAINFRAME CLI]
+    Local[Caller-local sequencing]
+    Broker[Legacy stable-core broker]
+    Policy[Policy and invocation registry]
+    Output[Raw result returned to caller]
+    Partial[(Partial local records)]
+
+    Request --> Agent
+    subgraph CallerBoundary[Caller-owned process boundary]
+        Agent --> MCP
+        Agent --> Pi
+        MCP --> Local
+        Pi --> Local
+        CLI --> Local
+    end
+    Local -. reserve / invoke / record .-> Partial
+    Local --> Broker
+    Broker --> Policy
+    Broker --> Output
+    Local -. crash windows and retry ambiguity .-> Broker

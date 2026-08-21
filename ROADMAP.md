@@ -1,19 +1,19 @@
-# MAINFRAME Roadmap
+# MAINFRAME Legacy Feature Inventory
 
-> The AI-Native Bash Runtime - V10.0
+> Historical implementation checklist; not a control-plane readiness ledger.
 
-This roadmap outlines planned features and improvements for MAINFRAME. Items are organized by priority and status.
+The authoritative current roadmap, dependency order, status, and exit evidence
+are in [`docs/CONTROL_PLANE_PLAN.md`](docs/CONTROL_PLANE_PLAN.md). Checked items
+below mean that source was added at some point; they do not prove reviewed
+semantics, a supported host, an installed product, or a released artifact.
 
 **Current version**: see `VERSION`.
 
 **Current inventory**: see generated `FUNCTIONS.json`.
 **Current validation**: see `docs/INTEGRATION_MATRIX.md` and GitHub Actions
 
-**Strategic direction and release gates**: see
-[`docs/A_PLUS_PLUS_PLAN.md`](docs/A_PLUS_PLUS_PLAN.md). This roadmap tracks
-individual work items; the strategic plan defines the product contract,
-architecture, phased sequence, compatibility program, and measurable A++
-exit criteria.
+**Historical requirements baseline**: see
+[`docs/A_PLUS_PLUS_PLAN.md`](docs/A_PLUS_PLUS_PLAN.md).
 
 ---
 
@@ -176,9 +176,10 @@ exit criteria.
   - [x] Pattern detection (`temporal_detect_pattern`)
   - [x] Anomaly detection (`temporal_anomaly_detect`)
   - [x] SQLite backend with bash fallback
-- [x] **Persistent Agent Loops** (`lib/agent_loop.sh`)
-  - [x] Background agent processes (`agent_loop_start`)
-  - [x] Goal-oriented execution
+- [ ] **Persistent Agent Loops** (`lib/agent_loop.sh`) — experimental simulator,
+  not a trusted control-plane runtime
+  - [ ] Real background agent processes (`agent_loop_start` currently simulates work)
+  - [ ] Provider-backed goal-oriented execution
   - [x] Checkpoint/resume functionality
   - [x] Human-in-the-loop support
   - [x] Parent-child agent coordination
@@ -199,9 +200,10 @@ exit criteria.
 - [x] Pure-Bash fallback paths for the V10 additions; enhanced backends remain optional
 - [x] Comprehensive test coverage
 
-### v7.2 - Multi-Agent Team Orchestration
+### v7.2 - Multi-Agent Team Orchestration (legacy host-specific implementation)
 
-**Major milestone: Complete orchestration system for coordinated agent teams**
+**Current classification:** experimental Claude/tmux/Redis integration; not a
+portable or broker-authorized control-plane surface.
 
 - [x] **Multi-Agent Orchestration** (`lib/orchestrate.sh`)
   - [x] Team lifecycle management (`orch_team_register`, `orch_team_dissolve`)

@@ -6,9 +6,9 @@
  */
 
 import {
-  callLegacyFixedFunction as callFunction,
-  callLegacyFixedFunctionRaw as callFunctionRaw,
-} from "./internal/legacy.js";
+  callFixedConvenience as callFunction,
+  callFixedConvenienceRaw as callFunctionRaw,
+} from "./internal/convenience.js";
 
 // =============================================================================
 // Type Validation

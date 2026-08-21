@@ -66,6 +66,30 @@ mf() {
     "$BASH_BIN" "$RUNTIME_ROOT/bin/mainframe" "$@"
 }
 
+make_launch_contract_fixture() {
+    local fixture="$TEST_DIR/launch-contract"
+    mkdir -p "$fixture/lib" "$fixture/config" "$fixture/skills/codex"
+    cp "$PROJECT_ROOT/lib/activate.sh" "$fixture/lib/activate.sh"
+    cp "$PROJECT_ROOT/lib/launch.sh" "$fixture/lib/launch.sh"
+    cp "$PROJECT_ROOT/config/host-capabilities.json" \
+        "$fixture/config/host-capabilities.json"
+    cp "$PROJECT_ROOT/skills/codex/AGENTS.md" \
+        "$fixture/skills/codex/AGENTS.md"
+    printf '%s\n' "$fixture"
+}
+
+launch_contract_query() {
+    local fixture="$1" host="$2"
+    local jq_bin
+    jq_bin="$(command -v jq)"
+    "$BASH_BIN" -c '
+        MAINFRAME_ROOT="$1"
+        source "$1/lib/activate.sh"
+        source "$1/lib/launch.sh"
+        _mainframe_launch_instruction_contract "$2" "$3"
+    ' _ "$fixture" "$host" "$jq_bin"
+}
+
 sha256_file() {
     local file="$1" output digest
 
@@ -287,6 +311,65 @@ tree_snapshot() {
     [[ "$status" -eq 2 ]]
     [[ "$output" == *"native host arguments are not supported"* ]]
     [[ ! -e "$FAKE_HOST_LOG" ]]
+}
+
+@test "launch instruction contract resolves registry-owned version and destination" {
+    local fixture
+    fixture="$(make_launch_contract_fixture)"
+
+    run launch_contract_query "$fixture" codex
+
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == $'1\tAGENTS.md' ]]
+}
+
+@test "launch instruction contract rejects registry drift and unknown hosts" {
+    local fixture
+    fixture="$(make_launch_contract_fixture)"
+    printf ' \n' >> "$fixture/config/host-capabilities.json"
+
+    run launch_contract_query "$fixture" codex
+    [[ "$status" -ne 0 ]]
+    [[ "$output" == *"invalid activation contract"* ]]
+
+    fixture="$(make_launch_contract_fixture)"
+    run launch_contract_query "$fixture" unknown-host
+    [[ "$status" -ne 0 ]]
+    [[ "$output" == *"unknown activation host destination"* ]]
+}
+
+@test "launch instruction contract rejects tampered destination and version" {
+    local fixture
+    fixture="$(make_launch_contract_fixture)"
+    python3 - "$fixture/config/host-capabilities.json" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+registry = json.loads(path.read_text())
+registry["hosts"]["codex"]["activation_instruction_file"] = "ESCAPED.md"
+path.write_text(json.dumps(registry, indent=2) + "\n")
+PY
+
+    run launch_contract_query "$fixture" codex
+    [[ "$status" -ne 0 ]]
+    [[ "$output" == *"invalid activation contract"* ]]
+
+    fixture="$(make_launch_contract_fixture)"
+    python3 - "$fixture/config/host-capabilities.json" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+registry = json.loads(path.read_text())
+registry["activation_contract"]["block_version"] = 2
+path.write_text(json.dumps(registry, indent=2) + "\n")
+PY
+    run launch_contract_query "$fixture" codex
+    [[ "$status" -ne 0 ]]
+    [[ "$output" == *"invalid activation contract"* ]]
 }
 
 @test "launch rejects host bytes changed after pinning without version or help probes" {

@@ -56,12 +56,14 @@ _sbom_sha256() {
 
 VERSION="$(tr -d '[:space:]' < VERSION)"
 
-# The archive, checksum manifest, and SBOM all use one payload inventory.
-# sbom.json cannot hash itself; the archive's internal SHA256SUMS hashes it.
+# SHA256SUMS and the SBOM bind the canonical release subject. Detached claim
+# receipts and their reference-bearing contract may be packaged by the archive,
+# but the shared exclusion registry keeps those attestations outside the
+# subject they describe. sbom.json also cannot hash itself.
 # Do not use only process substitution here: mapfile would hide an inventory
 # failure and could turn a missing release root into an apparently valid SBOM.
 tmp_inventory=$(mktemp)
-if ! mainframe_release_payload_files "$ROOT" > "$tmp_inventory"; then
+if ! mainframe_release_subject_files "$ROOT" > "$tmp_inventory"; then
     rm -f "$tmp_inventory"
     exit 1
 fi
@@ -144,7 +146,7 @@ PYEOF
     printf '  "components": [\n'
     printf '    {"type": "application", "bom-ref": "runtime:bash", "name": "Bash", "version": "4.4", "properties": [{"name": "mainframe:version-constraint", "value": ">=4.4"}]},\n'
     printf '    {"type": "application", "bom-ref": "runtime:jq", "name": "jq", "properties": [{"name": "mainframe:requirement", "value": "required for agent enforcement and full metadata support"}]},\n'
-    printf '    {"type": "application", "bom-ref": "runtime:python", "name": "Python", "version": "3.9", "properties": [{"name": "mainframe:version-constraint", "value": ">=3.9 for Pi diagnosis and lifecycle"}, {"name": "mainframe:managed-host-version-constraint", "value": ">=3.10"}, {"name": "mainframe:requirement", "value": "Pi diagnosis/lifecycle and managed-host install, remove, and restore"}]}'
+    printf '    {"type": "application", "bom-ref": "runtime:python", "name": "Python", "version": "3.9", "properties": [{"name": "mainframe:version-constraint", "value": ">=3.9 for control-plane and Pi diagnosis/lifecycle"}, {"name": "mainframe:managed-host-version-constraint", "value": ">=3.10"}, {"name": "mainframe:requirement", "value": "durable control-plane CLI, Pi diagnosis/lifecycle, and managed-host install, remove, and restore"}]}'
     for f in "${FILES[@]}"; do
         [[ -f "$f" ]] || continue
         size=$(wc -c < "$f" | tr -d '[:space:]')

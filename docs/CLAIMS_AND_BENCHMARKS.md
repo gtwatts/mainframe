@@ -14,6 +14,37 @@ MAINFRAME's public claims should be easy to reproduce from the repository. This 
 
 Proposed targets must not be presented as shipped performance. Internal reviews and historical research are not independent validation.
 
+## Control-plane promotion claim
+
+`config/control-plane-claim.json` is the closed promotion contract for the
+source-candidate, control-plane-preview, host-preview, stable-release, and
+category-claim levels. Its gate states, evidence paths, and remaining proof are
+derived from typed, content-bound receipts. A receipt's authored `result` is
+not execution proof: for eligible local source gates, the checker reruns the
+exact reviewed verifier command itself. Distribution, installed-host,
+approval-authority, and independent-outcome gates require an externally
+verifiable authority path and cannot be promoted by local JSON:
+
+```bash
+python3 -I -S -B scripts/check-control-plane-claim.py --json
+```
+
+The advertised level must equal the highest promotion whose required gates are
+all green. Missing, symbolic-link, malformed, proposed-only, or out-of-root
+evidence cannot support a green gate. Public “ultimate control plane” language
+is prohibited until the machine contract reaches `category-claim`; editing
+prose does not promote the contract.
+
+`source-candidate` intentionally requires only final release integrity,
+semantic authority, and runtime closure. `control-plane-preview` and every
+higher level additionally require explicit coding-agent and project-memory
+contracts. The coding gate covers workspace-bound public read/search plus
+fail-closed approval-required edit, test, and build behavior; it does not prove
+authority to execute those effects. The project-memory gate covers all six
+durable mutations and six read-plane operations, metadata-only durability,
+transient privacy, recovery, and no legacy fallback. Real coding approval
+authority remains an external durable-authority proof.
+
 ## Version and function inventory
 
 `VERSION` is the product version source. `FUNCTIONS.json` is the generated registry source.

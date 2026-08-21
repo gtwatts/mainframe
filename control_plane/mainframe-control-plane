@@ -1,0 +1,15 @@
+#!/usr/bin/python3 -I
+"""Fixed-path isolated entry point for the local control-plane kernel."""
+
+from pathlib import Path
+import sys
+
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from mainframe_control_plane.cli import main  # noqa: E402
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

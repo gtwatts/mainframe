@@ -1,11 +1,11 @@
 {
   "version": "10.2.0",
-  "generated": "2026-08-13T09:10:40Z",
+  "generated": "2026-08-20T19:30:37Z",
   "stats": {
-    "unique_functions": 4406,
-    "registrations": 4475,
-    "total_functions": 4475,
-    "total_libraries": 193,
+    "unique_functions": 4401,
+    "registrations": 4470,
+    "total_functions": 4470,
+    "total_libraries": 192,
     "categories": ["versioning", "strings", "utilities", "monitoring", "validation", "discovery", "caching", "cli", "parsing", "fp", "streaming", "ai", "performance", "system", "safety", "errors", "compatibility", "reliability", "network", "datetime", "logging", "async", "ci", "templating", "environment", "interactive", "containers", "vcs", "output", "security", "crypto", "metaprogramming", "process", "arrays", "other", "analysis", "data", "files", "config"]
   },
   "libraries": {
@@ -38107,78 +38107,6 @@
           "signature": "log::env",
           "params": [],
           "returns": "stdout",
-          "idempotent": false,
-          "pure": false
-        }
-      }
-    },
-    "mcp_server": {
-      "file": "lib/mcp_server.sh",
-      "description": "MCP server implementation that exposes Mainframe functions as tools for Claude Code and other MCP-compatible clients. Enables AI assistants to discover and invoke Mainframe capabilities through standardized JSON-RPC interface.",
-      "category": "other",
-      "functions": {
-        "mcp_register_tool": {
-          "description": null,
-          "signature": "mcp_register_tool",
-          "params": [
-            {
-              "name": "tool_name",
-              "position": 1,
-              "required": true,
-              "default": null
-            },
-            {
-              "name": "function_name",
-              "position": 2,
-              "required": true,
-              "default": null
-            },
-            {
-              "name": "description",
-              "position": 3,
-              "required": true,
-              "default": null
-            },
-            {
-              "name": "schema",
-              "position": 4,
-              "required": false,
-              "default": "{"
-            }
-          ],
-          "returns": "void",
-          "idempotent": false,
-          "pure": false
-        },
-        "mcp_register_default_tools": {
-          "description": null,
-          "signature": "mcp_register_default_tools",
-          "params": [],
-          "returns": "void",
-          "idempotent": false,
-          "pure": false
-        },
-        "mcp_register_orchestration_tools": {
-          "description": null,
-          "signature": "mcp_register_orchestration_tools",
-          "params": [],
-          "returns": "void",
-          "idempotent": false,
-          "pure": false
-        },
-        "mcp_server_start": {
-          "description": null,
-          "signature": "mcp_server_start",
-          "params": [],
-          "returns": "void",
-          "idempotent": false,
-          "pure": false
-        },
-        "mcp_server_run": {
-          "description": null,
-          "signature": "mcp_server_run",
-          "params": [],
-          "returns": "void",
           "idempotent": false,
           "pure": false
         }

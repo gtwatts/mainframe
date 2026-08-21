@@ -9,8 +9,14 @@
 # =============================================================================
 
 # Prevent double-sourcing
-[[ -n "${_MAINFRAME_PURE_UTIL_LOADED:-}" ]] && return 0
-readonly _MAINFRAME_PURE_UTIL_LOADED=1
+if [[ -n "${_MAINFRAME_PURE_UTIL_LOADED:-}" ]]; then
+    # common.sh may replay the reviewed full closure after a narrower tier was
+    # loaded. Re-apply this canonical collision owner without weakening the
+    # normal double-source guard.
+    [[ "${_MAINFRAME_CANONICAL_REPLAY:-0}" == "1" ]] || return 0
+else
+    readonly _MAINFRAME_PURE_UTIL_LOADED=1
+fi
 
 # =============================================================================
 # TIME & DATE

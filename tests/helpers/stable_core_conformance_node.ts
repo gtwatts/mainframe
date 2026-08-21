@@ -19,15 +19,29 @@ const BROKER_ENVELOPE_KEYS = [
   "stdout_b64",
   "timed_out",
 ];
-const NODE_RESULT_KEYS = ["envelope", "raw", "resultKind", "stderr", "stdout"];
+const NODE_RESULT_KEYS = ["controlPlane", "envelope", "raw", "resultKind", "stderr", "stdout"];
 const PI_DETAILS_KEYS = [
   "argumentMetadata",
   "broker",
   "canonicalId",
+  "controlPlane",
   "functionName",
   "result",
   "risk",
   "root",
+];
+const CONTROL_PLANE_KEYS = [
+  "brokerReceipt",
+  "callId",
+  "clientCorrelationId",
+  "decisionId",
+  "evidenceId",
+  "inputDigest",
+  "outcome",
+  "resultAvailable",
+  "runId",
+  "schemaVersion",
+  "status",
 ];
 const PI_RESULT_KEYS = [
   "argumentCount",
@@ -114,6 +128,23 @@ async function runNode(sourceRoot, runtimeRoot, corpus, modulePath) {
       }
       if (!exactKeys(result.envelope, BROKER_ENVELOPE_KEYS)) {
         throw new TypeError("Node broker envelope shape is not exact");
+      }
+      if (!exactKeys(result.controlPlane, CONTROL_PLANE_KEYS)) {
+        throw new TypeError("Node durable control-plane shape is not exact");
+      }
+      if (
+        result.controlPlane.schemaVersion !== 1 ||
+        result.controlPlane.status !== "completed" ||
+        result.controlPlane.outcome !== "succeeded" ||
+        result.controlPlane.resultAvailable !== true ||
+        !/^client-nodejs-[0-9a-f]{32}$/.test(result.controlPlane.clientCorrelationId) ||
+        !/^run-[0-9a-f]{32}$/.test(result.controlPlane.runId) ||
+        !/^call-[0-9a-f]{32}$/.test(result.controlPlane.callId) ||
+        !/^decision-[0-9a-f]{32}$/.test(result.controlPlane.decisionId) ||
+        !/^evidence-[0-9a-f]{32}$/.test(result.controlPlane.evidenceId) ||
+        !/^[0-9a-f]{64}$/.test(result.controlPlane.inputDigest)
+      ) {
+        throw new TypeError("Node durable control-plane identity is invalid");
       }
       if (typeof result.raw !== "string" || typeof result.resultKind !== "string") {
         throw new TypeError("Node broker result metadata has invalid types");
@@ -209,13 +240,32 @@ async function runPi(sourceRoot, runtimeRoot, corpus, explicitPi) {
         throw new TypeError("Pi tool content shape is not exact text");
       }
       if (!exactKeys(result.details, PI_DETAILS_KEYS)) {
-        throw new TypeError("Pi tool details shape is not exact");
+        throw new TypeError(
+          `Pi tool details shape is not exact: ${Object.keys(result.details ?? {}).sort().join(",")}`,
+        );
       }
       if (!exactKeys(result.details.result, PI_RESULT_KEYS)) {
         throw new TypeError("Pi public result shape is not exact");
       }
       if (!exactKeys(result.details.broker, PI_BROKER_KEYS)) {
         throw new TypeError("Pi broker metadata shape is not exact");
+      }
+      if (!exactKeys(result.details.controlPlane, CONTROL_PLANE_KEYS)) {
+        throw new TypeError("Pi durable control-plane shape is not exact");
+      }
+      if (
+        result.details.controlPlane.schemaVersion !== 1 ||
+        result.details.controlPlane.status !== "completed" ||
+        result.details.controlPlane.outcome !== "succeeded" ||
+        result.details.controlPlane.resultAvailable !== true ||
+        !/^client-pi-[0-9a-f]{32}$/.test(result.details.controlPlane.clientCorrelationId) ||
+        !/^run-[0-9a-f]{32}$/.test(result.details.controlPlane.runId) ||
+        !/^call-[0-9a-f]{32}$/.test(result.details.controlPlane.callId) ||
+        !/^decision-[0-9a-f]{32}$/.test(result.details.controlPlane.decisionId) ||
+        !/^evidence-[0-9a-f]{32}$/.test(result.details.controlPlane.evidenceId) ||
+        !/^[0-9a-f]{64}$/.test(result.details.controlPlane.inputDigest)
+      ) {
+        throw new TypeError("Pi durable control-plane identity is invalid");
       }
       encoded(result.content[0].text, "Pi content text");
       encoded(result.details.result.stdout, "Pi stdout");

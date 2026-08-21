@@ -134,7 +134,7 @@ if not registry.load():
     print('Failed to load functions')
     sys.exit(1)
 
-tools = registry.generate_all_tools(tier='core')
+tools = registry.generate_all_tools(tier='stable-core')
 
 if len(tools) == 0:
     print('No tools generated')
@@ -245,7 +245,7 @@ sys.exit(0)
     [[ "$output" == *"SUCCESS"* ]]
 }
 
-@test "MCP tool registry filters by tier correctly" {
+@test "MCP tool registry rejects legacy discovery profiles as execution tiers" {
     run python3 -c "
 import sys
 sys.path.insert(0, '$MAINFRAME_ROOT/mcp/src')
@@ -262,11 +262,11 @@ full_tools = registry.generate_all_tools(tier='full')
 
 print(f'Stable: {len(stable_tools)}, Core: {len(core_tools)}, Full: {len(full_tools)}')
 
-if len(stable_tools) <= len(core_tools) <= len(full_tools):
-    print('SUCCESS: Tier filtering works correctly')
+if len(stable_tools) == 26 and core_tools == [] and full_tools == []:
+    print('SUCCESS: Only reviewed stable-core is executable')
     sys.exit(0)
 else:
-    print('ERROR: Tier hierarchy violated')
+    print('ERROR: Legacy discovery profile became executable')
     sys.exit(1)
 "
     [ "$status" -eq 0 ]

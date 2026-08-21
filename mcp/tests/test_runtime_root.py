@@ -225,7 +225,9 @@ def test_managed_symlink_precedes_absent_legacy_root(tmp_path, monkeypatch):
     assert registry.mainframe_root == str(candidate)
     assert executor.mainframe_root == str(candidate)
     assert executor.mainframe_cli == str(candidate / 'bin' / 'mainframe')
-    assert executor._bash is None
+    assert hasattr(executor, 'execute_control_plane')
+    assert not hasattr(executor, 'execute_broker')
+    assert not hasattr(executor, 'execute')
 
 
 def test_ambient_environment_root_cannot_override_managed_symlink(

@@ -1,0 +1,300 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gtwatts/mainframe/schemas/host-conformance-receipt-v1.json",
+  "title": "MAINFRAME closed host conformance receipt",
+  "$comment": "Artifact result values are receipt assertions, not proof that a host executed. This schema and its structural validator do not upgrade live or released claims without a separate transcript or attestation content validator.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "receipt_id",
+    "issued_at",
+    "contract",
+    "subject",
+    "instruction",
+    "tool_classes",
+    "capabilities",
+    "verdict",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "mainframe-host-conformance-receipt" },
+    "receipt_id": {
+      "type": "string",
+      "pattern": "^hcr-[a-z0-9][a-z0-9_-]{2,127}$"
+    },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "contract": { "$ref": "#/$defs/contract" },
+    "subject": { "$ref": "#/$defs/subject" },
+    "instruction": { "$ref": "#/$defs/instructionClaim" },
+    "tool_classes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shell",
+        "file-read",
+        "file-write",
+        "network",
+        "process",
+        "mcp-tool",
+        "host-control"
+      ],
+      "properties": {
+        "shell": { "$ref": "#/$defs/routeClaim" },
+        "file-read": { "$ref": "#/$defs/routeClaim" },
+        "file-write": { "$ref": "#/$defs/routeClaim" },
+        "network": { "$ref": "#/$defs/routeClaim" },
+        "process": { "$ref": "#/$defs/routeClaim" },
+        "mcp-tool": { "$ref": "#/$defs/routeClaim" },
+        "host-control": { "$ref": "#/$defs/routeClaim" }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approval", "cancel", "progress", "memory", "audit"],
+      "properties": {
+        "approval": { "$ref": "#/$defs/capabilityClaim" },
+        "cancel": { "$ref": "#/$defs/capabilityClaim" },
+        "progress": { "$ref": "#/$defs/capabilityClaim" },
+        "memory": { "$ref": "#/$defs/capabilityClaim" },
+        "audit": { "$ref": "#/$defs/capabilityClaim" }
+      }
+    },
+    "verdict": { "enum": ["pass", "fail"] },
+    "limitations": { "$ref": "#/$defs/limitations" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$"
+    },
+    "relativePath": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._@+-]+(?:/[A-Za-z0-9._@+-]+)*$"
+    },
+    "evidenceLevel": {
+      "enum": [
+        "unverified",
+        "instructions",
+        "configured",
+        "enforced",
+        "live",
+        "released"
+      ]
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024
+      }
+    },
+    "claimLimitations": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024
+      }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "registry",
+        "registry_schema_version",
+        "registry_contract_version",
+        "registry_sha256",
+        "receipt_schema",
+        "receipt_schema_sha256"
+      ],
+      "properties": {
+        "registry": { "const": "config/host-capabilities.json" },
+        "registry_schema_version": { "const": 1 },
+        "registry_contract_version": { "$ref": "#/$defs/semver" },
+        "registry_sha256": { "$ref": "#/$defs/sha256" },
+        "receipt_schema": {
+          "const": "config/host-conformance-receipt.schema.json"
+        },
+        "receipt_schema_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "host_id",
+        "host_version",
+        "platform",
+        "mainframe_version",
+        "payload_sha256",
+        "payload_status",
+        "adapter_path",
+        "adapter_sha256"
+      ],
+      "properties": {
+        "host_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+        },
+        "host_version": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1, "maxLength": 128 }
+          ]
+        },
+        "platform": {
+          "enum": [
+            "Darwin-arm64-none",
+            "Darwin-x86_64-none",
+            "Linux-x86_64-glibc"
+          ]
+        },
+        "mainframe_version": { "$ref": "#/$defs/semver" },
+        "payload_sha256": {
+          "description": "SHA-256 of the exact canonical SHA256SUMS bytes identifying this payload candidate or release.",
+          "$ref": "#/$defs/sha256"
+        },
+        "payload_status": {
+          "description": "candidate binds local payload bytes only; released additionally requires a registry-authorized released claim and bound release attestation.",
+          "enum": ["candidate", "released"]
+        },
+        "adapter_path": { "$ref": "#/$defs/relativePath" },
+        "adapter_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "sha256", "result"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "instruction",
+            "configuration",
+            "deterministic-test",
+            "live-transcript",
+            "release-attestation"
+          ]
+        },
+        "path": { "$ref": "#/$defs/relativePath" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "result": {
+          "description": "Receipt assertion only; it is not proof of host execution.",
+          "enum": ["pass", "fail"]
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "releaseBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "archive_sha256", "attestation_uri"],
+      "properties": {
+        "version": { "$ref": "#/$defs/semver" },
+        "archive_sha256": { "$ref": "#/$defs/sha256" },
+        "attestation_uri": {
+          "type": "string",
+          "pattern": "^https://\\S+$",
+          "maxLength": 2048
+        }
+      }
+    },
+    "nullableRelease": {
+      "anyOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/releaseBinding" }
+      ]
+    },
+    "nullableDateTime": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "format": "date-time" }
+      ]
+    },
+    "nullableString": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "minLength": 1, "maxLength": 1024 }
+      ]
+    },
+    "instructionClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence_level", "artifact", "limitations"],
+      "properties": {
+        "evidence_level": { "const": "instructions" },
+        "artifact": { "$ref": "#/$defs/artifact" },
+        "limitations": { "$ref": "#/$defs/limitations" }
+      }
+    },
+    "routeClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_level",
+        "interception",
+        "mechanism",
+        "route",
+        "fail_behavior",
+        "artifacts",
+        "observed_at",
+        "release",
+        "limitations"
+      ],
+      "properties": {
+        "evidence_level": { "$ref": "#/$defs/evidenceLevel" },
+        "interception": { "enum": ["none", "declared", "observed"] },
+        "mechanism": { "$ref": "#/$defs/nullableString" },
+        "route": { "$ref": "#/$defs/nullableString" },
+        "fail_behavior": {
+          "enum": [
+            "fail-closed",
+            "fail-open",
+            "not-intercepted",
+            "not-applicable"
+          ]
+        },
+        "artifacts": { "$ref": "#/$defs/artifacts" },
+        "observed_at": { "$ref": "#/$defs/nullableDateTime" },
+        "release": { "$ref": "#/$defs/nullableRelease" },
+        "limitations": { "$ref": "#/$defs/claimLimitations" }
+      }
+    },
+    "capabilityClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_level",
+        "mechanism",
+        "artifacts",
+        "observed_at",
+        "release",
+        "limitations"
+      ],
+      "properties": {
+        "evidence_level": { "$ref": "#/$defs/evidenceLevel" },
+        "mechanism": { "$ref": "#/$defs/nullableString" },
+        "artifacts": { "$ref": "#/$defs/artifacts" },
+        "observed_at": { "$ref": "#/$defs/nullableDateTime" },
+        "release": { "$ref": "#/$defs/nullableRelease" },
+        "limitations": { "$ref": "#/$defs/claimLimitations" }
+      }
+    }
+  }
+}

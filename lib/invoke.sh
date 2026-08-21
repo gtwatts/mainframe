@@ -43,8 +43,11 @@ readonly _MAINFRAME_INVOKE_STAT _MAINFRAME_INVOKE_UNAME
 readonly _MAINFRAME_INVOKE_KERNEL
 
 _MAINFRAME_INVOKE_ACTIVE_PID=""
-_MAINFRAME_INVOKE_INPUT_FILE=""
-_MAINFRAME_INVOKE_RUN_TEMP_DIR=""
+_MAINFRAME_INVOKE_INPUT_B64=""
+_MAINFRAME_INVOKE_RUN_STDOUT_READ_FD=""
+_MAINFRAME_INVOKE_RUN_STDOUT_WRITE_FD=""
+_MAINFRAME_INVOKE_RUN_STDERR_READ_FD=""
+_MAINFRAME_INVOKE_RUN_STDERR_WRITE_FD=""
 
 _mainframe_invoke_group_exists() {
     local pid="${1:-}"
@@ -73,16 +76,20 @@ _mainframe_invoke_kill_group() {
 }
 
 _mainframe_invoke_cleanup_files() {
-    if [[ -n "${_MAINFRAME_INVOKE_INPUT_FILE:-}" ]]; then
-        /bin/rm -f -- "$_MAINFRAME_INVOKE_INPUT_FILE" 2>/dev/null || true
-        _MAINFRAME_INVOKE_INPUT_FILE=""
-    fi
-    if [[ -n "${_MAINFRAME_INVOKE_RUN_TEMP_DIR:-}" ]]; then
-        /bin/rm -f -- "$_MAINFRAME_INVOKE_RUN_TEMP_DIR/stdout" \
-            "$_MAINFRAME_INVOKE_RUN_TEMP_DIR/stderr" 2>/dev/null || true
-        /bin/rmdir -- "$_MAINFRAME_INVOKE_RUN_TEMP_DIR" 2>/dev/null || true
-        _MAINFRAME_INVOKE_RUN_TEMP_DIR=""
-    fi
+    local fd variable
+
+    for variable in \
+        _MAINFRAME_INVOKE_RUN_STDOUT_READ_FD \
+        _MAINFRAME_INVOKE_RUN_STDOUT_WRITE_FD \
+        _MAINFRAME_INVOKE_RUN_STDERR_READ_FD \
+        _MAINFRAME_INVOKE_RUN_STDERR_WRITE_FD; do
+        fd="${!variable:-}"
+        if [[ "$fd" =~ ^[0-9]+$ ]]; then
+            exec {fd}>&- 2>/dev/null || true
+        fi
+        printf -v "$variable" '%s' ""
+    done
+    _MAINFRAME_INVOKE_INPUT_B64=""
 }
 
 _mainframe_invoke_cleanup_active() {
@@ -344,26 +351,32 @@ _mainframe_invoke_audit() {
     _mainframe_invoke_audit_target_is_current
 }
 
-_mainframe_invoke_base64_file() {
-    /usr/bin/base64 <"$1" | /usr/bin/tr -d '\n'
+_mainframe_invoke_base64_fd() {
+    local fd="$1"
+    [[ "$fd" =~ ^[0-9]+$ ]] || return 1
+    /usr/bin/base64 <&"$fd" | /usr/bin/tr -d '\n'
 }
 
 _mainframe_invoke_emit_envelope() {
     local ok="$1" status="$2" exit_code="$3" timed_out="$4"
-    local output_exceeded="$5" duration_ms="$6" stdout_file="$7"
-    local stderr_file="$8" message="${9:-}" stdout_b64="" stderr_b64=""
+    local output_exceeded="$5" duration_ms="$6" stdout_fd="$7"
+    local stderr_fd="$8" message="${9:-}"
 
-    [[ -z "$stdout_file" ]] || stdout_b64="$(_mainframe_invoke_base64_file "$stdout_file")"
-    [[ -z "$stderr_file" ]] || stderr_b64="$(_mainframe_invoke_base64_file "$stderr_file")"
+    # Keep the potentially 1 MiB captures off argv and out of shell variables.
+    # jq reads their canonical base64 encodings from inherited anonymous FDs.
     "$_MAINFRAME_INVOKE_JQ" -cn \
+        --rawfile stdout_b64 <(
+            [[ -z "$stdout_fd" ]] || _mainframe_invoke_base64_fd "$stdout_fd"
+        ) \
+        --rawfile stderr_b64 <(
+            [[ -z "$stderr_fd" ]] || _mainframe_invoke_base64_fd "$stderr_fd"
+        ) \
         --argjson ok "$ok" \
         --arg status "$status" \
         --arg canonical_id "${_MAINFRAME_INVOKE_CANONICAL_ID:-}" \
         --arg name "${_MAINFRAME_INVOKE_NAME:-}" \
         --arg owner "${_MAINFRAME_INVOKE_OWNER:-}" \
         --arg audit_id "$_MAINFRAME_INVOKE_AUDIT_ID" \
-        --arg stdout_b64 "$stdout_b64" \
-        --arg stderr_b64 "$stderr_b64" \
         --arg message "$message" \
         --argjson exit_code "$exit_code" \
         --argjson timed_out "$timed_out" \
@@ -423,29 +436,48 @@ _mainframe_invoke_read_version() {
 }
 
 _mainframe_invoke_read_stdin() {
-    local dd_path=/bin/dd
+    local dd_path=/bin/dd captured
     [[ -x "$dd_path" ]] || dd_path=/usr/bin/dd
     [[ -x "$dd_path" ]] || return 1
-    "$dd_path" bs=1 count=$((_MAINFRAME_INVOKE_INPUT_LIMIT + 1)) \
-        of="$_MAINFRAME_INVOKE_INPUT_FILE" 2>/dev/null
+    # Base64 is safe in a Bash variable and preserves every caller byte,
+    # including trailing newlines and raw NULs that jq must reject.  Raw input
+    # travels only through pipes; SIGKILL cannot strand a secret pathname.
+    captured="$(
+        set -o pipefail
+        "$dd_path" bs=1 count=$((_MAINFRAME_INVOKE_INPUT_LIMIT + 1)) 2>/dev/null |
+            /usr/bin/base64 | /usr/bin/tr -d '\n'
+    )" || return 1
+    [[ "$captured" =~ ^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$ ]] || return 1
+    _MAINFRAME_INVOKE_INPUT_B64="$captured"
+}
+
+_mainframe_invoke_base64_decode() {
+    case "$_MAINFRAME_INVOKE_KERNEL" in
+        Darwin) /usr/bin/base64 -D ;;
+        Linux) /usr/bin/base64 -d ;;
+        *) return 1 ;;
+    esac
 }
 
 _mainframe_invoke_prepare_input() {
     local input_source="$1"
 
-    _MAINFRAME_INVOKE_INPUT_FILE="$(/usr/bin/mktemp \
-        "${TMPDIR:-/tmp}/mainframe-invoke-input.XXXXXX")" || return 1
-    /bin/chmod 600 "$_MAINFRAME_INVOKE_INPUT_FILE" || return 1
-
     if [[ "$input_source" == - ]]; then
         _mainframe_invoke_read_stdin || return 1
     else
-        printf '%s' "$input_source" >"$_MAINFRAME_INVOKE_INPUT_FILE" || return 1
+        _MAINFRAME_INVOKE_INPUT_B64="$(printf '%s' "$input_source" | \
+            /usr/bin/base64 | /usr/bin/tr -d '\n')" || return 1
     fi
 
-    _MAINFRAME_INVOKE_INPUT_BYTES="$(LC_ALL=C /usr/bin/wc -c \
-        <"$_MAINFRAME_INVOKE_INPUT_FILE" | /usr/bin/tr -d '[:space:]')" || return 1
+    _MAINFRAME_INVOKE_INPUT_BYTES="$(printf '%s' "$_MAINFRAME_INVOKE_INPUT_B64" | \
+        _mainframe_invoke_base64_decode | LC_ALL=C /usr/bin/wc -c | \
+        /usr/bin/tr -d '[:space:]')" || return 1
     [[ "$_MAINFRAME_INVOKE_INPUT_BYTES" =~ ^[0-9]+$ ]]
+}
+
+_mainframe_invoke_jq_input() {
+    printf '%s' "$_MAINFRAME_INVOKE_INPUT_B64" | \
+        _mainframe_invoke_base64_decode | "$_MAINFRAME_INVOKE_JQ" "$@"
 }
 
 _mainframe_invoke_input_has_unique_fields() {
@@ -453,7 +485,7 @@ _mainframe_invoke_input_has_unique_fields() {
     # The streaming form exposes each occurrence before reduction. Because the
     # reviewed schema permits only top-level strings and string arrays, one
     # scalar event or array index zero uniquely marks each property occurrence.
-    "$_MAINFRAME_INVOKE_JQ" -e --stream -n '
+    _mainframe_invoke_jq_input -e --stream '
         reduce inputs as $event ({};
           if (($event | length) == 2 and
               ($event[0] | type) == "array" and
@@ -466,7 +498,7 @@ _mainframe_invoke_input_has_unique_fields() {
               ((.[($event[0][0] | tojson)] // 0) + 1)
           else . end)
         | all(.[]; . == 1)
-    ' "$_MAINFRAME_INVOKE_INPUT_FILE" >/dev/null 2>&1
+    ' >/dev/null 2>&1
 }
 
 _mainframe_invoke_extract_argv() {
@@ -490,8 +522,8 @@ _mainframe_invoke_extract_argv() {
             '.input_schema.properties[$field].type' \
             <<<"$_MAINFRAME_INVOKE_EXPORT")" || return 1
 
-        if "$_MAINFRAME_INVOKE_JQ" -e --arg field "$field" \
-            'has($field)' "$_MAINFRAME_INVOKE_INPUT_FILE" >/dev/null; then
+        if _mainframe_invoke_jq_input -e --arg field "$field" \
+            'has($field)' >/dev/null; then
             value_source=input
         elif "$_MAINFRAME_INVOKE_JQ" -e --arg field "$field" \
             '.input_schema.properties[$field] | has("default")' \
@@ -512,8 +544,8 @@ _mainframe_invoke_extract_argv() {
             scalar:string)
                 if [[ "$value_source" == input ]]; then
                     IFS= read -r -d '' value < <(
-                        "$_MAINFRAME_INVOKE_JQ" -j --arg field "$field" \
-                            '.[$field], "\u0000"' "$_MAINFRAME_INVOKE_INPUT_FILE"
+                        _mainframe_invoke_jq_input -j --arg field "$field" \
+                            '.[$field], "\u0000"'
                     ) || return 1
                 else
                     IFS= read -r -d '' value < <(
@@ -526,8 +558,8 @@ _mainframe_invoke_extract_argv() {
                 ;;
             spread:array)
                 if [[ "$value_source" == input ]]; then
-                    value_count="$("$_MAINFRAME_INVOKE_JQ" -r --arg field "$field" \
-                        '.[$field] | length' "$_MAINFRAME_INVOKE_INPUT_FILE")" || return 1
+                    value_count="$(_mainframe_invoke_jq_input -r --arg field "$field" \
+                        '.[$field] | length')" || return 1
                 else
                     value_count="$("$_MAINFRAME_INVOKE_JQ" -r --arg field "$field" \
                         '.input_schema.properties[$field].default | length' \
@@ -537,10 +569,9 @@ _mainframe_invoke_extract_argv() {
                 for ((value_index=0; value_index<value_count; value_index++)); do
                     if [[ "$value_source" == input ]]; then
                         IFS= read -r -d '' value < <(
-                            "$_MAINFRAME_INVOKE_JQ" -j --arg field "$field" \
+                            _mainframe_invoke_jq_input -j --arg field "$field" \
                                 --argjson index "$value_index" \
-                                '.[$field][$index], "\u0000"' \
-                                "$_MAINFRAME_INVOKE_INPUT_FILE"
+                                '.[$field][$index], "\u0000"'
                         ) || return 1
                     else
                         IFS= read -r -d '' value < <(
@@ -558,9 +589,90 @@ _mainframe_invoke_extract_argv() {
     done
 }
 
+# Create a regular capture object so the kernel file-size limit remains
+# available, but unlink its only pathname before any function output can be
+# written. Separate read/write opens keep the reader at offset zero for exact
+# raw/base64 rendering after the child exits.
+_mainframe_invoke_open_capture() {
+    local read_variable="$1" write_variable="$2"
+    local path read_fd write_fd
+
+    path="$(/usr/bin/mktemp \
+        "${TMPDIR:-/tmp}/mainframe-invoke-capture.XXXXXX")" || return 1
+    /bin/chmod 600 "$path" || {
+        /bin/rm -f -- "$path" 2>/dev/null || true
+        return 1
+    }
+    exec {read_fd}<"$path" || {
+        /bin/rm -f -- "$path" 2>/dev/null || true
+        return 1
+    }
+    exec {write_fd}>"$path" || {
+        exec {read_fd}<&- 2>/dev/null || true
+        /bin/rm -f -- "$path" 2>/dev/null || true
+        return 1
+    }
+    /bin/rm -f -- "$path" 2>/dev/null || {
+        exec {read_fd}<&- 2>/dev/null || true
+        exec {write_fd}>&- 2>/dev/null || true
+        return 1
+    }
+    printf -v "$read_variable" '%s' "$read_fd"
+    printf -v "$write_variable" '%s' "$write_fd"
+}
+
+_mainframe_invoke_close_capture_fd() {
+    local variable="$1" fd="${!1:-}"
+    if [[ "$fd" =~ ^[0-9]+$ ]]; then
+        exec {fd}>&- 2>/dev/null || return 1
+    fi
+    printf -v "$variable" '%s' ""
+}
+
+_mainframe_invoke_capture_size() {
+    local fd="$1" size
+    [[ "$fd" =~ ^[0-9]+$ ]] || return 1
+    case "$_MAINFRAME_INVOKE_KERNEL" in
+        Darwin)
+            size="$("$_MAINFRAME_INVOKE_STAT" -f '%z' "/dev/fd/$fd" 2>/dev/null)" || return 1
+            ;;
+        Linux)
+            size="$("$_MAINFRAME_INVOKE_STAT" -c '%s' "/proc/self/fd/$fd" 2>/dev/null)" || return 1
+            ;;
+        *) return 1 ;;
+    esac
+    [[ "$size" =~ ^[0-9]+$ ]] || return 1
+    printf '%s' "$size"
+}
+
+_mainframe_invoke_replace_capture_text() {
+    local stream="$1" text="$2" read_variable write_variable old_fd new_write
+    case "$stream" in
+        stdout)
+            read_variable=_MAINFRAME_INVOKE_RUN_STDOUT_READ_FD
+            write_variable=_MAINFRAME_INVOKE_RUN_STDOUT_WRITE_FD
+            ;;
+        stderr)
+            read_variable=_MAINFRAME_INVOKE_RUN_STDERR_READ_FD
+            write_variable=_MAINFRAME_INVOKE_RUN_STDERR_WRITE_FD
+            ;;
+        *) return 1 ;;
+    esac
+    old_fd="${!read_variable:-}"
+    if [[ "$old_fd" =~ ^[0-9]+$ ]]; then
+        exec {old_fd}<&- 2>/dev/null || return 1
+    fi
+    printf -v "$read_variable" '%s' ""
+    _mainframe_invoke_open_capture "$read_variable" "$write_variable" || return 1
+    new_write="${!write_variable}"
+    printf '%s' "$text" >&"$new_write" || return 1
+    _mainframe_invoke_close_capture_fd "$write_variable"
+}
+
 _mainframe_invoke_run() {
     local module_file="$1" timeout_ms="$2" output_limit="$3"
-    local output_file error_file temp_dir child_pid start_seconds deadline_seconds
+    local child_pid start_seconds deadline_seconds stdout_read stdout_write
+    local stderr_read stderr_write
     local stdout_bytes stderr_bytes combined_bytes exit_code=0
     local timed_out=false output_exceeded=false restore_errexit=false
     local descendant_survived=false result_mismatch=false
@@ -568,17 +680,16 @@ _mainframe_invoke_run() {
 
     [[ "$module_file" == "lib/${_MAINFRAME_INVOKE_OWNER}.sh" ]] || return 70
 
-    temp_dir="$(/usr/bin/mktemp -d \
-        "${TMPDIR:-/tmp}/mainframe-invoke.XXXXXX")" || return 70
-    _MAINFRAME_INVOKE_RUN_TEMP_DIR="$temp_dir"
-    /bin/chmod 700 "$temp_dir" || {
-        /bin/rmdir "$temp_dir" 2>/dev/null || true
-        return 70
-    }
-    output_file="$temp_dir/stdout"
-    error_file="$temp_dir/stderr"
-    : >"$output_file"
-    : >"$error_file"
+    _mainframe_invoke_open_capture \
+        _MAINFRAME_INVOKE_RUN_STDOUT_READ_FD \
+        _MAINFRAME_INVOKE_RUN_STDOUT_WRITE_FD || return 70
+    _mainframe_invoke_open_capture \
+        _MAINFRAME_INVOKE_RUN_STDERR_READ_FD \
+        _MAINFRAME_INVOKE_RUN_STDERR_WRITE_FD || return 70
+    stdout_read="$_MAINFRAME_INVOKE_RUN_STDOUT_READ_FD"
+    stdout_write="$_MAINFRAME_INVOKE_RUN_STDOUT_WRITE_FD"
+    stderr_read="$_MAINFRAME_INVOKE_RUN_STDERR_READ_FD"
+    stderr_write="$_MAINFRAME_INVOKE_RUN_STDERR_WRITE_FD"
 
     child_script='
 mainframe_root=$1
@@ -637,14 +748,20 @@ fi
         "$_MAINFRAME_INVOKE_JQ" \
         "$file_limit_blocks" \
         "${_MAINFRAME_INVOKE_ARGV[@]}" \
-        >"$output_file" 2>"$error_file" &
+        1>&"$stdout_write" 2>&"$stderr_write" &
     child_pid=$!
     _MAINFRAME_INVOKE_ACTIVE_PID="$child_pid"
     set +m
+    # Only the child retains the writers. The anonymous readers remain at
+    # offset zero in this supervisor for exact final rendering.
+    _mainframe_invoke_close_capture_fd \
+        _MAINFRAME_INVOKE_RUN_STDOUT_WRITE_FD || return 70
+    _mainframe_invoke_close_capture_fd \
+        _MAINFRAME_INVOKE_RUN_STDERR_WRITE_FD || return 70
 
     while kill -0 "$child_pid" 2>/dev/null; do
-        stdout_bytes="$(LC_ALL=C /usr/bin/wc -c <"$output_file" | /usr/bin/tr -d '[:space:]')"
-        stderr_bytes="$(LC_ALL=C /usr/bin/wc -c <"$error_file" | /usr/bin/tr -d '[:space:]')"
+        stdout_bytes="$(_mainframe_invoke_capture_size "$stdout_read")" || return 70
+        stderr_bytes="$(_mainframe_invoke_capture_size "$stderr_read")" || return 70
         combined_bytes=$((stdout_bytes + stderr_bytes))
         if (( combined_bytes > output_limit )); then
             output_exceeded=true
@@ -670,8 +787,8 @@ fi
     fi
     _MAINFRAME_INVOKE_ACTIVE_PID=""
 
-    stdout_bytes="$(LC_ALL=C /usr/bin/wc -c <"$output_file" | /usr/bin/tr -d '[:space:]')"
-    stderr_bytes="$(LC_ALL=C /usr/bin/wc -c <"$error_file" | /usr/bin/tr -d '[:space:]')"
+    stdout_bytes="$(_mainframe_invoke_capture_size "$stdout_read")" || return 70
+    stderr_bytes="$(_mainframe_invoke_capture_size "$stderr_read")" || return 70
     combined_bytes=$((stdout_bytes + stderr_bytes))
     (( combined_bytes <= output_limit )) || output_exceeded=true
     # SIGXFSZ is 25 on supported macOS/Linux hosts. The protected child exits
@@ -688,21 +805,22 @@ fi
     elif [[ "$output_exceeded" == "true" ]]; then
         exit_code=74
         _MAINFRAME_INVOKE_RUN_STATUS=output_limit
-        : >"$output_file"
-        printf 'invocation output exceeded the reviewed %s-byte limit\n' \
-            "$output_limit" >"$error_file"
+        _mainframe_invoke_replace_capture_text stdout "" || return 70
+        _mainframe_invoke_replace_capture_text stderr \
+            "$(printf 'invocation output exceeded the reviewed %s-byte limit\n' \
+                "$output_limit")"$'\n' || return 70
     elif [[ "$descendant_survived" == "true" ]]; then
         exit_code=70
         _MAINFRAME_INVOKE_RUN_STATUS=broker_error
-        : >"$output_file"
-        printf 'invocation denied: function left a descendant process running\n' \
-            >"$error_file"
+        _mainframe_invoke_replace_capture_text stdout "" || return 70
+        _mainframe_invoke_replace_capture_text stderr \
+            $'invocation denied: function left a descendant process running\n' || return 70
     elif [[ "$result_mismatch" == "true" ]]; then
         exit_code=70
         _MAINFRAME_INVOKE_RUN_STATUS=broker_error
-        : >"$output_file"
-        printf 'invocation denied: stdout contradicts the reviewed result contract\n' \
-            >"$error_file"
+        _mainframe_invoke_replace_capture_text stdout "" || return 70
+        _mainframe_invoke_replace_capture_text stderr \
+            $'invocation denied: stdout contradicts the reviewed result contract\n' || return 70
     elif (( exit_code == 0 )); then
         _MAINFRAME_INVOKE_RUN_STATUS=success
     else
@@ -713,9 +831,7 @@ fi
     _MAINFRAME_INVOKE_RUN_TIMED_OUT=$timed_out
     _MAINFRAME_INVOKE_RUN_OUTPUT_EXCEEDED=$output_exceeded
     _MAINFRAME_INVOKE_RUN_DURATION_MS=$(((SECONDS - start_seconds) * 1000))
-    _MAINFRAME_INVOKE_RUN_STDOUT=$output_file
-    _MAINFRAME_INVOKE_RUN_STDERR=$error_file
-    _MAINFRAME_INVOKE_RUN_TEMP_DIR=$temp_dir
+    return 0
 }
 
 _mainframe_invoke_main() {
@@ -1028,7 +1144,7 @@ _mainframe_invoke_main() {
         return $?
     fi
 
-    if ! "$_MAINFRAME_INVOKE_JQ" -e --argjson schema \
+    if ! _mainframe_invoke_jq_input -e --argjson schema \
         "$("$_MAINFRAME_INVOKE_JQ" -c '.input_schema' <<<"$_MAINFRAME_INVOKE_EXPORT")" '
         type == "object" and
         ($schema.type == "object") and
@@ -1049,7 +1165,7 @@ _mainframe_invoke_main() {
             ($entry.value | type == "array") and
             all($entry.value[];
               type == "string" and (contains("\u0000") | not))))
-    ' "$_MAINFRAME_INVOKE_INPUT_FILE" >/dev/null 2>&1; then
+    ' >/dev/null 2>&1; then
         _mainframe_invoke_fail 65 invalid_input "JSON request does not match the closed input schema"
         return $?
     fi
@@ -1086,9 +1202,9 @@ _mainframe_invoke_main() {
         "$_MAINFRAME_INVOKE_RUN_OUTPUT_EXCEEDED"; then
         _MAINFRAME_INVOKE_RUN_STATUS=audit_error
         _MAINFRAME_INVOKE_RUN_EXIT_CODE=74
-        printf 'invocation audit trail became unavailable\n' \
-            >"$_MAINFRAME_INVOKE_RUN_STDERR"
-        : >"$_MAINFRAME_INVOKE_RUN_STDOUT"
+        _mainframe_invoke_replace_capture_text stdout "" || return 70
+        _mainframe_invoke_replace_capture_text stderr \
+            $'invocation audit trail became unavailable\n' || return 70
     fi
 
     if [[ "$_MAINFRAME_INVOKE_FORMAT" == broker-json-v1 ]]; then
@@ -1099,11 +1215,11 @@ _mainframe_invoke_main() {
             "$_MAINFRAME_INVOKE_RUN_TIMED_OUT" \
             "$_MAINFRAME_INVOKE_RUN_OUTPUT_EXCEEDED" \
             "$_MAINFRAME_INVOKE_RUN_DURATION_MS" \
-            "$_MAINFRAME_INVOKE_RUN_STDOUT" \
-            "$_MAINFRAME_INVOKE_RUN_STDERR"
+            "$_MAINFRAME_INVOKE_RUN_STDOUT_READ_FD" \
+            "$_MAINFRAME_INVOKE_RUN_STDERR_READ_FD"
     else
-        /bin/cat "$_MAINFRAME_INVOKE_RUN_STDOUT"
-        /bin/cat "$_MAINFRAME_INVOKE_RUN_STDERR" >&2
+        /bin/cat <&"$_MAINFRAME_INVOKE_RUN_STDOUT_READ_FD"
+        /bin/cat <&"$_MAINFRAME_INVOKE_RUN_STDERR_READ_FD" >&2
     fi
 
     _mainframe_invoke_cleanup_files

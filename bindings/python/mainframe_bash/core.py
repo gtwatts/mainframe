@@ -6,6 +6,7 @@ Handles MAINFRAME detection, subprocess execution, and error handling.
 
 import base64
 import binascii
+import hashlib
 import json
 import math
 import os
@@ -16,7 +17,8 @@ import stat
 import subprocess
 import tempfile
 import time
-from dataclasses import dataclass
+import uuid as uuid_module
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -46,7 +48,7 @@ class MainframeBrokerError(MainframeError):
 
 @dataclass(frozen=True)
 class BrokerInvocationResult:
-    """Strictly validated and decoded broker-json-v1 response."""
+    """Strictly validated durable invocation with broker compatibility fields."""
 
     schema_version: int
     ok: bool
@@ -66,6 +68,18 @@ class BrokerInvocationResult:
     stdout: str
     stderr: str
     raw: str
+    client_correlation_id: str | None = None
+    run_id: str | None = None
+    call_id: str | None = None
+    decision_id: str | None = None
+    evidence_id: str | None = None
+    input_digest: str | None = None
+    outcome: str | None = None
+    result_available: bool = False
+    broker_receipt: dict[str, Any] | None = None
+    broker_envelope: dict[str, Any] | None = None
+    control_plane_status: str | None = None
+    control_plane_raw: str = ""
 
 
 # Cache for MAINFRAME root path
@@ -77,6 +91,14 @@ _CANONICAL_ID_PATTERN = re.compile(
     r"^mf:[a-z][a-z0-9-]*:[A-Za-z0-9_-]+:[a-z_][a-z0-9_]*$"
 )
 _BROKER_AUDIT_ID_PATTERN = re.compile(r"^inv-[A-Za-z0-9._:-]{1,120}$")
+_DURABLE_ID_PATTERNS = {
+    "run_id": re.compile(r"^run-[0-9a-f]{32}$"),
+    "call_id": re.compile(r"^call-[0-9a-f]{32}$"),
+    "decision_id": re.compile(r"^decision-[0-9a-f]{32}$"),
+    "evidence_id": re.compile(r"^evidence-[0-9a-f]{32}$"),
+}
+_CLIENT_CORRELATION_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+_DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _BROKER_STATUSES = frozenset({
     "success",
     "function_error",
@@ -133,6 +155,68 @@ _BROKER_ENVELOPE_KEYS = frozenset({
     "stderr_b64",
     "stdout_b64",
     "timed_out",
+})
+_CONTROL_PLANE_OUTER_KEYS = frozenset({"command", "ok", "result"})
+_CONTROL_PLANE_ERROR_KEYS = frozenset({"code", "message"})
+_CONTROL_PLANE_RESULT_KEYS = frozenset({
+    "schema_version",
+    "status",
+    "client_correlation_id",
+    "run_id",
+    "call_id",
+    "decision_id",
+    "evidence_id",
+    "input_digest",
+    "outcome",
+    "result_available",
+    "broker_receipt",
+    "broker_envelope",
+})
+_BROKER_RECEIPT_KEYS = frozenset({
+    "schema_version",
+    "ok",
+    "status",
+    "canonical_id",
+    "name",
+    "owner",
+    "exit_code",
+    "timed_out",
+    "output_exceeded",
+    "duration_ms",
+    "audit_id",
+    "stdout_bytes",
+    "stdout_sha256",
+    "stderr_bytes",
+    "stderr_sha256",
+    "error_bytes",
+    "error_sha256",
+})
+_DURABLE_CLOSURE_FILES = (
+    "bin/mainframe",
+    "lib/common.sh",
+    "lib/durable_invoke.sh",
+    "control_plane/mainframe-control-plane",
+    "control_plane/mainframe_control_plane/__init__.py",
+    "control_plane/mainframe_control_plane/cli.py",
+    "control_plane/mainframe_control_plane/coding.py",
+    "control_plane/mainframe_control_plane/contracts.py",
+    "control_plane/mainframe_control_plane/durability.py",
+    "control_plane/mainframe_control_plane/errors.py",
+    "control_plane/mainframe_control_plane/executor.py",
+    "control_plane/mainframe_control_plane/kernel.py",
+    "control_plane/mainframe_control_plane/memory.py",
+    "control_plane/mainframe_control_plane/memory_executor.py",
+    "control_plane/mainframe_control_plane/memory_transient.py",
+    "control_plane/mainframe_control_plane/memory_worker.py",
+    "control_plane/mainframe_control_plane/transient.py",
+    "control_plane/mainframe_control_plane/worker.py",
+)
+_REVIEWED_CONVENIENCE_NAMES = frozenset({
+    "array_contains", "array_join", "is_numeric", "output_json", "output_success",
+    "usop_error_validation", "path_sanitize", "is_empty", "to_lower", "to_upper",
+    "trim_left", "trim_right", "json_array", "json_escape", "json_get", "json_merge",
+    "json_object", "json_string", "json_valid", "validate_email", "validate_int",
+    "validate_json", "validate_path", "validate_regex", "validate_semver", "validate_url",
 })
 
 
@@ -211,13 +295,29 @@ def get_mainframe_root() -> Path:
 
 
 def _validate_mainframe_root(path: Path) -> bool:
-    """Check if path is a valid MAINFRAME installation."""
-    if not path.is_dir():
+    """Require the fixed durable control-plane closure, not a legacy shell tree."""
+    try:
+        root = path.resolve(strict=True)
+        if root != path.absolute() or not root.is_dir() or path.is_symlink():
+            return False
+        permitted_owners = {0, os.geteuid()} if hasattr(os, "geteuid") else {0}
+        for relative in _DURABLE_CLOSURE_FILES:
+            candidate = root / relative
+            metadata = candidate.lstat()
+            if (
+                candidate.is_symlink()
+                or not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_uid not in permitted_owners
+                or stat.S_IMODE(metadata.st_mode) & 0o022
+                or metadata.st_nlink != 1
+                or metadata.st_size <= 0
+            ):
+                return False
+        return os.access(root / "bin" / "mainframe", os.X_OK) and os.access(
+            root / "control_plane" / "mainframe-control-plane", os.X_OK
+        )
+    except OSError:
         return False
-
-    # Must have lib/common.sh
-    common_sh = path / "lib" / "common.sh"
-    return common_sh.is_file()
 
 
 _RESOLVED_BASH: "str | None" = None
@@ -735,6 +835,12 @@ def _validate_canonical_input(
             raise MainframeBrokerError(
                 f"Canonical input is missing required field '{field}'"
             )
+    for field, property_value in contract.properties.items():
+        if field not in normalized and "default" in property_value:
+            default_value = property_value["default"]
+            normalized[field] = (
+                default_value.copy() if isinstance(default_value, list) else default_value
+            )
     return normalized
 
 
@@ -869,6 +975,242 @@ def _parse_broker_envelope(
         stdout=decoded_stdout,
         stderr=decoded_stderr,
         raw=raw,
+        broker_envelope=dict(value),
+    )
+
+
+def _reject_duplicate_object_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Build one JSON object while rejecting ambiguous duplicate keys."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        result[key] = value
+    return result
+
+
+def _canonical_input_bytes(value: dict[str, Any]) -> bytes:
+    return json.dumps(
+        value,
+        allow_nan=False,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+
+def _validate_durable_id(value: Any, field: str) -> str:
+    pattern = _DURABLE_ID_PATTERNS[field]
+    if not isinstance(value, str) or pattern.fullmatch(value) is None:
+        raise MainframeBrokerError(f"Control-plane response contains an invalid {field}")
+    return value
+
+
+def _validate_broker_receipt(
+    value: Any,
+    envelope: dict[str, Any] | None,
+    contract: _ReviewedContract,
+) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) != _BROKER_RECEIPT_KEYS:
+        raise MainframeBrokerError("Control-plane broker receipt fields are not exact")
+    for field in ("schema_version", "exit_code", "duration_ms", "stdout_bytes", "stderr_bytes", "error_bytes"):
+        if type(value[field]) is not int or value[field] < 0:
+            raise MainframeBrokerError("Control-plane broker receipt has invalid numeric fields")
+    for field in ("ok", "timed_out", "output_exceeded"):
+        if type(value[field]) is not bool:
+            raise MainframeBrokerError("Control-plane broker receipt has invalid boolean fields")
+    if (
+        value["schema_version"] != 1
+        or value["canonical_id"] != contract.canonical_id
+        or value["name"] != contract.name
+        or value["owner"] != contract.owner
+        or not isinstance(value["status"], str)
+        or not isinstance(value["audit_id"], str)
+    ):
+        raise MainframeBrokerError("Control-plane broker receipt identity is invalid")
+    expected_exit = _BROKER_FIXED_EXIT_CODES.get(value["status"])
+    if (
+        value["status"] not in _BROKER_STATUSES
+        or _BROKER_AUDIT_ID_PATTERN.fullmatch(value["audit_id"]) is None
+        or value["exit_code"] > 255
+        or value["duration_ms"] > contract.timeout_ms + 5_000
+        or value["stdout_bytes"] + value["stderr_bytes"] > contract.output_limit
+        or value["error_bytes"] > 4_096
+        or value["ok"] is not (value["status"] == "success")
+        or (value["exit_code"] != 0 if value["ok"] else value["exit_code"] == 0)
+        or value["timed_out"] is not (value["status"] == "timeout")
+        or value["output_exceeded"] is not (value["status"] == "output_limit")
+        or (
+            value["exit_code"] == 0
+            if value["status"] == "function_error"
+            else expected_exit is None or value["exit_code"] != expected_exit
+        )
+    ):
+        raise MainframeBrokerError("Control-plane broker receipt semantics are invalid")
+    for field in ("stdout_sha256", "stderr_sha256", "error_sha256"):
+        if not isinstance(value[field], str) or _DIGEST_PATTERN.fullmatch(value[field]) is None:
+            raise MainframeBrokerError("Control-plane broker receipt digest is invalid")
+    if envelope is None:
+        return dict(value)
+    parity_fields = (
+        "schema_version", "ok", "status", "canonical_id", "name", "owner", "exit_code",
+        "timed_out", "output_exceeded", "duration_ms", "audit_id",
+    )
+    if any(value[field] != envelope[field] for field in parity_fields):
+        raise MainframeBrokerError("Control-plane receipt does not bind the broker envelope")
+    decoded_stdout = _decode_broker_base64(envelope["stdout_b64"], "stdout_b64")
+    decoded_stderr = _decode_broker_base64(envelope["stderr_b64"], "stderr_b64")
+    error_bytes = b"" if envelope["error"] is None else envelope["error"].encode("utf-8")
+    byte_bindings = (
+        ("stdout", decoded_stdout),
+        ("stderr", decoded_stderr),
+        ("error", error_bytes),
+    )
+    for prefix, payload in byte_bindings:
+        if (
+            value[prefix + "_bytes"] != len(payload)
+            or value[prefix + "_sha256"] != hashlib.sha256(payload).hexdigest()
+        ):
+            raise MainframeBrokerError("Control-plane receipt payload digest is invalid")
+    return dict(value)
+
+
+def _parse_control_plane_response(
+    stdout: bytes,
+    process_stderr: bytes,
+    process_returncode: int,
+    contract: _ReviewedContract,
+    *,
+    correlation_id: str,
+    input_digest: str,
+) -> BrokerInvocationResult:
+    """Validate the exact durable response before exposing any broker output."""
+    if not stdout or len(stdout) > _BROKER_ENVELOPE_LIMIT or not stdout.endswith(b"\n"):
+        raise MainframeBrokerError("Control-plane response is empty, unterminated, or oversized")
+    if process_stderr:
+        raise MainframeBrokerError("Control-plane wrote outside its structured response")
+    try:
+        raw = stdout[:-1].decode("utf-8", errors="strict")
+        outer = json.loads(raw, object_pairs_hook=_reject_duplicate_object_keys)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise MainframeBrokerError("Control-plane response is not unambiguous JSON") from exc
+    if not isinstance(outer, dict):
+        raise MainframeBrokerError("Control-plane response is not an object")
+    if process_returncode != 0:
+        if set(outer) != {"command", "error", "ok"} or outer.get("ok") is not False or outer.get("command") != "canonical-invoke":
+            raise MainframeBrokerError("Control-plane error response fields are not exact")
+        error = outer.get("error")
+        if (
+            not isinstance(error, dict)
+            or set(error) != _CONTROL_PLANE_ERROR_KEYS
+            or not isinstance(error.get("code"), str)
+            or not isinstance(error.get("message"), str)
+        ):
+            raise MainframeBrokerError("Control-plane error response is invalid")
+        raise MainframeBrokerError("{}: {}".format(error["code"], error["message"]))
+    if set(outer) != _CONTROL_PLANE_OUTER_KEYS or outer.get("ok") is not True or outer.get("command") != "canonical-invoke":
+        raise MainframeBrokerError("Control-plane success response fields are not exact")
+    result = outer.get("result")
+    if not isinstance(result, dict) or set(result) != _CONTROL_PLANE_RESULT_KEYS:
+        raise MainframeBrokerError("Control-plane durable result fields are not exact")
+    if type(result["schema_version"]) is not int or result["schema_version"] != 1:
+        raise MainframeBrokerError("Control-plane schema version is invalid")
+    status_value = result["status"]
+    if status_value not in ("in_progress", "completed"):
+        raise MainframeBrokerError("Control-plane durable status is invalid")
+    returned_correlation = result["client_correlation_id"]
+    if (
+        not isinstance(returned_correlation, str)
+        or _CLIENT_CORRELATION_PATTERN.fullmatch(returned_correlation) is None
+        or returned_correlation != correlation_id
+    ):
+        raise MainframeBrokerError("Control-plane client correlation binding is invalid")
+    run_id = _validate_durable_id(result["run_id"], "run_id")
+    call_id = _validate_durable_id(result["call_id"], "call_id")
+    decision_id = _validate_durable_id(result["decision_id"], "decision_id")
+    if result["input_digest"] != input_digest or _DIGEST_PATTERN.fullmatch(input_digest) is None:
+        raise MainframeBrokerError("Control-plane input digest binding is invalid")
+    if type(result["result_available"]) is not bool:
+        raise MainframeBrokerError("Control-plane result availability is invalid")
+    evidence_id: str | None = None
+    outcome = result["outcome"]
+    receipt_value = result["broker_receipt"]
+    envelope_value = result["broker_envelope"]
+    if status_value == "in_progress":
+        if (
+            result["evidence_id"] is not None
+            or outcome is not None
+            or result["result_available"] is not False
+            or receipt_value is not None
+            or envelope_value is not None
+        ):
+            raise MainframeBrokerError("Control-plane in-progress result is contradictory")
+    else:
+        evidence_id = _validate_durable_id(result["evidence_id"], "evidence_id")
+        if outcome not in ("succeeded", "failed", "timed_out", "interrupted"):
+            raise MainframeBrokerError("Control-plane terminal outcome is invalid")
+        if result["result_available"] is not (envelope_value is not None):
+            raise MainframeBrokerError("Control-plane result availability contradicts its envelope")
+    envelope: dict[str, Any] | None = None
+    decoded: BrokerInvocationResult | None = None
+    if envelope_value is not None:
+        if not isinstance(envelope_value, dict):
+            raise MainframeBrokerError("Control-plane broker envelope is invalid")
+        envelope = dict(envelope_value)
+        candidate_exit = envelope.get("exit_code")
+        if type(candidate_exit) is not int:
+            raise MainframeBrokerError("Control-plane broker envelope has invalid exit code")
+        serialized = json.dumps(envelope, allow_nan=False, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        decoded = _parse_broker_envelope(serialized, b"", candidate_exit, contract)
+        expected_outcome = "succeeded" if decoded.ok else ("timed_out" if decoded.timed_out else "failed")
+        if outcome != expected_outcome:
+            raise MainframeBrokerError("Control-plane outcome contradicts the broker envelope")
+    receipt = _validate_broker_receipt(receipt_value, envelope, contract)
+    if envelope is not None and receipt is None:
+        raise MainframeBrokerError("Control-plane available result lacks its durable receipt")
+    if receipt is not None:
+        receipt_outcome = "succeeded" if receipt["ok"] else (
+            "timed_out" if receipt["timed_out"] else "failed"
+        )
+        if outcome != receipt_outcome:
+            raise MainframeBrokerError("Control-plane outcome contradicts its durable receipt")
+    if decoded is None:
+        decoded = BrokerInvocationResult(
+            schema_version=1,
+            ok=False,
+            status="in_progress" if status_value == "in_progress" else "result_unavailable",
+            canonical_id=contract.canonical_id,
+            name=contract.name,
+            owner=contract.owner,
+            result_kind=contract.result_kind,
+            exit_code=75 if status_value == "in_progress" else 66,
+            timed_out=outcome == "timed_out",
+            output_exceeded=False,
+            duration_ms=0,
+            audit_id="",
+            stdout_b64="",
+            stderr_b64="",
+            error=None,
+            stdout="",
+            stderr="",
+            raw="",
+        )
+    return replace(
+        decoded,
+        client_correlation_id=returned_correlation,
+        run_id=run_id,
+        call_id=call_id,
+        decision_id=decision_id,
+        evidence_id=evidence_id,
+        input_digest=input_digest,
+        outcome=outcome,
+        result_available=result["result_available"],
+        broker_receipt=receipt,
+        broker_envelope=envelope,
+        control_plane_status=status_value,
+        control_plane_raw=raw,
     )
 
 
@@ -1005,9 +1347,10 @@ def _invoke_reviewed_contract(
 ) -> BrokerInvocationResult:
     """Run the exact local canonical broker entrypoint."""
     normalized = _validate_canonical_input(contract, input_data)
-    request = json.dumps(normalized, separators=(",", ":"), ensure_ascii=False).encode(
-        "utf-8"
-    )
+    request = json.dumps(normalized, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    canonical_request = _canonical_input_bytes(normalized)
+    input_digest = hashlib.sha256(canonical_request).hexdigest()
+    correlation_id = f"client-python-{uuid_module.uuid4().hex}"
     if len(request) > _BROKER_INPUT_LIMIT:
         raise MainframeBrokerError("Canonical invocation input exceeds 32768 bytes")
 
@@ -1047,9 +1390,11 @@ def _invoke_reviewed_contract(
         "--profile",
         "stable-core",
         "--format",
-        "broker-json-v1",
+        "control-plane-json-v1",
         "--caller",
         "python",
+        "--client-correlation-id",
+        correlation_id,
     ]
     stdout, stderr, returncode = _run_bounded_broker_process(
         command,
@@ -1057,7 +1402,14 @@ def _invoke_reviewed_contract(
         timeout=float(effective_timeout),
         env=proc_env,
     )
-    return _parse_broker_envelope(stdout, stderr, returncode, contract)
+    return _parse_control_plane_response(
+        stdout,
+        stderr,
+        returncode,
+        contract,
+        correlation_id=correlation_id,
+        input_digest=input_digest,
+    )
 
 
 def invoke_canonical(
@@ -1217,6 +1569,60 @@ def _legacy_call_function_json(
 ) -> Any:
     """Parse JSON from the private fixed-name legacy compatibility path."""
     output, code = _legacy_call_function(
+        function_name,
+        *args,
+        timeout=timeout,
+        env=env,
+    )
+    if code != 0:
+        raise MainframeFunctionError(
+            function_name,
+            f"Function returned non-zero exit code: {code}",
+            code,
+        )
+    try:
+        return json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise MainframeFunctionError(
+            function_name,
+            f"Invalid JSON output: {exc}",
+            code,
+        ) from exc
+
+
+def _fixed_convenience_call(
+    function_name: str,
+    *args: str | int | float | bool,
+    capture_stderr: bool = False,
+    timeout: float | None = None,
+    env: dict[str, str] | None = None,
+) -> tuple[str, int]:
+    """Route reviewed convenience calls atomically; retain fixed legacy others."""
+    if function_name in _REVIEWED_CONVENIENCE_NAMES:
+        return call_function(
+            function_name,
+            *args,
+            capture_stderr=capture_stderr,
+            timeout=timeout,
+            env=env,
+        )
+    return _legacy_call_function(
+        function_name,
+        *args,
+        capture_stderr=capture_stderr,
+        timeout=timeout,
+        env=env,
+    )
+
+
+def _fixed_convenience_json(
+    function_name: str,
+    *args: str | int | float | bool,
+    timeout: float | None = None,
+    env: dict[str, str] | None = None,
+) -> Any:
+    """Parse JSON after the fixed convenience route selects durable or legacy."""
+    output, code = _fixed_convenience_call(
         function_name,
         *args,
         timeout=timeout,

@@ -1,0 +1,6 @@
+# Exact release-subject exclusions for mutable or self-describing attestations.
+# These paths may be packaged as metadata, but do not contribute to the
+# canonical SHA256SUMS/SBOM subject or the claim source-tree digest.
+SHA256SUMS
+config/control-plane-claim.json
+config/control-plane-claim-receipts/

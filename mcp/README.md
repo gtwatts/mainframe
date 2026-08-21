@@ -15,10 +15,14 @@ The public `mainframe-mcp` and `mainframe-mcp-server` commands expose exactly
 the 26 reviewed `stable-core` tools. There is no public `core` or `full` mode,
 and no command-line acknowledgement that widens the tool set.
 
-Every stable-core call is authorized again and delegated to the selected
-runtime's bounded `mainframe invoke` broker. Unknown tools, external commands,
-and write-capable helpers such as `ensure_dir` and `atomic_write` are denied.
-Input schemas are closed and broker results are bounded and validated.
+Every stable-core call is authorized again and delegated through the selected
+runtime's public atomic `mainframe invoke --format control-plane-json-v1`
+route. The adapter has no direct-shell or legacy-broker execution fallback.
+Unknown tools, external commands, and write-capable helpers such as
+`ensure_dir` and `atomic_write` are denied. Input schemas are closed; transient
+results and metadata-only receipts are bounded and cross-validated before MCP
+exposes the kernel-generated Run, ToolCall, PolicyDecision, and Evidence IDs.
+Client correlation remains non-authorizing idempotency metadata.
 
 This is an application-level safety boundary, **not an operating-system
 sandbox**. MAINFRAME does not confine the rest of an agent, replace macOS or

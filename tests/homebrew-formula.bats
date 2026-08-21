@@ -142,9 +142,14 @@ create_release_interpreter_sibling_fixture() {
     for real_path in \
         generate-manifest.py \
         check-owner-parity.py \
-        export-gate-rules.py; do
+        export-gate-rules.py \
+        generate-runtime-closure.py \
+        check-control-plane-claim.py; do
         printf '%s\n' 'raise SystemExit(0)' > "$root/scripts/$real_path"
     done
+    printf '%s\n' '#!/bin/bash -p' 'exit 0' \
+        > "$root/scripts/generate-host-adapters.sh"
+    chmod +x "$root/scripts/generate-host-adapters.sh"
 
     env -i \
         HOME="${HOME:-/tmp}" \
@@ -288,7 +293,7 @@ document = {
             "properties": [
                 {
                     "name": "mainframe:version-constraint",
-                    "value": ">=3.9 for Pi diagnosis and lifecycle",
+                    "value": ">=3.9 for control-plane and Pi diagnosis/lifecycle",
                 },
                 {
                     "name": "mainframe:managed-host-version-constraint",
@@ -297,7 +302,7 @@ document = {
                 {
                     "name": "mainframe:requirement",
                     "value": (
-                        "Pi diagnosis/lifecycle and managed-host install, remove, and restore"
+                        "durable control-plane CLI, Pi diagnosis/lifecycle, and managed-host install, remove, and restore"
                     ),
                 },
             ],

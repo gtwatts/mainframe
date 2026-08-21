@@ -5,7 +5,7 @@ Wraps functions from pure-util.sh, common.sh, datetime.sh, and crypto.sh.
 """
 
 from .core import MainframeFunctionError
-from .core import _legacy_call_function as call_function
+from .core import _fixed_convenience_call as call_function
 
 # =============================================================================
 # UUID / RANDOM

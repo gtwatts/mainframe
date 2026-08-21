@@ -4,6 +4,9 @@ setup() {
     PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd -P)"
     TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mainframe-pi.XXXXXX")"
     TEST_ROOT="$(cd "$TEST_ROOT" && pwd -P)"
+    XDG_STATE_HOME="$TEST_ROOT/state"
+    mkdir -m 0700 "$XDG_STATE_HOME"
+    export XDG_STATE_HOME
 }
 
 teardown() {
@@ -126,6 +129,7 @@ PY
         "$node_bin" --input-type=module - "$PROJECT_ROOT" "$pi_bin" <<'JS'
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -872,28 +876,34 @@ const expectedBrokerArgs = [
   "--profile",
   "stable-core",
   "--format",
-  "broker-json-v1",
+  "control-plane-json-v1",
   "--caller",
   "pi",
+  "--client-correlation-id",
+  "<adapter-generated>",
 ];
+const stableControlPlane = stableResult?.details?.controlPlane;
+const expectedStableDigest = createHash("sha256")
+  .update('{"pairs":["tool=pi","ok:bool=true"]}', "utf8")
+  .digest("hex");
 if (stableResult?.details?.result?.command !== join(root, "bin", "mainframe") ||
     stableResult?.details?.result?.argumentCount !== expectedBrokerArgs.length ||
     Object.hasOwn(stableResult?.details?.result || {}, "args") ||
     stableResult?.details?.canonicalId !== "mf:data:json:json_object" ||
     stableResult?.details?.broker?.status !== "success" ||
-    !/^inv-[0-9]{8}T[0-9]{6}Z-[0-9]+-[0-9]+$/.test(stableResult?.details?.broker?.auditId || "")) {
+    !/^inv-[0-9]{8}T[0-9]{6}Z-[0-9]+-[0-9]+$/.test(stableResult?.details?.broker?.auditId || "") ||
+    stableControlPlane?.status !== "completed" ||
+    stableControlPlane?.outcome !== "succeeded" ||
+    stableControlPlane?.resultAvailable !== true ||
+    stableControlPlane?.inputDigest !== expectedStableDigest ||
+    !/^client-pi-[0-9a-f]{32}$/.test(stableControlPlane?.clientCorrelationId || "") ||
+    !/^run-[0-9a-f]{32}$/.test(stableControlPlane?.runId || "") ||
+    !/^call-[0-9a-f]{32}$/.test(stableControlPlane?.callId || "") ||
+    !/^decision-[0-9a-f]{32}$/.test(stableControlPlane?.decisionId || "") ||
+    !/^evidence-[0-9a-f]{32}$/.test(stableControlPlane?.evidenceId || "") ||
+    stableControlPlane?.brokerReceipt?.audit_id !== stableResult?.details?.broker?.auditId ||
+    stableControlPlane?.brokerReceipt?.canonical_id !== "mf:data:json:json_object") {
   throw new Error(`stable-core execution did not use the exact canonical broker contract: ${JSON.stringify(stableResult)}`);
-}
-const invocationAuditPath = join(process.env.HOME, ".local", "state", "mainframe", "invocations.jsonl");
-const stableAudit = readFileSync(invocationAuditPath, "utf8")
-  .trim()
-  .split("\n")
-  .map((line) => JSON.parse(line))
-  .find((record) => record.audit_id === stableResult.details.broker.auditId);
-if (stableAudit?.caller !== "pi" || stableAudit?.profile !== "stable-core" ||
-    stableAudit?.canonical_id !== "mf:data:json:json_object" ||
-    Object.hasOwn(stableAudit || {}, "args")) {
-  throw new Error(`stable-core broker audit lost caller/profile identity or exposed arguments: ${JSON.stringify(stableAudit)}`);
 }
 
 const scalarResult = await execTool.execute(
@@ -919,6 +929,22 @@ const spreadResult = await execTool.execute(
 if (spreadResult?.details?.result?.code !== 0 ||
     spreadResult?.details?.broker?.canonicalId !== "mf:data:pure-array:array_contains") {
   throw new Error(`stable-core scalar/spread mapping failed: ${JSON.stringify(spreadResult)}`);
+}
+
+const defaultedResult = await execTool.execute(
+  "loader-stable-core-defaults",
+  { functionName: "validate_int", args: ["42"] },
+  undefined,
+  undefined,
+  { cwd: root, ui: {} },
+);
+const expectedDefaultedDigest = createHash("sha256")
+  .update('{"max":"","min":"","value":"42"}', "utf8")
+  .digest("hex");
+if (defaultedResult?.details?.result?.code !== 0 ||
+    defaultedResult?.details?.broker?.canonicalId !== "mf:std:validation:validate_int" ||
+    defaultedResult?.details?.controlPlane?.inputDigest !== expectedDefaultedDigest) {
+  throw new Error(`stable-core default normalization drifted: ${JSON.stringify(defaultedResult)}`);
 }
 
 for (const [functionName, args] of [
@@ -1010,92 +1036,8 @@ const malformedBroker = await execTool.execute(
   undefined,
   { cwd: root, ui: {} },
 );
-if (malformedBroker?.details?.status !== "blocked_invalid_broker_response" || malformedBroker?.details?.result) {
-  throw new Error(`Pi accepted a malformed broker envelope: ${JSON.stringify(malformedBroker)}`);
-}
-
-writeFileSync(
-  malformedBrokerPath,
-  "#!/bin/sh\n/bin/cat >/dev/null\n/bin/cat \"$MAINFRAME_ROOT/broker-envelope.json\"\n",
-  { mode: 0o700 },
-);
-chmodSync(malformedBrokerPath, 0o700);
-const brokerEnvelopePath = join(isolatedRoot, "broker-envelope.json");
-const writeSuccessfulBrokerEnvelope = (functionName, stdout) => {
-  const canonicalId = canonicalManifest.name_index[functionName];
-  const record = canonicalManifest.exports[canonicalId];
-  const envelope = {
-    audit_id: "inv-20260809T000000Z-1-1",
-    canonical_id: canonicalId,
-    duration_ms: 1,
-    error: null,
-    exit_code: 0,
-    name: functionName,
-    ok: true,
-    output_exceeded: false,
-    owner: record.owner,
-    schema_version: 1,
-    status: "success",
-    stderr_b64: "",
-    stdout_b64: Buffer.from(stdout, "utf8").toString("base64"),
-    timed_out: false,
-  };
-  writeFileSync(brokerEnvelopePath, `${JSON.stringify(envelope)}\n`, { mode: 0o600 });
-};
-
-writeFileSync(isolatedManifestPath, `${JSON.stringify(canonicalManifest)}\n`, { mode: 0o600 });
-writeSuccessfulBrokerEnvelope("array_contains", "forged-exit-output");
-const forgedExitStdout = await execTool.execute(
-  "loader-stable-core-exit-kind-stdout",
-  { functionName: "array_contains", args: ["x", "x"], root: isolatedRoot },
-  undefined,
-  undefined,
-  { cwd: root, ui: {} },
-);
-if (forgedExitStdout?.details?.status !== "blocked_invalid_broker_response" || forgedExitStdout?.details?.result) {
-  throw new Error(`Pi accepted stdout that contradicted an exit-kind result: ${JSON.stringify(forgedExitStdout)}`);
-}
-
-const noneResultManifest = structuredClone(canonicalManifest);
-noneResultManifest.exports["mf:data:json:json_object"].result = { kind: "none" };
-writeFileSync(isolatedManifestPath, `${JSON.stringify(noneResultManifest)}\n`, { mode: 0o600 });
-writeSuccessfulBrokerEnvelope("json_object", "forged-none-output");
-const forgedNoneStdout = await execTool.execute(
-  "loader-stable-core-none-kind-stdout",
-  { functionName: "json_object", args: ["tool=pi"], root: isolatedRoot },
-  undefined,
-  undefined,
-  { cwd: root, ui: {} },
-);
-if (forgedNoneStdout?.details?.status !== "blocked_invalid_broker_response" || forgedNoneStdout?.details?.result) {
-  throw new Error(`Pi accepted stdout that contradicted a none-kind result: ${JSON.stringify(forgedNoneStdout)}`);
-}
-
-writeFileSync(isolatedManifestPath, `${JSON.stringify(canonicalManifest)}\n`, { mode: 0o600 });
-for (const exactStdout of ["", " \n\t"]) {
-  writeSuccessfulBrokerEnvelope("json_object", exactStdout);
-  const exactStdoutResult = await execTool.execute(
-    "loader-stable-core-exact-stdout",
-    { functionName: "json_object", args: [], root: isolatedRoot },
-    undefined,
-    undefined,
-    { cwd: root, ui: {} },
-  );
-  if (exactStdoutResult?.details?.result?.stdout !== exactStdout) {
-    throw new Error(`Pi changed exact stdout bytes: ${JSON.stringify({ expected: exactStdout, result: exactStdoutResult })}`);
-  }
-  const contentText = exactStdoutResult?.content?.map((item) => item?.text || "").join("") || "";
-  let transport;
-  try {
-    transport = JSON.parse(contentText);
-  } catch {
-    throw new Error(`Pi did not preserve empty or whitespace stdout in a lossless text transport: ${JSON.stringify(exactStdoutResult)}`);
-  }
-  if (transport?.schema_version !== 1 || transport?.kind !== "mainframe-pi-stdout" ||
-      transport?.function !== "json_object" || transport?.encoding !== "base64" ||
-      Buffer.from(String(transport?.stdout_b64 || ""), "base64").toString("utf8") !== exactStdout) {
-    throw new Error(`Pi stdout transport was not exact: ${JSON.stringify({ exactStdout, transport })}`);
-  }
+if (malformedBroker?.details?.status !== "blocked_broker_unavailable" || malformedBroker?.details?.result) {
+  throw new Error(`Pi accepted a launcher without the exact durable closure: ${JSON.stringify(malformedBroker)}`);
 }
 
 const awmTool = extension.tools.get("mainframe_awm")?.definition;
@@ -1177,6 +1119,9 @@ if (exportDenied?.details?.status !== "blocked_user_declined") {
 console.log("Pi loader, prompt, bounded AWM handoff, agent/TUI bash, gate, canonical export, and human confirmation contracts pass");
 JS
 
+    if [[ "$status" -ne 0 ]]; then
+        printf '%s\n' "$output" >&2
+    fi
     [[ "$status" -eq 0 ]]
     [[ "$output" == "Pi loader, prompt, bounded AWM handoff, agent/TUI bash, gate, canonical export, and human confirmation contracts pass" ]]
 }

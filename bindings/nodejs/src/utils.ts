@@ -6,9 +6,9 @@
  */
 
 import {
-  callLegacyFixedFunction as callFunction,
-  callLegacyFixedFunctionRaw as callFunctionRaw,
-} from "./internal/legacy.js";
+  callFixedConvenience as callFunction,
+  callFixedConvenienceRaw as callFunctionRaw,
+} from "./internal/convenience.js";
 
 // =============================================================================
 // UUID and Random
@@ -404,7 +404,8 @@ export function trimString(value: string): string {
  * toLower("HELLO")  // "hello"
  */
 export function toLower(value: string): string {
-  return callFunctionRaw("to_lower", [value]);
+  const output = callFunctionRaw("to_lower", [value]);
+  return output.endsWith("\n") ? output.slice(0, -1) : output;
 }
 
 /**
@@ -414,7 +415,8 @@ export function toLower(value: string): string {
  * toUpper("hello")  // "HELLO"
  */
 export function toUpper(value: string): string {
-  return callFunctionRaw("to_upper", [value]);
+  const output = callFunctionRaw("to_upper", [value]);
+  return output.endsWith("\n") ? output.slice(0, -1) : output;
 }
 
 /**

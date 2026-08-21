@@ -161,7 +161,7 @@ macOS/Linux claim.
 |---|---|---|
 | VS Code engine | ^1.75.0 | `bun test` |
 | Bun | lockfile-frozen | `bun install --frozen-lockfile` |
-| Metadata | `FUNCTIONS.lsp.json` (4,406 owner-filtered candidate entries from 193 libraries) | regenerated from MANIFEST.json |
+| Metadata | `FUNCTIONS.lsp.json` (4,401 owner-filtered candidate entries from 192 libraries) | regenerated from MANIFEST.json |
 
 ## Bindings
 

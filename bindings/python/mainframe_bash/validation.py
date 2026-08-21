@@ -5,7 +5,7 @@ Wraps validation.sh functions: validate_*, sanitize_*, etc.
 """
 
 from .core import MainframeFunctionError
-from .core import _legacy_call_function as call_function
+from .core import _fixed_convenience_call as call_function
 
 
 def validate_email(email: str) -> bool:

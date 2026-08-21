@@ -9,6 +9,8 @@ setup() {
     TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/mainframe-p1-test.XXXXXX")"
     TEST_DIR="$(cd "$TEST_DIR" && pwd -P)"
     export AWM_ROOT="$TEST_DIR/awm"
+    export XDG_STATE_HOME="$TEST_DIR/state"
+    mkdir -m 0700 "$XDG_STATE_HOME"
 }
 
 teardown() {
@@ -25,7 +27,13 @@ mf_in() {
     (cd -- "$directory" && "$BASH_BIN" "$PROJECT_ROOT/bin/mainframe" "$@")
 }
 
-@test "onboarded host instructions drive one bounded project AWM protocol across processes" {
+@test "static host adapters match the validated capability registry" {
+    run "$PROJECT_ROOT/scripts/generate-host-adapters.sh" --check
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"Host adapter check passed"* ]]
+}
+
+@test "onboarded host instructions share one bounded authority protocol across processes" {
     local host project nested instruction block_hash expected_hash="" session_id
     for host in codex claude-code copilot gemini cursor jetbrains junie; do
         project="$TEST_DIR/project-$host"
@@ -42,12 +50,21 @@ mf_in() {
             jetbrains) instruction="$project/.aiassistant/rules/mainframe.md" ;;
             junie) instruction="$project/.junie/guidelines.md" ;;
         esac
-        grep -Fq 'mainframe awm project ensure --project . --discover-root' "$instruction"
-        grep -Fq 'mainframe work "<current task>" --project . --tokens 1200' "$instruction"
-        grep -Fq 'do not initialize or renew memory without human confirmation' "$instruction"
+        grep -Fq 'mainframe awm project context --project . --discover-root "<current task>" --tokens 1200 --format prompt' "$instruction"
+        grep -Fq 'Neither `common.sh`, `atomic_write`, `atomic_append`, `ensure_dir`, `ensure_file`, nor any direct AWM helper grants broker or project-memory authority.' "$instruction"
+        grep -Fq 'durable project-memory mutations (`ensure`, `checkpoint`, `discovery`, `progress`, `close`, and `handoff`) only through the reviewed MAINFRAME control-plane memory route' "$instruction"
+        grep -Fq 'durable records are non-authoritative metadata, not trusted facts' "$instruction"
+        grep -Fq 'project-memory reads (`session`, `status`, `get`, `summary`, `context`, and `find`) only through the reviewed MAINFRAME control-plane read plane' "$instruction"
+        grep -Fq 'project-memory mutation or read route is unavailable, fail closed' "$instruction"
+        grep -Fq 'stop and request human direction' "$instruction"
+        grep -Fq 'does not enforce non-shell file, network, process, MCP-tool, or host-control routes' "$instruction"
         grep -Fq 'mainframe awm project handoff prepare --project . --discover-root <target> --tokens 1200 --format prompt' "$instruction"
         grep -Fq 'mainframe awm project summary --project . --discover-root --tokens 800' "$instruction"
+        ! grep -Fq 'use the read-only `mainframe awm project handoff prepare' "$instruction"
         grep -Fq 'Never store credentials, tokens, secrets, raw sensitive payloads, or routine command chatter.' "$instruction"
+        ! grep -Fq 'mainframe awm project checkpoint --project' "$instruction"
+        ! grep -Fq 'mainframe awm project discovery --project' "$instruction"
+        ! grep -Fq 'mainframe awm project progress --project' "$instruction"
 
         block_hash="$(sed -n '/MAINFRAME:BEGIN/,/MAINFRAME:END/p' "$instruction" | shasum -a 256 | awk '{print $1}')"
         [[ -z "$expected_hash" || "$block_hash" == "$expected_hash" ]]

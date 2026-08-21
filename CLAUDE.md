@@ -19,7 +19,7 @@ source "${MAINFRAME_ROOT:-$HOME/.mainframe}/lib/common.sh"
 | **Cursor** | `.cursorrules` / `skills/cursor/` | Instructions |
 | **Aider** | `skills/aider/CONVENTIONS.md` | Instructions |
 | **Vercel AI SDK** | `skills/vercel-ai-sdk/` | System-prompt template |
-| **Custom Agents** | `lib/uap.sh` + `lib/mcp_server.sh` | Protocol source |
+| **Custom Agents** | stable-core broker + separately installed `mainframe-mcp` | Reviewed adapter |
 
 ## Library Overview
 
@@ -136,7 +136,9 @@ agent_unlock "database_migration"
 
 ### MCP Tools (No Bash Required)
 
-Orchestration tools are available via MCP for teammates that prefer tool calls over bash scripts. Register with `mcp_register_orchestration_tools`. Tools: `awm_init`, `awm_resume`, `awm_checkpoint`, `awm_discovery`, `awm_get`, `awm_summary`, `agent_teams_active`, `agent_teams_awm_join`, `agent_barrier`, `agent_lock`, `agent_unlock`.
+The separately distributed `mainframe-mcp` adapter exposes only the reviewed
+stable-core contracts. AWM and orchestration helpers are not MCP-authorized
+until they have explicit policy, approval, and evidence contracts.
 
 ## Reference Files
 

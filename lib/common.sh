@@ -9,8 +9,26 @@
 # License: MIT
 # =============================================================================
 
-# Prevent double-sourcing
+# Prevent double-sourcing. The generated runtime closure is part of common.sh's
+# load contract, so validate it before committing the loaded guard.
 [[ -n "${_MAINFRAME_COMMON_LOADED:-}" ]] && return 0
+
+_MAINFRAME_LIB_DIR="${BASH_SOURCE[0]%/*}"
+_MAINFRAME_RUNTIME_CLOSURE_FILE="${_MAINFRAME_LIB_DIR}/runtime-closure.generated.bash"
+
+if [[ ! -r "$_MAINFRAME_RUNTIME_CLOSURE_FILE" ]]; then
+    printf '[ERROR] Runtime closure is missing or unreadable: %s\n' \
+        "$_MAINFRAME_RUNTIME_CLOSURE_FILE" >&2
+    return 78 2>/dev/null || exit 78
+fi
+
+# shellcheck source=lib/runtime-closure.generated.bash
+source "$_MAINFRAME_RUNTIME_CLOSURE_FILE" || {
+    printf '[ERROR] Runtime closure could not be loaded: %s\n' \
+        "$_MAINFRAME_RUNTIME_CLOSURE_FILE" >&2
+    return 78 2>/dev/null || exit 78
+}
+
 readonly _MAINFRAME_COMMON_LOADED=1
 
 # =============================================================================
@@ -710,8 +728,8 @@ basher_init() {
 # PURE BASH LIBRARIES
 # =============================================================================
 
-# Auto-source pure bash libraries if available
-_MAINFRAME_LIB_DIR="${BASH_SOURCE[0]%/*}"
+# Pure Bash libraries are sourced from _MAINFRAME_LIB_DIR, initialized above
+# together with the generated runtime closure.
 
 # =============================================================================
 # LAZY LOADING ENGINE
@@ -727,54 +745,6 @@ _MAINFRAME_LIB_DIR="${BASH_SOURCE[0]%/*}"
 #
 # Profiles: minimal, standard, full, ai
 # =============================================================================
-
-# --- Tier Definitions --------------------------------------------------------
-
-# Core tier: always loaded regardless of MAINFRAME_LIBS setting
-_MAINFRAME_TIER_CORE=(
-    pure-string pure-array pure-util pure-file
-    json ansi
-    output errors hints
-)
-
-# Standard tier: common day-to-day libraries
-_MAINFRAME_TIER_STANDARD=(
-    validation path env datetime http csv
-    git github docker crypto proc args config
-    log structured_log error tui template ci health
-    device sysinfo service retry download
-    toml yaml collection queue regex schema
-    bun audit
-)
-
-# Extended tier: advanced/specialized libraries
-_MAINFRAME_TIER_EXTENDED=(
-    k8s semver functional compose stream streaming pipe
-    procsub async futures meta cli fzf
-    compat safe guard telemetry otel
-    proptest testing benchmark
-    workpool
-    temporal state_machine graph
-    cache diff
-)
-
-# Phase 3 AI tier: agent-optimized modules
-_MAINFRAME_TIER_AI=(
-    idempotent atomic observe project
-    contract perf netscan parsers trace forensics
-    risk dryrun undo sandbox
-    limits confirm safewrap safecontext
-    agent workflow taskstate
-    context parse_output symbols agent_exec
-    agent_comm agent_safety agent_ai agent_context
-    awm awm_storage awm_tiers awm_stream
-    llm_tokens llm_functions llm_stream llm_providers
-    embeddings registry vectordb rag policy rbac
-    agent_loop ammma uap
-    heal predict generate verify intent orchestrate
-    agent_teams
-    tirith tirith_url tirith_inject tirith_pipe tirith_ecosystem tirith_path tirith_hook
-)
 
 # --- Bundle Presets ---------------------------------------------------------
 # Pre-defined library bundles for common use cases.
@@ -906,6 +876,7 @@ _mainframe_lazy_init() {
 # Returns: 0 on success, 1 on failure (invalid name or file not found)
 _mainframe_load_library() {
     local lib_name="$1"
+    local force_reload="${2:-0}"
 
     # Reject empty or whitespace-only names
     [[ -z "${lib_name// /}" ]] && return 1
@@ -916,7 +887,10 @@ _mainframe_load_library() {
     local lib_file="${_MAINFRAME_LIB_DIR}/${lib_name}.sh"
 
     # Skip if already loaded
-    [[ -n "${_MAINFRAME_LOADED_LIBS[${lib_name}]:-}" ]] && return 0
+    if [[ "$force_reload" != "1" &&
+          -n "${_MAINFRAME_LOADED_LIBS[${lib_name}]:-}" ]]; then
+        return 0
+    fi
 
     # Source if file exists, otherwise return failure
     if [[ -f "$lib_file" ]]; then
@@ -940,6 +914,27 @@ _mainframe_load_tier() {
     done
 }
 
+# Load the reviewed full runtime closure in its generated canonical order.
+_mainframe_load_full_closure() {
+    local lib replay_required=0
+    local _MAINFRAME_CANONICAL_REPLAY=1
+
+    # If this shell started from a narrower tier, replay the complete closure
+    # in canonical order. Merely appending missing modules preserves earlier
+    # collision winners and makes core->load_all differ from a clean full load.
+    for lib in "${_MAINFRAME_FULL_CLOSURE[@]}"; do
+        if [[ -z "${_MAINFRAME_LOADED_LIBS[${lib}]:-}" ]]; then
+            replay_required=1
+            break
+        fi
+    done
+    (( replay_required == 1 )) || return 0
+
+    for lib in "${_MAINFRAME_FULL_CLOSURE[@]}"; do
+        _mainframe_load_library "$lib" 1
+    done
+}
+
 # Load a named bundle from MAINFRAME_BUNDLES.
 _mainframe_load_bundle() {
     local bundle_name="$1"
@@ -953,9 +948,7 @@ _mainframe_load_bundle() {
     }
 
     if [[ "$libs" == "all" ]]; then
-        _mainframe_load_tier "standard"
-        _mainframe_load_tier "extended"
-        _mainframe_load_tier "ai"
+        _mainframe_load_full_closure
         return 0
     fi
 
@@ -986,16 +979,16 @@ _mainframe_load_selected() {
     local IFS=','
     local item
 
-    # Always load core tier first
-    _mainframe_load_tier "core"
-
-    # Handle 'all' keyword
+    # The full closure admits legacy libraries with useful unique exports, but
+    # sources them before their reviewed canonical owners. This keeps the
+    # complete surface and one deterministic function identity.
     if [[ "$libs_spec" == "all" ]]; then
-        _mainframe_load_tier "standard"
-        _mainframe_load_tier "extended"
-        _mainframe_load_tier "ai"
+        _mainframe_load_full_closure
         return
     fi
+
+    # Every selective surface includes the core tier.
+    _mainframe_load_tier "core"
 
     # Handle single tier name (e.g., 'core', 'standard', 'ai')
     case "$libs_spec" in
@@ -1066,141 +1059,10 @@ elif [[ -n "${MAINFRAME_LIBS:-}" ]]; then
     # Selective loading: use tier-based loading engine
     _mainframe_load_selected "${MAINFRAME_LIBS}"
 else
-    # Full loading: backward-compatible, source everything
-    # Uses _mainframe_load_library to track what's loaded
-
-    # Core tier libraries
-    _mainframe_load_library "pure-string"
-    _mainframe_load_library "pure-array"
-    _mainframe_load_library "pure-util"
-    _mainframe_load_library "pure-file"
-    _mainframe_load_library "json"
-    _mainframe_load_library "output"
-    _mainframe_load_library "errors"
-    _mainframe_load_library "ansi"
-    _mainframe_load_library "hints"
-
-    # Standard tier libraries
-    _mainframe_load_library "validation"
-    _mainframe_load_library "path"
-    _mainframe_load_library "env"
-    _mainframe_load_library "datetime"
-    _mainframe_load_library "http"
-    _mainframe_load_library "csv"
-    _mainframe_load_library "git"
-    _mainframe_load_library "github"
-    _mainframe_load_library "github_actions"
-    _mainframe_load_library "github_security"
-    _mainframe_load_library "docker"
-    _mainframe_load_library "crypto"
-    _mainframe_load_library "proc"
-    _mainframe_load_library "args"
-    _mainframe_load_library "config"
-    _mainframe_load_library "log"
-    _mainframe_load_library "structured_log"
-    _mainframe_load_library "error"
-    _mainframe_load_library "tui"
-    _mainframe_load_library "anim"
-    _mainframe_load_library "template"
-    _mainframe_load_library "ci"
-    _mainframe_load_library "health"
-    _mainframe_load_library "device"
-    _mainframe_load_library "sysinfo"
-    _mainframe_load_library "service"
-    _mainframe_load_library "retry"
-    _mainframe_load_library "download"
-    _mainframe_load_library "toml"
-    _mainframe_load_library "yaml"
-    _mainframe_load_library "collection"
-    _mainframe_load_library "queue"
-    _mainframe_load_library "schema"
-    _mainframe_load_library "bun"
-    _mainframe_load_library "audit"
-
-    # Extended tier libraries
-    _mainframe_load_library "k8s"
-    _mainframe_load_library "semver"
-    _mainframe_load_library "functional"
-    _mainframe_load_library "compose"
-    _mainframe_load_library "stream"
-    _mainframe_load_library "streaming"
-    _mainframe_load_library "pipe"
-    _mainframe_load_library "procsub"
-    _mainframe_load_library "async"
-    _mainframe_load_library "futures"
-    _mainframe_load_library "meta"
-    _mainframe_load_library "cli"
-    _mainframe_load_library "fzf"
-    _mainframe_load_library "compat"
-    _mainframe_load_library "safe"
-    _mainframe_load_library "guard"
-    _mainframe_load_library "telemetry"
-    _mainframe_load_library "otel"
-    _mainframe_load_library "proptest"
-    _mainframe_load_library "testing"
-    _mainframe_load_library "benchmark"
-    _mainframe_load_library "workpool"
-    _mainframe_load_library "temporal"
-    _mainframe_load_library "state_machine"
-    _mainframe_load_library "graph"
-
-    # AI tier libraries
-    _mainframe_load_library "idempotent"
-    _mainframe_load_library "atomic"
-    _mainframe_load_library "observe"
-    _mainframe_load_library "project"
-    _mainframe_load_library "contract"
-    _mainframe_load_library "perf"
-    _mainframe_load_library "netscan"
-    _mainframe_load_library "parsers"
-    _mainframe_load_library "trace"
-    _mainframe_load_library "forensics"
-    _mainframe_load_library "cache"
-    _mainframe_load_library "scope"
-    _mainframe_load_library "risk"
-    _mainframe_load_library "dryrun"
-    _mainframe_load_library "undo"
-    _mainframe_load_library "sandbox"
-    _mainframe_load_library "limits"
-    _mainframe_load_library "confirm"
-    _mainframe_load_library "safewrap"
-    _mainframe_load_library "safecontext"
-    _mainframe_load_library "agent"
-    _mainframe_load_library "workflow"
-    _mainframe_load_library "taskstate"
-    _mainframe_load_library "context"
-    _mainframe_load_library "diff"
-    _mainframe_load_library "parse_output"
-    _mainframe_load_library "symbols"
-    _mainframe_load_library "agent_exec"
-    # Note: agent_comm.sh disabled - conflicts with agent.sh functions
-    # _mainframe_load_library "agent_comm"
-    _mainframe_load_library "agent_safety"
-    _mainframe_load_library "agent_ai"
-    _mainframe_load_library "agent_context"
-    _mainframe_load_library "awm"
-    _mainframe_load_library "awm_storage"
-    _mainframe_load_library "awm_tiers"
-    _mainframe_load_library "awm_stream"
-    _mainframe_load_library "llm_tokens"
-    _mainframe_load_library "llm_functions"
-    _mainframe_load_library "llm_providers"
-    _mainframe_load_library "registry"
-    _mainframe_load_library "registry_schema"
-    _mainframe_load_library "embeddings"
-    _mainframe_load_library "vectordb"
-    _mainframe_load_library "rag"
-    _mainframe_load_library "policy"
-    _mainframe_load_library "rbac"
-    _mainframe_load_library "agent_loop"
-    _mainframe_load_library "ammma"
-    _mainframe_load_library "uap"
-    _mainframe_load_library "heal"
-    _mainframe_load_library "predict"
-    _mainframe_load_library "generate"
-    _mainframe_load_library "verify"
-    _mainframe_load_library "intent"
-    _mainframe_load_library "orchestrate"
+    # Backward-compatible full loading uses the same canonical ordered closure
+    # as MAINFRAME_PROFILE=full and MAINFRAME_LIBS=all. Keeping one closure is
+    # what makes function ownership and behavior independent of loader mode.
+    _mainframe_load_selected "all"
 
 fi # End of full loading (backward-compatible path)
 
@@ -1219,21 +1081,7 @@ mainframe_load() {
 # Load all available libraries (equivalent to MAINFRAME_LIBS='all')
 # Usage: mainframe_load_all
 mainframe_load_all() {
-    _mainframe_load_tier "core"
-    _mainframe_load_tier "standard"
-    _mainframe_load_tier "extended"
-    _mainframe_load_tier "ai"
-
-    # Also load any .sh files in lib dir that aren't in tiers
-    local lib_file lib_name
-    for lib_file in "${_MAINFRAME_LIB_DIR}"/*.sh; do
-        [[ -f "$lib_file" ]] || continue
-        lib_name="${lib_file##*/}"
-        lib_name="${lib_name%.sh}"
-        # Skip common.sh itself
-        [[ "$lib_name" == "common" ]] && continue
-        _mainframe_load_library "$lib_name"
-    done
+    _mainframe_load_full_closure
 }
 
 # List all currently loaded libraries (one per line)

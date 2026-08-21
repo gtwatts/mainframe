@@ -44,9 +44,21 @@ fi
 # name -> owner module (canonical ID mf:<pack>:<module>:<name>; module is the
 # third segment)
 OWNERS_JSON=$(jq -c '.name_index | with_entries(.value = (.value | split(":")[2]))' "$MANIFEST_PATH")
+SEMANTICS_JSON=$(jq -c '
+  .exports | to_entries | map({
+    key: .value.name,
+    value: {
+      canonicalId: .key,
+      executionExposure: .value.execution_exposure,
+      semanticStatus: .value.semantic_status,
+      stability: .value.stability,
+      declaredEffects: .value.declared_effects
+    }
+  }) | from_entries
+' "$MANIFEST_PATH")
 
 # Generate LSP-optimized metadata with rich information
-jq --argjson owners "$OWNERS_JSON" '
+jq --argjson owners "$OWNERS_JSON" --argjson semantics "$SEMANTICS_JSON" '
 {
   version: .version,
   generated: (now | todate),
@@ -102,7 +114,12 @@ jq --argjson owners "$OWNERS_JSON" '
         idempotent: (.value.idempotent // false),
         pure: (.value.pure // false),
         examples: (.value.examples // []),
-        relatedFunctions: (.value.related // [])
+        relatedFunctions: (.value.related // []),
+        canonicalId: $semantics[.key].canonicalId,
+        executionExposure: $semantics[.key].executionExposure,
+        semanticStatus: $semantics[.key].semanticStatus,
+        stability: $semantics[.key].stability,
+        declaredEffects: $semantics[.key].declaredEffects
       }
     }
   ],

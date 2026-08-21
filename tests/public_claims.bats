@@ -35,7 +35,19 @@ teardown() {
 
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"Generated registry claim parity passed"* ]]
+    [[ "$output" == *"Control-plane claim contract passed: advertised=source-candidate"* ]]
     [[ "$output" == *"Public claim verification passed"* ]]
+}
+
+@test "ultimate control-plane copy is blocked below the category-claim gate" {
+    local claims="$TEST_DIR/ultimate-overclaim.md"
+    printf '%s\n' 'MAINFRAME is the ultimate AI agent control plane.' > "$claims"
+
+    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" \
+        --extra-document "$claims"
+
+    [[ "$status" -ne 0 ]]
+    [[ "$output" == *"Ultimate control-plane language requires the category-claim gate"* ]]
 }
 
 @test "first-use copy/paste discovery examples use an executable semantic query" {
@@ -256,10 +268,14 @@ PY
         "$PROJECT_ROOT/docs/AI_CLI_INTEGRATIONS.md"
 }
 
-@test "primary install guides disclose the Pi and managed-host Python prerequisites" {
+@test "primary install guides disclose control-plane, Pi, and managed-host Python prerequisites" {
     grep -Fq 'A protected fixed-location Python 3.9+' \
         "$PROJECT_ROOT/README.md"
     grep -Fq 'A protected fixed-location Python 3.9+' \
+        "$PROJECT_ROOT/INSTALL.md"
+    grep -Fq 'durable control-plane CLI and Pi diagnosis/lifecycle' \
+        "$PROJECT_ROOT/README.md"
+    grep -Fq 'durable control-plane CLI and Pi diagnosis/lifecycle' \
         "$PROJECT_ROOT/INSTALL.md"
     grep -Fq 'mainframe pi doctor' "$PROJECT_ROOT/INSTALL.md"
 }

@@ -59,10 +59,10 @@ integration, recovery, and troubleshooting reference.
 - Node.js when `mainframe launch` authenticates or executes a supported npm
   wrapper; launch resolves the exact executable and rejects project-controlled
   Node.js paths
-- A protected fixed-location Python 3.9+ with the standard `json`, `os`,
-  `pathlib`, `stat`, and `sys` modules for Pi diagnosis and lifecycle. The
-  reviewed managed-host install, remove, and restore helpers require Python
-  3.10 or newer; host status and launch do not require it.
+- A protected fixed-location Python 3.9+ standard-library runtime for the
+  durable control-plane CLI and Pi diagnosis/lifecycle. The reviewed
+  managed-host install, remove, and restore helpers require Python 3.10 or
+  newer; host status and launch do not require it.
 
 Check the Bash that will run MAINFRAME:
 

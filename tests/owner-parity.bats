@@ -24,6 +24,19 @@ setup() {
     [[ "$output" == *"VERIFY PASS"* ]]
 }
 
+@test "release metadata verifiers honor the Python 3.9 runtime floor" {
+    local system_python=/usr/bin/python3
+    [ -x "$system_python" ] || skip "/usr/bin/python3 is unavailable"
+
+    run "$system_python" -I -S -B "$PROJECT_ROOT/scripts/generate-manifest.py" --verify
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"VERIFY PASS"* ]]
+
+    run "$system_python" -I -S -B "$PROJECT_ROOT/scripts/check-owner-parity.py"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"PASS: zero owner disagreements"* ]]
+}
+
 @test "registry generator never sources an inherited MAINFRAME runtime" {
     local inherited_root="$BATS_TEST_TMPDIR/inherited-mainframe"
     local marker="$BATS_TEST_TMPDIR/inherited-common-ran"
@@ -210,7 +223,7 @@ PY
     unset -f cksum
 }
 
-@test "manifest: MCP core closure excludes unpreparable call shapes" {
+@test "manifest: discovery core is non-executable and excludes unpreparable call shapes" {
     run python3 - "$PROJECT_ROOT" <<'PY'
 import json
 import os
@@ -223,10 +236,7 @@ from mainframe_mcp.tool_registry import ToolRegistry
 
 registry = ToolRegistry(mainframe_root=root)
 assert registry.load()
-mcp_core = {
-    tool['name'][len('mainframe_'):]
-    for tool in registry.generate_all_tools(tier='core')
-}
+assert registry.generate_all_tools(tier='core') == []
 manifest_core = {
     export['name']
     for export in manifest['exports'].values()
@@ -249,13 +259,12 @@ unpreparable = {
     'array_drop_while',
     'array_every',
 }
-assert mcp_core == manifest_core
-assert not (unpreparable & mcp_core)
-assert 'array_join' in mcp_core
-print(f'MCP core closure valid: {len(mcp_core)} tools')
+assert not (unpreparable & manifest_core)
+assert 'array_join' in manifest_core
+print(f'MCP discovery core closure valid: {len(manifest_core)} tools')
 PY
     [ "$status" -eq 0 ]
-    [[ "$output" == *"MCP core closure valid:"* ]]
+    [[ "$output" == *"MCP discovery core closure valid:"* ]]
 }
 
 @test "manifest: verify rejects stale checked-in fields hidden from registry roundtrip" {
@@ -371,6 +380,33 @@ PY
     [[ "$output" == *"canonical/lsp-counts"* ]]
 }
 
+@test "owner-parity: stale LSP execution classification fails closed" {
+    local fixture="$BATS_TEST_TMPDIR/FUNCTIONS.lsp.semantic-stale.json"
+    cp "${MAINFRAME_LSP_META_PATH:-$PROJECT_ROOT/FUNCTIONS.lsp.json}" "$fixture"
+
+    python3 - "$fixture" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+data = json.load(open(path))
+for completion in data['completions']:
+    if completion['label'] == 'json_get':
+        completion['data']['executionExposure'] = 'discovery-only'
+        break
+else:
+    raise SystemExit('json_get completion missing')
+with open(path, 'w', encoding='utf-8') as handle:
+    json.dump(data, handle, indent=2, ensure_ascii=False)
+    handle.write('\n')
+PY
+
+    run env MAINFRAME_LSP_META_PATH="$fixture" \
+        python3 "$PROJECT_ROOT/scripts/check-owner-parity.py"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"lsp/completion-semantics"* ]]
+}
+
 @test "stable-core: capped read/pure default excludes unbrokered side effects" {
     [ -f "$PROJECT_ROOT/config/stable-core.json" ] || skip "stable-core.json missing"
     run python3 -c "
@@ -408,11 +444,11 @@ assert unsafe <= names
 registry = ToolRegistry(mainframe_root='$PROJECT_ROOT')
 assert registry.load()
 stable = {t['name'][10:] for t in registry.generate_all_tools(tier='stable-core')}
-core = {t['name'][10:] for t in registry.generate_all_tools(tier='core')}
-full = {t['name'][10:] for t in registry.generate_all_tools(tier='full')}
+core = registry.generate_all_tools(tier='core')
+full = registry.generate_all_tools(tier='full')
 assert stable == exports
-assert unsafe <= core
-assert unsafe <= full
+assert core == []
+assert full == []
 print(f'stable-core safety floor valid: {len(exports)} tools')"
     [ "$status" -eq 0 ]
     [[ "$output" == *"stable-core safety floor valid:"* ]]
@@ -502,6 +538,133 @@ print('stable-core invocation contracts valid: 26 reviewed, no inferred extras')
 PY
     [ "$status" -eq 0 ]
     [[ "$output" == *"stable-core invocation contracts valid: 26 reviewed"* ]]
+}
+
+@test "semantic trust: only reviewed contracts are executable and hazardous modules are explicit" {
+    run python3 - "$PROJECT_ROOT" <<'PY'
+import json
+import os
+import sys
+
+root = sys.argv[1]
+manifest = json.load(open(os.path.join(root, 'MANIFEST.json')))
+policy = json.load(open(os.path.join(root, 'config', 'semantic-trust-policy.json')))
+invocation = json.load(open(os.path.join(root, 'config', 'invocation-policy.json')))
+
+assert policy['schema_version'] == 1
+assert policy['default']['execution_exposure'] == 'discovery-only'
+assert policy['default']['semantic_status'] == 'unreviewed'
+assert 'config/semantic-trust-policy.json' in manifest['derivation']['sources']
+
+trusted = {
+    canonical for canonical, export in manifest['exports'].items()
+    if export['execution_exposure'] == 'trusted'
+}
+assert trusted == set(invocation['exports'])
+for canonical, export in manifest['exports'].items():
+    assert export['semantic_status'] in {'reviewed', 'unreviewed'}
+    assert export['execution_exposure'] in {'trusted', 'discovery-only'}
+    if canonical in trusted:
+        assert export['semantic_status'] == 'reviewed'
+        assert export['ownership'] == 'reviewed'
+        assert export['contract_status'] == 'reviewed'
+        assert export['effects'] in (['pure'], ['read'])
+    else:
+        assert export['semantic_status'] == 'unreviewed'
+        assert export['ownership'] == 'provisional'
+        assert 'contract_status' not in export
+
+expected_hazardous = {
+    'agent_exec': {'process', 'write', 'destructive'},
+    'agent_loop': {'process', 'write'},
+    'orchestrate': {'process', 'network', 'write'},
+    'otel': {'network', 'write'},
+}
+for module, effects in expected_hazardous.items():
+    module_policy = policy['module_overrides'][module]
+    assert module_policy['stability'] == 'experimental'
+    assert module_policy['execution_exposure'] == 'discovery-only'
+    assert set(module_policy['declared_effects']) == effects
+    exports = [
+        export for export in manifest['exports'].values()
+        if export['owner'] == module
+    ]
+    assert exports, module
+    assert all(export['stability'] == 'experimental' for export in exports)
+    assert all(export['execution_exposure'] == 'discovery-only' for export in exports)
+    assert all(set(export['declared_effects']) == effects for export in exports)
+
+assert manifest['stats']['trusted_execution_exports'] == len(trusted) == 26
+assert manifest['stats']['discovery_only_exports'] == len(manifest['exports']) - 26
+print('semantic trust policy valid: 26 trusted, remainder discovery-only')
+PY
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"semantic trust policy valid: 26 trusted"* ]]
+}
+
+@test "semantic trust: LSP discovery carries canonical execution classification" {
+    run python3 - "$PROJECT_ROOT" <<'PY'
+import json
+import os
+import sys
+
+root = sys.argv[1]
+manifest = json.load(open(os.path.join(root, 'MANIFEST.json')))
+lsp = json.load(open(os.path.join(root, 'FUNCTIONS.lsp.json')))
+items = {item['label']: item for item in lsp['completions']}
+
+for name in ('json_get', 'agent_loop_start', 'orch_agent_spawn', 'otel_init'):
+    canonical = manifest['name_index'][name]
+    export = manifest['exports'][canonical]
+    data = items[name]['data']
+    assert data['canonicalId'] == canonical
+    assert data['executionExposure'] == export['execution_exposure']
+    assert data['semanticStatus'] == export['semantic_status']
+    assert data['stability'] == export['stability']
+    assert data['declaredEffects'] == export['declared_effects']
+
+assert items['json_get']['data']['executionExposure'] == 'trusted'
+assert items['agent_loop_start']['data']['executionExposure'] == 'discovery-only'
+assert items['agent_loop_start']['data']['stability'] == 'experimental'
+print('LSP execution classification matches canonical manifest')
+PY
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"LSP execution classification matches canonical manifest"* ]]
+}
+
+@test "semantic trust: policy cannot self-authorize or classify unknown modules" {
+    local fixture="$BATS_TEST_TMPDIR/semantic-trust-policy.invalid.json"
+
+    python3 - "$PROJECT_ROOT/config/semantic-trust-policy.json" "$fixture" <<'PY'
+import json
+import sys
+
+source, destination = sys.argv[1:]
+data = json.load(open(source))
+data['default']['execution_exposure'] = 'trusted'
+with open(destination, 'w', encoding='utf-8') as handle:
+    json.dump(data, handle)
+PY
+    run env MAINFRAME_SEMANTIC_TRUST_POLICY_PATH="$fixture" \
+        python3 "$PROJECT_ROOT/scripts/generate-manifest.py" --verify --no-probe
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"cannot grant trusted execution"* ]]
+
+    python3 - "$PROJECT_ROOT/config/semantic-trust-policy.json" "$fixture" <<'PY'
+import json
+import sys
+
+source, destination = sys.argv[1:]
+data = json.load(open(source))
+data['module_overrides']['not_a_real_module'] = dict(
+    data['module_overrides']['agent_loop'])
+with open(destination, 'w', encoding='utf-8') as handle:
+    json.dump(data, handle)
+PY
+    run env MAINFRAME_SEMANTIC_TRUST_POLICY_PATH="$fixture" \
+        python3 "$PROJECT_ROOT/scripts/generate-manifest.py" --verify --no-probe
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"unknown modules"* ]]
 }
 
 @test "stable-core: invocation policy validation fails closed on closure and shape drift" {

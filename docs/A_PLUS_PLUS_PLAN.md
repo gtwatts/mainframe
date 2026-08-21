@@ -1,6 +1,7 @@
 # MAINFRAME A++ Product and Adoption Plan
 
-> **Status:** Proposed strategic plan
+> **Status:** Historical requirements baseline. Current status and sequencing
+> are governed by [CONTROL_PLANE_PLAN.md](CONTROL_PLANE_PLAN.md).
 >
 > **Evidence baseline:** July 31, 2026
 >

@@ -2,6 +2,8 @@
  * MAINFRAME Node.js Bindings - Utils Module Tests
  */
 
+import "./setup";
+
 import { describe, test, expect, beforeAll } from "bun:test";
 import { setConfig } from "../src/core";
 import {

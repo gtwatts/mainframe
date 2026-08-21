@@ -5,7 +5,7 @@
  * Calls json.sh functions: json_object, json_array, json_string, etc.
  */
 
-import { callLegacyFixedFunctionRaw as callFunctionRaw } from "./internal/legacy.js";
+import { callFixedConvenienceRaw as callFunctionRaw } from "./internal/convenience.js";
 
 // =============================================================================
 // Types

@@ -11,13 +11,16 @@ setup() {
     TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mainframe-work-test.XXXXXX")"
     TEST_ROOT="$(cd "$TEST_ROOT" && pwd -P)"
     HOME="$TEST_ROOT/home"
-    AWM_ROOT="$TEST_ROOT/awm"
+    XDG_STATE_HOME="$TEST_ROOT/state"
+    AWM_ROOT="$TEST_ROOT/ambient-awm-must-not-be-used"
+    DURABLE_AWM_ROOT="$XDG_STATE_HOME/mainframe/.mainframe-control-plane-runtime/project-memory-adapter-state/awm"
     MAINFRAME_CONFIG="$TEST_ROOT/mainframe-config"
     PROJECT_DIR="$TEST_ROOT/project with spaces"
     NESTED_DIR="$PROJECT_DIR/src/nested"
 
-    mkdir -p -- "$HOME" "$NESTED_DIR"
-    export HOME AWM_ROOT MAINFRAME_CONFIG BASH_BIN
+    mkdir -p -- "$HOME" "$XDG_STATE_HOME" "$NESTED_DIR"
+    chmod 700 "$XDG_STATE_HOME"
+    export HOME XDG_STATE_HOME AWM_ROOT DURABLE_AWM_ROOT MAINFRAME_CONFIG BASH_BIN
 }
 
 teardown() {
@@ -30,6 +33,7 @@ teardown() {
 mf() {
     env \
         HOME="$HOME" \
+        XDG_STATE_HOME="$XDG_STATE_HOME" \
         AWM_ROOT="$AWM_ROOT" \
         AWM_BACKEND=file \
         MAINFRAME_BASH="$BASH_BIN" \
@@ -45,12 +49,13 @@ mode_of() {
 storage_fingerprint() {
     local path relative mode mtime digest
 
-    if [[ ! -e "$AWM_ROOT" ]]; then
+    if [[ ! -e "$DURABLE_AWM_ROOT" ]]; then
         printf '<absent>\n'
         return 0
     fi
     while IFS= read -r path; do
-        relative="${path#"$AWM_ROOT"/}"
+        relative="${path#"$DURABLE_AWM_ROOT"/}"
+        [[ "$relative" == *.lock ]] && continue
         mode="$(mode_of "$path")"
         if [[ "$OSTYPE" == darwin* ]]; then
             mtime="$(stat -f '%m' "$path")"
@@ -62,14 +67,17 @@ storage_fingerprint() {
             printf 'file\t%s\t%s\t%s\t%s\n' \
                 "$relative" "$mode" "$mtime" "$digest"
         elif [[ -d "$path" && ! -L "$path" ]]; then
-            printf 'dir\t%s\t%s\t%s\n' "$relative" "$mode" "$mtime"
+            # Mapping locks may update directory mtimes during an otherwise
+            # read-only operation. Bind directory identity/mode and all data
+            # file bytes, not coordination metadata.
+            printf 'dir\t%s\t%s\n' "$relative" "$mode"
         elif [[ -L "$path" ]]; then
             printf 'link\t%s\t%s\t%s\t%s\n' \
                 "$relative" "$mode" "$mtime" "$(readlink "$path")"
         else
             printf 'special\t%s\t%s\t%s\n' "$relative" "$mode" "$mtime"
         fi
-    done < <(find "$AWM_ROOT" -mindepth 1 -print | LC_ALL=C sort)
+    done < <(find "$DURABLE_AWM_ROOT" -mindepth 1 -print | LC_ALL=C sort)
 }
 
 project_fingerprint() {
@@ -117,11 +125,11 @@ initialize_project_memory() {
 }
 
 mapping_file() {
-    find "$AWM_ROOT/projects" -maxdepth 1 -type f -name '*.json' -print -quit
+    find "$DURABLE_AWM_ROOT/projects" -maxdepth 1 -type f -name '*.json' -print -quit
 }
 
 @test "work refuses an unmapped project without creating any AWM state" {
-    [[ ! -e "$AWM_ROOT" ]]
+    [[ ! -e "$DURABLE_AWM_ROOT" ]]
 
     run mf work 'fix the flaky CI test' --project "$NESTED_DIR"
 
@@ -131,6 +139,8 @@ mapping_file() {
     [[ "$output" == *'Next safe read-only check: mainframe setup --project'* ]]
     [[ "$output" == *'Human-only write after review: mainframe awm project ensure --project'* ]]
     [[ "$output" == *'--discover-root'* ]]
+    [[ -z "$(find "$DURABLE_AWM_ROOT/projects" -type f ! -name '*.lock' -print -quit 2>/dev/null)" ]]
+    [[ ! -e "$DURABLE_AWM_ROOT/sessions" ]]
     [[ ! -e "$AWM_ROOT" ]]
 }
 
@@ -231,6 +241,7 @@ mapping_file() {
     [[ "$status" -eq 64 ]]
     [[ "$output" == *'--help cannot be combined'* ]]
 
+    [[ ! -e "$DURABLE_AWM_ROOT" ]]
     [[ ! -e "$AWM_ROOT" ]]
 }
 

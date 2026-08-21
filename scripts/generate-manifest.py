@@ -19,6 +19,8 @@ Usage:
                                   # FUNCTIONS.json
 """
 
+from __future__ import annotations
+
 import json
 import os
 import re
@@ -29,6 +31,9 @@ REGISTRY_PATH = os.path.join(ROOT, 'FUNCTIONS.json')
 POLICY_PATH = os.path.join(ROOT, 'config', 'function-export-policy.json')
 STABLE_CORE_PATH = os.path.join(ROOT, 'config', 'stable-core.json')
 INVOCATION_POLICY_PATH = os.path.join(ROOT, 'config', 'invocation-policy.json')
+SEMANTIC_TRUST_POLICY_PATH = os.environ.get(
+    'MAINFRAME_SEMANTIC_TRUST_POLICY_PATH',
+    os.path.join(ROOT, 'config', 'semantic-trust-policy.json'))
 # The override is intentionally narrow: regression tests can exercise stale
 # checked-in metadata without mutating the repository artifact.
 _MANIFEST_PATH_OVERRIDE = os.environ.get('MAINFRAME_MANIFEST_PATH')
@@ -432,8 +437,92 @@ def validate_invocation_policy(invocation_policy: dict,
     return contracts
 
 
+def validate_semantic_trust_policy(policy: dict,
+                                   module_names: set[str]) -> dict:
+    """Validate the fail-closed execution-trust classification.
+
+    This policy does not make an unreviewed export invocable. It only records
+    an explicit discovery-only default and bounded module-level warnings. The
+    reviewed invocation policy remains the sole way to acquire trusted
+    execution exposure.
+    """
+    top_fields = {
+        'schema_version', 'description', 'default', 'module_overrides',
+    }
+    if not isinstance(policy, dict) or set(policy) != top_fields:
+        raise SystemExit(
+            'semantic trust policy: top-level fields must be exactly '
+            f'{sorted(top_fields)}')
+    if policy.get('schema_version') != 1:
+        raise SystemExit('semantic trust policy: schema_version must be 1')
+    if not isinstance(policy.get('description'), str) \
+            or not policy['description']:
+        raise SystemExit(
+            'semantic trust policy: description must be non-empty')
+
+    semantic_fields = {
+        'execution_exposure', 'semantic_status', 'stability',
+        'declared_effects',
+    }
+    allowed_effects = {
+        'pure', 'read', 'write', 'network', 'process', 'destructive',
+        'secrets',
+    }
+    allowed_stability = {'stable', 'beta', 'experimental', 'deprecated'}
+
+    def validate_semantics(label: str, value: object,
+                           *, allow_rationale: bool) -> dict:
+        required = set(semantic_fields)
+        allowed = required | ({'rationale'} if allow_rationale else set())
+        if not isinstance(value, dict) or set(value) != allowed:
+            raise SystemExit(
+                f'semantic trust policy: {label} fields must be exactly '
+                f'{sorted(allowed)}')
+        if value['execution_exposure'] != 'discovery-only':
+            raise SystemExit(
+                f'semantic trust policy: {label} cannot grant trusted execution')
+        if value['semantic_status'] != 'unreviewed':
+            raise SystemExit(
+                f'semantic trust policy: {label} cannot mark contracts reviewed')
+        if value['stability'] not in allowed_stability:
+            raise SystemExit(
+                f'semantic trust policy: {label} has invalid stability')
+        effects = value['declared_effects']
+        if not isinstance(effects, list) or len(effects) != len(set(effects)) \
+                or any(effect not in allowed_effects for effect in effects):
+            raise SystemExit(
+                f'semantic trust policy: {label} has invalid declared effects')
+        if allow_rationale and (
+            not isinstance(value['rationale'], str) or not value['rationale']
+        ):
+            raise SystemExit(
+                f'semantic trust policy: {label} rationale must be non-empty')
+        return value
+
+    default = validate_semantics('default', policy.get('default'),
+                                 allow_rationale=False)
+    if default['declared_effects'] != []:
+        raise SystemExit(
+            'semantic trust policy: default effects must remain undeclared')
+
+    overrides = policy.get('module_overrides')
+    if not isinstance(overrides, dict):
+        raise SystemExit(
+            'semantic trust policy: module_overrides must be an object')
+    unknown_modules = sorted(set(overrides) - module_names)
+    if unknown_modules:
+        raise SystemExit(
+            'semantic trust policy: overrides reference unknown modules: '
+            f'{unknown_modules}')
+    for module, value in overrides.items():
+        validate_semantics(f'module_overrides.{module}', value,
+                           allow_rationale=True)
+    return policy
+
+
 def build_manifest(registry: dict, policy: dict, stable_core: dict | None = None,
-                   invocation_policy: dict | None = None) -> dict:
+                   invocation_policy: dict | None = None,
+                   semantic_trust_policy: dict | None = None) -> dict:
     libraries = registry['libraries']
 
     # --- collision ownership -------------------------------------------------
@@ -485,6 +574,14 @@ def build_manifest(registry: dict, policy: dict, stable_core: dict | None = None
             'registrations': len(lib_data.get('functions', {})),
         }
 
+    if semantic_trust_policy is None:
+        raise SystemExit(
+            'semantic trust policy: a fail-closed policy is required')
+    semantic_trust_policy = validate_semantic_trust_policy(
+        semantic_trust_policy, set(modules))
+    default_semantics = semantic_trust_policy['default']
+    module_semantics = semantic_trust_policy['module_overrides']
+
     # --- exports + name_index ------------------------------------------------
     exports = {}
     name_index = {}
@@ -502,6 +599,13 @@ def build_manifest(registry: dict, policy: dict, stable_core: dict | None = None
             profiles.insert(0, 'stable-core')
 
         effects = ['pure'] if meta.get('pure') else []
+        semantic = dict(default_semantics)
+        override = module_semantics.get(owner)
+        if override:
+            semantic.update({
+                field: value for field, value in override.items()
+                if field != 'rationale'
+            })
 
         exports[cid] = {
             'name': name,
@@ -512,7 +616,7 @@ def build_manifest(registry: dict, policy: dict, stable_core: dict | None = None
             'effects': effects,
             'dependencies': [],
             'platforms': ['linux', 'macos'],
-            'stability': 'stable',
+            'stability': semantic['stability'],
             'aliases': [],
             'pack': pack,
             'profiles': profiles,
@@ -523,6 +627,9 @@ def build_manifest(registry: dict, policy: dict, stable_core: dict | None = None
             # registry name is canonical; only strict bash identifiers are
             # invocable through the MCP tool-name gate.
             'bash_identifier': bool(NAME_RE.match(name)),
+            'execution_exposure': semantic['execution_exposure'],
+            'semantic_status': semantic['semantic_status'],
+            'declared_effects': semantic['declared_effects'],
         }
         name_index[name] = cid
 
@@ -561,6 +668,14 @@ def build_manifest(registry: dict, policy: dict, stable_core: dict | None = None
             invocation_policy, stable_ids)
         for cid in sorted(stable_ids):
             exports[cid].update(invocation_contracts[cid])
+            exports[cid]['ownership'] = 'reviewed'
+            exports[cid]['execution_exposure'] = 'trusted'
+            exports[cid]['semantic_status'] = 'reviewed'
+            exports[cid]['declared_effects'] = exports[cid]['effects']
+
+    trusted_execution_exports = sum(
+        export['execution_exposure'] == 'trusted'
+        for export in exports.values())
 
     return {
         'manifest_version': MANIFEST_VERSION,
@@ -575,6 +690,7 @@ def build_manifest(registry: dict, policy: dict, stable_core: dict | None = None
                 'FUNCTIONS.json',
                 'config/function-export-policy.json',
                 'config/invocation-policy.json',
+                'config/semantic-trust-policy.json',
             ],
             'owner_rule': 'single registration; collisions resolved by empirical full-load probe (runtime winner), fallback last definition in LC_ALL=C order',
             'probe_anomalies': anomalies,
@@ -586,6 +702,8 @@ def build_manifest(registry: dict, policy: dict, stable_core: dict | None = None
             'packs': len(packs),
             'collisions_recorded': len(collisions),
             'stable_core_exports': len(stable_exports),
+            'trusted_execution_exports': trusted_execution_exports,
+            'discovery_only_exports': len(exports) - trusted_execution_exports,
         },
         'packs': packs,
         'modules': modules,
@@ -751,6 +869,11 @@ def main() -> int:
     invocation_policy = None
     if os.path.exists(INVOCATION_POLICY_PATH):
         invocation_policy = json.load(open(INVOCATION_POLICY_PATH))
+    try:
+        semantic_trust_policy = json.load(open(SEMANTIC_TRUST_POLICY_PATH))
+    except OSError as exc:
+        raise SystemExit(
+            f'semantic trust policy: cannot read policy: {exc}') from exc
 
     global _MODULE_DESCRIPTIONS
     _MODULE_DESCRIPTIONS = {
@@ -758,7 +881,8 @@ def main() -> int:
     }
 
     manifest = build_manifest(
-        registry, policy, stable_core, invocation_policy)
+        registry, policy, stable_core, invocation_policy,
+        semantic_trust_policy)
     invocation_index = build_invocation_index(manifest)
 
     if '--verify' in sys.argv[1:]:
