@@ -380,44 +380,35 @@ export interface ValidationResult {
   error?: string;
 }
 
+function validationResult(valid: boolean, error: string): ValidationResult {
+  return valid ? { valid: true } : { valid: false, error };
+}
+
 /**
  * Validate with detailed error messages
  */
 export const validators = {
-  email: (value: string): ValidationResult => ({
-    valid: validateEmail(value),
-    error: validateEmail(value) ? undefined : "Invalid email format",
-  }),
+  email: (value: string): ValidationResult =>
+    validationResult(validateEmail(value), "Invalid email format"),
 
-  url: (value: string): ValidationResult => ({
-    valid: validateUrl(value),
-    error: validateUrl(value) ? undefined : "Invalid URL format",
-  }),
+  url: (value: string): ValidationResult =>
+    validationResult(validateUrl(value), "Invalid URL format"),
 
-  uuid: (value: string): ValidationResult => ({
-    valid: validateUuid(value),
-    error: validateUuid(value) ? undefined : "Invalid UUID format",
-  }),
+  uuid: (value: string): ValidationResult =>
+    validationResult(validateUuid(value), "Invalid UUID format"),
 
-  ipv4: (value: string): ValidationResult => ({
-    valid: validateIpv4(value),
-    error: validateIpv4(value) ? undefined : "Invalid IPv4 address",
-  }),
+  ipv4: (value: string): ValidationResult =>
+    validationResult(validateIpv4(value), "Invalid IPv4 address"),
 
-  ipv6: (value: string): ValidationResult => ({
-    valid: validateIpv6(value),
-    error: validateIpv6(value) ? undefined : "Invalid IPv6 address",
-  }),
+  ipv6: (value: string): ValidationResult =>
+    validationResult(validateIpv6(value), "Invalid IPv6 address"),
 
-  date: (value: string): ValidationResult => ({
-    valid: validateDate(value),
-    error: validateDate(value)
-      ? undefined
-      : "Invalid date format (expected YYYY-MM-DD)",
-  }),
+  date: (value: string): ValidationResult =>
+    validationResult(
+      validateDate(value),
+      "Invalid date format (expected YYYY-MM-DD)",
+    ),
 
-  semver: (value: string): ValidationResult => ({
-    valid: validateSemver(value),
-    error: validateSemver(value) ? undefined : "Invalid semantic version",
-  }),
+  semver: (value: string): ValidationResult =>
+    validationResult(validateSemver(value), "Invalid semantic version"),
 };

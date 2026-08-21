@@ -2,9 +2,21 @@
  * MAINFRAME Node.js Bindings - Utils Module Tests
  */
 
-import "./setup";
+import {
+  cleanupDurableStateForTestFile,
+  prepareDurableStateForTestFile,
+  resetDurableControlPlaneStateForTest,
+} from "./setup";
 
-import { describe, test, expect, beforeAll } from "bun:test";
+import {
+  describe,
+  test,
+  expect,
+  afterAll,
+  beforeAll,
+  beforeEach,
+  setDefaultTimeout,
+} from "bun:test";
 import { setConfig } from "../src/core";
 import {
   // UUID and Random
@@ -54,6 +66,13 @@ import {
   formatDuration,
   formatNumber,
 } from "../src/utils";
+
+// Utility wrappers execute reviewed Mainframe contracts in child processes;
+// keep a bounded budget that tolerates loaded hosted runners.
+setDefaultTimeout(30_000);
+beforeAll(prepareDurableStateForTestFile);
+beforeEach(resetDurableControlPlaneStateForTest);
+afterAll(cleanupDurableStateForTestFile);
 
 describe("Utils Module", () => {
   beforeAll(() => {

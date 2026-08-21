@@ -2,9 +2,12 @@
  * MAINFRAME Node.js Bindings - JSON Module Tests
  */
 
-import "./setup";
+import {
+  cleanupDurableStateForTestFile,
+  prepareDurableStateForTestFile,
+} from "./setup";
 
-import { describe, test, expect, beforeAll } from "bun:test";
+import { afterAll, describe, test, expect, beforeAll } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,6 +25,9 @@ import {
   json,
   JsonBuilder,
 } from "../src/json";
+
+beforeAll(prepareDurableStateForTestFile);
+afterAll(cleanupDurableStateForTestFile);
 
 describe("JSON Module", () => {
   beforeAll(() => {

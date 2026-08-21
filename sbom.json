@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:a996b319-4233-51f5-81f2-84fadd0c1ac4",
+  "serialNumber": "urn:uuid:3d546afb-fe81-53b1-83bc-09cda5802da3",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-08-21T16:21:49Z",
+    "timestamp": "2026-08-21T17:07:23Z",
     "component": {
       "type": "library",
       "bom-ref": "mainframe@10.2.0",
@@ -231,7 +231,7 @@
     {"type": "file", "name": "lib/async.sh", "hashes": [{"alg": "SHA-256", "content": "c06578629f0e08dcceaad7017824e269f5ee3954616ec260ba21b3f6156f1dfc"}], "properties": [{"name": "size", "value": "12203"}]},
     {"type": "file", "name": "lib/atomic.sh", "hashes": [{"alg": "SHA-256", "content": "2519f3a126ad4dbcbb848c0c51e1765184dd11a5ba1dac9bb846e7edaaca7dbd"}], "properties": [{"name": "size", "value": "17592"}]},
     {"type": "file", "name": "lib/audit.sh", "hashes": [{"alg": "SHA-256", "content": "a088a66af32b8943a4571506f2f57b1b09d378c55c7c2bea00012295c27e2407"}], "properties": [{"name": "size", "value": "44753"}]},
-    {"type": "file", "name": "lib/awm.sh", "hashes": [{"alg": "SHA-256", "content": "a27e36714ec26796a5aa26f246fd83baad1076c94890a55ab8c537eb585cfa6b"}], "properties": [{"name": "size", "value": "163744"}]},
+    {"type": "file", "name": "lib/awm.sh", "hashes": [{"alg": "SHA-256", "content": "719338938edebb32ae331c90aa24452f7fa1b060f50309fef3a2da249bbeef3a"}], "properties": [{"name": "size", "value": "165390"}]},
     {"type": "file", "name": "lib/awm_protocol.sh", "hashes": [{"alg": "SHA-256", "content": "79040b5bff7b7d1f8c47f70803ce52d2c094485e7d819ce3937426d9c70540ff"}], "properties": [{"name": "size", "value": "23822"}]},
     {"type": "file", "name": "lib/awm_storage.sh", "hashes": [{"alg": "SHA-256", "content": "24b024cc3aa30e3291cd3037899d96e0dd9db883e1317a9ac41cbd0fe5af479b"}], "properties": [{"name": "size", "value": "25270"}]},
     {"type": "file", "name": "lib/awm_stream.sh", "hashes": [{"alg": "SHA-256", "content": "615426038980ddfaebec512cc189da6433dd3ffce69babacb28c4e513a9d16fd"}], "properties": [{"name": "size", "value": "32087"}]},
@@ -447,7 +447,7 @@
     {"type": "file", "name": "scripts/dev/agent-impact-runtime-preflight.py", "hashes": [{"alg": "SHA-256", "content": "ef2b74a7ee6b835ae4eb9960ef163ad70f309ea612e5ec5a6445c5b14aebd774"}], "properties": [{"name": "size", "value": "109631"}]},
     {"type": "file", "name": "scripts/dev/agent-impact.py", "hashes": [{"alg": "SHA-256", "content": "b55175507f7b83a16472a963eb04b6993286c261d473c6e85689fd240f079031"}], "properties": [{"name": "size", "value": "68049"}]},
     {"type": "file", "name": "scripts/dev/build-release-tar.py", "hashes": [{"alg": "SHA-256", "content": "39d42fcee5aa28f17f356c14c4cd477a45478f8ac3036965ce33aa009e78f7c3"}], "properties": [{"name": "size", "value": "3410"}]},
-    {"type": "file", "name": "scripts/dev/certify-installed-awm-handoff.py", "hashes": [{"alg": "SHA-256", "content": "e1239f3841d6fde6bda3a358cf821a3f0e5b984091832a396fb5cfd5ba5dcad7"}], "properties": [{"name": "size", "value": "157210"}]},
+    {"type": "file", "name": "scripts/dev/certify-installed-awm-handoff.py", "hashes": [{"alg": "SHA-256", "content": "622d7b0952f5585f0fa79fedf55964d4ebf780825cfc6cda83e47e1747ddb85b"}], "properties": [{"name": "size", "value": "159017"}]},
     {"type": "file", "name": "scripts/dev/certify-native-awm-chain.sh", "hashes": [{"alg": "SHA-256", "content": "848010ba6ee282fb9a39787df16fa24fb5bbdc7b304c2e9e95ee0905dd1cbf27"}], "properties": [{"name": "size", "value": "76708"}]},
     {"type": "file", "name": "scripts/dev/certify-native-host.sh", "hashes": [{"alg": "SHA-256", "content": "e482845ec9a3cca946260e6c6fc8626daa5544f7ad639144004dcf1a32625f08"}], "properties": [{"name": "size", "value": "33442"}]},
     {"type": "file", "name": "scripts/dev/certify-shell-onboarding.sh", "hashes": [{"alg": "SHA-256", "content": "ad61c405b4e4118cf214b8fb3e92844784b8419c14d88b0d23b4e77196269b30"}], "properties": [{"name": "size", "value": "47484"}]},

@@ -2,9 +2,12 @@
  * MAINFRAME Node.js Bindings - Core Module Tests
  */
 
-import "./setup";
+import {
+  cleanupDurableStateForTestFile,
+  prepareDurableStateForTestFile,
+} from "./setup";
 
-import { describe, test, expect, beforeAll } from "bun:test";
+import { afterAll, describe, test, expect, beforeAll } from "bun:test";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -33,6 +36,9 @@ import {
   approvedBashLayout,
   FIXED_BASH_CANDIDATES,
 } from "../src/core";
+
+beforeAll(prepareDurableStateForTestFile);
+afterAll(cleanupDurableStateForTestFile);
 
 const DURABLE_CLOSURE_FILES = [
   "bin/mainframe",

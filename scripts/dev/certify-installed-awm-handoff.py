@@ -1610,7 +1610,8 @@ def install_candidate(state_root: Path, archive: Path, version: str,
         "profile_nonce": profile_nonce,
         "profile": profile_path, "login_profile": login[0] if login else None,
         "state_root_identity": state_root_identity,
-        "home_identity": home_identity, "install_identity": install_identity,
+        "home_identity": home_identity, "local_identity": local_identity,
+        "install_identity": install_identity,
         "bin_identity": bin_identity, "poison_identity": poison_identity,
         "installed_tree_sha256": package_tree_sha256(install_root),
     }
@@ -1836,8 +1837,17 @@ def read_text(path: Path, label: str, maximum: int = MAX_OUTPUT_BYTES) -> str:
         refuse("{} is not UTF-8: {}".format(label, error))
 
 
-def clean_environment(home: Path, temporary: Path, runtime_path: str,
-                      awm_root: Optional[Path] = None) -> Dict[str, str]:
+def project_memory_awm_root(home: Path) -> Path:
+    """Return the fixed adapter tree selected from the public XDG state root."""
+    return (
+        home / ".local" / "state" / "mainframe"
+        / ".mainframe-control-plane-runtime"
+        / "project-memory-adapter-state" / "awm"
+    )
+
+
+def clean_environment(home: Path, temporary: Path,
+                      runtime_path: str) -> Dict[str, str]:
     environment = {
         "CI": "1", "HOME": str(home), "LANG": "C", "LC_ALL": "C",
         "LOGNAME": "mainframe-canary", "MAINFRAME_LOCAL_PROTOCOL": "1",
@@ -1849,8 +1859,6 @@ def clean_environment(home: Path, temporary: Path, runtime_path: str,
         "XDG_STATE_HOME": str(home / ".local" / "state"),
         "__CF_USER_TEXT_ENCODING": "0x1F5:0x0:0x0",
     }
-    if awm_root is not None:
-        environment["AWM_ROOT"] = str(awm_root)
     return environment
 
 
@@ -1867,8 +1875,8 @@ def shell_command(shell_name: str, shell: Path, command: str) -> List[str]:
 
 def run_shell_operation(sequence: int, operation: str, command: str,
                         state: Dict[str, Any], shell_name: str, shell: Path,
-                        awm_root: Path, project: Path, artifacts: Path,
-                        temporary: Path) -> Tuple[Dict[str, Any], str]:
+                        project: Path, artifacts: Path, temporary: Path) -> \
+        Tuple[Dict[str, Any], str]:
     stdout_path = artifacts / "shell-{}-{}.stdout".format(sequence, operation)
     stderr_path = artifacts / "shell-{}-{}.stderr".format(sequence, operation)
     wrapped = (
@@ -1882,7 +1890,7 @@ def run_shell_operation(sequence: int, operation: str, command: str,
     # Only the isolated shell profile may introduce the complete runtime PATH
     # and nonce required by the wrapped command.
     environment = clean_environment(
-        state["home"], temporary, state["bootstrap_path"], awm_root)
+        state["home"], temporary, state["bootstrap_path"])
     pid, exit_code = bounded_process(
         shell_command(shell_name, shell, wrapped), environment,
         stdout_path, stderr_path, "fresh login shell {}".format(operation))
@@ -2421,9 +2429,28 @@ def run_canary(archive: Path, checksum: Path, shell_name: str,
                 treatment_after_investigate["sha256"]}) != 1:
             refuse("initial and post-investigation workspaces are not identical")
 
-        awm_root = state_root / "awm"
+        # The public project-memory route deliberately ignores ambient
+        # AWM_ROOT.  Materialize and snapshot the one owner-private tree its
+        # fixed Python executor derives from XDG_STATE_HOME instead.
+        state_home = state["home"] / ".local" / "state"
+        state_home_identity = create_owned_directory(
+            state_home, 0o700, "isolated state directory", state["local_identity"])
+        control_plane_state = state_home / "mainframe"
+        control_plane_state_identity = create_owned_directory(
+            control_plane_state, 0o700, "control-plane state directory",
+            state_home_identity)
+        adapter_runtime = control_plane_state / ".mainframe-control-plane-runtime"
+        adapter_runtime_identity = create_owned_directory(
+            adapter_runtime, 0o700, "project-memory runtime directory",
+            control_plane_state_identity)
+        adapter_state = adapter_runtime / "project-memory-adapter-state"
+        adapter_state_identity = create_owned_directory(
+            adapter_state, 0o700, "project-memory adapter state directory",
+            adapter_runtime_identity)
+        awm_root = project_memory_awm_root(state["home"])
         create_owned_directory(
-            awm_root, 0o700, "AWM runtime directory", state_root_identity)
+            awm_root, 0o700, "project-memory AWM directory",
+            adapter_state_identity)
         awm_snapshots = snapshots_root / "awm"
         awm_snapshots_identity = create_owned_directory(
             awm_snapshots, 0o700, "AWM snapshots directory", snapshots_identity)
@@ -2437,7 +2464,7 @@ def run_canary(archive: Path, checksum: Path, shell_name: str,
                 canary_commands(shell_name, treatment_workspace), 1):
             record, stdout = run_shell_operation(
                 sequence, operation, command, state, shell_name, shell,
-                awm_root, treatment_workspace, artifacts_root, temporary)
+                treatment_workspace, artifacts_root, temporary)
             process_records.append(record)
             bash_matches = re.findall(
                 r"^  Bash version:\s+([^\r\n]+)$", stdout, re.MULTILINE)
@@ -2727,10 +2754,18 @@ def validate_private_record(private: Dict[str, Any], archive: Path, checksum: Pa
     expected_state_root = private_evidence.parent / (private_evidence.name + ".data")
     if state_root != expected_state_root:
         refuse("private run data is not adjacent to its private evidence record")
+    awm_root = project_memory_awm_root(state_root / "home")
     private_directories = (
         state_root, state_root / "artifacts", state_root / "snapshots",
         state_root / "snapshots" / "awm", state_root / "runs",
-        state_root / "tmp", state_root / "home", state_root / "awm",
+        state_root / "tmp", state_root / "home", state_root / "home" / ".local",
+        state_root / "home" / ".local" / "state",
+        state_root / "home" / ".local" / "state" / "mainframe",
+        state_root / "home" / ".local" / "state" / "mainframe"
+        / ".mainframe-control-plane-runtime",
+        state_root / "home" / ".local" / "state" / "mainframe"
+        / ".mainframe-control-plane-runtime" / "project-memory-adapter-state",
+        awm_root,
     )
     for directory in private_directories:
         metadata = require_directory(

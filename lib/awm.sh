@@ -587,6 +587,47 @@ _awm_path_mode() {
     fi
 }
 
+# Linux user namespaces expose an unmapped host UID as the kernel overflow UID
+# (normally 65534).  Codex's bubblewrap sandbox maps only the invoking account,
+# so the host-root-owned /usr/bin/jq remains immutable but no longer appears to
+# be owned by numeric UID 0 inside the sandbox.  Prove that host UID 0 is
+# genuinely absent from the current namespace before accepting that narrow
+# representation; ordinary namespaces and package-manager jq paths do not use
+# this exception.
+_awm_uid_map_excludes_host_root() {
+    local map_file="${1:-/proc/self/uid_map}"
+    local inside outside length extra saw_mapping=0
+
+    [[ -f "$map_file" && ! -L "$map_file" && -r "$map_file" ]] || return 1
+    while read -r inside outside length extra; do
+        [[ -z "${extra:-}" && "$inside" =~ ^[0-9]+$ &&
+           "$outside" =~ ^[0-9]+$ && "$length" =~ ^[0-9]+$ &&
+           ${#inside} -le 10 && ${#outside} -le 10 && ${#length} -le 10 ]] ||
+            return 1
+        (( 10#$length > 0 )) || return 1
+        saw_mapping=1
+        # UID-map ranges are non-negative, so host UID 0 is mapped exactly
+        # when a non-empty range begins at outside UID 0.
+        (( 10#$outside != 0 )) || return 1
+    done <"$map_file"
+    (( saw_mapping == 1 ))
+}
+
+_awm_strict_jq_owner_is_trusted() {
+    local owner="$1" candidate="$2"
+
+    [[ "$owner" =~ ^[0-9]+$ ]] || return 1
+    if [[ "$owner" -eq 0 || "$owner" -eq "$EUID" ]]; then
+        return 0
+    fi
+    [[ "$owner" -eq 65534 ]] || return 1
+    case "$candidate" in
+        /usr/bin/jq|/bin/jq) ;;
+        *) return 1 ;;
+    esac
+    _awm_uid_map_excludes_host_root /proc/self/uid_map
+}
+
 # Resolve the semantic parser from a closed set of fixed installations.  The
 # caller's PATH is never consulted: checkpoint sidecars are a trust boundary,
 # and the pure-Bash JSON helpers intentionally are not a duplicate-key-aware
@@ -626,7 +667,7 @@ _awm_strict_jq_path() {
         [[ "$result" =~ ^[0-9]+\ [0-7]{3,4}$ ]] || continue
         read -r owner mode <<<"$result"
         [[ ${#mode} -eq 4 && "$mode" == 0* ]] && mode="${mode#0}"
-        [[ "$owner" -eq 0 || "$owner" -eq "$EUID" ]] || continue
+        _awm_strict_jq_owner_is_trusted "$owner" "$candidate" || continue
         numeric=$((8#$mode))
         (( (numeric & 0022) == 0 && (numeric & 07000) == 0 &&
            (numeric & 0100) != 0 )) || continue

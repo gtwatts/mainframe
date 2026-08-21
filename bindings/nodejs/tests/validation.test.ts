@@ -2,9 +2,24 @@
  * MAINFRAME Node.js Bindings - Validation Module Tests
  */
 
-import "./setup";
+import {
+  durableControlPlaneStateDirectoryForTest,
+  cleanupDurableStateForTestFile,
+  prepareDurableStateForTestFile,
+  resetDurableControlPlaneStateForTest,
+} from "./setup";
 
-import { describe, test, expect, beforeAll, setDefaultTimeout } from "bun:test";
+import {
+  describe,
+  test,
+  expect,
+  afterAll,
+  beforeAll,
+  beforeEach,
+  setDefaultTimeout,
+} from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { setConfig } from "../src/core";
 import {
   // Type validation
@@ -46,7 +61,23 @@ import {
 // These assertions exercise the reviewed durable route, so each one may
 // start a control-plane process. Keep the file bounded while allowing several
 // sequential assertions on slower hosted runners.
-setDefaultTimeout(15_000);
+setDefaultTimeout(30_000);
+beforeAll(prepareDurableStateForTestFile);
+beforeEach(resetDurableControlPlaneStateForTest);
+afterAll(cleanupDurableStateForTestFile);
+
+function durableReservationCount(): number {
+  const ledger = readFileSync(
+    join(durableControlPlaneStateDirectoryForTest, "control-plane.jsonl"),
+    "utf8",
+  );
+  return ledger
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as { kind?: string; action?: string })
+    .filter((event) => event.kind === "canonical_request" && event.action === "reserved")
+    .length;
+}
 
 describe("Validation Module", () => {
   beforeAll(() => {
@@ -162,14 +193,14 @@ describe("Validation Module", () => {
         expect(validateEmail("user@example.com")).toBe(true);
         expect(validateEmail("user.name@example.co.uk")).toBe(true);
         expect(validateEmail("user+tag@example.com")).toBe(true);
-      }, 10_000);
+      }, 30_000);
 
       test("should reject invalid emails", () => {
         expect(validateEmail("invalid")).toBe(false);
         expect(validateEmail("@example.com")).toBe(false);
         expect(validateEmail("user@")).toBe(false);
         expect(validateEmail("")).toBe(false);
-      }, 10_000);
+      }, 30_000);
     });
 
     describe("validateUrl", () => {
@@ -178,13 +209,13 @@ describe("Validation Module", () => {
         expect(validateUrl("https://example.com")).toBe(true);
         expect(validateUrl("https://example.com/path")).toBe(true);
         expect(validateUrl("https://example.com:8080")).toBe(true);
-      }, 10_000);
+      }, 30_000);
 
       test("should reject invalid URLs", () => {
         expect(validateUrl("not-a-url")).toBe(false);
         expect(validateUrl("ftp://files.com")).toBe(false);
         expect(validateUrl("")).toBe(false);
-      }, 10_000);
+      }, 30_000);
 
       test("should support custom schemes", () => {
         expect(validateUrl("ftp://files.com", "ftp,http")).toBe(true);
@@ -263,13 +294,13 @@ describe("Validation Module", () => {
         expect(validateSemver("v1.2.3")).toBe(true);
         expect(validateSemver("1.0.0-beta")).toBe(true);
         expect(validateSemver("1.0.0+build")).toBe(true);
-      }, 10_000);
+      }, 30_000);
 
       test("should reject invalid semver", () => {
         expect(validateSemver("1.2")).toBe(false);
         expect(validateSemver("1")).toBe(false);
         expect(validateSemver("not-semver")).toBe(false);
-      }, 10_000);
+      }, 30_000);
     });
   });
 
@@ -384,11 +415,13 @@ describe("Validation Module", () => {
       const valid = validators.email("test@example.com");
       expect(valid.valid).toBe(true);
       expect(valid.error).toBeUndefined();
+      expect(durableReservationCount()).toBe(1);
 
       const invalid = validators.email("invalid");
       expect(invalid.valid).toBe(false);
       expect(invalid.error).toBeDefined();
-    }, 10_000);
+      expect(durableReservationCount()).toBe(2);
+    }, 30_000);
 
     test("validators.url should return validation result", () => {
       const valid = validators.url("https://example.com");
@@ -396,7 +429,7 @@ describe("Validation Module", () => {
 
       const invalid = validators.url("not-a-url");
       expect(invalid.valid).toBe(false);
-    }, 10_000);
+    }, 30_000);
 
     test("validators.uuid should return validation result", () => {
       const valid = validators.uuid("550e8400-e29b-41d4-a716-446655440000");
