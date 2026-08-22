@@ -948,7 +948,7 @@ python3 scripts/export-gate-rules.py --verify
 ```
 
 The v10.2 candidate has 43 canonical lexical gate rules. The verifier applies
-the shipped `security/gate-normalizer.mjs` contract and currently checks 163
+the shipped `security/gate-normalizer.mjs` contract and currently checks 183
 Bash/JavaScript parity cases. A `low` result means only that none of those
 ordered lexical rules matched; it is not proof that a command or its downstream
 effects are safe.

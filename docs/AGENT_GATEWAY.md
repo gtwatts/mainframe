@@ -123,7 +123,7 @@ The v10.2 classifier is an ordered 43-rule lexical policy. Its JavaScript
 distribution is a two-file contract: `security/gate-rules.json` declares the
 input view for each regex and identifies the shipped
 `security/gate-normalizer.mjs`, whose exported classifier must run before rule
-matching. `scripts/export-gate-rules.py --verify` currently proves 163
+matching. `scripts/export-gate-rules.py --verify` currently proves 183
 Bash/JavaScript parity cases.
 
 The runtime-mutation rule reserves MAINFRAME source updates, non-dry-run

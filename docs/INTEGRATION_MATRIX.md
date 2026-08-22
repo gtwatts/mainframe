@@ -115,7 +115,7 @@ executions or completed cross-platform release certification. WSL is untested.
 |-------|-------------|
 | One version number | `VERSION` → `sync-version.sh` → CI drift gate |
 | Registry matches code | `sync-version.sh --check` in lint job (reports diffs) |
-| Canonical Bash/JavaScript gate parity | `export-gate-rules.py --verify` applies the shipped normalizer and checks 163 cases across all 43 rules |
+| Canonical Bash/JavaScript gate parity | `export-gate-rules.py --verify` applies the shipped normalizer and checks 183 cases across all 43 rules |
 | Checksums match files | `generate-sbom.sh --check`; install-time verification |
 | Platform claims require evidence | Local tests and workflow definitions are not substitutes for an exact-candidate CI artifact; `Darwin-x86_64-none` and `Linux-x86_64-glibc` execution remain pending for the final candidate |
 
