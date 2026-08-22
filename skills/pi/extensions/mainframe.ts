@@ -126,7 +126,7 @@ const MAINFRAME_PI_EXTENSION_PATH = "./skills/pi/extensions/mainframe.ts";
 const MAINFRAME_PI_SKILL_PATH = "./skills/pi";
 const MAINFRAME_PI_PROMPT_BLOCK_START = "<mainframe-pi-runtime version=\"1\">";
 const MAINFRAME_PI_PROMPT_BLOCK_END = "</mainframe-pi-runtime>";
-const MAINFRAME_PI_PROMPT_TIMEOUT_MS = 3_000;
+const MAINFRAME_PI_PROMPT_TIMEOUT_MS = 15_000;
 // Every project-memory action enters the installed public CLI, which in turn
 // owns the fixed control-plane identities, policy decision, mapping lock, and
 // one-consumer presentation. Pi never sources project AWM helpers directly.
@@ -618,7 +618,7 @@ async function loadCanonicalGateRuntime(selectedRoot: string): Promise<Canonical
 			}
 			if (!document.rules.every((rule: any) =>
 				["critical", "high", "medium", "low"].includes(rule?.tier) &&
-				["raw", "normalized", "normalized-both", "flat"].includes(rule?.input) &&
+				["raw", "raw-inert", "normalized", "normalized-both", "flat"].includes(rule?.input) &&
 				typeof rule?.id === "string" && typeof rule?.js === "string")) {
 				throw new Error(`gate rules are invalid at selected runtime root: ${root}`);
 			}
@@ -836,6 +836,7 @@ function bashBlockedResult(command: string, safety: any) {
 			`Risk: ${safety.risk}`,
 			`Reason(s): ${safety.reasons.join(", ") || "destructive shell pattern"}`,
 			nextStep,
+			"Scope note: this gate only intercepts Bash commands. Pi's write and edit file tools are NOT gated - use them to author or edit code files instead of shell heredocs.",
 			"",
 			"Command preview:",
 			truncate(command, 1200),
@@ -1890,6 +1891,13 @@ function inspectEffectivePiTools(pi: any, root: string) {
 	};
 }
 
+// The disk probe shells out to `mainframe pi status --json`, which can take
+// several seconds on a cold start. Cache successful probes briefly and fall
+// back to the last known result when a probe times out, so the runtime
+// banner never flip-flops to BLOCKED from a transiently slow subprocess.
+const LIVE_PI_STATUS_CACHE_TTL_MS = 120_000;
+const livePiStatusCache = new Map<string, { at: number; result: RunResult | null }>();
+
 async function inspectLivePi(
 	pi: any,
 	root: string,
@@ -1901,14 +1909,31 @@ async function inspectLivePi(
 	const compatibility = exactPiCompatibility(root, identity);
 	const cli = getMainframeCli(root);
 	const agentDir = process.env.PI_CODING_AGENT_DIR || process.env.MAINFRAME_PI_AGENT_DIR;
-	const statusResult = cli ? await runProcess(cli, ["pi", "status", "--json"], {
-		cwd,
-		env: {
-			MAINFRAME_ROOT: root,
-			...(agentDir ? { PI_CODING_AGENT_DIR: agentDir } : {}),
-		},
-		timeoutMs,
-	}) : null;
+	const statusCacheKey = `${canonicalPath(root)}\n${cwd}`;
+	const cachedStatus = livePiStatusCache.get(statusCacheKey);
+	let statusResult: RunResult | null;
+	if (cachedStatus && Date.now() - cachedStatus.at < LIVE_PI_STATUS_CACHE_TTL_MS) {
+		statusResult = cachedStatus.result;
+	} else if (cli) {
+		const probed = await runProcess(cli, ["pi", "status", "--json"], {
+			cwd,
+			env: {
+				MAINFRAME_ROOT: root,
+				...(agentDir ? { PI_CODING_AGENT_DIR: agentDir } : {}),
+			},
+			timeoutMs,
+		});
+		if (!probed.timedOut && probed.code !== null) {
+			statusResult = probed;
+			livePiStatusCache.set(statusCacheKey, { at: Date.now(), result: probed });
+		} else {
+			// A slow/failed probe must not flip a previously healthy observation
+			// to BLOCKED mid-session; reuse the last known result when one exists.
+			statusResult = cachedStatus?.result ?? probed;
+		}
+	} else {
+		statusResult = null;
+	}
 	const disk = statusResult ? parseJsonResult(statusResult) : null;
 	const diskState = typeof disk?.state === "string" ? disk.state : "inspection-failed";
 	const canonicalRoot = canonicalPath(root);

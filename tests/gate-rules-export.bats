@@ -72,7 +72,7 @@ assert normalizer["normalize_export"] == "normalizeGateCommand"
 assert normalizer["classify_export"] == "classifyGateCommand"
 assert normalizer["marker"] == "\x1e"
 assert normalizer["rule_input_field"] == "input"
-assert normalizer["inputs"] == ["raw", "normalized", "normalized-both", "flat"]
+assert normalizer["inputs"] == ["raw", "raw-inert", "normalized", "normalized-both", "flat"]
 assert normalizer["sha256"] == normalizer_digest
 
 rules = document["rules"]
@@ -153,6 +153,14 @@ const cases = [
   ["printf '%s' ':(){ :|:& };:'", "low", "none"],
   ["printf '%s' '> /dev/sda'", "low", "none"],
   ["printf %s \\> /dev/sda", "low", "none"],
+  // Heredoc bodies are data, not commands; shell-fed bodies stay gated.
+  ["cat > /tmp/x.ts <<'EOF'\n/**\n * doc\n */\nEOF", "low", "none"],
+  ["cat <<'EOF'\n$(rm -rf /tmp/x)\nEOF", "low", "none"],
+  ["cat <<EOF\n$(rm -rf /tmp/x)\nEOF", "critical", "dynamic-shell-expansion"],
+  ["bash <<'EOF'\nrm -rf /tmp/x\nEOF", "critical", "recursive-force-rm"],
+  ["cat <<'EOF' | bash\nrm -rf /tmp/x\nEOF", "critical", "recursive-force-rm"],
+  ["ssh host <<'EOF'\nrm -rf /tmp/x\nEOF", "critical", "recursive-force-rm"],
+  ["cat <<-'EOF'\n\t/**\n\tEOF", "low", "none"],
 ];
 for (const [command, expectedTier, expectedId, environment] of cases) {
   const match = classifyGateCommand(command, rules, environment);
@@ -176,7 +184,7 @@ JS
     run env PYTHONDONTWRITEBYTECODE=1 \
         python3 "$PROJECT_ROOT/scripts/export-gate-rules.py" --verify
     [[ "$status" -eq 0 ]]
-    [[ "$output" == *"verify: 163 corpus cases identical across bash + JS"* ]]
+    [[ "$output" == *"verify: 183 corpus cases identical across bash + JS"* ]]
     after_verify="$(shasum -a 256 "$export_file" "$normalizer_file")"
     [[ "$after_verify" == "$before" ]]
 

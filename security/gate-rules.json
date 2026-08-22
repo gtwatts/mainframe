@@ -1,6 +1,6 @@
 {
   "version": "10.2.0",
-  "generated": "2026-08-10T00:12:57Z",
+  "generated": "2026-08-22T15:56:24Z",
   "source": "lib/agent_safety.sh (_agent_gate_match)",
   "normalizer": {
     "contract": "executable-marker-v1",
@@ -11,11 +11,12 @@
     "rule_input_field": "input",
     "inputs": [
       "raw",
+      "raw-inert",
       "normalized",
       "normalized-both",
       "flat"
     ],
-    "sha256": "32e300f32f1ca283a13bb9914fab5fa9a7037ad2dd290db891f1e9e92006abe5"
+    "sha256": "14215e6de4adaf9fb01bd58e11655d19ad31db75b46b1d164efb9883c7d2222e"
   },
   "rules": [
     {
@@ -39,7 +40,7 @@
     {
       "tier": "critical",
       "id": "dynamic-shell-expansion",
-      "input": "raw",
+      "input": "raw-inert",
       "js": "(?:^(?:(?:\\\\[\\s\\S])|'[^']*'|[^'\\\\])*?(?:\\$\\(|`)|^(?:(?:\\\\[\\s\\S])|'[^']*'|\\\"(?:\\\\.|[^\\\"\\\\])*\\\"|[^'\\\"\\\\])*?[<>]\\()"
     },
     {

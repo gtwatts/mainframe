@@ -571,6 +571,36 @@ _gate_tier() {
     [ "$(_gate_tier 'printf %s \> /dev/sda')" = "low" ]
 }
 
+@test "gate: heredoc bodies are data, not commands (source-file authoring FP fix)" {
+    # Quoted-delimiter heredoc bodies are fully inert: no expansion, no
+    # command lexing. Writing source files via heredoc must not be blocked.
+    [ "$(_gate_tier $'cat > /tmp/x.ts <<\'EOF\'\n/**\n * doc\n */\nEOF')" = "low" ]
+    [ "$(_gate_tier $'cat <<\'EOF\'\nr = [x*2 for x in range(10)]\nEOF')" = "low" ]
+    [ "$(_gate_tier $'cat <<\'EOF\'\n$(rm -rf /tmp/x)\nEOF')" = "low" ]
+    [ "$(_gate_tier $'cat <<\'EOF\'\nrm -rf /\nEOF')" = "low" ]
+    [ "$(_gate_tier $'cat <<-\'EOF\'\n\t/**\n\tEOF')" = "low" ]
+    [ "$(_gate_tier $'cat <<"EOF"\n/**\nEOF')" = "low" ]
+    [ "$(_gate_tier $'cat <<\\EOF\n/**\nEOF')" = "low" ]
+    [ "$(_gate_tier $'cat <<E\'OF\'\n/**\nEOF')" = "low" ]
+    [ "$(_gate_tier $'cat <<A <<B\n/**\nA\n*/\nB')" = "low" ]
+    [ "$(_gate_tier $'cat <<< \'/**\'')" = "low" ]
+}
+
+@test "gate: shell-fed heredoc bodies remain classified as shell code" {
+    # A heredoc body delivered to a shell/interpreter executes; recursive
+    # body analysis must preserve destructive-command protection.
+    [ "$(_gate_tier $'bash <<\'EOF\'\nrm -rf /tmp/x\nEOF')" = "critical" ]
+    [ "$(_gate_tier $'sh <<EOF\nrm -rf /tmp/x\nEOF')" = "critical" ]
+    [ "$(_gate_tier $'ssh host <<\'EOF\'\nrm -rf /tmp/x\nEOF')" = "critical" ]
+    [ "$(_gate_tier $'cat <<\'EOF\' | bash\nrm -rf /tmp/x\nEOF')" = "critical" ]
+    [ "$(_gate_tier $'cat <<A && sh <<B\n/**\nA\nrm -rf /tmp/x\nB')" = "critical" ]
+    [ "$(_gate_tier $'cat <<\'EOF\'\n/**\nEOF\nrm -rf /tmp/x')" = "critical" ]
+    # Unquoted heredoc bodies undergo real expansion and stay gated.
+    [ "$(_gate_tier $'cat <<EOF\n$(rm -rf /tmp/x)\nEOF')" = "critical" ]
+    # EOF-terminated heredocs (no trailing newline) behave identically.
+    [ "$(_gate_tier $'bash <<\'EOF\'\nrm -rf /tmp/x\nEOF')" = "critical" ]
+}
+
 @test "gate: blocked flag follows AGENT_GATE_BLOCK_TIER" {
     agent_gate_classify "rm -rf /tmp/x" | grep -q '"blocked":true'
     agent_gate_classify "git push --force origin main" | grep -q '"blocked":false'

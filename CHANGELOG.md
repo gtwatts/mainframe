@@ -227,7 +227,7 @@ Notable user-facing changes are recorded here. MAINFRAME follows semantic versio
   markers, structured `rm` flag tiers, dynamic-evaluation denial, inline Git
   aliases, raw-device redirects, and the marker-aware fork-bomb matcher. The
   10.2 runtime payload ships both `security/gate-rules.json` and its declared
-  `security/gate-normalizer.mjs`; 163 corpus cases prove Bash/JavaScript tier
+  `security/gate-normalizer.mjs`; 183 corpus cases prove Bash/JavaScript tier
   parity through that normalizer-backed contract.
 - Project AWM bindings reject path disclosure, unsafe modes, symbolic-link
   redirection, malformed mappings, and same-ID cross-namespace resolution.
@@ -287,6 +287,25 @@ Notable user-facing changes are recorded here. MAINFRAME follows semantic versio
   JavaScript policy. Sequential post-launch replacement of the bound Bash,
   `jq`, gateway, or safety-policy bytes is detected by the launch seal. This is
   deliberate mistake/tamper detection, not a same-UID sandbox guarantee.
+- The destructive-command gate now understands heredocs, ending a false
+  positive that classified heredoc'd source files as critical
+  `dynamic-executable-word` risk on tokens like `/**`. Heredoc bodies are data,
+  never commands, so they no longer receive executable markers; bodies feeding
+  a shell or interpreter (`sh`, `bash`, `dash`, `zsh`, `ksh`, `ssh`), or piped
+  to a shell on the opening line, are recursively analyzed as shell code so
+  `bash <<EOF` with a destructive body stays blocked. The dynamic-expansion
+  scan skips inert quoted-delimiter bodies (`<<'EOF'`) through a new
+  `raw-inert` rule-input view while unquoted bodies remain gated because
+  `$()`/backtick expansion is genuinely active there. Both the canonical Bash
+  lexer and the exported JavaScript normalizer implement the same state
+  machine, with regression coverage in the gate suites.
+- The Pi host integration's block message now states explicitly that only Bash
+  commands are gated and that Pi's write/edit file tools remain available for
+  file authoring, so agents stop generalizing a blocked heredoc into an
+  unwritten-files workaround. The live-runtime disk probe is cached briefly
+  with a last-known-result fallback, so a slow cold-start subprocess no longer
+  flips the readiness banner to BLOCKED mid-session; the prompt-path probe
+  timeout was raised to match the CLI's cold start.
 
 ## 10.1.0 - 2026-07-21
 

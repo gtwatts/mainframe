@@ -977,11 +977,40 @@ _agent_gate_has_executable_named() {
 # executing or rewriting the command. Single-quoted data and backslash-escaped
 # characters are intentionally ignored; substitutions remain active inside
 # double quotes, while process substitution does not.
+# Internal: find lexically active command/process substitution without
+# executing or rewriting the command. Single-quoted data and backslash-escaped
+# characters are intentionally ignored; substitutions remain active inside
+# double quotes, while process substitution does not.
+#
+# Heredoc awareness: a heredoc body introduced by a QUOTED delimiter
+# (<<'EOF', <<"EOF", <<\EOF, and mixed forms) is inert data - the shell
+# performs no expansion there - so the body is skipped entirely. A body with
+# an UNQUOTED delimiter (<<EOF) really does undergo $/` expansion, so it is
+# still scanned; nested heredoc detection is suppressed inside it because the
+# body is text to the shell, not syntax.
 _agent_gate_has_dynamic_shell_expansion() {
     local input="$1" quote="" ch next i len=${#1}
+    local hd_body_mode=0 hd_bdelim="" hd_bstrip=0 hd_line=""
 
     for (( i=0; i<len; i++ )); do
         ch="${input:i:1}"
+
+        # Unquoted-heredoc body: scan with ordinary quote semantics, but track
+        # lines so the closing delimiter ends the body, and never treat body
+        # text as new heredoc syntax.
+        if (( hd_body_mode )); then
+            if [[ "$ch" == $'\n' ]]; then
+                local _hd_chk="$hd_line"
+                if (( hd_bstrip )); then
+                    while [[ "$_hd_chk" == $'\t'* ]]; do _hd_chk="${_hd_chk#$'\t'}"; done
+                fi
+                hd_line=""
+                [[ "$_hd_chk" == "$hd_bdelim" ]] && hd_body_mode=0
+                continue
+            fi
+            hd_line+="$ch"
+        fi
+
         if [[ "$quote" == "'" ]]; then
             [[ "$ch" == "'" ]] && quote=""
             continue
@@ -1005,10 +1034,85 @@ _agent_gate_has_dynamic_shell_expansion() {
         case "$ch" in
             "'") quote="'" ;;
             '"') quote='"' ;;
-            $'\\') (( i++ )) || true ;;
+            $'\\') i=$((i + 1)) ;;
             '$') [[ "${input:i+1:1}" == '(' ]] && return 0 ;;
             '`') return 0 ;;
-            '<'|'>') [[ "${input:i+1:1}" == '(' ]] && return 0 ;;
+            '>') [[ "${input:i+1:1}" == '(' ]] && return 0 ;;
+            '<')
+                [[ "${input:i+1:1}" == '(' ]] && return 0
+                if (( ! hd_body_mode )) && [[ "${input:i+1:1}" == '<' && "${input:i+2:1}" != '<' ]]; then
+                    # Candidate heredoc operator: parse optional strip-tabs
+                    # dash, whitespace, then the delimiter word.
+                    local j=$(( i + 2 )) hd_strip=0 hd_spec="" hd_ch
+                    [[ "${input:j:1}" == '-' ]] && { hd_strip=1; j=$(( j + 1 )); }
+                    while [[ "${input:j:1}" == ' ' || "${input:j:1}" == $'\t' ]]; do j=$(( j + 1 )); done
+                    while (( j < len )); do
+                        hd_ch="${input:j:1}"
+                        case "$hd_ch" in
+                            ' '|$'\t'|$'\n'|';'|'&'|'|'|'('|')'|'<'|'>') break ;;
+                        esac
+                        hd_spec+="$hd_ch"; j=$(( j + 1 ))
+                    done
+                    if [[ -n "$hd_spec" ]]; then
+                        # Decode the delimiter (quotes/backslashes removed) and
+                        # record whether any quoting made the body inert.
+                        local hd_delim="" hd_quoted=0 k hd_c
+                        for (( k=0; k<${#hd_spec}; k++ )); do
+                            hd_c="${hd_spec:k:1}"
+                            case "$hd_c" in
+                                "'"|'"') hd_quoted=1 ;;
+                                $'\\')
+                                    hd_quoted=1
+                                    if (( k + 1 < ${#hd_spec} )); then
+                                        k=$(( k + 1 )); hd_delim+="${hd_spec:k:1}"
+                                    fi
+                                    ;;
+                                *) hd_delim+="$hd_c" ;;
+                            esac
+                        done
+                        # Dynamic or empty delimiters cannot be matched safely;
+                        # leave the text to ordinary scanning.
+                        if [[ -n "$hd_delim" && "$hd_delim" != *'$'* && "$hd_delim" != *'`'* && "$hd_delim" != *$'\n'* ]]; then
+                            local _hd_after="${input:j}"
+                            if [[ "$_hd_after" == *$'\n'* ]]; then
+                                local _hd_body="${_hd_after#*$'\n'}"
+                                local _hd_pos=$(( ${#input} - ${#_hd_body} ))
+                                if (( hd_quoted )); then
+                                    # Inert body: skip lines through the
+                                    # closing delimiter.
+                                    local _hd_rest="$_hd_body" _hd_line2 _hd_chk2
+                                    while :; do
+                                        if [[ "$_hd_rest" == *$'\n'* ]]; then
+                                            _hd_line2="${_hd_rest%%$'\n'*}"
+                                            _hd_pos=$(( _hd_pos + ${#_hd_line2} + 1 ))
+                                        else
+                                            _hd_line2="$_hd_rest"
+                                            _hd_pos=$len
+                                        fi
+                                        _hd_chk2="$_hd_line2"
+                                        if (( hd_strip )); then
+                                            while [[ "$_hd_chk2" == $'\t'* ]]; do _hd_chk2="${_hd_chk2#$'\t'}"; done
+                                        fi
+                                        [[ "$_hd_chk2" == "$hd_delim" ]] && break
+                                        [[ "$_hd_rest" != *$'\n'* ]] && break
+                                        _hd_rest="${_hd_rest#*$'\n'}"
+                                    done
+                                    i=$(( _hd_pos - 1 ))
+                                    continue
+                                fi
+                                # Expansion-capable body: scan it, suppressing
+                                # nested heredoc detection until its delimiter.
+                                hd_body_mode=1
+                                hd_bdelim="$hd_delim"
+                                hd_bstrip=$hd_strip
+                                hd_line=""
+                                i=$(( _hd_pos - 1 ))
+                                continue
+                            fi
+                        fi
+                    fi
+                fi
+                ;;
         esac
     done
     return 1
@@ -1108,14 +1212,79 @@ _agent_gate_normalize_command_paths() {
     local redirect_target_pending=0
     local function_name_pending=0
 
+    # Heredoc tracking. `<<`/`<<-` queue a body that begins at the next
+    # newline. Bodies are data, never commands, so they are dropped from the
+    # analysis form - except when the receiving command (or the pipe target
+    # on the opening line) is a shell/interpreter, in which case the body is
+    # recursively analyzed as shell code.
+    local -a heredoc_queue=()
+    local heredoc_delim_pending=0 heredoc_strip_tabs=0
+    local body_mode=0 body_cmd="" body_tabs=0 body_delim="" body_code=0
+    local body_line="" body_text="" body_line_piped=0
+    local lt_prev=0 pending_pipe=0 line_pipes_to_shell=0
+
     # Second pass: identify the words the shell treats as executables. Wrapper
     # options are omitted from the analysis form so their operands cannot be
     # mistaken for the wrapped command.
     for (( i=0; i<${#words[@]}; i++ )); do
         raw="${words[i]}"
+
+        # Heredoc body: accumulate lines until the closing delimiter. Body
+        # words are data, so they never receive executable markers; a body
+        # feeding a shell/interpreter is analyzed recursively as shell code.
+        if (( body_mode )); then
+            if [[ "${types[i]}" == separator && "$raw" == $'\n' ]]; then
+                local _hd_line="$body_line"
+                if (( body_tabs )); then
+                    while [[ "$_hd_line" == $'\t'* ]]; do _hd_line="${_hd_line#$'\t'}"; done
+                fi
+                if [[ "$_hd_line" == "$body_delim" ]]; then
+                    if (( body_code )) && [[ -n "$body_text" ]]; then
+                        output+=" ; "
+                        output+=$(_agent_gate_normalize_command_paths "$body_text")
+                    fi
+                    output+=$'\n'
+                    if (( ${#heredoc_queue[@]} > 0 )); then
+                        local _hd_entry="${heredoc_queue[0]}"
+                        heredoc_queue=("${heredoc_queue[@]:1}")
+                        body_cmd="${_hd_entry%%$'\x1f'*}"
+                        local _hd_rest="${_hd_entry#*$'\x1f'}"
+                        body_tabs="${_hd_rest%%$'\x1f'*}"
+                        body_delim="${_hd_rest#*$'\x1f'}"
+                        body_code=0
+                        case "$body_cmd" in
+                            sh|bash|dash|zsh|ksh|ssh) body_code=1 ;;
+                        esac
+                        (( body_line_piped )) && body_code=1
+                        body_line=""; body_text=""
+                    else
+                        body_mode=0; body_line=""; body_text=""
+                        # The delimiter line ended the body; the next line is
+                        # a fresh command position.
+                        at_command=1
+                        wrapper=""; wrapper_arg_pending=0
+                        wrapper_split_string_pending=0
+                        wrapper_timeout_duration=0
+                        current_command=""; shell_code_pending=0
+                        find_exec_pending=0; find_embedded_shell=0
+                        git_preamble=0; terraform_preamble=0; option_arg_pending=0
+                        git_config_arg_pending=0
+                        redirect_target_pending=0
+                        function_name_pending=0
+                    fi
+                else
+                    body_text+="$body_line"$'\n'
+                    body_line=""
+                fi
+                continue
+            fi
+            body_line+="$raw"
+            continue
+        fi
         case "${types[i]}" in
             space)
                 output+="$raw"
+                lt_prev=0
                 continue
                 ;;
             separator)
@@ -1130,16 +1299,91 @@ _agent_gate_normalize_command_paths() {
                 git_config_arg_pending=0
                 redirect_target_pending=0
                 function_name_pending=0
+                lt_prev=0
+                heredoc_delim_pending=0
+                if [[ "$raw" == '|' ]]; then
+                    pending_pipe=1
+                else
+                    pending_pipe=0
+                fi
+                if [[ "$raw" == $'\n' ]]; then
+                    if (( ${#heredoc_queue[@]} > 0 )); then
+                        local _hd_entry="${heredoc_queue[0]}"
+                        heredoc_queue=("${heredoc_queue[@]:1}")
+                        body_cmd="${_hd_entry%%$'\x1f'*}"
+                        local _hd_rest="${_hd_entry#*$'\x1f'}"
+                        body_tabs="${_hd_rest%%$'\x1f'*}"
+                        body_delim="${_hd_rest#*$'\x1f'}"
+                        body_line_piped=$line_pipes_to_shell
+                        body_code=0
+                        case "$body_cmd" in
+                            sh|bash|dash|zsh|ksh|ssh) body_code=1 ;;
+                        esac
+                        (( body_line_piped )) && body_code=1
+                        body_mode=1
+                        body_line=""; body_text=""
+                    fi
+                    line_pipes_to_shell=0
+                fi
                 continue
                 ;;
             operator)
                 output+="$raw"
-                [[ "$raw" == '>' ]] && redirect_target_pending=1
+                if [[ "$raw" == '>' ]]; then
+                    redirect_target_pending=1
+                elif [[ "$raw" == '<' ]]; then
+                    if (( lt_prev )); then
+                        lt_prev=0
+                        # '<<' introduces a heredoc unless a third '<' makes
+                        # it a herestring. A heredoc needs a command on this
+                        # line to receive the body.
+                        if [[ "${types[i+1]:-}" == operator && "${words[i+1]:-}" == '<' ]]; then
+                            : # '<<<' herestring: no body lines follow
+                        elif [[ -n "$current_command" ]]; then
+                            heredoc_delim_pending=1
+                            heredoc_strip_tabs=0
+                        fi
+                    else
+                        lt_prev=1
+                    fi
+                fi
                 continue
                 ;;
         esac
 
         plain=$(_agent_gate_decode_word "$raw")
+        lt_prev=0
+
+        # Heredoc delimiter word: queue the body spec instead of treating the
+        # word as an argument. `<<-` strips leading tabs from body lines.
+        if (( heredoc_delim_pending )); then
+            if [[ "$raw" == "-" ]]; then
+                heredoc_strip_tabs=1
+                output+="$raw"
+                continue
+            fi
+            local _hd_spec="$raw"
+            if [[ "$_hd_spec" == -* ]]; then
+                heredoc_strip_tabs=1
+                _hd_spec="${_hd_spec#-}"
+            fi
+            local _hd_delim
+            _hd_delim=$(_agent_gate_decode_word "$_hd_spec")
+            local _hd_quoted=0 _hd_valid=1
+            [[ "$_hd_spec" == *"'"* || "$_hd_spec" == *'"'* || "$_hd_spec" == *'\'* ]] && _hd_quoted=1
+            [[ -z "$_hd_delim" || "$_hd_delim" == *$'\n'* ]] && _hd_valid=0
+            if (( ! _hd_quoted )) && [[ "$_hd_delim" == *'$'* || "$_hd_delim" == *'`'* ]]; then
+                _hd_valid=0   # dynamic delimiter: cannot locate the body end
+            fi
+            if (( _hd_valid )); then
+                heredoc_queue+=("${current_command}"$'\x1f'"${heredoc_strip_tabs}"$'\x1f'"${_hd_delim}")
+                output+="$raw"
+                heredoc_delim_pending=0
+                continue
+            fi
+            heredoc_delim_pending=0
+            # Invalid spec: fall through and treat the word as an argument.
+        fi
 
         if (( redirect_target_pending )); then
             if [[ "${plain,,}" =~ ^/dev/(sd|disk|rdisk|nvme) ]]; then
@@ -1274,6 +1518,14 @@ _agent_gate_normalize_command_paths() {
                 git) git_preamble=1 ;;
                 terraform|tofu) terraform_preamble=1 ;;
             esac
+            # A non-wrapper command consumes a pending pipe; remember when a
+            # shell receives it so a queued heredoc body stays shell code.
+            if [[ "$wrapper" != "$command" ]] && (( pending_pipe )); then
+                case "$command" in
+                    sh|bash|dash|zsh) line_pipes_to_shell=1 ;;
+                esac
+                pending_pipe=0
+            fi
             continue
         fi
 
@@ -1335,6 +1587,20 @@ _agent_gate_normalize_command_paths() {
         fi
         output+="$plain"
     done
+
+    # End of input closes a heredoc body whose final line has no newline
+    # (the shell accepts EOF-terminated heredocs with a warning).
+    if (( body_mode )); then
+        local _hd_line="$body_line"
+        if (( body_tabs )); then
+            while [[ "$_hd_line" == $'\t'* ]]; do _hd_line="${_hd_line#$'\t'}"; done
+        fi
+        [[ "$_hd_line" == "$body_delim" ]] || body_text+="$body_line"
+        if (( body_code )) && [[ -n "$body_text" ]]; then
+            output+=" ; "
+            output+=$(_agent_gate_normalize_command_paths "$body_text")
+        fi
+    fi
 
     printf '%s' "$output"
 }

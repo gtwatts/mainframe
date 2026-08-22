@@ -81,7 +81,9 @@ STRUCTURED_RULE_INPUT = {
     ("unsupported_control", "true"): "raw",
     ("dynamic_executable", "true"): "normalized-both",
     ("shell_eval", "true"): "normalized-both",
-    ("dynamic_shell_expansion", "true"): "raw",
+    # The raw view with inert (quoted-delimiter) heredoc bodies blanked;
+    # unquoted heredoc bodies remain visible because expansion is active there.
+    ("dynamic_shell_expansion", "true"): "raw-inert",
     ("rm_flag_tier", "critical"): "normalized",
     ("rm_flag_tier", "high"): "normalized",
     ("runtime_mutation", "true"): "normalized",
@@ -229,6 +231,28 @@ CORPUS = [
     ("rg -n '\\$\\(' .", "low"),
     ("printf '%s' '$(literal)'", "low"),
     ('printf "%s" "<(literal)"', "low"),
+    # Heredoc bodies are data, not commands. Quoted-delimiter bodies are fully
+    # inert; shell/interpreter-fed bodies and unquoted expansion stay gated.
+    ("cat > /tmp/x.ts <<'EOF'\n/**\n * doc\n */\nEOF", "low"),
+    ("cat <<'EOF'\nr = [x*2 for x in range(10)]\nEOF", "low"),
+    ("cat <<'EOF'\n$(rm -rf /tmp/x)\nEOF", "low"),
+    ("cat <<EOF\n$(rm -rf /tmp/x)\nEOF", "critical"),
+    ("bash <<'EOF'\nrm -rf /tmp/x\nEOF", "critical"),
+    ("sh <<EOF\nrm -rf /tmp/x\nEOF", "critical"),
+    ("cat <<'EOF' | bash\nrm -rf /tmp/x\nEOF", "critical"),
+    ("ssh host <<'EOF'\nrm -rf /tmp/x\nEOF", "critical"),
+    ("cat <<'EOF'\nrm -rf /\nEOF", "low"),
+    ("cat <<-'EOF'\n\t/**\n\tEOF", "low"),
+    ('cat <<"EOF"\n/**\nEOF', "low"),
+    ("cat <<\\EOF\n/**\nEOF", "low"),
+    ("cat <<E'OF'\n/**\nEOF", "low"),
+    ("cat <<A <<B\n/**\nA\n*/\nB", "low"),
+    ("cat <<A && sh <<B\n/**\nA\nrm -rf /tmp/x\nB", "critical"),
+    ("cat > /tmp/x <<'EOF'\n/**\nEOF", "low"),
+    ("cat <<'EOF'\n/**\nEOF\nrm -rf /tmp/x", "critical"),
+    ("cat <<'EOF'\n/**\nEOF", "low"),
+    ("bash <<'EOF'\nrm -rf /tmp/x\nEOF", "critical"),
+    ("cat <<< '/**'", "low"),
 ]
 
 
@@ -436,7 +460,7 @@ def main():
         "classify_export": "classifyGateCommand",
         "marker": "\x1e",
         "rule_input_field": "input",
-        "inputs": ["raw", "normalized", "normalized-both", "flat"],
+        "inputs": ["raw", "raw-inert", "normalized", "normalized-both", "flat"],
         "sha256": normalizer_sha256,
     }
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
