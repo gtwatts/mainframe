@@ -7,8 +7,8 @@
   "protocol_version": "1.0.0",
   "subject": {
     "kind": "source",
-    "source_revision": "2567cd6b2d813b728cbc7525f6fecbdce1164fcd",
-    "source_tree_sha256": "268c077036bc29272b45efad00bdbb80a1fd1469c02b8e34a5433bd350f0b60d",
+    "source_revision": "802b0605cfc0ee871c281b2ed6ced91d2e316fcd",
+    "source_tree_sha256": "31208e9a28044598f0a4736f8096931822a2ba1d04f42c7e64fac0e572a2a186",
     "inventory_sha256": null,
     "payload_sha256": null,
     "version": "10.2.0"
@@ -29,8 +29,8 @@
     "architecture": "arm64",
     "runner_class": "maintainer-local"
   },
-  "issued_at": "2026-08-21T21:04:48Z",
-  "expires_at": "2026-08-22T21:04:48Z",
+  "issued_at": "2026-08-22T19:51:03Z",
+  "expires_at": "2026-08-23T19:51:03Z",
   "evidence": [
     {
       "path": "config/runtime-closure.json",
