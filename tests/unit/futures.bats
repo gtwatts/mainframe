@@ -92,7 +92,7 @@ teardown() {
 
 @test "future_status: returns running for active future" {
     local fid
-    fid=$(future_run sleep 2)
+    fid=$(future_run sleep 0.5)
     local status
     status=$(future_status "$fid")
     [[ "$status" == "running" ]]
@@ -119,7 +119,7 @@ teardown() {
 
 @test "future_status: returns cancelled for cancelled future" {
     local fid
-    fid=$(future_run sleep 2)
+    fid=$(future_run sleep 0.5)
     future_cancel "$fid"
     local status
     status=$(future_status "$fid")
@@ -167,7 +167,7 @@ teardown() {
 
 @test "future_await: returns 124 on timeout" {
     local fid
-    fid=$(future_run sleep 3)
+    fid=$(future_run sleep 0.8)
     run future_await "$fid" 1
     [[ "$status" -eq 124 ]]
     future_cancel "$fid"
@@ -238,7 +238,7 @@ teardown() {
 
 @test "future_cancel: cancels running future" {
     local fid
-    fid=$(future_run sleep 2)
+    fid=$(future_run sleep 0.5)
     future_cancel "$fid"
     local status
     status=$(future_status "$fid")
@@ -247,7 +247,7 @@ teardown() {
 
 @test "future_cancel: returns 0 on success" {
     local fid
-    fid=$(future_run sleep 2)
+    fid=$(future_run sleep 0.5)
     future_cancel "$fid"
     [[ $? -eq 0 ]]
 }
@@ -262,7 +262,7 @@ teardown() {
 
 @test "future_cancel: kills the background process" {
     local fid
-    fid=$(future_run sleep 2)
+    fid=$(future_run sleep 0.5)
     local dir="${TMPDIR:-/tmp}/mainframe/futures/$fid"
     local pid
     pid=$(<"$dir/pid")
@@ -324,7 +324,7 @@ teardown() {
 
 @test "future_cleanup: preserves running futures" {
     local fid
-    fid=$(future_run sleep 2)
+    fid=$(future_run sleep 0.5)
     local dir="${TMPDIR:-/tmp}/mainframe/futures/$fid"
 
     future_cleanup
@@ -335,7 +335,7 @@ teardown() {
 
 @test "future_cleanup --all: removes cancelled futures" {
     local fid
-    fid=$(future_run sleep 2)
+    fid=$(future_run sleep 0.5)
     future_cancel "$fid"
     local dir="${TMPDIR:-/tmp}/mainframe/futures/$fid"
 
@@ -382,7 +382,7 @@ teardown() {
 
 @test "future_wait_any: returns first completed ID" {
     local fid1 fid2
-    fid1=$(future_run sleep 2)
+    fid1=$(future_run sleep 0.5)
     fid2=$(future_run echo "quick")
 
     local first
@@ -394,7 +394,7 @@ teardown() {
 
 @test "future_wait_any: returns 0 for successful first completion" {
     local fid1 fid2
-    fid1=$(future_run sleep 2)
+    fid1=$(future_run sleep 0.5)
     fid2=$(future_run true)
 
     future_wait_any "$fid1" "$fid2" >/dev/null
@@ -405,7 +405,7 @@ teardown() {
 
 @test "future_wait_any: returns 1 for failed first completion" {
     local fid1 fid2
-    fid1=$(future_run sleep 2)
+    fid1=$(future_run sleep 0.5)
     fid2=$(future_run false)
 
     run bash -c "source '$MAINFRAME_ROOT/lib/common.sh'; source '$MAINFRAME_ROOT/lib/futures.sh'; future_wait_any '$fid1' '$fid2'"
@@ -542,7 +542,7 @@ teardown() {
 @test "future: handles long-running commands" {
     skip "Skipping long-running test in unit suite"
     local fid
-    fid=$(future_run sleep 3)
+    fid=$(future_run sleep 0.8)
     future_await "$fid" 10
     [[ $? -eq 0 ]]
 }
