@@ -998,7 +998,7 @@ ancestors = lambda do |name|
 end
 readiness = jobs.fetch("release-readiness").fetch("steps").map { |s| s["run"] }.compact.join("\n")
 raise "claim verifier missing" unless readiness.include?("scripts/verify-public-claims.sh")
-raise "release validation missing" unless readiness.include?("scripts/dev/release.sh --check")
+raise "release validation missing" unless readiness.match?(/^\s*bash scripts\/dev\/release\.sh --check\s*$/)
 raise "documentation-only cannot authorize promotion" if readiness.include?("--documentation-only")
 raise "live claim integration lost" unless readiness.include?("bats --filter-tags release-readiness tests/control_plane_claim.bats")
 checkout = jobs.fetch("release-readiness").fetch("steps").find { |step| step.fetch("uses", "").start_with?("actions/checkout@") }
@@ -1008,7 +1008,8 @@ raise "receipt check must bind exact head" unless checkout.fetch("with").fetch("
   raise "#{name} still depends on live receipt tests" unless steps.include?("--scope correctness")
 end
 %w[test-safety test-linux test-macos bash-44-compat test-bindings
-   pi-compatibility native-host-awm-chain mcp-package-build mcp-package-test].each do |name|
+   pi-compatibility native-host-awm-chain mcp-package-build mcp-package-test
+   stable-core-conformance-linux installed-awm-handoff installed-awm-handoff-aggregate].each do |name|
   raise "#{name} suppressed by promotion" if ancestors.call(name).include?("release-readiness")
   ([name] + ancestors.call(name)).each do |dependency|
     steps = jobs.fetch(dependency).fetch("steps").map { |s| s["run"] }.compact.join("\n")
@@ -1027,6 +1028,35 @@ end
   end
 end
 puts "correctness remains runnable; promotion remains fail-closed"
+RUBY
+    [[ "$status" -eq 0 ]]
+}
+
+@test "sole-maintainer environment requires the owner approval rule" {
+    run ruby - "$WORKFLOW" <<'RUBY'
+require "yaml"
+require "json"
+require "open3"
+workflow = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: true)
+steps = workflow.fetch("jobs").fetch("release-publish").fetch("steps")
+script = steps.find { |step| step["name"] == "Require protected release environment" }.fetch("run")
+predicate = script.match(/--jq '([^']+)'/m)[1]
+owner = {"type" => "required_reviewers", "prevent_self_review" => false,
+  "reviewers" => [{"type" => "User", "reviewer" => {"login" => "gtwatts"}}]}
+cases = [
+  [{"protection_rules" => [owner]}, true],
+  [{"protection_rules" => []}, false],
+  [{"protection_rules" => [owner.merge("reviewers" => [])]}, false],
+  [{"protection_rules" => [owner.merge("prevent_self_review" => true)]}, false],
+  [{"protection_rules" => [owner.merge("reviewers" => [{"type" => "User", "reviewer" => {"login" => "other"}}])]}, false]
+]
+cases.each do |document, expected|
+  stdout, stderr, status = Open3.capture3({"GITHUB_REPOSITORY_OWNER" => "gtwatts"},
+    "jq", predicate, stdin_data: JSON.generate(document))
+  raise stderr unless status.success?
+  raise "sole-maintainer policy mismatch" unless JSON.parse(stdout) == expected
+end
+puts "owner approval required; independent human review not claimed"
 RUBY
     [[ "$status" -eq 0 ]]
 }

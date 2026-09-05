@@ -228,6 +228,25 @@ automatic reverse move. As elsewhere, the lifecycle lock coordinates
 MAINFRAME processes but is not protection against a malicious process already
 running as the same user.
 
+### Release maintainer approval
+
+This repository uses a sole-maintainer release policy. The protected
+`mainframe-release` environment requires its repository owner (`gtwatts`) as
+its sole reviewer and permits that maintainer to approve a run they initiated.
+This records maintainer approval; it does not establish independent human review.
+
+The approval does not replace automated release readiness, exact-source CI,
+source-bound proofs, artifact attestations, immutable release-tag rules, or
+post-publication verification. Unsigned local candidates can be built and tested
+without current promotion receipts; `release.sh --check` and publishing still
+require those receipts. Candidate validation never grants release authority.
+
+The environment's `MAINFRAME_RELEASE_POLICY_TOKEN` is restricted to this
+repository with Administration read permission (and GitHub's required Metadata
+read permission). It only checks release-immutability settings. Publishing uses
+the job's separate, scoped GitHub token; no developer-wide credential belongs
+in this environment secret.
+
 ### Release install and upgrade boundary
 
 The versioned bootstrap verifies one exact archive checksum record, rejects

@@ -25,7 +25,8 @@ before choosing a route.
 [Try a reviewed tool](#custom-agents) · [Preserve project memory](#agent-working-memory) ·
 [Contribute](CONTRIBUTING.md)
 
-**Current status:** experimental, unpublished `10.2.0` source candidate.
+**Current scope:** experimental `10.2.0`; the evidence supports the
+`source-candidate` claim level.
 The verified release installer is publication-gated. macOS and Linux, each
 with Bash or zsh as the calling shell, are the priority support targets;
 the native library engine requires **Bash 4.4+**. Calling the CLI from zsh is
@@ -151,9 +152,9 @@ claims MAINFRAME deliberately does not make.
 
 ## Quick install
 
-The verified release installer is still publication-gated, so the current
-public install path is a reviewed source checkout. The repository's `10.2.0`
-work is an unpublished candidate; pin and review the commit you install.
+The verified release installer requires a qualifying immutable release.
+The source-checkout path below also supports development and evaluation;
+pin and review the commit you install.
 
 ### macOS
 
@@ -286,19 +287,19 @@ installation and scripts.
 
 ### Current public install status
 
-The verified release flow below is the target distribution contract, but it is
-not live yet. The current public `v10.1.0` release is mutable and does not
-publish the required versioned runtime archive and checksum sidecar, so
-`get-mainframe.sh --latest` intentionally fails closed, as does the equivalent
-selector-free invocation. Until a qualifying immutable release is published,
-use the [source-checkout install](#source-checkout-install) below and review the
-commit you install. The `10.2.0` work described in this repository is an
-unpublished candidate.
+The bootstrap requires a qualifying immutable release with the versioned
+runtime archive and checksum sidecar. The older public `v10.1.0` release is
+mutable and lacks those assets, so it does not qualify.
+`get-mainframe.sh --latest` intentionally fails closed when no qualifying
+release is available. In that case, use the
+[source-checkout install](#source-checkout-install) and review the commit you
+install. Publishing an archive does not raise MAINFRAME's documented evidence
+or safety claim level.
 
 ### Verified release install (publication gated)
 
-After a qualifying release is published, the shortest verified path will be to
-download and inspect the current bootstrap, then ask it to resolve GitHub's
+To use a qualifying published release, download and inspect the current
+bootstrap, then ask it to resolve GitHub's
 latest immutable stable release exactly once:
 
 ```bash
@@ -763,7 +764,7 @@ complete boundary is documented in [SECURITY.md](SECURITY.md).
 
 ## Invoke reviewed helpers through one narrow API
 
-The unpublished 10.2 candidate includes 26 reviewed stable-core invocation
+The 10.2 source includes 26 reviewed stable-core invocation
 contracts in `config/invocation-policy.json`. Call one by canonical ID with a
 closed JSON object:
 

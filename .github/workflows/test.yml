@@ -4810,9 +4810,13 @@ jobs:
             -H "X-GitHub-Api-Version: 2026-03-10" \
             "repos/$GH_REPO/environments/mainframe-release" \
             --jq 'any(.protection_rules[]?;
-              .type == "required_reviewers" and .prevent_self_review == true)')
+              .type == "required_reviewers" and
+              .prevent_self_review == false and
+              (.reviewers | length) == 1 and
+              .reviewers[0].type == "User" and
+              .reviewers[0].reviewer.login == env.GITHUB_REPOSITORY_OWNER)')
           if [[ "$protected" != "true" ]]; then
-            echo "ERROR: mainframe-release must require a reviewer and prevent self-review" >&2
+            echo "ERROR: mainframe-release must require the repository owner as sole reviewer, with self-review permitted" >&2
             exit 1
           fi
 

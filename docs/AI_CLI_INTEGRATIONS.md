@@ -12,9 +12,9 @@ Current function and library counts are generated in `FUNCTIONS.json`; use the r
 
 ## Start with one read-only discovery
 
-MAINFRAME's immutable release path is publication-gated. Until the README
-reports that a qualifying release is live, the currently usable public path is
-a reviewed source checkout:
+MAINFRAME's immutable release path is publication-gated: it requires a
+qualifying published release and verified runtime assets. For development or
+evaluation, use a reviewed source checkout:
 
 ```bash
 git clone https://github.com/gtwatts/mainframe.git ~/.mainframe
@@ -244,7 +244,7 @@ mainframe invoke mf:data:json:json_get \
   --input-json '{"json":"{\"name\":\"Ada\"}","key":"name"}'
 ```
 
-The unpublished 10.2 source candidate has exactly 26 broker-invocable
+The 10.2 source has exactly 26 broker-invocable
 stable-core contracts in `config/invocation-policy.json`. `MANIFEST.json`
 binds each contract to one canonical ID, owner, closed named-input schema,
 argument shape, result kind, effects, capabilities, timeout, and output limit.

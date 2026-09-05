@@ -38,6 +38,8 @@ Usage: scripts/dev/release-candidate.sh [--prepare|--check] [--output-dir DIR]
 
 This command is local-only. It never creates a tag, pushes, publishes a GitHub
 release, updates a Homebrew tap, or contacts a package registry.
+Source and inventory are checked; time-sensitive release-claim eligibility is
+reserved for release.sh --check and the required publishing gates.
 EOF
 }
 
@@ -219,10 +221,10 @@ manifest="$expected/$manifest_name"
 
 if [[ "$mode" == "prepare" ]]; then
     "$MAINFRAME_RELEASE_BASH" --noprofile --norc -p \
-        "$ROOT_DIR/scripts/dev/release.sh" --prepare
+        "$ROOT_DIR/scripts/dev/release.sh" --prepare-candidate
 fi
 "$MAINFRAME_RELEASE_BASH" --noprofile --norc -p \
-    "$ROOT_DIR/scripts/dev/release.sh" --check
+    "$ROOT_DIR/scripts/dev/release.sh" --check-candidate
 capture_source_snapshot "$source_before"
 "$MAINFRAME_RELEASE_BASH" --noprofile --norc -p \
     "$ROOT_DIR/scripts/build-release-archive.sh" --verify
@@ -253,7 +255,7 @@ fi
 
 # Detect a source mutation during assembly before any candidate output changes.
 "$MAINFRAME_RELEASE_BASH" --noprofile --norc -p \
-    "$ROOT_DIR/scripts/dev/release.sh" --check
+    "$ROOT_DIR/scripts/dev/release.sh" --check-candidate
 capture_source_snapshot "$source_after"
 require_source_unchanged "$source_after"
 

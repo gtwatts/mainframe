@@ -257,14 +257,14 @@ PY
     [[ "$status" -eq 0 ]]
 }
 
-@test "unpublished verified install is not advertised as a live public path" {
+@test "verified install remains conditional on qualifying immutable publication" {
     grep -Fq 'Verified release install (publication gated)' "$PROJECT_ROOT/README.md"
     grep -Fq '`get-mainframe.sh --latest` intentionally fails closed' "$PROJECT_ROOT/README.md"
-    grep -Fq 'currently usable public installation path' "$PROJECT_ROOT/INSTALL.md"
+    grep -Fq 'public source-checkout path supports development and evaluation' "$PROJECT_ROOT/INSTALL.md"
     grep -Fq 'The verified mode is publication-gated' "$PROJECT_ROOT/INSTALL.md"
     grep -Fq "MAINFRAME's immutable release path is publication-gated" \
         "$PROJECT_ROOT/docs/AI_CLI_INTEGRATIONS.md"
-    grep -Fq 'the currently usable public path is' \
+    grep -Fq 'qualifying published release and verified runtime assets' \
         "$PROJECT_ROOT/docs/AI_CLI_INTEGRATIONS.md"
 }
 
