@@ -37,9 +37,9 @@ require "yaml"
 workflow = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: true)
 jobs = workflow.fetch("jobs")
 expected_steps = {
-  "test-linux" => "Run full Bats matrix",
-  "test-macos" => "Run full Bats matrix",
-  "bash-44-compat" => "Run full Bats matrix under Bash 4.4"
+  "test-linux" => "Run correctness Bats matrix",
+  "test-macos" => "Run correctness Bats matrix",
+  "bash-44-compat" => "Run correctness Bats matrix under Bash 4.4"
 }
 
 expected_steps.each do |job_name, step_name|
@@ -189,7 +189,7 @@ require "yaml"
 workflow = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: true)
 makefile = File.read(ARGV.fetch(1))
 expected = {
-  "BATS_CORE_COMMIT" => ["eb7f42f8d608ac693d7a4b67474f6714ea68cfc5", "bats", "bats-core", "v1.14.0", 8],
+  "BATS_CORE_COMMIT" => ["eb7f42f8d608ac693d7a4b67474f6714ea68cfc5", "bats", "bats-core", "v1.14.0", 9],
   "BATS_SUPPORT_COMMIT" => ["24a72e14349690bcbf7c151b9d2d1cdd32d36eb1", "bats-support", "bats-support", "v0.3.0", 5],
   "BATS_ASSERT_COMMIT" => ["f1e9280eaae8f86cbe278a687e6ba755bc802c1a", "bats-assert", "bats-assert", "v2.2.4", 5],
   "BATS_FILE_COMMIT" => ["13ad5e2ffcc360281432db3d43a306f7b3667d60", "bats-file", "bats-file", "v0.4.0", 4]
@@ -999,6 +999,14 @@ end
 readiness = jobs.fetch("release-readiness").fetch("steps").map { |s| s["run"] }.compact.join("\n")
 raise "claim verifier missing" unless readiness.include?("scripts/verify-public-claims.sh")
 raise "release validation missing" unless readiness.include?("scripts/dev/release.sh --check")
+raise "documentation-only cannot authorize promotion" if readiness.include?("--documentation-only")
+raise "live claim integration lost" unless readiness.include?("bats --filter-tags release-readiness tests/control_plane_claim.bats")
+checkout = jobs.fetch("release-readiness").fetch("steps").find { |step| step.fetch("uses", "").start_with?("actions/checkout@") }
+raise "receipt check must bind exact head" unless checkout.fetch("with").fetch("ref") == "${{ github.event.pull_request.head.sha || github.sha }}"
+%w[test-linux test-macos bash-44-compat].each do |name|
+  steps = jobs.fetch(name).fetch("steps").map { |step| step["run"] }.compact.join("\n")
+  raise "#{name} still depends on live receipt tests" unless steps.include?("--scope correctness")
+end
 %w[test-safety test-linux test-macos bash-44-compat test-bindings
    pi-compatibility native-host-awm-chain mcp-package-build mcp-package-test].each do |name|
   raise "#{name} suppressed by promotion" if ancestors.call(name).include?("release-readiness")

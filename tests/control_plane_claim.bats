@@ -14,6 +14,7 @@ teardown() {
     rm -rf -- "$TEST_ROOT"
 }
 
+# bats test_tags=release-readiness
 @test "canonical claim contract derives only source-candidate from local receipts" {
     run "$PYTHON_BIN" -I -S -B "$CHECKER" \
         --root "$PROJECT_ROOT" --contract "$CONTRACT" --json
@@ -48,6 +49,7 @@ PY
     [[ "$status" -eq 0 ]]
 }
 
+# bats test_tags=release-readiness
 @test "sanitized public claim runs the fixed Bats memory verifier without promotion overrides" {
     local before after
     before="$(shasum -a 256 "$CONTRACT" | awk '{print $1}')"

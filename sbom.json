@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:14f1dbb7-9ead-51f0-85b2-3aff7d4992d2",
+  "serialNumber": "urn:uuid:5fa7be67-cb4c-597a-bd8f-df9f9a21be16",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-09-05T14:58:11Z",
+    "timestamp": "2026-09-05T15:08:58Z",
     "component": {
       "type": "library",
       "bom-ref": "mainframe@10.2.0",
@@ -533,7 +533,7 @@
     {"type": "file", "name": "scripts/upgrade-release.sh", "hashes": [{"alg": "SHA-256", "content": "704593f7e1aa02034cf2f293032f4b53c336c05eff8dcac974f93583449a61f4"}], "properties": [{"name": "size", "value": "60587"}]},
     {"type": "file", "name": "scripts/validate-host-conformance-receipt.py", "hashes": [{"alg": "SHA-256", "content": "6e77d75283f155bba85aa6567310f9809d5b6da384e4bc2575c0f65c755904c7"}], "properties": [{"name": "size", "value": "24190"}]},
     {"type": "file", "name": "scripts/validation/validate-input.sh", "hashes": [{"alg": "SHA-256", "content": "f67afb4c0d990882b8f158bca245de4c2ec6765786c1ea9388de2b50a7c12150"}], "properties": [{"name": "size", "value": "19018"}]},
-    {"type": "file", "name": "scripts/verify-public-claims.sh", "hashes": [{"alg": "SHA-256", "content": "19cdd2bfc96075fc2e5bcba06c0daa4c24df9d1efabe7955a74a485819620439"}], "properties": [{"name": "size", "value": "21359"}]},
+    {"type": "file", "name": "scripts/verify-public-claims.sh", "hashes": [{"alg": "SHA-256", "content": "c30950c4b2bd303c170f31a754703fa92673d176d7f0588466444c4edb1511ae"}], "properties": [{"name": "size", "value": "21932"}]},
     {"type": "file", "name": "security/gate-normalizer.mjs", "hashes": [{"alg": "SHA-256", "content": "14215e6de4adaf9fb01bd58e11655d19ad31db75b46b1d164efb9883c7d2222e"}], "properties": [{"name": "size", "value": "25788"}]},
     {"type": "file", "name": "security/gate-rules.json", "hashes": [{"alg": "SHA-256", "content": "61e81194696c4e5b073d714938c7325930fea556ac704518f912ae20cbf4da3b"}], "properties": [{"name": "size", "value": "8467"}]},
     {"type": "file", "name": "skills/README.md", "hashes": [{"alg": "SHA-256", "content": "6b750e1e669797018c784542c4ae946d374812037025411f666f48f47a4423b6"}], "properties": [{"name": "size", "value": "5916"}]},

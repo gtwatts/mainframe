@@ -17,10 +17,11 @@ detect_bats_shell() {
 
 usage() {
     cat <<'EOF'
-Usage: tests/run_bats_suite.sh [--scope all|unit|top|integration] [bats args...]
+Usage: tests/run_bats_suite.sh [--scope all|correctness|unit|top|integration] [bats args...]
 
 Scopes:
-  all          Run the full Bats matrix (default)
+  all          Run the full Bats matrix including live release readiness (default)
+  correctness  Run correctness tests; live receipt checks run in release-readiness CI
   unit         Run tests/unit plus tests/lib contract suites
   top          Run top-level tests/*.bats suites
   integration  Run tests/integration suites
@@ -34,7 +35,7 @@ EOF
 
 collect_tests() {
     case "$1" in
-        all)
+        all|correctness)
             find "$SCRIPT_DIR/unit" "$SCRIPT_DIR/lib" "$SCRIPT_DIR/integration" -type f -name '*.bats' -print
             find "$SCRIPT_DIR" -maxdepth 1 -type f -name '*.bats' -print
             ;;
@@ -96,6 +97,9 @@ manifest="$(mktemp "${TMPDIR:-/tmp}/mainframe-bats.XXXXXX")"
 trap 'rm -f "$manifest"' EXIT
 
 collect_tests "$scope" > "$manifest"
+if [[ "$scope" == correctness ]]; then
+    bats_args+=(--filter-tags '!release-readiness')
+fi
 
 if [[ ! -s "$manifest" ]]; then
     printf 'No test files found for scope=%s\n' "$scope" >&2

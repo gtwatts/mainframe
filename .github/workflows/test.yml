@@ -160,16 +160,31 @@ jobs:
   release-readiness:
     name: Release claim and artifact readiness
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          # Receipt subjects bind to the PR head, not GitHub's synthetic merge.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
+
+      - name: Install fixed verifier dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq ripgrep
+          git clone --no-checkout --depth 1 --branch v1.14.0 https://github.com/bats-core/bats-core.git tests/bats
+          git -C tests/bats checkout --detach "$BATS_CORE_COMMIT"
+          test "$(git -C tests/bats rev-parse HEAD)" = "$BATS_CORE_COMMIT"
+          sudo tests/bats/install.sh /usr/local
 
       - name: Verify public claims and committed release artifacts
         run: |
           bash scripts/verify-public-claims.sh
           bash scripts/dev/release.sh --check
+
+      - name: Verify live receipt and public claim integration
+        run: bats --filter-tags release-readiness tests/control_plane_claim.bats
 
   # Trust-plane gates (A++ Phase 0/1): manifest integrity, owner parity,
   # activation contract, archive reproducibility, MCP authorization.
@@ -365,11 +380,11 @@ jobs:
           test "$(git -C tests/bats-assert rev-parse HEAD)" = "$BATS_ASSERT_COMMIT"
           test "$(git -C tests/bats-file rev-parse HEAD)" = "$BATS_FILE_COMMIT"
 
-      - name: Run full Bats matrix
+      - name: Run correctness Bats matrix
         timeout-minutes: 180
         run: |
           set -o pipefail
-          ./tests/run_bats_suite.sh --scope all --formatter tap 2>&1 | tee results.tap
+          ./tests/run_bats_suite.sh --scope correctness --formatter tap 2>&1 | tee results.tap
 
       - name: Build canonical release digest
         run: |
@@ -457,14 +472,14 @@ jobs:
           test "$(git -C tests/bats-assert rev-parse HEAD)" = "$BATS_ASSERT_COMMIT"
           test "$(git -C tests/bats-file rev-parse HEAD)" = "$BATS_FILE_COMMIT"
 
-      - name: Run full Bats matrix under Bash 4.4
+      - name: Run correctness Bats matrix under Bash 4.4
         timeout-minutes: 180
         run: |
           set -o pipefail
           test "$("$MAINFRAME_BASH" -c 'printf "%s" "$BASH_VERSION"')" = \
             '4.4.0(1)-release'
           "$MAINFRAME_BASH" ./tests/run_bats_suite.sh \
-            --scope all --formatter tap 2>&1 | tee bash-44-results.tap
+            --scope correctness --formatter tap 2>&1 | tee bash-44-results.tap
 
       - name: Build canonical archive under Bash 4.4
         run: |
@@ -510,12 +525,12 @@ jobs:
           test "$(git -C tests/bats-assert rev-parse HEAD)" = "$BATS_ASSERT_COMMIT"
           test "$(git -C tests/bats-file rev-parse HEAD)" = "$BATS_FILE_COMMIT"
 
-      - name: Run full Bats matrix
+      - name: Run correctness Bats matrix
         timeout-minutes: 180
         run: |
           set -o pipefail
           export BATS_TEST_SHELL="$(brew --prefix bash)/bin/bash"
-          ./tests/run_bats_suite.sh --scope all --formatter tap 2>&1 | tee macos-results.tap
+          ./tests/run_bats_suite.sh --scope correctness --formatter tap 2>&1 | tee macos-results.tap
 
       - name: Build canonical release digest
         run: |
