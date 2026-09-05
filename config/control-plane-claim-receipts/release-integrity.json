@@ -7,8 +7,8 @@
   "protocol_version": "1.0.0",
   "subject": {
     "kind": "source",
-    "source_revision": "959d64c9c6049da52c0dc3371266d628df9886cc",
-    "source_tree_sha256": "4ec75682e9aa6bc5c4958a427b2126143cdabbe4e4958a9bf40e7c149a005f28",
+    "source_revision": "e13fe3861a6fe7b776d22ca81c93c8a1e8aff1a9",
+    "source_tree_sha256": "eae6b296cf1d3db0cb56c23093a389b1ffed21b83c04edfb752d9f4f74ef21df",
     "inventory_sha256": null,
     "payload_sha256": null,
     "version": "10.2.0"
@@ -29,8 +29,8 @@
     "architecture": "arm64",
     "runner_class": "maintainer-local"
   },
-  "issued_at": "2026-09-05T15:40:12Z",
-  "expires_at": "2026-09-12T15:40:12Z",
+  "issued_at": "2026-09-05T15:59:42Z",
+  "expires_at": "2026-09-12T15:59:42Z",
   "evidence": [
     {
       "path": "scripts/dev/release.sh",
@@ -64,7 +64,7 @@
     },
     {
       "path": "SHA256SUMS",
-      "sha256": "5e71118c47bc41ff62fc4542fa699859d65efe514ff22477a99aa7a1f1943fa9",
+      "sha256": "6cdffb536f1eb28cb71d2f6c895f79fdc749368f96a3cbebe7603392d7f5aaad",
       "role": "inventory"
     }
   ],

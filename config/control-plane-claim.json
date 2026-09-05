@@ -71,11 +71,11 @@
       "receipt_refs": [
         {
           "path": "config/control-plane-claim-receipts/release-integrity.json",
-          "sha256": "040e2bf139c42ba6a97aa990a693f066c30f001504e1b80c63c5d9f05b8dccd6"
+          "sha256": "a80b13e09df6b2689a7285c5b4d46bb02a70ea3359cdf31a87085630684f0e11"
         },
         {
           "path": "config/control-plane-claim-receipts/release-integrity-archive-reproducibility.json",
-          "sha256": "c6e94990d63edf7de7f47e59023f1d472315b7ff4407289677c985672ebe9a60"
+          "sha256": "879422ab61df81dd32d0e6c71847dcc58ff0e0e526e5326cad137c3aa122760e"
         }
       ],
       "remaining": []
@@ -90,7 +90,7 @@
       "receipt_refs": [
         {
           "path": "config/control-plane-claim-receipts/semantic-authority.json",
-          "sha256": "375685ea88ad4054ad67d736494510638f1fe20aa09f5e6ce06dbd0a6bafc972"
+          "sha256": "bc9e19a3c94c091b1b2c22a507e99f1cdcc245029fdb7bdab7f34eaf19675dd0"
         }
       ],
       "remaining": []
@@ -105,7 +105,7 @@
       "receipt_refs": [
         {
           "path": "config/control-plane-claim-receipts/runtime-closure.json",
-          "sha256": "b411230342e371c27167bc5fc343a7822efd584e2073adc628819986c45965f2"
+          "sha256": "060a9b4c62990974ac893cedb6d1ac2d25e942e1f1fc8acb759db37deac42d8f"
         }
       ],
       "remaining": []
@@ -137,7 +137,7 @@
       "receipt_refs": [
         {
           "path": "config/control-plane-claim-receipts/reviewed-broker-routing.json",
-          "sha256": "3af499ca993b1570bbd001a80ab79d32c5df28e308953ca955fe497849464fee"
+          "sha256": "d4dbd32944651ef1d5dddf0b92bdae11d29e7da8314a308431f5552d47074c6e"
         }
       ],
       "remaining": []
@@ -154,11 +154,11 @@
       "receipt_refs": [
         {
           "path": "config/control-plane-claim-receipts/coding-agent-contract-public-safe-read-search.json",
-          "sha256": "8c9ec9c0d7ba2a03f52c4a57b88ab8c50f6b270a89d5e53ace7f1e630425e4de"
+          "sha256": "83b9052c32399ef85a07989bcc2461c9a093ca3b4b61919bdfca405a952cdd0f"
         },
         {
           "path": "config/control-plane-claim-receipts/coding-agent-contract-approval-required-fail-closed.json",
-          "sha256": "2738fa0cf30e43390ca5f9f0863a7d2bf70d9574a5a42e370530a42e147b9652"
+          "sha256": "1df20900496eda9b67ac38e89e42fdd50cbe11cd665d4d139113f2380e37741b"
         }
       ],
       "remaining": []
@@ -181,11 +181,11 @@
       "receipt_refs": [
         {
           "path": "config/control-plane-claim-receipts/project-memory-contract-twelve-operation-route.json",
-          "sha256": "005ddf6d7b381ea1c03e74a462d1b60806cfdd9f6bccf5288b4464c1af79632b"
+          "sha256": "3ceb1e8d380973cfd11e70056d3c594022418a1dab9b8fd2c06f75a5f93e2c5a"
         },
         {
           "path": "config/control-plane-claim-receipts/project-memory-contract-privacy-recovery-no-fallback.json",
-          "sha256": "0f9634c8923bc35eee2db8492fb95875610bf1ac7c3a46c864cb28d71190d2ab"
+          "sha256": "fdd283ca4c612bc40b8c7cc362969832689dff689e4e1f62534b0c8d6e7b3819"
         }
       ],
       "remaining": []
@@ -200,15 +200,15 @@
       "receipt_refs": [
         {
           "path": "config/control-plane-claim-receipts/adapter-contract-instruction-contract.json",
-          "sha256": "5f1f3a9d1fe15f381b72dfa0221a167d0f9948e2df4a22682f3b76ef7fdf7a68"
+          "sha256": "86a0dda8c9900a72065250dcbcaf4846b958e32a20310cb8713fadf4d542624b"
         },
         {
           "path": "config/control-plane-claim-receipts/adapter-contract-kernel-routed-adapters.json",
-          "sha256": "59c6ea6defe3b802afe303e5081cc362c1f46e900d41f6438bb6e6a0adcbcf74"
+          "sha256": "032c31f427164d88314f3183d11d848d2776a6b47d55a6474e55bb39141cc763"
         },
         {
           "path": "config/control-plane-claim-receipts/adapter-contract-durable-correlation.json",
-          "sha256": "c3a8ee3b035a4ec153dadc16b075cea18550c4f9a072a2d3c87428b56f9ec14a"
+          "sha256": "019eb3f17db550e5c1896454bf7a9bdb752ac0f6a219ef4b31cccb5cca3c2cb1"
         }
       ],
       "remaining": []
