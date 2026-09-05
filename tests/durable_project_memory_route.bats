@@ -187,6 +187,52 @@ PY
     [[ "$sid" =~ ^[0-9a-f]{12}$ ]]
 }
 
+@test "project memory: default state ignores canonical and ambient Python spellings" {
+    local expected candidate shim marker
+    expected="$(/usr/bin/python3 -I -S -B -c \
+        'import os,pwd; print(pwd.getpwuid(os.geteuid()).pw_dir, end="")')/.local/state"
+    shim="$TEST_ROOT/python3"
+    marker="$TEST_ROOT/untrusted-python-ran"
+    printf '#!/bin/sh\ntouch "%s"\n' "$marker" > "$shim"
+    chmod 0700 "$shim"
+    for candidate in /usr/bin/python3.12 /bin/python3.11 "$shim"; do
+        run env -u XDG_STATE_HOME \
+            HOME="$TEST_HOME" PATH="$TEST_ROOT:/usr/bin:/bin" \
+            PYTHONPATH="$TEST_ROOT" PYTHONHOME="$TEST_HOME" \
+            _MAINFRAME_CLI_PYTHON="$candidate" \
+            "$BASH_BIN" --noprofile --norc -p -c '
+                source "$1/lib/durable_awm.sh"
+                _mainframe_durable_awm_default_state
+            ' _ "$PROJECT_ROOT"
+        [[ "$status" -eq 0 ]]
+        [[ "$output" == "$expected" ]]
+    done
+    [[ ! -e "$marker" ]]
+    [[ -z "$(find "$TEST_HOME" -mindepth 1 -print -quit)" ]]
+}
+
+@test "project memory: storage discovery prefers private XDG and falls back for missing XDG" {
+    local expected suffix
+    expected="$(/usr/bin/python3 -I -S -B -c \
+        'import os,pwd; print(pwd.getpwuid(os.geteuid()).pw_dir, end="")')/.local/state"
+    suffix='/mainframe/.mainframe-control-plane-runtime/project-memory-adapter-state/awm'
+    run env XDG_STATE_HOME="$STATE_HOME" HOME="$TEST_HOME" \
+        _MAINFRAME_CLI_PYTHON=/usr/bin/python3.12 \
+        "$BASH_BIN" --noprofile --norc -p -c '
+            source "$1/lib/durable_awm.sh"
+            _mainframe_durable_awm_storage_root
+        ' _ "$PROJECT_ROOT"
+    [[ "$status" -eq 0 && "$output" == "$STATE_HOME$suffix" ]]
+    run env XDG_STATE_HOME="$TEST_ROOT/missing-state" HOME="$TEST_HOME" \
+        _MAINFRAME_CLI_PYTHON=/usr/bin/python3.12 \
+        "$BASH_BIN" --noprofile --norc -p -c '
+            source "$1/lib/durable_awm.sh"
+            _mainframe_durable_awm_storage_root
+        ' _ "$PROJECT_ROOT"
+    [[ "$status" -eq 0 && "$output" == "$expected$suffix" ]]
+    [[ ! -e "$TEST_ROOT/missing-state" ]]
+}
+
 @test "project memory: ledger provenance is complete and excludes raw checkpoint bytes" {
     local sid secret_key="private-phase-key-4b91"
     local secret_value="private-phase-value-90ad" ledger
