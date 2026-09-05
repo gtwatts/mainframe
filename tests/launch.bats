@@ -42,7 +42,10 @@ setup() {
         "$RUNTIME_ROOT/hooks/agent-gateway.sh" \
         "$RUNTIME_ROOT/scripts/dev/native-host/hash-package-tree.mjs" \
         "$RUNTIME_ROOT/scripts/dev/native-host/hash-package-tree.py"
-    ln -s "$PROJECT_ROOT/lib" "$RUNTIME_ROOT/lib"
+    # Project setup enters the installed durable kernel before launch preflight.
+    cp -R "$PROJECT_ROOT/control_plane" "$RUNTIME_ROOT/control_plane"
+    cp "$PROJECT_ROOT/VERSION" "$PROJECT_ROOT/INVOCATION_INDEX.json" "$RUNTIME_ROOT/"
+    cp -R "$PROJECT_ROOT/lib" "$PROJECT_ROOT/config" "$PROJECT_ROOT/skills" "$RUNTIME_ROOT/"
     ln -s "$PROJECT_ROOT/FUNCTIONS.json" "$RUNTIME_ROOT/FUNCTIONS.json"
     ln -s "$RUNTIME_ROOT/bin/mainframe" "$CLI_DIR/mainframe"
 
@@ -50,7 +53,8 @@ setup() {
     export TEST_HOME BASE_PATH FAKE_HOST_LOG FAKE_HOST_PROBE_LOG
     export HOME="$TEST_HOME"
     export XDG_STATE_HOME="$TEST_DIR/xdg-state"
-    export AWM_ROOT="$TEST_HOME/.mainframe/awm"
+    mkdir -m 0700 "$XDG_STATE_HOME"
+    export AWM_ROOT="$XDG_STATE_HOME/mainframe/.mainframe-control-plane-runtime/project-memory-adapter-state/awm"
     export MAINFRAME_ROOT="$RUNTIME_ROOT"
     export MAINFRAME_AGENT_AUDIT_LOG="$TEST_DIR/state/gateway.jsonl"
     export PATH="$CLI_DIR:$BASE_PATH"
@@ -226,7 +230,11 @@ configure_ready_project() {
     local host="$1" project="$2"
     mkdir -p "$project"
     make_fake_host "$host"
-    mf awm project ensure --project "$project" >/dev/null
+    local ensure_output
+    ensure_output="$(mf awm project ensure --project "$project")" || {
+        printf '%s\n' "$ensure_output" >&2
+        return 1
+    }
     mf activate "$host" --project "$project" --enforce >/dev/null
 }
 
@@ -681,7 +689,14 @@ PY
 
     [[ "$status" -eq 1 ]]
     [[ "$output" == *"no valid private AWM mapping"* ]]
-    [[ ! -e "$AWM_ROOT" ]]
+    # The durable read serializes against this project's mapping lock. It may
+    # leave that empty lock file, but must not create a mapping or session.
+    local identity_file="$TEST_DIR/project-identity" digest lock_file
+    printf '%s' "$PROJECT_DIR" > "$identity_file"
+    digest="$(sha256_file "$identity_file")"
+    lock_file="$AWM_ROOT/projects/$digest.json.lock"
+    [[ "$(find "$AWM_ROOT" -type f -print)" == "$lock_file" ]]
+    [[ ! -s "$lock_file" && ! -L "$lock_file" ]]
     [[ ! -e "$FAKE_HOST_LOG" ]]
     [[ ! -e "$MAINFRAME_AGENT_AUDIT_LOG" ]]
 }
