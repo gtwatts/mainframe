@@ -997,8 +997,8 @@ PY
     run "$BASH_BIN" -n "$CANDIDATE_BUILDER"
     [[ "$status" -eq 0 ]]
 
-    grep -F 'release.sh" --prepare' "$CANDIDATE_BUILDER" >/dev/null
-    grep -F 'release.sh" --check' "$CANDIDATE_BUILDER" >/dev/null
+    grep -F 'release.sh" --prepare-candidate' "$CANDIDATE_BUILDER" >/dev/null
+    grep -F 'release.sh" --check-candidate' "$CANDIDATE_BUILDER" >/dev/null
     grep -F 'build-release-archive.sh" --verify' "$CANDIDATE_BUILDER" >/dev/null
     grep -F 'build-release-archive.sh" --output-dir "$expected"' \
         "$CANDIDATE_BUILDER" >/dev/null
@@ -1390,4 +1390,38 @@ PY
     [[ "$status" -eq 1 ]]
     [[ "$output" == *"MAINFRAME is managed by Homebrew"* ]]
     [[ "$output" == *"brew upgrade gtwatts/mainframe/mainframe"* ]]
+}
+
+@test "unsigned candidate validation cannot grant release claim readiness" {
+    create_release_interpreter_sibling_fixture
+    local mode
+    printf '%s\n' 'raise SystemExit("expired-claim-fixture")' \
+        > "$RELEASE_TRUST_ROOT/scripts/check-control-plane-claim.py"
+
+    for mode in --prepare-candidate --check-candidate; do
+        run "$BASH_BIN" --noprofile --norc -p \
+            "$RELEASE_TRUST_ROOT/scripts/dev/release.sh" "$mode"
+        [[ "$status" -eq 0 ]]
+        [[ "$output" == *"release readiness not evaluated"* ]]
+        [[ "$output" != *"expired-claim-fixture"* ]]
+    done
+    for mode in --prepare --check; do
+        run "$BASH_BIN" --noprofile --norc -p \
+            "$RELEASE_TRUST_ROOT/scripts/dev/release.sh" "$mode"
+        [[ "$status" -ne 0 ]]
+        [[ "$output" == *"expired-claim-fixture"* ]]
+    done
+}
+
+@test "unsigned candidates still reject source gate failures" {
+    create_release_interpreter_sibling_fixture
+    local mode
+    printf '%s\n' 'raise SystemExit("source-parity-fixture")' \
+        > "$RELEASE_TRUST_ROOT/scripts/check-owner-parity.py"
+    for mode in --prepare-candidate --check-candidate; do
+        run "$BASH_BIN" --noprofile --norc -p \
+            "$RELEASE_TRUST_ROOT/scripts/dev/release.sh" "$mode"
+        [[ "$status" -ne 0 ]]
+        [[ "$output" == *"source-parity-fixture"* ]]
+    done
 }

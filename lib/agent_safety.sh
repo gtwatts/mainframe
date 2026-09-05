@@ -22,7 +22,9 @@ readonly _MAINFRAME_AGENT_SAFETY_LOADED=1
 # =============================================================================
 
 # Audit log file (JSONL format for structured logging)
-declare -g AGENT_AUDIT_LOG="${AGENT_AUDIT_LOG:-/tmp/mainframe_agent_$$.audit.jsonl}"
+declare -g AGENT_AUDIT_LOG="${AGENT_AUDIT_LOG:-${TMPDIR:-/tmp}/mainframe-agent-${EUID}/audit-$$.jsonl}"
+# Raw command/argument detail is opt-in; event counts and risk metadata remain.
+declare -g AGENT_AUDIT_INCLUDE_COMMANDS="${AGENT_AUDIT_INCLUDE_COMMANDS:-0}"
 
 # Audit log rotation: cap size, keep N generations
 # (unbounded JSONL grows forever - the repo root audit.log reached 9.6MB)
@@ -347,7 +349,7 @@ declare -ga _AGENT_DANGEROUS_COMMANDS=(
 )
 
 # Internal: membership test against a command tier
-# Usage: _agent_in_tier "$cmd" "${_AGENT_SYSTEM_COMMANDS[@]}"
+# Usage: _agent_in_tier "$classified_cmd" "${_AGENT_SYSTEM_COMMANDS[@]}"
 _agent_in_tier() {
     local cmd="$1"
     shift
@@ -564,8 +566,12 @@ _agent_confine_write_targets() {
             # Recursive+force deletion is the destructive combination;
             # confine every operand when it is present.
             if _agent_has_recursive_force "$@"; then
+                local rm_options=1
                 for arg in "$@"; do
-                    [[ "$arg" == -* ]] && continue
+                    if (( rm_options )); then
+                        [[ "$arg" == -- ]] && { rm_options=0; continue; }
+                        [[ "$arg" == -* ]] && continue
+                    fi
                     _agent_confine_path "$arg" "$cmd" || return 1
                 done
             fi
@@ -595,23 +601,45 @@ _agent_confine_write_targets() {
             done
             ;;
         mv|cp|truncate|tee)
+            local options=1 short flag
             for arg in "$@"; do
                 if (( confine_next )); then
                     confine_next=0
                     _agent_confine_path "$arg" "$cmd" || return 1
                     continue
                 fi
-                if (( skip_next )); then
-                    skip_next=0
+                if (( skip_next )); then skip_next=0; continue; fi
+                if (( ! options )); then
+                    _agent_confine_path "$arg" "$cmd" || return 1
                     continue
                 fi
                 case "$arg" in
-                    -t|--target-directory) confine_next=1 ;;
-                    --target-directory=*) _agent_confine_path "${arg#*=}" "$cmd" || return 1 ;;
-                    -s|--size|--reference|-o|--option|-S|--suffix|--backup) skip_next=1 ;;
-                    --reference=*) _agent_confine_path "${arg#*=}" "$cmd" || return 1 ;;
-                    --*=*) ;;
-                    -*) ;;
+                    --) options=0 ;;
+                    --target-directory)
+                        case "$cmd" in cp|mv) confine_next=1 ;; esac ;;
+                    --target-directory=*)
+                        case "$cmd" in cp|mv) _agent_confine_path "${arg#*=}" "$cmd" || return 1 ;; esac ;;
+                    --size|--reference)
+                        [[ "$cmd" == truncate ]] && skip_next=1 ;;
+                    --suffix)
+                        case "$cmd" in cp|mv) skip_next=1 ;; esac ;;
+                    --backup|--*=*) : ;; # --backup[=CONTROL] never consumes an operand
+                    --*) : ;;
+                    -?*)
+                        short=${arg#-}
+                        while [[ -n "$short" ]]; do
+                            flag=${short:0:1}; short=${short:1}
+                            case "$cmd:$flag" in
+                                cp:t|mv:t)
+                                    if [[ -n "$short" ]]; then
+                                        _agent_confine_path "$short" "$cmd" || return 1
+                                    else confine_next=1; fi
+                                    break ;;
+                                cp:S|mv:S|truncate:s|truncate:r)
+                                    [[ -n "$short" ]] || skip_next=1
+                                    break ;;
+                            esac
+                        done ;;
                     *) _agent_confine_path "$arg" "$cmd" || return 1 ;;
                 esac
             done
@@ -637,6 +665,9 @@ agent_validate_command() {
     fi
 
     local cmd="${_AGENT_NORMALIZED_ARGV[0]}"
+    # Classify the supplied executable name, never rewrite execution argv.
+    # A basename is a policy key, not proof of executable authenticity.
+    local classified_cmd="${cmd##*/}"
     local -a args=("${_AGENT_NORMALIZED_ARGV[@]:1}")
 
     if [[ -z "$cmd" ]]; then
@@ -653,28 +684,28 @@ agent_validate_command() {
     local can_destructive="${_AGENT_PROFILE_CAN_DESTRUCTIVE[$AGENT_CURRENT_PROFILE]:-0}"
 
     # Tier 1: destructive disk/system commands
-    if _agent_in_tier "$cmd" "${_AGENT_DESTRUCTIVE_COMMANDS[@]}"; then
+    if _agent_in_tier "$classified_cmd" "${_AGENT_DESTRUCTIVE_COMMANDS[@]}"; then
         if (( ! can_destructive )); then
             agent_error "destructive command '$cmd' not allowed in profile '$AGENT_CURRENT_PROFILE'" \
                 "suggestion=Use 'system' profile for destructive disk operations"
             return 1
         fi
     # Tier 3: network commands
-    elif _agent_in_tier "$cmd" "${_AGENT_NETWORK_COMMANDS[@]}"; then
+    elif _agent_in_tier "$classified_cmd" "${_AGENT_NETWORK_COMMANDS[@]}"; then
         if (( ! can_network )); then
             agent_error "network command '$cmd' not allowed in profile '$AGENT_CURRENT_PROFILE'" \
                 "suggestion=Use 'system' profile for network operations"
             return 1
         fi
     # Tier 2: system administration commands
-    elif _agent_in_tier "$cmd" "${_AGENT_SYSTEM_COMMANDS[@]}"; then
+    elif _agent_in_tier "$classified_cmd" "${_AGENT_SYSTEM_COMMANDS[@]}"; then
         if (( ! can_system )); then
             agent_error "system command '$cmd' not allowed in profile '$AGENT_CURRENT_PROFILE'" \
                 "suggestion=Use 'system' profile for system administration"
             return 1
         fi
     # Tier 4: write-class commands
-    elif _agent_in_tier "$cmd" "${_AGENT_WRITE_COMMANDS[@]}"; then
+    elif _agent_in_tier "$classified_cmd" "${_AGENT_WRITE_COMMANDS[@]}"; then
         if (( ! can_write )); then
             agent_error "write command '$cmd' not allowed in profile '$AGENT_CURRENT_PROFILE'" \
                 "suggestion=Use 'project' or 'system' profile"
@@ -685,7 +716,8 @@ agent_validate_command() {
     # -----------------------------------------------------------------
     # EXISTENCE CHECK (after policy: existence is host-dependent, policy is not)
     # -----------------------------------------------------------------
-    if ! type -P "$cmd" &>/dev/null && ! declare -F "$cmd" &>/dev/null; then
+    if { [[ "$cmd" == */* ]] && [[ ! -f "$cmd" || ! -x "$cmd" ]]; } ||
+       { [[ "$cmd" != */* ]] && ! type -P "$cmd" &>/dev/null && ! declare -F "$cmd" &>/dev/null; }; then
         agent_error "command not found: $cmd" \
             "suggestion=Check spelling or install package"
         return 1
@@ -695,7 +727,7 @@ agent_validate_command() {
     # PATH CONFINEMENT (when AGENT_SAFE_BASE is set)
     # -----------------------------------------------------------------
     if [[ -n "${AGENT_SAFE_BASE:-}" ]]; then
-        if ! _agent_confine_write_targets "$cmd" "${args[@]}"; then
+        if ! _agent_confine_write_targets "$classified_cmd" "${args[@]}"; then
             return 1
         fi
     fi
@@ -744,12 +776,16 @@ _agent_validate_path_safe() {
     if [[ -e "$path" || -L "$path" ]]; then
         abs_path=$(realpath "$path" 2>/dev/null) || abs_path=""
         if [[ -z "$abs_path" ]]; then
+            # Never treat an unresolved final symlink as its own safe entry.
+            [[ -L "$path" ]] && return 1
             abs_path=$(cd "$(dirname -- "$path")" && pwd -P)/$(basename -- "$path")
         fi
     else
         local check_path="$path"
         local -a missing=()
         while [[ ! -e "$check_path" ]]; do
+            # A dangling ancestor is not an uncreated directory.
+            [[ -L "$check_path" ]] && return 1
             missing+=("$(basename -- "$check_path")")
             check_path=$(dirname -- "$check_path")
             if [[ "$check_path" == "/" || -z "$check_path" ]]; then
@@ -1874,7 +1910,7 @@ agent_risk_score() {
     if ! _agent_normalize_argv "$@"; then
         return 1
     fi
-    local cmd="${_AGENT_NORMALIZED_ARGV[0]}"
+    local cmd="${_AGENT_NORMALIZED_ARGV[0]##*/}"
     local -a args=("${_AGENT_NORMALIZED_ARGV[@]:1}")
     local score=0
 
@@ -2220,7 +2256,7 @@ agent_gate_report() {
         nfp = 0
         fp_json = ""
         for (cmd in blocked) {
-            if (cmd in approved && cmd != "") {
+            if (cmd in approved && cmd != "" && cmd != "[redacted]") {
                 nfp++
                 gsub(/\\/, "\\\\", cmd); gsub(/"/, "\\\"", cmd)
                 if (nfp <= 20) fp_json = fp_json (fp_json ? "," : "") "\"" cmd "\""
@@ -2297,11 +2333,13 @@ agent_safe_exec() {
     local risk_score
     local _resolved_cmd
     _resolved_cmd=$(_agent_resolve_command "${cmd[*]}")
+    local resolved_risk
+    risk_score=$(agent_risk_score "${cmd[@]}") || return 1
+    # Text resolution may add risk, but may never lower the original argv score.
     # shellcheck disable=SC2086
-    risk_score=$(agent_risk_score $_resolved_cmd) || risk_score=""
-    # Resolution can produce operators the tokenizer rejects; fall back
-    if [[ -z "$risk_score" ]]; then
-        risk_score=$(agent_risk_score "${cmd[@]}")
+    resolved_risk=$(agent_risk_score $_resolved_cmd) || resolved_risk=""
+    if [[ "$resolved_risk" =~ ^[0-9]+$ ]] && (( resolved_risk > risk_score )); then
+        risk_score=$resolved_risk
     fi
 
     # Floor the score via the destructive-command gate (string patterns)
@@ -2330,7 +2368,10 @@ agent_safe_exec() {
     fi
 
     # Audit the execution attempt
-    agent_audit "exec_start" "cmd=${cmd[*]}" "risk=$risk_score" "profile=$AGENT_CURRENT_PROFILE"
+    agent_audit "exec_start" "cmd=${cmd[*]}" "risk=$risk_score" "profile=$AGENT_CURRENT_PROFILE" || {
+        agent_error "audit unavailable; command was not executed" "suggestion=Use an owner-controlled audit directory and regular private log file"
+        return 1
+    }
 
     # Rate limiting (only executions that passed all gates count)
     if ! _agent_rate_check; then
@@ -2388,10 +2429,13 @@ agent_safe_exec_capture() {
     local risk_score
     local _resolved_cmd
     _resolved_cmd=$(_agent_resolve_command "${cmd[*]}")
+    local resolved_risk
+    risk_score=$(agent_risk_score "${cmd[@]}") || return 1
+    # Text resolution may add risk, but may never lower the original argv score.
     # shellcheck disable=SC2086
-    risk_score=$(agent_risk_score $_resolved_cmd) || risk_score=""
-    if [[ -z "$risk_score" ]]; then
-        risk_score=$(agent_risk_score "${cmd[@]}")
+    resolved_risk=$(agent_risk_score $_resolved_cmd) || resolved_risk=""
+    if [[ "$resolved_risk" =~ ^[0-9]+$ ]] && (( resolved_risk > risk_score )); then
+        risk_score=$resolved_risk
     fi
 
     # Floor the score via the destructive-command gate (string patterns)
@@ -2418,7 +2462,10 @@ agent_safe_exec_capture() {
         fi
     fi
 
-    agent_audit "exec_capture_start" "cmd=${cmd[*]}"
+    agent_audit "exec_capture_start" "cmd=${cmd[*]}" || {
+        agent_error "audit unavailable; command was not executed" "suggestion=Use an owner-controlled audit directory and regular private log file"
+        return 1
+    }
 
     # Rate limiting (only executions that passed all gates count)
     if ! _agent_rate_check; then
@@ -2592,8 +2639,12 @@ agent_ensure_line() {
         return 1
     fi
 
+    if [[ -n "${AGENT_SAFE_BASE:-}" ]]; then
+        _agent_confine_path "$path" "append" || return 1
+    fi
+
     # Check if line exists
-    if [[ -f "$path" ]] && grep -qxF "$line" "$path" 2>/dev/null; then
+    if [[ -f "$path" ]] && grep -qxF -- "$line" "$path" 2>/dev/null; then
         agent_audit "ensure_line_exists" "path=$path"
         agent_success "line already exists" "path=$path" "action=none"
         return 0
@@ -2631,6 +2682,17 @@ agent_ensure_symlink() {
         return 1
     fi
 
+    # Confine the directory entry being changed, not the referent: replacing
+    # an in-base link to an outside target must remain possible. Targets are
+    # references (including relative/dangling ones), not writes or permissions.
+    if [[ -n "${AGENT_SAFE_BASE:-}" ]]; then
+        local link_parent link_name
+        link_parent=$(dirname -- "$link") || return 1
+        link_name=${link##*/}
+        case "$link_name" in ""|.|..) agent_error "invalid symlink location"; return 1 ;; esac
+        _agent_confine_path "$link_parent" "symlink parent" || return 1
+    fi
+
     # Check if correct symlink already exists
     if [[ -L "$link" ]]; then
         local current_target
@@ -2641,13 +2703,13 @@ agent_ensure_symlink() {
             return 0
         fi
         # Wrong target, remove and recreate
-        rm -f "$link"
+        rm -f -- "$link" || return 1
     elif [[ -e "$link" ]]; then
         agent_error "path exists and is not a symlink" "path=$link"
         return 1
     fi
 
-    ln -s "$target" "$link" || {
+    ln -s -- "$target" "$link" || {
         agent_error "failed to create symlink" "link=$link" "target=$target"
         return 1
     }
@@ -2726,8 +2788,11 @@ agent_audit() {
 
     # Build details as JSON array
     local details_json="[" escaped_action escaped_item
-    local first=true
+    local first=true item
     for item in "$@"; do
+        if [[ "$AGENT_AUDIT_INCLUDE_COMMANDS" != 1 ]]; then
+            case "$item" in cmd=*|args=*) item="${item%%=*}=[redacted]" ;; esac
+        fi
         $first || details_json+=","
         first=false
         escaped_item="$(_agent_audit_json_escape "$item")"
@@ -2748,30 +2813,71 @@ agent_audit() {
     if [[ "${AGENT_AUDIT_FD:-}" =~ ^[0-9]+$ ]]; then
         printf '%s\n' "$entry" >&"$AGENT_AUDIT_FD"
     else
-        # General library callers retain the existing rotation behavior.
-        _agent_audit_rotate "$AGENT_AUDIT_LOG"
-        printf '%s\n' "$entry" >> "$AGENT_AUDIT_LOG"
+        # Private path preparation/rotation is isolated from the caller umask.
+        (
+            umask 077
+            _agent_audit_prepare "$AGENT_AUDIT_LOG" || exit 1
+            _agent_audit_rotate "$AGENT_AUDIT_LOG" || exit 1
+            local audit_fd
+            exec {audit_fd}>>"$AGENT_AUDIT_LOG" || exit 1
+            printf '%s\n' "$entry" >&"$audit_fd"
+        )
     fi
 }
 
-# Internal: rotate an audit log when it exceeds AGENT_AUDIT_MAX_BYTES,
-# keeping AGENT_AUDIT_KEEP numbered generations (file.1 newest)
+# General library audit targets must live in an owner-controlled directory.
+# Same-UID hostile races remain outside the documented library threat model.
+_agent_audit_prepare() {
+    local file="$1" parent metadata mode links
+    case "$file" in
+        */*) parent=${file%/*}; [[ -n "$parent" ]] || parent=/ ;;
+        *) parent=. ;;
+    esac
+    if [[ ! -e "$parent" && ! -L "$parent" ]]; then
+        mkdir -m 700 -- "$parent" 2>/dev/null || [[ -d "$parent" ]] || return 1
+    fi
+    [[ -d "$parent" && ! -L "$parent" && -O "$parent" ]] || return 1
+    case "$OSTYPE" in
+        darwin*) mode=$(stat -f '%Lp' "$parent" 2>/dev/null) || return 1 ;;
+        *) mode=$(stat -c '%a' -- "$parent" 2>/dev/null) || return 1 ;;
+    esac
+    [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 0022) == 0 )) || return 1
+    [[ ! -L "$file" ]] || return 1
+    if [[ ! -e "$file" ]]; then
+        ( umask 077; set -o noclobber; : > "$file" ) 2>/dev/null || return 1
+    fi
+    [[ -f "$file" && -O "$file" && ! -L "$file" ]] || return 1
+    case "$OSTYPE" in
+        darwin*) metadata=$(stat -f '%Lp %l %z' "$file" 2>/dev/null) || return 1 ;;
+        *) metadata=$(stat -c '%a %h %s' -- "$file" 2>/dev/null) || return 1 ;;
+    esac
+    read -r mode links _AGENT_AUDIT_FILE_BYTES <<< "$metadata"
+    [[ "$links" == 1 && "$_AGENT_AUDIT_FILE_BYTES" =~ ^[0-9]+$ ]] || return 1
+    [[ "$mode" == 600 ]] || chmod -- 600 "$file" || return 1
+}
+
+# Rotate only after validating every generation; never follow links or
+# truncate an ambient-permission file. KEEP=0 disables rotation.
 _agent_audit_rotate() {
-    local file="$1"
-    [[ -f "$file" ]] || return 0
-
-    local size
-    size=$(wc -c < "$file" 2>/dev/null | tr -d '[:space:]')
-    [[ "$size" =~ ^[0-9]+$ ]] || return 0
-    (( size < AGENT_AUDIT_MAX_BYTES )) && return 0
-
-    local i
-    for (( i=AGENT_AUDIT_KEEP-1; i>=1; i-- )); do
-        [[ -f "$file.$i" ]] && mv -f "$file.$i" "$file.$((i+1))"
+    local file="$1" size i
+    [[ "$AGENT_AUDIT_MAX_BYTES" =~ ^[0-9]+$ && "$AGENT_AUDIT_KEEP" =~ ^[0-9]+$ ]] || return 1
+    (( AGENT_AUDIT_KEEP > 0 && AGENT_AUDIT_MAX_BYTES > 0 )) || return 0
+    # Preparation captured size together with mode/link identity, avoiding a
+    # second read of the entire log on every ordinary append.
+    size=${_AGENT_AUDIT_FILE_BYTES:-0}
+    (( size >= AGENT_AUDIT_MAX_BYTES )) || return 0
+    for (( i=1; i<=AGENT_AUDIT_KEEP; i++ )); do
+        if [[ -e "$file.$i" || -L "$file.$i" ]]; then
+            _agent_audit_prepare "$file.$i" || return 1
+        fi
     done
-    mv -f "$file" "$file.1"
-    : > "$file"
-    return 0
+    for (( i=AGENT_AUDIT_KEEP-1; i>=1; i-- )); do
+        if [[ -f "$file.$i" ]]; then
+            mv -f -- "$file.$i" "$file.$((i+1))" || return 1
+        fi
+    done
+    mv -f -- "$file" "$file.1" || return 1
+    _agent_audit_prepare "$file"
 }
 
 # Replay audit log entries
@@ -2799,8 +2905,12 @@ agent_audit_replay() {
 #
 # Usage: agent_audit_clear
 agent_audit_clear() {
-    : > "$AGENT_AUDIT_LOG"
-    agent_audit "log_cleared"
+    (
+        umask 077
+        _agent_audit_prepare "$AGENT_AUDIT_LOG" || exit 1
+        : > "$AGENT_AUDIT_LOG" || exit 1
+        agent_audit "log_cleared"
+    )
 }
 
 # Get audit log path

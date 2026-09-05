@@ -9,6 +9,7 @@ setup() {
     TEST_HOME="$TEST_ROOT/caller-home"
     MAINFRAME_BIN="$PROJECT_ROOT/bin/mainframe"
     BASH_BIN="${MAINFRAME_BASH:-/opt/homebrew/bin/bash}"
+    [[ -x "$BASH_BIN" ]] || BASH_BIN="$(command -v bash)"
 
     mkdir -p "$WORKSPACE" "$TEST_HOME"
     mkdir -m 0700 "$STATE_HOME"

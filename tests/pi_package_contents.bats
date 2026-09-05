@@ -260,7 +260,8 @@ for forbidden in (".pi/", ".github/", "benchmarks/", "bindings/", "demos/", "doc
     assert not any(path.startswith(forbidden) for path in paths), forbidden
 
 assert report["entryCount"] == len(files)
-assert report["entryCount"] <= 240, report["entryCount"]
+assert paths == required | source_libraries | {"hooks/README.md", "skills/README.md"}
+assert report["entryCount"] <= 241, report["entryCount"]
 assert report["size"] <= 10_000_000, report["size"]
 assert report["unpackedSize"] <= 20_000_000, report["unpackedSize"]
 print(json.dumps({

@@ -228,6 +228,25 @@ automatic reverse move. As elsewhere, the lifecycle lock coordinates
 MAINFRAME processes but is not protection against a malicious process already
 running as the same user.
 
+### Release maintainer approval
+
+This repository uses a sole-maintainer release policy. The protected
+`mainframe-release` environment requires its repository owner (`gtwatts`) as
+its sole reviewer and permits that maintainer to approve a run they initiated.
+This records maintainer approval; it does not establish independent human review.
+
+The approval does not replace automated release readiness, exact-source CI,
+source-bound proofs, artifact attestations, immutable release-tag rules, or
+post-publication verification. Unsigned local candidates can be built and tested
+without current promotion receipts; `release.sh --check` and publishing still
+require those receipts. Candidate validation never grants release authority.
+
+The environment's `MAINFRAME_RELEASE_POLICY_TOKEN` is restricted to this
+repository with Administration read permission (and GitHub's required Metadata
+read permission). It only checks release-immutability settings. Publishing uses
+the job's separate, scoped GitHub token; no developer-wide credential belongs
+in this environment secret.
+
 ### Release install and upgrade boundary
 
 The versioned bootstrap verifies one exact archive checksum record, rejects
@@ -295,13 +314,28 @@ out fail-closed and reports the exact lock directory for manual inspection.
    receives its required raw or executable-marker input.
 3. **Profile policy** (`agent_validate_command`) - destructive/system/network/
    write tiers checked BEFORE command existence (policy is host-independent).
-4. **Path confinement** (`AGENT_SAFE_BASE`) - write targets confined to the
-   project tree, traversal canonicalized.
+4. **Selected path confinement** (`AGENT_SAFE_BASE`) - guarded file helpers
+   and supported command/flag forms validate canonical targets. For compatibility,
+   plain `rm` without recursive+force and nonrecursive permission changes are
+   not path-confined. This is not a guarantee for every filesystem mutation.
 5. **Risk threshold** (`agent_safe_exec`) - commands scoring at or above
    `AGENT_RISK_THRESHOLD` block unless approved (`AGENT_APPROVED=1` one-shot
    or a registered approval callback). Gate matches floor the score.
-6. **Audit** - decisions can be written as private JSONL with rotation. Local
-   logs are troubleshooting evidence, not a tamper-proof security ledger.
+6. **Audit** - general library logs use a private per-user temporary directory,
+   owner-only files and private rotation/clear. Command strings and callback
+   arguments are redacted by default; `AGENT_AUDIT_INCLUDE_COMMANDS=1` explicitly
+   opts into raw diagnostic details. Custom audit detail values remain the
+   caller's responsibility. Redacted records support counts, not command-level
+   false-positive correlation. The gateway retains its validated descriptor.
+   Local logs are troubleshooting evidence, not a tamper-proof security ledger.
+
+Path-qualified executables use the same basename policy and risk rules as bare
+names, while execution retains the actual supplied path and argv. Basename
+classification does not authenticate a binary or cover renamed tools and hidden
+script effects. A symlink helper confines the link's directory entry; its target
+may be relative or outside the base. That reference grants no write permission,
+and guarded appends still reject referents outside the base. An existing outward
+link can therefore be repaired without granting authority over its old target.
 
 `low` is a lexical no-match result: after bounded resolution and normalization,
 none of the 43 ordered patterns matched. It does not establish command

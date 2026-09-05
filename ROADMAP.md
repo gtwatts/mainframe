@@ -7,6 +7,9 @@ are in [`docs/CONTROL_PLANE_PLAN.md`](docs/CONTROL_PLANE_PLAN.md). Checked items
 below mean that source was added at some point; they do not prove reviewed
 semantics, a supported host, an installed product, or a released artifact.
 
+The complementary [open-source growth plan](docs/OPEN_SOURCE_GROWTH_PLAN.md)
+defines contributor work packages, pilot milestones, and distribution criteria.
+
 **Current version**: see `VERSION`.
 
 **Current inventory**: see generated `FUNCTIONS.json`.

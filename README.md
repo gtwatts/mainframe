@@ -1,41 +1,58 @@
 # MAINFRAME
 
-**The agent-agnostic control plane for coding agents that touch real shells.**
+**Help coding agents work more safely and reliably in your native shell.**
 
-Coding agents are useful because they can act: edit files, run commands,
-install packages, inspect state, and coordinate work. They are risky for the
-same reason. MAINFRAME sits between your coding agent and your machine to
-provide one local layer for shell policy, durable agent memory, reviewed shell
-tools, and readiness evidence.
+MAINFRAME is an open-source toolkit for coding agents on macOS and Linux.
+It brings reviewed Bash tools, policy checks on supported command routes,
+and durable project memory to the shell you already use. The goal is useful
+work with fewer mistakes, repeated setup steps, and interruptions.
 
-MAINFRAME is not Pi-only. Pi is the deepest current integration, but the
-product is designed for the broader coding-agent ecosystem: OpenAI Codex,
-Claude Code, GitHub Copilot CLI, Gemini CLI, Cursor, Aider, OpenCode, Kimi,
-and custom shell-capable agents. Use the native host integration where one
-exists, or use the shell, MCP, AWM, and language-binding surfaces from your
-own agent runtime. MAINFRAME complements—not replaces—the agent's native
-controls and any OS sandbox, container, VM, or separate-user isolation you
-already use.
+Use it to give an agent a structured tool call, preserve decisions for a fresh
+session, or inspect whether a supported integration is actually ready. Over
+time, we want MAINFRAME to become the go-to control plane for different coding
+agents: a shared place to manage permissions, context, execution, and evidence.
+
+Pi is the deepest current integration. Other agents can use the shell, MCP,
+memory, and language-binding interfaces; native hook coverage varies by exact
+host and version. See the [integration table](#works-with-your-coding-agent)
+before choosing a route.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Tests](https://img.shields.io/github/actions/workflow/status/gtwatts/mainframe/test.yml?branch=main&label=tests)](https://github.com/gtwatts/mainframe/actions/workflows/test.yml)
 [![Bash 4.4+](https://img.shields.io/badge/bash-4.4%2B-green.svg)](INSTALL.md#requirements)
-[![GitHub stars](https://img.shields.io/github/stars/gtwatts/mainframe?style=social)](https://github.com/gtwatts/mainframe)
+
+**Start here:** [Install](#quick-install) · [First agent session](docs/AGENT_ONBOARDING.md) ·
+[Try a reviewed tool](#custom-agents) · [Preserve project memory](#agent-working-memory) ·
+[Contribute](CONTRIBUTING.md)
+
+**Current scope:** experimental `10.2.0`; the evidence supports the
+`source-candidate` claim level.
+The verified release installer is publication-gated. macOS and Linux, each
+with Bash or zsh as the calling shell, are the priority support targets;
+the native library engine requires **Bash 4.4+**. Calling the CLI from zsh is
+different from sourcing Bash libraries into zsh. Check the
+[integration evidence](docs/INTEGRATION_MATRIX.md) for exact tested cells.
 
 ## Why MAINFRAME?
 
 | Coding-agent pain | MAINFRAME answer | Practical benefit |
 |---|---|---|
-| An agent can run a destructive shell command at machine speed | A deterministic policy gate classifies configured shell routes before execution | Known critical/high-risk patterns are blocked or escalated before damage |
+| An agent can run a destructive shell command at machine speed | A deterministic policy gate classifies configured shell routes before execution | Matching patterns on covered routes can be denied before execution; indirect effects still need care |
 | Long work disappears when context is compacted or a session restarts | Agent Working Memory stores explicit checkpoints, discoveries, progress, and handoffs | Fresh agents resume from durable local state instead of rebuilding context |
-| Agents improvise brittle shell one-liners | A searchable registry of 4,400+ Bash functions plus 26 reviewed stable-core invocation contracts | More predictable, inspectable, repeatable operations |
+| Agents improvise brittle shell one-liners | A narrow set of 26 reviewed stable-core invocation contracts, backed by a searchable Bash library | Structured inputs, outputs, and errors that can be inspected and tested |
 | Package or lifecycle changes can be hard to notice | Human-confirmed Pi and managed-host lifecycle flows | The agent cannot silently authorize its own MAINFRAME installation or removal |
 | “Installed” does not prove the running agent is protected | Doctor commands, compatibility manifests, receipts, and the Pi `MF ...` badge | Readiness is visible and fails closed instead of being assumed |
 
 MAINFRAME is designed for honest-but-fallible agents. It is **not** an OS
 sandbox, malware boundary, or protection against a hostile process already
-running as your user. Keep native host controls and OS isolation enabled for
-hostile-code or least-privilege requirements.
+running as your user. It does not intercept every action an agent can take or
+guarantee recovery from every effect. Keep your agent's native controls and
+any isolation your work requires. See the [security boundary](SECURITY.md).
+
+Open source makes these protections inspectable and gives users and outside
+contributors a way to test, challenge, and improve them. Our
+[growth plan](docs/OPEN_SOURCE_GROWTH_PLAN.md) measures repeat use, successful
+tasks, recovery, and maintainer effort before stars or downloads.
 
 ## Works with your coding agent
 
@@ -59,41 +76,30 @@ interception.
 
 ## How MAINFRAME works
 
+The reviewed tool interface and native shell hooks are different routes:
+
 ```mermaid
 flowchart LR
-    A[Coding agent] -->|shell or function request| G{MAINFRAME policy gate}
-    G -->|known safe or reviewed| B[Protected Bash / reviewed function]
-    G -->|requires a human decision| H[Operator approval]
-    H --> B
-    G -->|blocked pattern| X[Denied with a reason]
-    B --> R[Project or runtime]
-    G --> L[Private audit record]
-    X --> L
-    A <--> M[Agent Working Memory]
-    M --> C[Checkpoints, discoveries, progress, handoffs]
+    A[Coding agent] -->|reviewed tool via MCP or invoke| B{Contract and policy checks}
+    B -->|valid and authorized| T[Fixed Bash broker]
+    B -->|rejected| D[Structured refusal]
+    A -->|shell request on configured host| G{Host shell-policy hook}
+    G -->|allowed| H[Host executes command]
+    G -->|denied| X[Host must honor denial]
+    A <--> M[Project memory and handoffs]
 ```
 
-The decision path is deliberately boring:
+The broker authorizes specific typed calls. Host hooks check covered shell
+requests for configured patterns; they require separate live-host verification.
+A command with no matching pattern is not proven safe. Direct Bash-library use
+has its own trusted-caller contract and does not acquire broker authorization.
 
-```mermaid
-sequenceDiagram
-    participant Agent
-    participant Mainframe
-    participant Human
-    participant Machine
-    Agent->>Mainframe: Propose command or function
-    Mainframe->>Mainframe: Normalize, classify, validate, bind policy
-    alt Blocked
-        Mainframe-->>Agent: Refuse with reason
-        Mainframe->>Mainframe: Record bounded audit metadata
-    else Human approval required
-        Mainframe-->>Human: Show exact preview
-        Human-->>Mainframe: Confirm in a terminal
-        Mainframe->>Machine: Execute bounded action
-    else Safe or reviewed
-        Mainframe->>Machine: Execute through protected path
-    end
-```
+Confirmation is specific to the interface: Pi and lifecycle flows have their
+own human-confirmation procedures. The coding preview's `edit`, `test`, and
+`build` routes currently stop at `awaiting_approval`; a general production
+approver and action runner are not bundled. See the
+[preview contract](docs/CONTROL_PLANE_PREVIEW.md) and
+[host gateway evidence](docs/AGENT_GATEWAY.md).
 
 Four pieces work together:
 
@@ -103,9 +109,9 @@ Four pieces work together:
    broker give agents structured tools instead of improvised shell glue.
 3. **Memory:** AWM preserves high-signal project state outside the chat window
    and creates bounded handoffs for future or delegated agents.
-4. **Proof:** doctor, setup, compatibility manifests, receipts, and private
-   audit records distinguish “files exist” from “this exact integration is
-   ready.”
+4. **Proof:** doctor, setup, compatibility manifests, broker receipts, and
+   the configured gateway's private audit records support checks of each
+   integration. Live verification is still required.
 
 ### Durable control-plane preview
 
@@ -146,9 +152,9 @@ claims MAINFRAME deliberately does not make.
 
 ## Quick install
 
-The verified release installer is still publication-gated, so the current
-public install path is a reviewed source checkout. The repository's `10.2.0`
-work is an unpublished candidate; pin and review the commit you install.
+The verified release installer requires a qualifying immutable release.
+The source-checkout path below also supports development and evaluation;
+pin and review the commit you install.
 
 ### macOS
 
@@ -180,19 +186,25 @@ mainframe doctor
 The installer links `mainframe` into `~/.local/bin` and can add the required
 shell-profile entries. Open a new terminal if `mainframe` is not found.
 
-### Prove the local mechanism in two minutes
+### Inspect local readiness
 
 ```bash
 cd /path/to/your/project
 mainframe version
 mainframe doctor
-mainframe setup --project . --proof
 mainframe setup --project .
+mainframe setup --project . --proof
 ```
 
-`--proof` uses isolated private temporary state and removes it on success. The
-read-only setup report shows shell, Pi, supported-host, protection, and AWM
-state without changing project or agent configuration.
+The read-only setup report shows shell, Pi, supported-host, protection, and
+AWM state without changing project or agent configuration. `--proof` checks
+local reviewed invocation and fresh-process retrieval of temporary memory,
+then removes its private test state on success. It does not prove live host
+protection or current project-memory onboarding. A task sandbox may restrict
+the subprocess operations used by the proof; distinguish those failures from
+native-host results. See the
+[agent onboarding guide](docs/AGENT_ONBOARDING.md) and
+[readiness checklist](docs/AGENT_READINESS_CHECKLIST.md).
 
 ### Pi quick setup
 
@@ -275,19 +287,19 @@ installation and scripts.
 
 ### Current public install status
 
-The verified release flow below is the target distribution contract, but it is
-not live yet. The current public `v10.1.0` release is mutable and does not
-publish the required versioned runtime archive and checksum sidecar, so
-`get-mainframe.sh --latest` intentionally fails closed, as does the equivalent
-selector-free invocation. Until a qualifying immutable release is published,
-use the [source-checkout install](#source-checkout-install) below and review the
-commit you install. The `10.2.0` work described in this repository is an
-unpublished candidate.
+The bootstrap requires a qualifying immutable release with the versioned
+runtime archive and checksum sidecar. The older public `v10.1.0` release is
+mutable and lacks those assets, so it does not qualify.
+`get-mainframe.sh --latest` intentionally fails closed when no qualifying
+release is available. In that case, use the
+[source-checkout install](#source-checkout-install) and review the commit you
+install. Publishing an archive does not raise MAINFRAME's documented evidence
+or safety claim level.
 
 ### Verified release install (publication gated)
 
-After a qualifying release is published, the shortest verified path will be to
-download and inspect the current bootstrap, then ask it to resolve GitHub's
+To use a qualifying published release, download and inspect the current
+bootstrap, then ask it to resolve GitHub's
 latest immutable stable release exactly once:
 
 ```bash
@@ -752,7 +764,7 @@ complete boundary is documented in [SECURITY.md](SECURITY.md).
 
 ## Invoke reviewed helpers through one narrow API
 
-The unpublished 10.2 candidate includes 26 reviewed stable-core invocation
+The 10.2 source includes 26 reviewed stable-core invocation
 contracts in `config/invocation-policy.json`. Call one by canonical ID with a
 closed JSON object:
 
@@ -985,7 +997,9 @@ The repository includes a generated function registry, cross-platform Bash CI, a
 - [Why MAINFRAME](docs/COMPARISON.md)
 - [Documentation index](docs/README.md)
 - [Installation](INSTALL.md)
-- [Coding-agent onboarding](docs/ONBOARDING.md)
+- [First agent session](docs/AGENT_ONBOARDING.md)
+- [Agent readiness checklist](docs/AGENT_READINESS_CHECKLIST.md)
+- [Coding-agent onboarding contract](docs/ONBOARDING.md)
 - [AWM cookbook](docs/AWM_COOKBOOK.md)
 - [Enforced Agent Gateway](docs/AGENT_GATEWAY.md)
 - [Native Host Execution Certification](docs/NATIVE_HOST_CERTIFICATION.md)
@@ -996,11 +1010,18 @@ The repository includes a generated function registry, cross-platform Bash CI, a
 - [Changelog](CHANGELOG.md)
 - [Security model](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
-- [Roadmap](ROADMAP.md)
+- [Implementation and evidence roadmap](docs/CONTROL_PLANE_PLAN.md)
+- [Open-source growth and contributor plan](docs/OPEN_SOURCE_GROWTH_PLAN.md)
 
 ## Contributing
 
-Bug reports, focused use cases, documentation corrections, and tested functions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and include a minimal reproduction for behavior changes.
+Help make one real agent workflow easier to trust and repeat. Useful first
+contributions include a reproducible setup problem, a permitted command that
+was falsely blocked, a clearer recovery guide, or a focused adapter test.
+Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[bounded work packages](docs/OPEN_SOURCE_GROWTH_PLAN.md#work-packages).
+AI-assisted contributions are welcome; the submitter owns the evidence and
+review response.
 
 ```bash
 make test-deps

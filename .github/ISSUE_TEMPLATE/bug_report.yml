@@ -1,98 +1,51 @@
-name: Bug Report
-description: Report a bug in MAINFRAME
+name: Bug report
+description: Reproduce a failed workflow, unnecessary denial, or incorrect result
 title: "[Bug]: "
-labels: ["bug", "triage"]
+labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report a bug! Please fill out the form below.
-
+        Use SECURITY.md for vulnerabilities, not a public issue. Remove credentials,
+        private paths, prompts, and repository contents from examples and logs.
   - type: input
-    id: function
+    id: surface
     attributes:
-      label: Function Name
-      description: Which MAINFRAME function is affected?
-      placeholder: "e.g., json_object, validate_email, agent_exec, awm_get"
+      label: Affected command or workflow
+      placeholder: "Install, update, memory handoff, agent host, or function name"
     validations:
       required: true
-
   - type: textarea
-    id: description
+    id: versions
     attributes:
-      label: Bug Description
-      description: A clear description of what the bug is
-      placeholder: "Describe what happened..."
+      label: Version and environment
+      description: MAINFRAME version/commit and install method, OS/architecture, calling shell, actual Bash runtime path/version, agent/version if used
+      placeholder: "Include whether this is a source checkout or installed artifact. zsh caller and Bash engine are separate."
     validations:
       required: true
-
   - type: textarea
     id: reproduction
     attributes:
-      label: Steps to Reproduce
-      description: How can we reproduce this issue?
-      placeholder: |
-        1. Source MAINFRAME: `source lib/common.sh`
-        2. Call function: `json_object "key=value"`
-        3. See error...
+      label: Minimal reproduction
+      description: Commands and non-sensitive fixture needed to reproduce; note any task sandbox or other environment restrictions
     validations:
       required: true
-
   - type: textarea
     id: expected
     attributes:
-      label: Expected Behavior
-      description: What did you expect to happen?
+      label: Expected result
+      description: What useful operation should complete, or what documented rule should deny it?
     validations:
       required: true
-
   - type: textarea
     id: actual
     attributes:
-      label: Actual Behavior
-      description: What actually happened?
+      label: Actual result
+      description: Include the exit code and sanitized output. Is this discovery, direct CLI use, a live agent call, or a host hook?
     validations:
       required: true
-
-  - type: input
-    id: bash-version
-    attributes:
-      label: Bash Version
-      description: Output of `bash --version`
-      placeholder: "e.g., GNU bash, version 5.1.16"
-    validations:
-      required: true
-
-  - type: dropdown
-    id: os
-    attributes:
-      label: Operating System
-      options:
-        - Linux
-        - macOS
-        - WSL/Windows
-        - FreeBSD
-        - Other
-    validations:
-      required: true
-
-  - type: dropdown
-    id: ai-tool
-    attributes:
-      label: AI Tool (if applicable)
-      description: Which AI coding assistant are you using?
-      options:
-        - Not using AI
-        - Claude Code
-        - Cursor
-        - Aider
-        - OpenCode
-        - Other AI Agent
-    validations:
-      required: false
-
   - type: textarea
-    id: context
+    id: recovery
     attributes:
-      label: Additional Context
-      description: Any other context about the problem
+      label: Impact and recovery
+      description: Did this interrupt a task, repeat setup, falsely block useful work, or require recovery? What workaround helped?

@@ -140,8 +140,8 @@ _mainframe_durable_coding_edit() {
     fi
     exec {write_fd}>&-
     content_bytes=$(
-        /usr/bin/stat -c '%s' "/dev/fd/$read_fd" 2>/dev/null ||
-            /usr/bin/stat -f '%z' "/dev/fd/$read_fd" 2>/dev/null
+        /usr/bin/stat -Lc '%s' "/dev/fd/$read_fd" 2>/dev/null ||
+            /usr/bin/stat -Lf '%z' "/dev/fd/$read_fd" 2>/dev/null
     ) || {
         exec {read_fd}<&-
         return 74

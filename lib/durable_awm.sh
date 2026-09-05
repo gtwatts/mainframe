@@ -760,8 +760,11 @@ _mainframe_durable_awm_forwarded_state() {
 }
 
 _mainframe_durable_awm_default_state() {
-    local python="${_MAINFRAME_CLI_PYTHON:-/usr/bin/python3}" home
-    [[ "$python" == /usr/bin/python3 || "$python" == /bin/python3 ]] || return 1
+    # Match the kernel's fixed system-Python trust anchor. The CLI resolver may
+    # return a versioned canonical path; its spelling must not select storage.
+    local python=/usr/bin/python3 home
+    [[ -x "$python" ]] || python=/bin/python3
+    [[ -x "$python" ]] || return 1
     home=$("$python" -I -S -B -c \
         'import os,pwd; print(pwd.getpwuid(os.geteuid()).pw_dir, end="")') || return 1
     [[ "$home" == /* && "$home" != / && "$home" != *$'\n'* ]] || return 1

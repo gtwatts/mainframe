@@ -37,9 +37,9 @@ require "yaml"
 workflow = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: true)
 jobs = workflow.fetch("jobs")
 expected_steps = {
-  "test-linux" => "Run full Bats matrix",
-  "test-macos" => "Run full Bats matrix",
-  "bash-44-compat" => "Run full Bats matrix under Bash 4.4"
+  "test-linux" => "Run correctness Bats matrix",
+  "test-macos" => "Run correctness Bats matrix",
+  "bash-44-compat" => "Run correctness Bats matrix under Bash 4.4"
 }
 
 expected_steps.each do |job_name, step_name|
@@ -189,7 +189,7 @@ require "yaml"
 workflow = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: true)
 makefile = File.read(ARGV.fetch(1))
 expected = {
-  "BATS_CORE_COMMIT" => ["eb7f42f8d608ac693d7a4b67474f6714ea68cfc5", "bats", "bats-core", "v1.14.0", 8],
+  "BATS_CORE_COMMIT" => ["eb7f42f8d608ac693d7a4b67474f6714ea68cfc5", "bats", "bats-core", "v1.14.0", 9],
   "BATS_SUPPORT_COMMIT" => ["24a72e14349690bcbf7c151b9d2d1cdd32d36eb1", "bats-support", "bats-support", "v0.3.0", 5],
   "BATS_ASSERT_COMMIT" => ["f1e9280eaae8f86cbe278a687e6ba755bc802c1a", "bats-assert", "bats-assert", "v2.2.4", 5],
   "BATS_FILE_COMMIT" => ["13ad5e2ffcc360281432db3d43a306f7b3667d60", "bats-file", "bats-file", "v0.4.0", 4]
@@ -323,7 +323,7 @@ expected_build_id = "${{ needs.mcp-package-build.outputs.candidate_artifact_id }
       !inputs.key?("name")
 end
 raise "MCP signer trust order drift" unless signer.fetch("needs") ==
-  ["mcp-package-build", "mcp-package-test", "release-tag-identity"]
+  ["mcp-package-build", "mcp-package-test", "release-tag-identity", "release-readiness"]
 raise "MCP signer artifact output drift" unless signer.fetch("outputs") == {
   "candidate_artifact_id" => expected_build_id
 }
@@ -463,7 +463,7 @@ pi_signer = jobs.fetch("pi-cell-attestation")
 raise "Pi execution must not receive release-signing credentials" unless
   pi_execution.fetch("permissions") == {"contents" => "read"}
 raise "Pi signer must be downstream of every Pi execution cell" unless
-  pi_signer.fetch("needs") == ["pi-compatibility", "release-tag-identity"]
+  pi_signer.fetch("needs") == ["pi-compatibility", "release-tag-identity", "release-readiness"]
 needs = job.fetch("needs")
 pi_execution_index = needs.index("pi-compatibility")
 pi_signer_index = needs.index("pi-cell-attestation")
@@ -986,4 +986,77 @@ puts "publish transfer and immutability contract valid"
 RUBY
     [[ "$status" -eq 0 ]]
     [[ "$output" == "publish transfer and immutability contract valid" ]]
+}
+
+@test "expired promotion evidence does not suppress correctness or unsigned candidate jobs" {
+    run ruby - "$WORKFLOW" <<'RUBY'
+require "yaml"
+jobs = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: true).fetch("jobs")
+parents = ->(name) { Array(jobs.fetch(name)["needs"]) }
+ancestors = lambda do |name|
+  parents.call(name).flat_map { |parent| [parent] + ancestors.call(parent) }.uniq
+end
+readiness = jobs.fetch("release-readiness").fetch("steps").map { |s| s["run"] }.compact.join("\n")
+raise "claim verifier missing" unless readiness.include?("scripts/verify-public-claims.sh")
+raise "release validation missing" unless readiness.match?(/^\s*bash scripts\/dev\/release\.sh --check\s*$/)
+raise "documentation-only cannot authorize promotion" if readiness.include?("--documentation-only")
+raise "live claim integration lost" unless readiness.include?("bats --filter-tags release-readiness tests/control_plane_claim.bats")
+checkout = jobs.fetch("release-readiness").fetch("steps").find { |step| step.fetch("uses", "").start_with?("actions/checkout@") }
+raise "receipt check must bind exact head" unless checkout.fetch("with").fetch("ref") == "${{ github.event.pull_request.head.sha || github.sha }}"
+%w[test-linux test-macos bash-44-compat].each do |name|
+  steps = jobs.fetch(name).fetch("steps").map { |step| step["run"] }.compact.join("\n")
+  raise "#{name} still depends on live receipt tests" unless steps.include?("--scope correctness")
+end
+%w[test-safety test-linux test-macos bash-44-compat test-bindings
+   pi-compatibility native-host-awm-chain mcp-package-build mcp-package-test
+   stable-core-conformance-linux installed-awm-handoff installed-awm-handoff-aggregate].each do |name|
+  raise "#{name} suppressed by promotion" if ancestors.call(name).include?("release-readiness")
+  ([name] + ancestors.call(name)).each do |dependency|
+    steps = jobs.fetch(dependency).fetch("steps").map { |s| s["run"] }.compact.join("\n")
+    raise "#{dependency} still invokes promotion checks" if
+      steps.match?(/scripts\/dev\/release\.sh --(?:check|prepare)/) ||
+      steps.include?("scripts/verify-public-claims.sh")
+  end
+end
+%w[pi-cell-attestation mcp-package-attestation release-build release-publish].each do |name|
+  raise "#{name} can bypass promotion" unless ancestors.call(name).include?("release-readiness")
+  # No always()/continue-on-error escape from a failed prerequisite.
+  ([name] + ancestors.call(name)).each do |dependency|
+    job = jobs.fetch(dependency)
+    raise "#{dependency} masks failure" if job["continue-on-error"] == true ||
+      job.fetch("if", "").include?("always()")
+  end
+end
+puts "correctness remains runnable; promotion remains fail-closed"
+RUBY
+    [[ "$status" -eq 0 ]]
+}
+
+@test "sole-maintainer environment requires the owner approval rule" {
+    run ruby - "$WORKFLOW" <<'RUBY'
+require "yaml"
+require "json"
+require "open3"
+workflow = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: true)
+steps = workflow.fetch("jobs").fetch("release-publish").fetch("steps")
+script = steps.find { |step| step["name"] == "Require protected release environment" }.fetch("run")
+predicate = script.match(/--jq '([^']+)'/m)[1]
+owner = {"type" => "required_reviewers", "prevent_self_review" => false,
+  "reviewers" => [{"type" => "User", "reviewer" => {"login" => "gtwatts"}}]}
+cases = [
+  [{"protection_rules" => [owner]}, true],
+  [{"protection_rules" => []}, false],
+  [{"protection_rules" => [owner.merge("reviewers" => [])]}, false],
+  [{"protection_rules" => [owner.merge("prevent_self_review" => true)]}, false],
+  [{"protection_rules" => [owner.merge("reviewers" => [{"type" => "User", "reviewer" => {"login" => "other"}}])]}, false]
+]
+cases.each do |document, expected|
+  stdout, stderr, status = Open3.capture3({"GITHUB_REPOSITORY_OWNER" => "gtwatts"},
+    "jq", predicate, stdin_data: JSON.generate(document))
+  raise stderr unless status.success?
+  raise "sole-maintainer policy mismatch" unless JSON.parse(stdout) == expected
+end
+puts "owner approval required; independent human review not claimed"
+RUBY
+    [[ "$status" -eq 0 ]]
 }

@@ -4,8 +4,8 @@ This guide installs the full MAINFRAME CLI and verifies Agent Working Memory fro
 
 ## Fast path
 
-The public verified-release bootstrap is still publication-gated, so use a
-reviewed source checkout today:
+The verified bootstrap requires a qualifying immutable release. For
+development or evaluation, use the reviewed source-checkout path below:
 
 ### macOS fast path
 
@@ -99,14 +99,12 @@ developer certifier tooling.
 
 ## Source-checkout installation
 
-This is the currently usable public installation path while the verified
-release contract remains unpublished. The current public `v10.1.0` release is
-mutable and lacks the required versioned runtime archive and checksum sidecar;
-the `10.2.0` work in this repository is an unpublished candidate. A source
-checkout does not provide the archive/receipt trust guarantees described
-below, so review and pin the commit you install. Once a qualifying immutable
-release is published, normal users should prefer the versioned
-[Bootstrap installer](#bootstrap-installer).
+This public source-checkout path supports development and evaluation. It does
+not provide the archive/receipt trust guarantees described below, so review
+and pin the commit you install. Normal users should prefer the versioned
+[Bootstrap installer](#bootstrap-installer) when a qualifying immutable release
+is available. The older public `v10.1.0` release is mutable and lacks the
+required runtime archive and checksum sidecar; it does not qualify.
 
 Clone the repository into the default location and run its installer:
 
@@ -218,11 +216,10 @@ repository and CLI. Inspect it before running it, or download it and run it.
 On macOS, `/bin/bash` 3.2 is sufficient for this bootstrap step; the script
 then finds a supported Bash 4.4+ runtime before launching `install.sh`:
 
-The verified mode is publication-gated and is not live for public `v10.1.0`:
-that release is mutable and does not contain the required runtime assets, so
-`--latest` intentionally fails closed. After a qualifying release is
-published, use the current bootstrap to resolve that immutable stable release
-once:
+The verified mode is publication-gated: `--latest` fails closed if no qualifying
+immutable release is available. The older public `v10.1.0` release is mutable
+and lacks the required runtime assets. Use the current bootstrap to resolve
+a qualifying published immutable release exactly once:
 
 ```bash
 curl -fsSLo /tmp/get-mainframe.sh \

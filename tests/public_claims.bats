@@ -30,20 +30,20 @@ teardown() {
     [[ "$output" != *"docs/VALUE_PROOF.md"* ]]
 }
 
-@test "current public claims pass the release-aware verifier" {
-    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh"
+@test "current documentation passes independently of promotion receipt expiry" {
+    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" --documentation-only
 
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"Generated registry claim parity passed"* ]]
-    [[ "$output" == *"Control-plane claim contract passed: advertised=source-candidate"* ]]
-    [[ "$output" == *"Public claim verification passed"* ]]
+    [[ "$output" == *"no release readiness granted"* ]]
+    [[ "$output" != *"Control-plane claim contract passed"* ]]
 }
 
 @test "ultimate control-plane copy is blocked below the category-claim gate" {
     local claims="$TEST_DIR/ultimate-overclaim.md"
     printf '%s\n' 'MAINFRAME is the ultimate AI agent control plane.' > "$claims"
 
-    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" \
+    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" --documentation-only \
         --extra-document "$claims"
 
     [[ "$status" -ne 0 ]]
@@ -73,7 +73,7 @@ teardown() {
         'MAINFRAME exposes 4,385 Registry Functions.' \
         'The public MCP runner has 25 stable-core tools.' > "$claims"
 
-    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" \
+    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" --documentation-only \
         --extra-document "$claims"
 
     [[ "$status" -ne 0 ]]
@@ -85,7 +85,7 @@ teardown() {
     local claims="$TEST_DIR/legacy-mcp-tier.md"
     printf '%s\n' 'Set MAINFRAME_MCP_TIER=full for broader tools.' > "$claims"
 
-    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" \
+    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" --documentation-only \
         --extra-document "$claims"
 
     [[ "$status" -ne 0 ]]
@@ -124,7 +124,7 @@ PY
         "$rule_count canonical lexical gate rules and $((rule_count + 2)) source rules." \
         > "$claims"
 
-    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" \
+    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" --documentation-only \
         --extra-document "$claims"
 
     [[ "$status" -ne 0 ]]
@@ -163,7 +163,7 @@ PY
         "across all $rule_count rules." \
         > "$claims"
 
-    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" \
+    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" --documentation-only \
         --extra-document "$claims"
 
     [[ "$status" -eq 0 ]]
@@ -175,7 +175,7 @@ PY
     local payload_file="$TEST_DIR/release-payload.txt"
     local current_doc relative_path dispositions
 
-    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" \
+    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" --documentation-only \
         --list-documents
     [[ "$status" -eq 0 ]]
     printf '%s\n' "$output" > "$inventory_file"
@@ -257,14 +257,14 @@ PY
     [[ "$status" -eq 0 ]]
 }
 
-@test "unpublished verified install is not advertised as a live public path" {
+@test "verified install remains conditional on qualifying immutable publication" {
     grep -Fq 'Verified release install (publication gated)' "$PROJECT_ROOT/README.md"
     grep -Fq '`get-mainframe.sh --latest` intentionally fails closed' "$PROJECT_ROOT/README.md"
-    grep -Fq 'currently usable public installation path' "$PROJECT_ROOT/INSTALL.md"
+    grep -Fq 'public source-checkout path supports development and evaluation' "$PROJECT_ROOT/INSTALL.md"
     grep -Fq 'The verified mode is publication-gated' "$PROJECT_ROOT/INSTALL.md"
     grep -Fq "MAINFRAME's immutable release path is publication-gated" \
         "$PROJECT_ROOT/docs/AI_CLI_INTEGRATIONS.md"
-    grep -Fq 'the currently usable public path is' \
+    grep -Fq 'qualifying published release and verified runtime assets' \
         "$PROJECT_ROOT/docs/AI_CLI_INTEGRATIONS.md"
 }
 
@@ -291,7 +291,7 @@ PY
         'AWM provides unlimited state for truly autonomous agents.' \
         'MAINFRAME is 20-72x faster.' > "$claims"
 
-    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" \
+    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" --documentation-only \
         --extra-document "$claims"
 
     [[ "$status" -ne 0 ]]
@@ -309,12 +309,12 @@ PY
     printf '# benign\n' > "$target"
     ln -s "$target" "$link"
 
-    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" \
+    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" --documentation-only \
         --extra-document "$TEST_DIR/missing.md"
     [[ "$status" -eq 2 ]]
     [[ "$output" == *"must be a regular, non-symlink file"* ]]
 
-    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" \
+    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" --documentation-only \
         --extra-document "$link"
     [[ "$status" -eq 2 ]]
     [[ "$output" == *"must be a regular, non-symlink file"* ]]

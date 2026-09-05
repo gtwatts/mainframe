@@ -1,11 +1,14 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Function Reference (CHEATSHEET.md)
+  - name: Installation and agent onboarding
+    url: https://github.com/gtwatts/mainframe/blob/main/docs/ONBOARDING.md
+    about: Check prerequisites, supported routes, activation, and recovery
+  - name: Function reference
     url: https://github.com/gtwatts/mainframe/blob/main/CHEATSHEET.md
-    about: Complete reference for all 2,000+ functions - check here before asking about function signatures
+    about: Look up function signatures and examples
   - name: Discussions
     url: https://github.com/gtwatts/mainframe/discussions
-    about: Ask questions, share ideas, and connect with the community
-  - name: Wiki Documentation
-    url: https://github.com/gtwatts/mainframe/wiki
-    about: Extended guides, tutorials, and AI agent integration examples
+    about: Ask questions, share a workflow, or discuss a contribution
+  - name: Security reporting policy
+    url: https://github.com/gtwatts/mainframe/blob/main/SECURITY.md
+    about: Follow the private reporting instructions for vulnerabilities

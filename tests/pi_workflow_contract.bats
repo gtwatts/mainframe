@@ -344,7 +344,7 @@ raise "Pi evidence binding trusts exported package/runtime roots" if
 
 signing_job = jobs.fetch("pi-cell-attestation")
 raise "Pi signer must wait for every Pi matrix cell" unless
-  signing_job.fetch("needs") == ["pi-compatibility", "release-tag-identity"]
+  signing_job.fetch("needs") == ["pi-compatibility", "release-tag-identity", "release-readiness"]
 raise "Pi signer condition drift" unless signing_job.fetch("if") ==
   "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"
 expected_signing_permissions = {

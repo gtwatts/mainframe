@@ -1093,9 +1093,12 @@ for name, block in (("build", build), ("test", test)):
     assert "uv publish" not in block and "twine upload" not in block, name
 
 assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in build
-assert "scripts/dev/release.sh --prepare" in build
+assert "scripts/generate-sbom.sh" in build
+assert "scripts/generate-sbom.sh --check" in build
+assert "scripts/dev/release.sh --prepare" not in build
+assert "scripts/dev/release.sh --check" not in build
 assert ".github/scripts/build-mcp-package.py" in build
-assert build.index("scripts/dev/release.sh --prepare") < build.index("build-mcp-package.py")
+assert build.index("scripts/generate-sbom.sh --check") < build.index("build-mcp-package.py")
 
 assert "needs: mcp-package-build" in test
 assert "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093" in test
@@ -1112,7 +1115,7 @@ assert "MAINFRAME_MCP_UVX_WHEELHOUSE:" in test
 assert "pip download" in test and "--require-hashes" in test
 
 assert "startsWith(github.ref, 'refs/tags/v')" in attest
-assert "needs: [mcp-package-build, mcp-package-test, release-tag-identity]" in attest
+assert "needs: [mcp-package-build, mcp-package-test, release-tag-identity, release-readiness]" in attest
 assert "id-token: write" in attest and "attestations: write" in attest
 assert "actions/download-artifact@" in attest
 assert "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093" in attest

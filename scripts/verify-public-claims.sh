@@ -10,9 +10,11 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 usage() {
     cat <<'EOF'
-Usage: scripts/verify-public-claims.sh [--list-documents] [--extra-document PATH]...
+Usage: scripts/verify-public-claims.sh [--documentation-only] [--list-documents] [--extra-document PATH]...
 
 Verify current MAINFRAME documentation and release-claim quarantine rules.
+--documentation-only checks documentation without granting release-claim authority;
+the default also requires current source-bound receipts.
 --list-documents prints the canonical scan/quarantine disposition and exits.
 --extra-document adds a regular, non-symlink Markdown file to the same checks;
 it never replaces the canonical current-document inventory.
@@ -29,6 +31,7 @@ public_docs=(
 )
 extra_docs=()
 list_documents=0
+documentation_only=0
 
 while (( $# > 0 )); do
     case "$1" in
@@ -43,6 +46,10 @@ while (( $# > 0 )); do
             fi
             extra_docs+=("$2")
             shift 2
+            ;;
+        --documentation-only)
+            documentation_only=1
+            shift
             ;;
         --list-documents)
             list_documents=1
@@ -492,7 +499,11 @@ PY
 }
 
 CONTROL_PLANE_ADVERTISED_CLAIM=''
-verify_control_plane_claim
+if (( documentation_only )); then
+    printf 'Documentation-only check: release claim authority not evaluated.\n'
+else
+    verify_control_plane_claim
+fi
 
 reject "Bash 4.0 is below the supported runtime" 'bash[[:space:]]+4\.0\+'
 reject "Do not describe the whole product as dependency-free" '(^|[^[:alnum:]])zero dependencies([^[:alnum:]]|$)'
@@ -518,4 +529,8 @@ if (( failures > 0 )); then
     exit 1
 fi
 
-printf 'Public claim verification passed for %d current documents.\n' "${#public_docs[@]}"
+if (( documentation_only )); then
+    printf 'Documentation checks passed for %d current documents; no release readiness granted.\n' "${#public_docs[@]}"
+else
+    printf 'Public claim verification passed for %d current documents.\n' "${#public_docs[@]}"
+fi
