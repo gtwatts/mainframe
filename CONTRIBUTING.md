@@ -1,24 +1,38 @@
 # Contributing to MAINFRAME
 
-```
-+============================================================================+
-|  BUILDING PERSISTENT MEMORY AND SAFER SHELL TOOLS FOR AI AGENTS             |
-|  Generated registry | Cross-platform tests | Evidence before claims         |
-|  Every contribution makes AI agents safer and more accurate                |
-+============================================================================+
-```
-
-Thank you for considering contributing to MAINFRAME! We're building a safe, efficient runtime for AI agents that control computer systems through bash.
+Help coding agents work more safely and reliably in native shells. We welcome
+small, reproducible improvements from people using MAINFRAME, building agent
+integrations, or testing its limits.
 
 ## Our Mission
 
-**AI agents control computers through bash. MAINFRAME makes that safe, accurate, and efficient.**
+MAINFRAME brings policy checks, reviewed tools, and durable project memory to
+coding-agent workflows. Our goal is fewer mistakes and interruptions with
+less repeated setup. Protection applies to documented routes; MAINFRAME is
+not an OS sandbox or a guarantee against damage.
 
-Every function you contribute helps AI agents:
-- Execute commands safely (no accidental `rm -rf /`)
-- Get first-time correctness (structured output, clear errors)
-- Save tokens (one function call vs. 15 lines of fragile bash)
-- Maintain persistent memory across sessions (Agent Working Memory)
+The [control-plane roadmap](docs/CONTROL_PLANE_PLAN.md) owns implementation
+order and readiness evidence. The [open-source growth plan](docs/OPEN_SOURCE_GROWTH_PLAN.md)
+adds contributor work packages, pilot criteria, and distribution milestones.
+Prefer completing a useful supported workflow over adding another library.
+
+## Choose a first contribution
+
+| Starting point | A useful small submission |
+|---|---|
+| You tried MAINFRAME | A sanitized reproduction of one install, discovery, update, or recovery problem |
+| You know Bash or zsh | One CLI caller fixture with exact shell/runtime versions and expected output |
+| You build an agent adapter | One contract test for structured results, denial, or unsupported-host reporting |
+| You write documentation | One corrected example or a short demo tied to an exact commit and tested route |
+| You use project memory | One interrupted-task or fresh-session handoff reproduction |
+
+See [work packages](docs/OPEN_SOURCE_GROWTH_PLAN.md#work-packages), or browse
+[good first issues](https://github.com/gtwatts/mainframe/labels/good%20first%20issue)
+and [help wanted](https://github.com/gtwatts/mainframe/labels/help%20wanted).
+These labels are entry points, not a promise that a task is currently open.
+For a substantial change, agree the use case, owner, paths, dependencies, and
+acceptance criteria in an issue before implementation. A documentation correction
+can go straight to a focused PR.
 
 ## Current project facts
 
@@ -26,6 +40,9 @@ Every function you contribute helps AI agents:
 - `FUNCTIONS.json` is the generated function and library inventory.
 - `./tests/run_bats_suite.sh --scope all` is the supported Bash suite.
 - Bash 4.4+ is required.
+- Priority caller cells are macOS/Bash, macOS/zsh, Linux/Bash, and Linux/zsh.
+  Bash libraries execute in Bash 4.4+; zsh CLI use does not prove native zsh
+  sourcing. Report the cells you actually tested and leave the others unverified.
 
 ## Code of Conduct
 
@@ -37,13 +54,18 @@ Be excellent to each other. We're building tools for the future of AI-human coll
 
 1. Check if the bug has already been reported in [Issues](https://github.com/gtwatts/mainframe/issues)
 2. Use the bug report template
-3. Include your bash version (`bash --version`)
+3. Include MAINFRAME commit/version, agent version, calling shell, and actual Bash runtime version
 4. Provide a minimal reproduction example
 5. Note if the bug affects AI agent behavior
 
+Remove credentials, private paths, prompts, and project contents from reports.
+For vulnerabilities, follow [SECURITY.md](SECURITY.md) instead of opening a
+public issue. For ordinary failures, include the expected successful operation
+as well as what failed; unnecessary denials matter too.
+
 ### Suggesting Features
 
-New function ideas are welcome! Please include:
+Start with a recurring user problem and a way to measure the improvement:
 
 | Question | Why It Matters |
 |----------|----------------|
@@ -62,6 +84,32 @@ New function ideas are welcome! Please include:
 5. **Run ShellCheck** (`shellcheck lib/your_library.sh`)
 6. **Run tests locally** (`./tests/run_bats_suite.sh --scope all`)
 7. **Submit PR** with the template filled out
+
+Use the focused tests for your change during development. Before requesting
+merge, report the required checks and exact commit they ran against. A skipped
+or blocked CI lane is not a pass. Documentation-only work needs working links,
+accurate commands, and scoped claims; it does not need invented behavior tests.
+
+### Working with coding agents
+
+Give each agent a bounded task: problem, owned paths, allowed effects,
+dependencies, acceptance criteria, and reviewer. Check for existing work before
+editing shared files. Keep implementation, installed-host validation, release,
+and external outreach as separate actions with their own authorization.
+
+AI-assisted PRs are welcome. The human submitter must understand the diff,
+reproduce its checks, and respond to review. Report material tool limitations
+and untested cells. Do not paste generated success claims in place of evidence.
+
+For first-use reproduction, follow [Agent onboarding](docs/AGENT_ONBOARDING.md)
+and record the [readiness checklist](docs/AGENT_READINESS_CHECKLIST.md).
+
+For adapters, start with the [adapter model](docs/CONTROL_PLANE_PLAN.md#adapter-model),
+[API compatibility contract](docs/API_COMPATIBILITY.md),
+[host evidence](docs/INTEGRATION_MATRIX.md), and the
+[MCP interface](mcp/README.md). Test valid work, denial, unavailable support,
+argument/result contracts, and failure recovery without a permissive fallback.
+Discovery through an instruction file is distinct from runtime enforcement.
 
 ## Style Guide
 

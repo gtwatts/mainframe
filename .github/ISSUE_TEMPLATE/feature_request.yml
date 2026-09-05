@@ -1,5 +1,5 @@
 name: Feature Request
-description: Suggest a new function or improvement
+description: Propose an improvement to a real coding-agent workflow
 title: "[Feature]: "
 labels: ["enhancement"]
 body:
@@ -14,7 +14,9 @@ body:
       label: Feature Category
       description: What area does this feature belong to?
       options:
-        - AI Agent Safety (validation, sandboxing, guardrails)
+        - Shell policy and supported-route protection
+        - Installation, update, rollback, and readiness
+        - Host adapter and conformance
         - AI Agent Efficiency (caching, lazy loading, performance)
         - Structured Output (USOP, JSON envelopes)
         - Multi-Agent Coordination (messaging, tasks, state)
@@ -40,12 +42,20 @@ body:
     id: solution
     attributes:
       label: Proposed Solution
-      description: How do you envision this working?
+      description: How do you envision this working? Include supported routes and limits.
       placeholder: |
         A new function `safe_exec` that:
         - Validates command before execution
         - Returns structured JSON output
         - Logs to audit trail
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Evidence of improvement
+      description: What repeatable task or check would show this helps? Include useful work that must still be permitted, recovery, and overhead where relevant.
     validations:
       required: true
 

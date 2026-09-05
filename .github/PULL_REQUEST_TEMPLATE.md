@@ -1,105 +1,37 @@
-## Description
+## Problem and resulting behavior
 
-<!-- Brief description of the changes in this PR -->
+<!-- What user problem does this solve? Describe the before/after behavior. -->
 
-## Type of Change
+## Scope and ownership
 
-- [ ] Bug fix (non-breaking change that fixes an issue)
-- [ ] New feature (non-breaking change that adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to change)
-- [ ] Documentation update
-- [ ] Performance improvement
-- [ ] Code refactoring (no functional changes)
+<!-- Link the issue or work package; list the affected routes/files and dependencies. -->
 
-## AI Agent Impact
+## Validation
 
-<!-- How does this change affect AI agents using MAINFRAME? -->
+<!-- List commands actually run, results, exact commit, and relevant OS/architecture,
+calling shell, Bash runtime, and agent versions. Explain failed, skipped, or
+unavailable checks. Documentation changes need links and claims checked. -->
 
-- [ ] **Safety** - Improves validation, sandboxing, or guardrails
-- [ ] **Accuracy** - Improves structured output, error handling, or first-time correctness
-- [ ] **Efficiency** - Improves performance, caching, or token savings
-- [ ] **New capability** - Adds functionality for agent automation
-- [ ] No direct agent impact
+## Agent and user impact
 
-## Which Libraries Are Affected?
+<!-- For behavior changes: show valid work permitted, invalid input/unsupported
+routes rejected, and error/recovery behavior. Note false blocks or overhead.
+Distinguish source tests, installed CLI, live host invocation, hook enforcement,
+and release evidence. Mark sections not applicable rather than inventing proof. -->
 
-<details>
-<summary>Core Libraries</summary>
+## Compatibility and recovery
 
-- [ ] common.sh (loader)
-- [ ] pure-string.sh
-- [ ] pure-array.sh
-- [ ] pure-util.sh
-- [ ] pure-file.sh
-- [ ] json.sh
-</details>
+<!-- Any API, state, dependency, configuration, or support-cell change?
+How can a user recover or revert? Do not put secrets or private audit data here. -->
 
-<details>
-<summary>Agent Libraries (v3+)</summary>
+## Review checklist
 
-- [ ] output.sh (USOP)
-- [ ] agent_safety.sh
-- [ ] agent_comm.sh
-- [ ] idempotent.sh
-- [ ] atomic.sh
-- [ ] observe.sh
-- [ ] awm.sh (Agent Working Memory)
-</details>
+- [ ] The change has one bounded purpose and follows CONTRIBUTING.md
+- [ ] Claims match the evidence above; untested cells and limitations are explicit
+- [ ] Relevant tests/docs are updated, or not-applicable sections are explained
+- [ ] New public exports follow MAINFRAME_<MODULE>_EXPORTS and API compatibility rules (if applicable)
+- [ ] No permissive fallback or implied approval was added (if applicable)
+- [ ] I understand the submitted diff and can reproduce its checks, including AI-assisted work
 
-<details>
-<summary>Other</summary>
-
-- [ ] validation.sh
-- [ ] http.sh
-- [ ] datetime.sh
-- [ ] csv.sh
-- [ ] git.sh
-- [ ] Other: ___
-</details>
-
-## Checklist
-
-### Code Quality
-- [ ] Core code uses Bash; optional host-tool dependencies are explicit
-- [ ] Functions are documented with usage comments
-- [ ] No `eval` used (or justified exception with security review)
-- [ ] Function names use snake_case
-- [ ] Functions are exported with `export -f`
-
-### Testing
-- [ ] All existing Bash tests pass (`./tests/run_bats_suite.sh --scope all`)
-- [ ] New tests added for new functionality
-- [ ] ShellCheck passes with no warnings
-- [ ] Tested on Bash 4.4+
-- [ ] AWM state isolation verified (if touching agent libraries)
-
-### Documentation
-- [ ] CHEATSHEET.md updated (if adding/changing public functions)
-- [ ] CLAUDE.md updated (if AI agent behavior changes)
-- [ ] README.md updated (if user-facing changes)
-
-## Testing Instructions
-
-```bash
-# How to test this PR
-source lib/common.sh
-# your_function "args"
-
-# Run specific tests
-./tests/bats/bin/bats tests/your_test.bats
-```
-
-## Related Issues
-
-<!-- Link any related issues -->
-Fixes #(issue number)
-
-## Screenshots/Examples
-
-<!-- If applicable, show before/after or usage examples -->
-
-```bash
-# Example output
-$ your_function "input"
-{"ok":true,"data":"result"}
-```
+<!-- A PR does not authorize merge, release, deployment, or external outreach.
+Report vulnerabilities through SECURITY.md, not this public template. -->

@@ -9,7 +9,7 @@
 - **[FUNCTIONS.json](../FUNCTIONS.json)** - Generated function and library inventory
 - **[CHEATSHEET.md](../CHEATSHEET.md)** - Human-oriented function reference
 - **[CONTRIBUTING.md](../CONTRIBUTING.md)** - How to contribute
-- **[Wiki](https://github.com/gtwatts/mainframe/wiki)** - Extended documentation
+- **[Documentation index](../docs/README.md)** - Versioned guides and evidence
 
 ### Community
 
@@ -31,9 +31,9 @@
 
 If you're building autonomous systems that use MAINFRAME:
 
-1. **Safety First** - Use `agent_safety.sh` for all command execution
-2. **Structured Output** - Enable JSON output with `export MAINFRAME_OUTPUT=json`
-3. **Idempotency** - Use `ensure_*` functions for retry-safe operations
+1. **Reviewed routes** - Start with the [MCP interface](../mcp/README.md) and [host onboarding](../docs/ONBOARDING.md); check exact coverage before claiming enforcement
+2. **Structured Output** - Follow the selected interface's documented input and result contract
+3. **Recovery** - Test interrupted work and retry behavior for the exact operation
 4. **Validation** - Always validate untrusted input before use
 5. **Working Memory** - Use AWM (Agent Working Memory) for persistent state across sessions
 
@@ -41,8 +41,8 @@ If you're building autonomous systems that use MAINFRAME:
 
 | Channel | Expected Response |
 |---------|-------------------|
-| Discussions | Community-driven, typically < 48 hours |
-| Bug Reports | Triaged within 7 days |
+| Discussions | Community-driven; response time varies |
+| Bug Reports | Maintainer triage as capacity allows; include a minimal reproduction |
 | Security Issues | See [SECURITY.md](../SECURITY.md) |
 
 ---
