@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "receipt_type": "mainframe-control-plane-gate-receipt",
-  "receipt_id": "adapter-contract-instruction-contract-local-20260821",
+  "receipt_id": "adapter-contract-instruction-contract-local-20260905",
   "gate_id": "adapter-contract",
   "proof_kind": "instruction-contract",
   "protocol_version": "1.0.0",
   "subject": {
     "kind": "source",
-    "source_revision": "802b0605cfc0ee871c281b2ed6ced91d2e316fcd",
-    "source_tree_sha256": "31208e9a28044598f0a4736f8096931822a2ba1d04f42c7e64fac0e572a2a186",
+    "source_revision": "959d64c9c6049da52c0dc3371266d628df9886cc",
+    "source_tree_sha256": "4ec75682e9aa6bc5c4958a427b2126143cdabbe4e4958a9bf40e7c149a005f28",
     "inventory_sha256": null,
     "payload_sha256": null,
     "version": "10.2.0"
@@ -29,8 +29,8 @@
     "architecture": "arm64",
     "runner_class": "maintainer-local"
   },
-  "issued_at": "2026-08-22T19:51:03Z",
-  "expires_at": "2026-08-23T19:51:03Z",
+  "issued_at": "2026-09-05T15:42:27Z",
+  "expires_at": "2026-09-12T15:42:27Z",
   "evidence": [
     {
       "path": "config/host-capabilities.json",
