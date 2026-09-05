@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:fec5e1a5-78f0-5374-b3d2-f3dcd1c35b78",
+  "serialNumber": "urn:uuid:c9d15e1b-80e5-541c-9918-87efa7d9e88f",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-09-05T15:28:35Z",
+    "timestamp": "2026-09-05T15:42:38Z",
     "component": {
       "type": "library",
       "bom-ref": "mainframe@10.2.0",
@@ -29,7 +29,7 @@
     {"type": "file", "name": "README.md", "hashes": [{"alg": "SHA-256", "content": "cee527abcf916a2336e0ea2279c1db62fda2771505a85b03ba72fdfff37b7872"}], "properties": [{"name": "size", "value": "49129"}]},
     {"type": "file", "name": "SECURITY.md", "hashes": [{"alg": "SHA-256", "content": "466346dd138b3199ffa096ffd3d875fcef3a5bca74fe0ce2071c7cfc0aa8353c"}], "properties": [{"name": "size", "value": "28180"}]},
     {"type": "file", "name": "VERSION", "hashes": [{"alg": "SHA-256", "content": "cf966a5d3bfdb4c3dab146c0b12a22b85a30aa449ed010a5ee3cf04ddeb5302e"}], "properties": [{"name": "size", "value": "7"}]},
-    {"type": "file", "name": "bin/mainframe", "hashes": [{"alg": "SHA-256", "content": "7ea40d3c2d5be4dad7485ac6fa28bdef4ec2a3dcc026b65b9cd9143affcc05fe"}], "properties": [{"name": "size", "value": "123477"}]},
+    {"type": "file", "name": "bin/mainframe", "hashes": [{"alg": "SHA-256", "content": "4892fc90ae84f26a0df407382f2d6d6dfa9cb5b47f1a41a34c1088a5e31a324a"}], "properties": [{"name": "size", "value": "123828"}]},
     {"type": "file", "name": "bin/mainframe-build", "hashes": [{"alg": "SHA-256", "content": "24468a3e739c3ff81b2132de73f8e67bdc6c098424e62b7b4dae1d18c58e0773"}], "properties": [{"name": "size", "value": "35381"}]},
     {"type": "file", "name": "bin/mainframe-new", "hashes": [{"alg": "SHA-256", "content": "6eefa2604dcc46eea119c668d3eab03a5b1f09ba3d370dc1f43b006345136ad7"}], "properties": [{"name": "size", "value": "38942"}]},
     {"type": "file", "name": "completions/mainframe.bash", "hashes": [{"alg": "SHA-256", "content": "1e73058d3a4b53e13f7f3571158fe9b1b5016cd12e3f91d0a2b01d0d24ce53f2"}], "properties": [{"name": "size", "value": "22980"}]},
@@ -274,7 +274,7 @@
     {"type": "file", "name": "lib/download.sh", "hashes": [{"alg": "SHA-256", "content": "ccbde97643d8194d5a6b99f79818fcdc88c0e1f6185d15bd68dd365016c09fc2"}], "properties": [{"name": "size", "value": "30448"}]},
     {"type": "file", "name": "lib/dryrun.sh", "hashes": [{"alg": "SHA-256", "content": "c4ec3fb5c7bf9075b11ffe29075d81e543e5341a24a85f7e9ed48b4e15509270"}], "properties": [{"name": "size", "value": "29739"}]},
     {"type": "file", "name": "lib/durable_awm.sh", "hashes": [{"alg": "SHA-256", "content": "6144ab91ec0af92e7f19c112e02bc10a9d38719e1cf376140d8ab31c1cd33235"}], "properties": [{"name": "size", "value": "49394"}]},
-    {"type": "file", "name": "lib/durable_coding.sh", "hashes": [{"alg": "SHA-256", "content": "5fa2fe249da8c2b1a4a928138175f3f7c51c63a697d5a6064c016a0b41a35b20"}], "properties": [{"name": "size", "value": "10513"}]},
+    {"type": "file", "name": "lib/durable_coding.sh", "hashes": [{"alg": "SHA-256", "content": "e953c5cfdb6662ec2be971eff12f153a56fa1e55b77e55a57577fd5796df2ef0"}], "properties": [{"name": "size", "value": "10515"}]},
     {"type": "file", "name": "lib/durable_invoke.sh", "hashes": [{"alg": "SHA-256", "content": "2cc10b31a674fd3b8b9573158f2a9935ab5d3bcc672e685d49b1b35e4728a10b"}], "properties": [{"name": "size", "value": "6411"}]},
     {"type": "file", "name": "lib/embeddings.sh", "hashes": [{"alg": "SHA-256", "content": "b05baa6b0c724ec3dda6210736470229e1621b5412773f1fbd32685bf8dfa4e0"}], "properties": [{"name": "size", "value": "30539"}]},
     {"type": "file", "name": "lib/env.sh", "hashes": [{"alg": "SHA-256", "content": "a8e40bbb4fe25e57322a39fd73ea46e5ed262c2b861af331373c3f0b755e4b07"}], "properties": [{"name": "size", "value": "23240"}]},

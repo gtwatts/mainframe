@@ -376,6 +376,8 @@ jobs:
           git -C tests/bats-assert checkout --detach "$BATS_ASSERT_COMMIT"
           git -C tests/bats-file checkout --detach "$BATS_FILE_COMMIT"
           test "$(git -C tests/bats rev-parse HEAD)" = "$BATS_CORE_COMMIT"
+          # Receipt fixtures execute Bats only from fixed trusted locations.
+          sudo tests/bats/install.sh /usr/local
           test "$(git -C tests/bats-support rev-parse HEAD)" = "$BATS_SUPPORT_COMMIT"
           test "$(git -C tests/bats-assert rev-parse HEAD)" = "$BATS_ASSERT_COMMIT"
           test "$(git -C tests/bats-file rev-parse HEAD)" = "$BATS_FILE_COMMIT"
@@ -468,6 +470,8 @@ jobs:
           git -C tests/bats-assert checkout --detach "$BATS_ASSERT_COMMIT"
           git -C tests/bats-file checkout --detach "$BATS_FILE_COMMIT"
           test "$(git -C tests/bats rev-parse HEAD)" = "$BATS_CORE_COMMIT"
+          # Receipt fixtures execute Bats only from fixed trusted locations.
+          sudo tests/bats/install.sh /usr/local
           test "$(git -C tests/bats-support rev-parse HEAD)" = "$BATS_SUPPORT_COMMIT"
           test "$(git -C tests/bats-assert rev-parse HEAD)" = "$BATS_ASSERT_COMMIT"
           test "$(git -C tests/bats-file rev-parse HEAD)" = "$BATS_FILE_COMMIT"
@@ -521,6 +525,8 @@ jobs:
           git -C tests/bats-assert checkout --detach "$BATS_ASSERT_COMMIT"
           git -C tests/bats-file checkout --detach "$BATS_FILE_COMMIT"
           test "$(git -C tests/bats rev-parse HEAD)" = "$BATS_CORE_COMMIT"
+          # Receipt fixtures execute Bats only from fixed trusted locations.
+          sudo tests/bats/install.sh /usr/local
           test "$(git -C tests/bats-support rev-parse HEAD)" = "$BATS_SUPPORT_COMMIT"
           test "$(git -C tests/bats-assert rev-parse HEAD)" = "$BATS_ASSERT_COMMIT"
           test "$(git -C tests/bats-file rev-parse HEAD)" = "$BATS_FILE_COMMIT"

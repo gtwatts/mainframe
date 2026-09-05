@@ -395,6 +395,14 @@ _mainframe_cli_tool_layout_is_known() {
             ;;
     esac
 
+    # Linux's fixed /usr/bin/python3 is normally a symlink to python3.X.
+    # Resolution happens before this check; accept only numeric versions in
+    # the same system directories, retaining the ownership/mode checks below.
+    if [[ "$tool" == "python3" &&
+          "$candidate" =~ ^/(usr/)?bin/python3\.[0-9]+$ ]]; then
+        return 0
+    fi
+
     if [[ "$tool" == "jq" ]]; then
         case "$candidate" in
             /nix/store/*/bin/jq)

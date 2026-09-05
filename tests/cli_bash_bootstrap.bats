@@ -165,6 +165,22 @@ make_delegation_fixture() {
     [[ "$status" -eq 0 ]]
 }
 
+@test "claim interpreter layout accepts versioned system Python but rejects nearby untrusted paths" {
+    local probe="$TEST_DIR/probe-system-python.sh" candidate
+    sed -n '/^_mainframe_cli_tool_layout_is_known()/,/^}/p' "$MAINFRAME_BIN" > "$probe"
+    printf '%s\n' '_mainframe_cli_tool_layout_is_known python3 "$1"' >> "$probe"
+
+    for candidate in /usr/bin/python3 /usr/bin/python3.12 /bin/python3.13; do
+        run "$MODERN_BASH" --noprofile --norc -p "$probe" "$candidate"
+        [[ "$status" -eq 0 ]]
+    done
+    for candidate in /usr/local/bin/python3.12 /tmp/python3.12 \
+        /usr/bin/python3.evil /usr/bin/python3.12-wrapper /usr/bin/python3.12/evil; do
+        run "$MODERN_BASH" --noprofile --norc -p "$probe" "$candidate"
+        [[ "$status" -ne 0 ]]
+    done
+}
+
 @test "old-interpreter bootstrap accepts the documented MacPorts Bash path" {
     local probe="$TEST_DIR/probe-macports-path.sh"
     sed -n '/^_mainframe_cli_bash_allowed_for_launch()/,/^}/p' \

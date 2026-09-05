@@ -220,6 +220,10 @@ mode_of() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
         fi
     done
     [[ -n "$cp_bin" ]] || skip "GNU cp effect check requires GNU coreutils (Linux CI)"
+    # Exercise the guarded cp spelling even when Homebrew supplies it as gcp.
+    mkdir -p "$AGENT_SAFE_BASE/gnu-bin"
+    ln -s "$cp_bin" "$AGENT_SAFE_BASE/gnu-bin/cp"
+    cp_bin="$AGENT_SAFE_BASE/gnu-bin/cp"
     printf marker > "$AGENT_SAFE_BASE/source"
     for api in agent_safe_exec agent_safe_exec_capture; do
         for option in --backup -s; do

@@ -55,7 +55,10 @@ PY
     before="$(shasum -a 256 "$CONTRACT" | awk '{print $1}')"
 
     run "$MAINFRAME_BIN" claim --json
-    [[ "$status" -eq 0 ]]
+    if [[ "$status" -ne 0 ]]; then
+        printf '%s\n' "$output" >&2
+        return 1
+    fi
     run "$PYTHON_BIN" -I -S -B - "$output" <<'PY'
 import json
 import sys
