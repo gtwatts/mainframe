@@ -323,7 +323,7 @@ expected_build_id = "${{ needs.mcp-package-build.outputs.candidate_artifact_id }
       !inputs.key?("name")
 end
 raise "MCP signer trust order drift" unless signer.fetch("needs") ==
-  ["mcp-package-build", "mcp-package-test", "release-tag-identity"]
+  ["mcp-package-build", "mcp-package-test", "release-tag-identity", "release-readiness"]
 raise "MCP signer artifact output drift" unless signer.fetch("outputs") == {
   "candidate_artifact_id" => expected_build_id
 }
@@ -463,7 +463,7 @@ pi_signer = jobs.fetch("pi-cell-attestation")
 raise "Pi execution must not receive release-signing credentials" unless
   pi_execution.fetch("permissions") == {"contents" => "read"}
 raise "Pi signer must be downstream of every Pi execution cell" unless
-  pi_signer.fetch("needs") == ["pi-compatibility", "release-tag-identity"]
+  pi_signer.fetch("needs") == ["pi-compatibility", "release-tag-identity", "release-readiness"]
 needs = job.fetch("needs")
 pi_execution_index = needs.index("pi-compatibility")
 pi_signer_index = needs.index("pi-cell-attestation")
@@ -986,4 +986,39 @@ puts "publish transfer and immutability contract valid"
 RUBY
     [[ "$status" -eq 0 ]]
     [[ "$output" == "publish transfer and immutability contract valid" ]]
+}
+
+@test "expired promotion evidence does not suppress correctness or unsigned candidate jobs" {
+    run ruby - "$WORKFLOW" <<'RUBY'
+require "yaml"
+jobs = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: true).fetch("jobs")
+parents = ->(name) { Array(jobs.fetch(name)["needs"]) }
+ancestors = lambda do |name|
+  parents.call(name).flat_map { |parent| [parent] + ancestors.call(parent) }.uniq
+end
+readiness = jobs.fetch("release-readiness").fetch("steps").map { |s| s["run"] }.compact.join("\n")
+raise "claim verifier missing" unless readiness.include?("scripts/verify-public-claims.sh")
+raise "release validation missing" unless readiness.include?("scripts/dev/release.sh --check")
+%w[test-safety test-linux test-macos bash-44-compat test-bindings
+   pi-compatibility native-host-awm-chain mcp-package-build mcp-package-test].each do |name|
+  raise "#{name} suppressed by promotion" if ancestors.call(name).include?("release-readiness")
+  ([name] + ancestors.call(name)).each do |dependency|
+    steps = jobs.fetch(dependency).fetch("steps").map { |s| s["run"] }.compact.join("\n")
+    raise "#{dependency} still invokes promotion checks" if
+      steps.match?(/scripts\/dev\/release\.sh --(?:check|prepare)/) ||
+      steps.include?("scripts/verify-public-claims.sh")
+  end
+end
+%w[pi-cell-attestation mcp-package-attestation release-build release-publish].each do |name|
+  raise "#{name} can bypass promotion" unless ancestors.call(name).include?("release-readiness")
+  # No always()/continue-on-error escape from a failed prerequisite.
+  ([name] + ancestors.call(name)).each do |dependency|
+    job = jobs.fetch(dependency)
+    raise "#{dependency} masks failure" if job["continue-on-error"] == true ||
+      job.fetch("if", "").include?("always()")
+  end
+end
+puts "correctness remains runnable; promotion remains fail-closed"
+RUBY
+    [[ "$status" -eq 0 ]]
 }

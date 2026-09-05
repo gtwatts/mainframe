@@ -2,8 +2,8 @@
 # =============================================================================
 # MAINFRAME canonical invocation broker
 # =============================================================================
-# This file is sourced only by bin/mainframe's protected, pre-runtime `invoke`
-# fast path.  It intentionally does not source common.sh in the broker process.
+# This file is sourced by bin/mainframe's protected fixed kernel adapter.
+# Public invocation first enters the durable control plane.  It intentionally does not source common.sh in the broker process.
 # A reviewed manifest contract selects one Bash function and one owner module;
 # the function then runs in a clean child environment with bounded time/output.
 # =============================================================================
@@ -485,7 +485,9 @@ _mainframe_invoke_input_has_unique_fields() {
     # The streaming form exposes each occurrence before reduction. Because the
     # reviewed schema permits only top-level strings and string arrays, one
     # scalar event or array index zero uniquely marks each property occurrence.
-    _mainframe_invoke_jq_input -e --stream '
+    # -n lets inputs consume the first event too; otherwise a duplicate of
+    # the first key is silently missed.
+    _mainframe_invoke_jq_input -n -e --stream '
         reduce inputs as $event ({};
           if (($event | length) == 2 and
               ($event[0] | type) == "array" and

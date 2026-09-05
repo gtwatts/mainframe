@@ -25,6 +25,7 @@ setup() {
     export MAINFRAME_QUIET=1
     TEST_DIR=$(create_test_dir "security_gate")
     export AGENT_AUDIT_LOG="$TEST_DIR/audit.jsonl"
+    export AWM_ROOT="$(cd "$TEST_DIR" && pwd -P)/awm"
     export AGENT_SAFE_BASE="$TEST_DIR"
     export AGENT_CURRENT_PROFILE="project"
     export AGENT_RISK_THRESHOLD=50
@@ -796,7 +797,8 @@ _gate_tier() {
     [[ "$output" == *'"executions_started": 2'* ]]
     [[ "$output" == *'"blocked_risk": 1'* ]]
     [[ "$output" == *'"approved": 1'* ]]
-    [[ "$output" == *'"fp_candidates": ["rm -rf'* ]]
+    [[ "$output" == *'"fp_candidates": []'* ]]
+    [[ "$output" == *'"fp_candidate_count": 0'* ]]
 }
 
 @test "telemetry: report on missing log errors cleanly" {

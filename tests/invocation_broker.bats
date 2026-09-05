@@ -2,16 +2,55 @@
 
 setup() {
     PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd -P)"
-    MAINFRAME_BIN="$PROJECT_ROOT/bin/mainframe"
+    PUBLIC_MAINFRAME_BIN="$PROJECT_ROOT/bin/mainframe"
     TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mainframe-invoke-test.XXXXXX")"
     TEST_ROOT="$(cd "$TEST_ROOT" && pwd -P)"
     AUDIT_ROOT="$TEST_ROOT/state"
     mkdir -p "$AUDIT_ROOT"
     chmod 700 "$AUDIT_ROOT"
+    MAINFRAME_BIN="$TEST_ROOT/broker-test-launcher"
+    write_broker_test_launcher "$PROJECT_ROOT" "$MAINFRAME_BIN"
 }
 
 teardown() {
     rm -rf -- "$TEST_ROOT"
+}
+
+# These are unit/integration tests of the fixed Bash executor, not the public
+# durable CLI. Reuse the real protected bootstrap, then enter the broker at its
+# owning boundary. This test-only launcher is never included in the runtime.
+# Public transport/lifecycle checks live in durable_invocation.bats and below.
+write_broker_test_launcher() {
+    python3 - "$PUBLIC_MAINFRAME_BIN" "$1" "$2" <<'PYCODE'
+from pathlib import Path
+import shlex
+import sys
+source, root, destination = sys.argv[1:]
+text = Path(source).read_text()
+marker = "# The durable kernel's canonical executor reaches the reviewed broker through"
+assert text.count(marker) == 1
+bootstrap = text.split(marker)[0]
+assert bootstrap.count('export MAINFRAME_ROOT="$SCRIPT_DIR"') == 1
+bootstrap = bootstrap.replace('export MAINFRAME_ROOT="$SCRIPT_DIR"',
+                              'export MAINFRAME_ROOT=' + shlex.quote(root))
+entry = r'''
+[[ "${1:-}" == invoke ]] || exit 64
+_mainframe_cli_invoke="$MAINFRAME_ROOT/lib/invoke.sh"
+if ! _mainframe_cli_trust_file_is_safe "$_mainframe_cli_invoke"; then
+    echo "MAINFRAME invocation denied: canonical broker is missing or unsafe" >&2
+    exit 126
+fi
+source "$_mainframe_cli_invoke"
+shift
+_mainframe_invoke_main "$@"
+exit $?
+;;
+*) exec /bin/bash --noprofile --norc -p -- "$0" "$@" ;;
+esac
+'''
+Path(destination).write_text(bootstrap + entry)
+Path(destination).chmod(0o755)
+PYCODE
 }
 
 invoke_mainframe() {
@@ -21,7 +60,7 @@ invoke_mainframe() {
 make_broker_fixture() {
     FIXTURE_ROOT="$TEST_ROOT/fixture"
     mkdir -p "$FIXTURE_ROOT/bin" "$FIXTURE_ROOT/lib"
-    cp "$MAINFRAME_BIN" "$FIXTURE_ROOT/bin/mainframe"
+    write_broker_test_launcher "$FIXTURE_ROOT" "$FIXTURE_ROOT/bin/mainframe"
     cp "$PROJECT_ROOT/lib/invoke.sh" "$FIXTURE_ROOT/lib/invoke.sh"
     chmod +x "$FIXTURE_ROOT/bin/mainframe"
 
@@ -154,7 +193,7 @@ PY
         "$FIXTURE_ROOT/lib/fixture.sh"
 }
 
-@test "invoke: canonical stable-core call returns raw output and a redacted audit" {
+@test "broker: canonical stable-core call returns raw output and a redacted audit" {
     run invoke_mainframe \
         mf:data:json:json_get \
         --input-json '{"json":"{\"secret\":\"broker-proof-4931\"}","key":"secret"}'
@@ -173,7 +212,7 @@ PY
     ! grep -F 'broker-proof-4931' "$audit"
 }
 
-@test "invoke: broker-json-v1 is a bounded base64 result envelope" {
+@test "broker: broker-json-v1 is a bounded base64 result envelope" {
     run invoke_mainframe \
         mf:data:json:json_object \
         --input-json '{"pairs":["name=Ada","age:number=36"]}' \
@@ -200,7 +239,7 @@ PY
     [ "$status" -eq 0 ]
 }
 
-@test "invoke: reviewed defaults and explicit variadics map deterministically" {
+@test "broker: reviewed defaults and explicit variadics map deterministically" {
     run invoke_mainframe \
         mf:data:pure-array:array_join \
         --input-json '{"items":["a","b","c"]}'
@@ -220,7 +259,7 @@ PY
     [ "$output" = "left_MAINFRAME_TIER_AIright" ]
 }
 
-@test "invoke: closed schemas reject undeclared fields and wrong types" {
+@test "broker: closed schemas reject undeclared fields and wrong types" {
     run invoke_mainframe \
         mf:data:json:json_get \
         --input-json '{"json":"{}","key":"x","command":"id"}' \
@@ -237,7 +276,7 @@ PY
     [[ "$output" == *"closed input schema"* ]]
 }
 
-@test "invoke: Bash names external executables and unknown canonical IDs never run" {
+@test "broker: Bash names external executables and unknown canonical IDs never run" {
     fake_bin="$TEST_ROOT/fake-bin"
     marker="$TEST_ROOT/external-ran"
     mkdir -p "$fake_bin"
@@ -257,7 +296,7 @@ PY
     [[ "$output" == *"not registered"* ]]
 }
 
-@test "invoke: non-stable exports are absent from the reviewed broker index" {
+@test "broker: non-stable exports are absent from the reviewed broker index" {
     cid="$(jq -r '.name_index.atomic_write' "$PROJECT_ROOT/MANIFEST.json")"
     [ -n "$cid" ]
     [ "$cid" != null ]
@@ -268,7 +307,7 @@ PY
     [ "$status" -eq 0 ]
 }
 
-@test "invoke: poisoned startup variables exported functions and PATH shims are inert" {
+@test "broker: poisoned startup variables exported functions and PATH shims are inert" {
     poison="$TEST_ROOT/poison.sh"
     marker="$TEST_ROOT/poison-ran"
     fake_bin="$TEST_ROOT/poison-bin"
@@ -291,7 +330,7 @@ PY
     [ ! -e "$marker" ]
 }
 
-@test "invoke: unsafe audit targets deny execution before the function runs" {
+@test "broker: unsafe audit targets deny execution before the function runs" {
     target="$TEST_ROOT/audit-target"
     link="$TEST_ROOT/audit-link"
     printf 'preserve-me' >"$target"
@@ -305,7 +344,7 @@ PY
     [ "$(<"$target")" = preserve-me ]
 }
 
-@test "invoke: stdin preserves embedded and trailing newlines as literal data" {
+@test "broker: stdin preserves embedded and trailing newlines as literal data" {
     request="$TEST_ROOT/request.json"
     printf '%s' '{"value":"line one\nline two\n"}' >"$request"
 
@@ -324,7 +363,7 @@ PY
     [ "$status" -eq 0 ]
 }
 
-@test "invoke: stdin waits for EOF and rejects delayed trailing data" {
+@test "broker: stdin waits for EOF and rejects delayed trailing data" {
     run env XDG_STATE_HOME="$AUDIT_ROOT" bash -c '
         {
             printf %s '\''{"value":"safe"}'\''
@@ -339,7 +378,7 @@ PY
     [ "$status" -eq 0 ]
 }
 
-@test "invoke: stdin rejects literal NUL bytes without rewriting the request" {
+@test "broker: stdin rejects literal NUL bytes without rewriting the request" {
     run env XDG_STATE_HOME="$AUDIT_ROOT" bash -c '
         python3 -c '\''import sys; sys.stdout.buffer.write(b"{\\\"value\\\":\\\"safe\\x00\\\"}")'\'' |
             "$1" invoke mf:std:pure-string:to_upper --input-json - \
@@ -351,7 +390,7 @@ PY
     [ "$status" -eq 0 ]
 }
 
-@test "invoke: stdin rejects requests larger than the framing limit" {
+@test "broker: stdin rejects requests larger than the framing limit" {
     run env XDG_STATE_HOME="$AUDIT_ROOT" bash -c '
         python3 -c '\''import sys; sys.stdout.write("{" + " " * 32768 + "}")'\'' |
             "$1" invoke mf:std:pure-string:to_upper --input-json - \
@@ -363,7 +402,7 @@ PY
     [ "$status" -eq 0 ]
 }
 
-@test "invoke: stdin accepts a request exactly at the framing limit" {
+@test "broker: stdin accepts a request exactly at the framing limit" {
     run env XDG_STATE_HOME="$AUDIT_ROOT" bash -c '
         python3 -c '\''import sys; q=chr(34); sys.stdout.write("{"+q+"value"+q+":"+q+"x"*32756+q+"}")'\'' |
             "$1" invoke mf:std:pure-string:is_empty --input-json - \
@@ -377,7 +416,7 @@ PY
     [ "$status" -eq 0 ]
 }
 
-@test "invoke: duplicate and escaped-equivalent object keys fail closed" {
+@test "broker: duplicate and escaped-equivalent object keys fail closed" {
     for request in \
         '{"value":"first","value":"second"}' \
         '{"value":"first","\u0076alue":"second"}'
@@ -391,7 +430,7 @@ PY
     done
 }
 
-@test "invoke: kernel output limit bounds a flooding function and its envelope" {
+@test "broker: kernel output limit bounds a flooding function and its envelope" {
     make_broker_fixture
 
     run env XDG_STATE_HOME="$AUDIT_ROOT" \
@@ -408,7 +447,7 @@ PY
     [ "$status" -eq 0 ]
 }
 
-@test "invoke: timeout terminates the fixture process group and records the denial" {
+@test "broker: timeout terminates the fixture process group and records the denial" {
     make_broker_fixture
 
     started="$SECONDS"
@@ -431,7 +470,7 @@ PY
     ! kill -0 "$child_pid" 2>/dev/null
 }
 
-@test "invoke: a function cannot return success while a descendant survives" {
+@test "broker: a function cannot return success while a descendant survives" {
     make_broker_fixture
     marker="$TEST_ROOT/background-survived"
     input="$(jq -cn --arg marker "$marker" '{marker:$marker}')"
@@ -450,7 +489,7 @@ PY
     [ ! -e "$marker" ]
 }
 
-@test "invoke: terminating the broker also terminates its active process group" {
+@test "broker: terminating the broker also terminates its active process group" {
     make_broker_fixture
     pid_file="$TEST_ROOT/cancel-child.pid"
     marker="$TEST_ROOT/cancel-child-survived"
@@ -480,7 +519,7 @@ PY
     [ ! -e "$marker" ]
 }
 
-@test "invoke: nonempty capabilities in an otherwise valid contract are denied" {
+@test "broker: nonempty capabilities in an otherwise valid contract are denied" {
     make_broker_fixture
     python3 - "$FIXTURE_ROOT/INVOCATION_INDEX.json" <<'PY'
 import json
@@ -501,7 +540,7 @@ PY
     [ "$status" -eq 0 ]
 }
 
-@test "invoke: malformed result contracts are denied" {
+@test "broker: malformed result contracts are denied" {
     make_broker_fixture
     python3 - "$FIXTURE_ROOT/INVOCATION_INDEX.json" <<'PY'
 import json
@@ -524,7 +563,7 @@ PY
     [ "$status" -eq 0 ]
 }
 
-@test "invoke: compact index identity platform and bounds invariants fail closed" {
+@test "broker: compact index identity platform and bounds invariants fail closed" {
     local mutation expected response
     for mutation in top_level count name owner name_index module platform timeout output; do
         case "$mutation" in
@@ -575,7 +614,7 @@ PY
     done
 }
 
-@test "invoke: missing and symbolic-link broker indexes are unsafe" {
+@test "broker: missing and symbolic-link broker indexes are unsafe" {
     local response
     for mutation in missing symlink; do
         make_broker_fixture
@@ -601,7 +640,7 @@ PY
     done
 }
 
-@test "invoke: VERSION must be one exact line matching the broker index" {
+@test "broker: VERSION must be one exact line matching the broker index" {
     local mutation response
     for mutation in stale index_stale leading_space multiline crlf blank missing symlink; do
         make_broker_fixture
@@ -643,7 +682,7 @@ PY
     done
 }
 
-@test "invoke: trust files reject group writes other writes and special bits" {
+@test "broker: trust files reject group writes other writes and special bits" {
     local mutation target mode expected response
     for mutation in broker_0666 index_0664 common_0666 owner_0664 owner_setuid; do
         make_broker_fixture
@@ -686,7 +725,7 @@ PY
     done
 }
 
-@test "invoke: trust files accept same-owner release modes 0644 and 0755" {
+@test "broker: trust files accept same-owner release modes 0644 and 0755" {
     local mode
     for mode in 0644 0755; do
         make_broker_fixture
@@ -704,7 +743,7 @@ PY
     done
 }
 
-@test "invoke: every trust file rejects a symbolic-link replacement" {
+@test "broker: every trust file rejects a symbolic-link replacement" {
     local label target response
     for label in broker index common owner; do
         make_broker_fixture
@@ -737,7 +776,7 @@ PY
     done
 }
 
-@test "invoke: contract subobjects reject undeclared metadata" {
+@test "broker: contract subobjects reject undeclared metadata" {
     for mutation in schema shape argument property effects; do
         make_broker_fixture
         python3 - "$FIXTURE_ROOT/INVOCATION_INDEX.json" "$mutation" <<'PY'
@@ -770,7 +809,7 @@ PY
     done
 }
 
-@test "invoke: exit and none result contracts cannot smuggle stdout" {
+@test "broker: exit and none result contracts cannot smuggle stdout" {
     for result_kind in exit none; do
         make_broker_fixture
         python3 - "$FIXTURE_ROOT/INVOCATION_INDEX.json" "$result_kind" <<'PY'
@@ -822,7 +861,7 @@ PY
     [ "$status" -eq 0 ]
 }
 
-@test "invoke: validate_int treats range bounds as data, never arithmetic code" {
+@test "broker: validate_int treats range bounds as data, never arithmetic code" {
     marker="$TEST_ROOT/validate-int-arithmetic-ran"
     payload="$(printf 'a[$(printf marker > "%s")]' "$marker")"
     input="$(jq -cn --arg payload "$payload" \
