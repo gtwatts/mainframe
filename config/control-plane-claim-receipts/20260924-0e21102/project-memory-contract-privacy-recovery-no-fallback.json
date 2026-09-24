@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "receipt_type": "mainframe-control-plane-gate-receipt",
+  "receipt_id": "project-memory-contract-privacy-recovery-no-fallback-local-20260924-0e21102",
+  "gate_id": "project-memory-contract",
+  "proof_kind": "privacy-recovery-no-fallback",
+  "protocol_version": "1.0.0",
+  "subject": {
+    "kind": "source",
+    "source_revision": "0e21102e442f0dd8598f7c1075c98a54919f600c",
+    "source_tree_sha256": "4975db7d70730f44f12a7813115d4ba4d57379da3d6b65d034a7238da0f8cf66",
+    "inventory_sha256": null,
+    "payload_sha256": null,
+    "version": "10.3.1"
+  },
+  "command": {
+    "identity": "mainframe.project-memory.privacy-recovery.v1",
+    "argv": [
+      "bats",
+      "tests/durable_project_memory_route.bats"
+    ]
+  },
+  "environment": {
+    "os": "linux",
+    "architecture": "x86_64",
+    "runner_class": "maintainer-local"
+  },
+  "issued_at": "2026-09-24T21:52:40Z",
+  "expires_at": "2026-10-01T21:52:40Z",
+  "evidence": [
+    {
+      "path": "bin/mainframe",
+      "sha256": "d51da18d4b2d3376d328d6d557d7a3ff659b13eb95f58f2a4d8219aeaa0d4416",
+      "role": "source-evidence"
+    },
+    {
+      "path": "lib/durable_awm.sh",
+      "sha256": "edd7c66a8facb8020c749049bc0ab384dc26b7265c24d923c3a848cad16a7774",
+      "role": "source-evidence"
+    },
+    {
+      "path": "control_plane/mainframe_control_plane/memory.py",
+      "sha256": "dd24e3a3319d167daf68ff6790b7fcebc5fdbcd2095249248bc8439da7f95bfa",
+      "role": "source-evidence"
+    },
+    {
+      "path": "control_plane/mainframe_control_plane/memory_executor.py",
+      "sha256": "4e167fe1c72b7eefd62034502045a604864372e2efd893b2efc45bad0ec21484",
+      "role": "source-evidence"
+    },
+    {
+      "path": "control_plane/mainframe_control_plane/memory_transient.py",
+      "sha256": "234dee7a7314bc3a3319bad8ff9f10a927df7cf634d94b8d67c20e4ae850c03f",
+      "role": "source-evidence"
+    },
+    {
+      "path": "control_plane/mainframe_control_plane/cli.py",
+      "sha256": "aa7988bef84175d823cfa7bbd75060f4a427eef0008cc6e90524f91e28df02c6",
+      "role": "source-evidence"
+    },
+    {
+      "path": "control_plane/mainframe_control_plane/kernel.py",
+      "sha256": "f5bc92b922965c64acbd44565d28341037cd922019c67cb840167437853d7662",
+      "role": "source-evidence"
+    },
+    {
+      "path": "tests/control_plane/test_project_memory.py",
+      "sha256": "eb0a602c4f484024bb418040eba416de4c2dfb228cde6c8a3ecd956dcd98da29",
+      "role": "source-evidence"
+    },
+    {
+      "path": "tests/control_plane/test_project_memory_reads.py",
+      "sha256": "07579fa228f30d1071bf8c8799be3893275adce261245a7ea14af0ebfc7d7741",
+      "role": "source-evidence"
+    },
+    {
+      "path": "tests/control_plane/test_project_memory_integration.py",
+      "sha256": "914678ee279cc134a2bdbfb676c7371b807d1de3d328cfc0c8d53fe016f7ff0c",
+      "role": "source-evidence"
+    },
+    {
+      "path": "tests/durable_project_memory_route.bats",
+      "sha256": "4b15c502065b0caf16535eb3e7404d2a8f589424ceda4270928b66095fb85ebe",
+      "role": "source-evidence"
+    }
+  ],
+  "result": "pass",
+  "authority": {
+    "class": "local-verifier",
+    "signer_id": "scripts/check-control-plane-claim.py",
+    "independence": "project",
+    "signature": null
+  },
+  "limitations": [
+    "Fresh fixed-verifier source execution only; not installed Pi, public distribution, external approval-authority, or independent outcome evidence.",
+    "Historical 10.2 receipts remain unchanged and are not promoted by this record."
+  ]
+}

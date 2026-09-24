@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "receipt_type": "mainframe-control-plane-gate-receipt",
+  "receipt_id": "semantic-authority-source-suite-local-20260924-0e21102",
+  "gate_id": "semantic-authority",
+  "proof_kind": "source-suite",
+  "protocol_version": "1.0.0",
+  "subject": {
+    "kind": "source",
+    "source_revision": "0e21102e442f0dd8598f7c1075c98a54919f600c",
+    "source_tree_sha256": "4975db7d70730f44f12a7813115d4ba4d57379da3d6b65d034a7238da0f8cf66",
+    "inventory_sha256": null,
+    "payload_sha256": null,
+    "version": "10.3.1"
+  },
+  "command": {
+    "identity": "mainframe.semantic-authority.source.v1",
+    "argv": [
+      "python3",
+      "-I",
+      "-S",
+      "-B",
+      "scripts/check-owner-parity.py"
+    ]
+  },
+  "environment": {
+    "os": "linux",
+    "architecture": "x86_64",
+    "runner_class": "maintainer-local"
+  },
+  "issued_at": "2026-09-24T21:51:48Z",
+  "expires_at": "2026-10-01T21:51:48Z",
+  "evidence": [
+    {
+      "path": "config/semantic-trust-policy.json",
+      "sha256": "06bd5b1230fbd0a2ffae2ae7e7eb809ef7b65783efeb85b9402626c0189b2d8f",
+      "role": "source-evidence"
+    },
+    {
+      "path": "scripts/generate-manifest.py",
+      "sha256": "b2d70f135e73d5bbf21aebab4f8830b24d677b161d2b61efca56a270fff660e2",
+      "role": "source-evidence"
+    },
+    {
+      "path": "tests/owner-parity.bats",
+      "sha256": "4a5d1f67e29a0f29a89799d62f191dafff9411a4b2696afb34b8809c053ca433",
+      "role": "source-evidence"
+    }
+  ],
+  "result": "pass",
+  "authority": {
+    "class": "local-verifier",
+    "signer_id": "scripts/check-control-plane-claim.py",
+    "independence": "project",
+    "signature": null
+  },
+  "limitations": [
+    "Fresh fixed-verifier source execution only; not installed Pi, public distribution, external approval-authority, or independent outcome evidence.",
+    "Historical 10.2 receipts remain unchanged and are not promoted by this record."
+  ]
+}

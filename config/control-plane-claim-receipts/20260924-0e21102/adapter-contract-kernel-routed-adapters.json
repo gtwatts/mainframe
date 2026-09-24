@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "receipt_type": "mainframe-control-plane-gate-receipt",
+  "receipt_id": "adapter-contract-kernel-routed-adapters-local-20260924-0e21102",
+  "gate_id": "adapter-contract",
+  "proof_kind": "kernel-routed-adapters",
+  "protocol_version": "1.0.0",
+  "subject": {
+    "kind": "source",
+    "source_revision": "0e21102e442f0dd8598f7c1075c98a54919f600c",
+    "source_tree_sha256": "4975db7d70730f44f12a7813115d4ba4d57379da3d6b65d034a7238da0f8cf66",
+    "inventory_sha256": null,
+    "payload_sha256": null,
+    "version": "10.3.1"
+  },
+  "command": {
+    "identity": "mainframe.adapter-contract.kernel-route.v1",
+    "argv": [
+      "bats",
+      "tests/adapter_kernel_route.bats"
+    ]
+  },
+  "environment": {
+    "os": "linux",
+    "architecture": "x86_64",
+    "runner_class": "maintainer-local"
+  },
+  "issued_at": "2026-09-24T21:52:41Z",
+  "expires_at": "2026-10-01T21:52:41Z",
+  "evidence": [
+    {
+      "path": "config/host-capabilities.json",
+      "sha256": "0b4a8b98161b5caddf7a2ebdfd26d1c2b8f0a8967fbbf89818cdf2ed4b1e3fc5",
+      "role": "source-evidence"
+    },
+    {
+      "path": "scripts/generate-host-adapters.sh",
+      "sha256": "4d65e66fc1916629e9aa37c918e3d1e2a776e1cd9d47c8a5c01e713a43378aef",
+      "role": "source-evidence"
+    },
+    {
+      "path": "tests/host_capabilities.bats",
+      "sha256": "3d677f7f47bb9bb2754a8af1474b19d069670b7febbe35bb184512cd7b4f2a0f",
+      "role": "source-evidence"
+    }
+  ],
+  "result": "pass",
+  "authority": {
+    "class": "local-verifier",
+    "signer_id": "scripts/check-control-plane-claim.py",
+    "independence": "project",
+    "signature": null
+  },
+  "limitations": [
+    "Fresh fixed-verifier source execution only; not installed Pi, public distribution, external approval-authority, or independent outcome evidence.",
+    "Historical 10.2 receipts remain unchanged and are not promoted by this record."
+  ]
+}
