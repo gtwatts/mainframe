@@ -70,12 +70,12 @@
       ],
       "receipt_refs": [
         {
-          "path": "config/control-plane-claim-receipts/20260924-0e21102/release-integrity-inventory-suite.json",
-          "sha256": "bb44908bc788860ac89c3512f4e7b75fc41c30496057d2f36ccfd6c89307aa49"
+          "path": "config/control-plane-claim-receipts/20260924-67aa389/release-integrity-inventory-suite.json",
+          "sha256": "5f72e7e2dbae8f055e39e9a82340925b613681d0ae4e1f47c53888f36fe18cc0"
         },
         {
-          "path": "config/control-plane-claim-receipts/20260924-0e21102/release-integrity-archive-reproducibility.json",
-          "sha256": "89ff3953e365fe27be97e348e3a584a5214de26e4d500eb3f9b302de94c75c77"
+          "path": "config/control-plane-claim-receipts/20260924-67aa389/release-integrity-archive-reproducibility.json",
+          "sha256": "994af5c683dab9e1d378764b53464d9f56c7ad0128472a2c09af7df29dd19058"
         }
       ],
       "remaining": []
@@ -89,8 +89,8 @@
       ],
       "receipt_refs": [
         {
-          "path": "config/control-plane-claim-receipts/20260924-0e21102/semantic-authority-source-suite.json",
-          "sha256": "af39f52a16f6d1a6fc40510410133b488735ae561206c98dfd55857cb0bef560"
+          "path": "config/control-plane-claim-receipts/20260924-67aa389/semantic-authority-source-suite.json",
+          "sha256": "e575c6e115de6420c4e5ef8350c84a69d3ed57f3af999e29d788d7ada0187af4"
         }
       ],
       "remaining": []
@@ -104,8 +104,8 @@
       ],
       "receipt_refs": [
         {
-          "path": "config/control-plane-claim-receipts/20260924-0e21102/runtime-closure-source-suite.json",
-          "sha256": "d03b690f32c6e1587da1b84d0ebcbac1083235b4209c7db768c2ff649039e940"
+          "path": "config/control-plane-claim-receipts/20260924-67aa389/runtime-closure-source-suite.json",
+          "sha256": "a05073a5bd780af0539a950b83dae8a941f0aa9ccbe62d03110e14910787fc85"
         }
       ],
       "remaining": []
@@ -136,8 +136,8 @@
       ],
       "receipt_refs": [
         {
-          "path": "config/control-plane-claim-receipts/20260924-0e21102/reviewed-broker-routing-kernel-routed-stable-core.json",
-          "sha256": "50a70be0a7c92a25f0d41ed8784d60614fd95a13eb0a855d2b39960b22c21950"
+          "path": "config/control-plane-claim-receipts/20260924-67aa389/reviewed-broker-routing-kernel-routed-stable-core.json",
+          "sha256": "bfca65d766134ba425d0a816185357a66c54c4117d0b5e295bc1be8c6f76c7a9"
         }
       ],
       "remaining": []
@@ -153,12 +153,12 @@
       ],
       "receipt_refs": [
         {
-          "path": "config/control-plane-claim-receipts/20260924-0e21102/coding-agent-contract-public-safe-read-search.json",
-          "sha256": "455cd3eeecc53b2d1ca57e1bba2542c2bcdcb6fb442a928f3037ca85b524486b"
+          "path": "config/control-plane-claim-receipts/20260924-67aa389/coding-agent-contract-public-safe-read-search.json",
+          "sha256": "c2d5d1588136c4c811b6ea5c23b9bd6c404093be225f79a647e4f7948a97596a"
         },
         {
-          "path": "config/control-plane-claim-receipts/20260924-0e21102/coding-agent-contract-approval-required-fail-closed.json",
-          "sha256": "6523cf6d41be54ca637a332cab527eddd98eafd168c634aff7d7f2b89dac89c6"
+          "path": "config/control-plane-claim-receipts/20260924-67aa389/coding-agent-contract-approval-required-fail-closed.json",
+          "sha256": "446124661c42b364d4fa1496580be993e4f331734fa5fdb026a7e6168ec99613"
         }
       ],
       "remaining": []
@@ -180,12 +180,12 @@
       ],
       "receipt_refs": [
         {
-          "path": "config/control-plane-claim-receipts/20260924-0e21102/project-memory-contract-twelve-operation-route.json",
-          "sha256": "ff4ffc86fe42925b4c4bcb3bd5df36a39d848f35ca07a216468cd3e47e1f8cf0"
+          "path": "config/control-plane-claim-receipts/20260924-67aa389/project-memory-contract-twelve-operation-route.json",
+          "sha256": "e8ca31bbd5b32208bb7b195eee6c5e07b47ac33b9bf7f9921e89c7a0eb44674d"
         },
         {
-          "path": "config/control-plane-claim-receipts/20260924-0e21102/project-memory-contract-privacy-recovery-no-fallback.json",
-          "sha256": "038829e1333efc0183e9be31af9505595d650346986ec4259fc8231840087b5b"
+          "path": "config/control-plane-claim-receipts/20260924-67aa389/project-memory-contract-privacy-recovery-no-fallback.json",
+          "sha256": "090cf4fc76682a5aeea849928cc2db13cb473c97fa6bda6c6b85b28f2549e401"
         }
       ],
       "remaining": []
@@ -199,16 +199,16 @@
       ],
       "receipt_refs": [
         {
-          "path": "config/control-plane-claim-receipts/20260924-0e21102/adapter-contract-instruction-contract.json",
-          "sha256": "1b7a86bfa9f0a351476ab474ae9e40b940a7399dcc91b47f0ee2a32e4b6b4092"
+          "path": "config/control-plane-claim-receipts/20260924-67aa389/adapter-contract-instruction-contract.json",
+          "sha256": "b5a76ffa4bd39f73a0f58cd4b8fd4ec4539cba0497787090dcd018cc3fc812d3"
         },
         {
-          "path": "config/control-plane-claim-receipts/20260924-0e21102/adapter-contract-kernel-routed-adapters.json",
-          "sha256": "37ec0550876f3aca3ef199ec66249eddb72921b0535633e796896de7a6dc07b6"
+          "path": "config/control-plane-claim-receipts/20260924-67aa389/adapter-contract-kernel-routed-adapters.json",
+          "sha256": "7986d0d68aac4bc6c55edbaca9b9d58060f44e7ffcec3aecaba711573875395a"
         },
         {
-          "path": "config/control-plane-claim-receipts/20260924-0e21102/adapter-contract-durable-correlation.json",
-          "sha256": "98406f2a10f2b8a653033464da3b7bc3d21c06ccd7d4f5bd72747f99bfe15d0a"
+          "path": "config/control-plane-claim-receipts/20260924-67aa389/adapter-contract-durable-correlation.json",
+          "sha256": "7c3f853f4676d9504fec0ed2b2acdef78708a343baad307dcb7c4abce02feedf"
         }
       ],
       "remaining": []

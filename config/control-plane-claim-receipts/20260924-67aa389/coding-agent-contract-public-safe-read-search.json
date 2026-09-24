@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "receipt_type": "mainframe-control-plane-gate-receipt",
+  "receipt_id": "coding-agent-contract-public-safe-read-search-local-20260924-67aa389",
+  "gate_id": "coding-agent-contract",
+  "proof_kind": "public-safe-read-search",
+  "protocol_version": "1.0.0",
+  "subject": {
+    "kind": "source",
+    "source_revision": "67aa3899947d55b523432506321b6f8a904591b1",
+    "source_tree_sha256": "2968ca4c30a5deb28db7b394df412538939609f54d495b4ea8f57d23eea3cdc2",
+    "inventory_sha256": null,
+    "payload_sha256": null,
+    "version": "10.3.1"
+  },
+  "command": {
+    "identity": "mainframe.coding-agent.public-safe-reads.v1",
+    "argv": [
+      "python3",
+      "-I",
+      "-S",
+      "-B",
+      "tests/control_plane/test_coding_public.py"
+    ]
+  },
+  "environment": {
+    "os": "linux",
+    "architecture": "x86_64",
+    "runner_class": "maintainer-local"
+  },
+  "issued_at": "2026-09-24T22:34:21Z",
+  "expires_at": "2026-10-01T22:34:21Z",
+  "evidence": [
+    {
+      "path": "control_plane/mainframe_control_plane/coding.py",
+      "sha256": "4efa61f24a31bc025fd5cc1c27e02380579e7c5e7bef56e82fe9a9c2aec5d5dd",
+      "role": "source-evidence"
+    },
+    {
+      "path": "control_plane/mainframe_control_plane/cli.py",
+      "sha256": "aa7988bef84175d823cfa7bbd75060f4a427eef0008cc6e90524f91e28df02c6",
+      "role": "source-evidence"
+    },
+    {
+      "path": "control_plane/mainframe_control_plane/kernel.py",
+      "sha256": "f5bc92b922965c64acbd44565d28341037cd922019c67cb840167437853d7662",
+      "role": "source-evidence"
+    },
+    {
+      "path": "tests/control_plane/test_coding_agent.py",
+      "sha256": "8abc6c5d87b843913fee767ffc038419be101e2e445b61d3fc098f529eca6880",
+      "role": "source-evidence"
+    },
+    {
+      "path": "tests/control_plane/test_coding_public.py",
+      "sha256": "90cc03dd709e9049da97a094c5c8f9e81f5bc9b9311f14fed607c79b2590be42",
+      "role": "source-evidence"
+    }
+  ],
+  "result": "pass",
+  "authority": {
+    "class": "local-verifier",
+    "signer_id": "scripts/check-control-plane-claim.py",
+    "independence": "project",
+    "signature": null
+  },
+  "limitations": [
+    "Fresh fixed-verifier source execution only; not installed Pi, public distribution, external approval-authority, or independent outcome evidence.",
+    "Earlier receipts remain unchanged and are not promoted by this record."
+  ]
+}
