@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "receipt_type": "mainframe-control-plane-gate-receipt",
+  "receipt_id": "reviewed-broker-routing-kernel-routed-stable-core-local-20260924-fc1a9d3",
+  "gate_id": "reviewed-broker-routing",
+  "proof_kind": "kernel-routed-stable-core",
+  "protocol_version": "1.0.0",
+  "subject": {
+    "kind": "source",
+    "source_revision": "fc1a9d3ead34217cbd00c62212447524389a3899",
+    "source_tree_sha256": "12dcd332afaf9d5a26df44fbc9336d28db09506c9dd2a3bd811202dd360dcfd3",
+    "inventory_sha256": null,
+    "payload_sha256": null,
+    "version": "10.3.1"
+  },
+  "command": {
+    "identity": "mainframe.reviewed-broker.kernel-route.v1",
+    "argv": [
+      "python3",
+      "-I",
+      "-S",
+      "-B",
+      "tests/control_plane/test_stable_core.py"
+    ]
+  },
+  "environment": {
+    "os": "linux",
+    "architecture": "x86_64",
+    "runner_class": "maintainer-local"
+  },
+  "issued_at": "2026-09-24T22:41:06Z",
+  "expires_at": "2026-10-01T22:41:06Z",
+  "evidence": [
+    {
+      "path": "config/stable-core.json",
+      "sha256": "481c5df1bae3f46d67c0b382a5763d3775d167926ab36db888d0ba5ef0c7dfa4",
+      "role": "source-evidence"
+    },
+    {
+      "path": "tests/control_plane/public_cli.bats",
+      "sha256": "09fe201fbee135df28113a15f9ec3ee04f79d220f71d1ad32f5e1914bcdf3da2",
+      "role": "source-evidence"
+    }
+  ],
+  "result": "pass",
+  "authority": {
+    "class": "local-verifier",
+    "signer_id": "scripts/check-control-plane-claim.py",
+    "independence": "project",
+    "signature": null
+  },
+  "limitations": [
+    "Fresh fixed-verifier source execution only; not installed Pi, public distribution, external approval-authority, or independent outcome evidence.",
+    "Earlier receipts remain unchanged and are not promoted by this record."
+  ]
+}

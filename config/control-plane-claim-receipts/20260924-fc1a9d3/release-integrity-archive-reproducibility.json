@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "receipt_type": "mainframe-control-plane-gate-receipt",
+  "receipt_id": "release-integrity-archive-reproducibility-local-20260924-fc1a9d3",
+  "gate_id": "release-integrity",
+  "proof_kind": "archive-reproducibility",
+  "protocol_version": "1.0.0",
+  "subject": {
+    "kind": "source",
+    "source_revision": "fc1a9d3ead34217cbd00c62212447524389a3899",
+    "source_tree_sha256": "12dcd332afaf9d5a26df44fbc9336d28db09506c9dd2a3bd811202dd360dcfd3",
+    "inventory_sha256": null,
+    "payload_sha256": null,
+    "version": "10.3.1"
+  },
+  "command": {
+    "identity": "mainframe.release-integrity.archive.v1",
+    "argv": [
+      "/bin/bash",
+      "--noprofile",
+      "--norc",
+      "-p",
+      "scripts/build-release-archive.sh",
+      "--verify"
+    ]
+  },
+  "environment": {
+    "os": "linux",
+    "architecture": "x86_64",
+    "runner_class": "maintainer-local"
+  },
+  "issued_at": "2026-09-24T22:41:04Z",
+  "expires_at": "2026-10-01T22:41:04Z",
+  "evidence": [
+    {
+      "path": "scripts/dev/release.sh",
+      "sha256": "06d675a6c358b933aaf1ded5e661c92bcf253d032bd9269c551a4965817325f2",
+      "role": "source-evidence"
+    },
+    {
+      "path": "scripts/dev/release-payload.sh",
+      "sha256": "4f3e956c004dd246a5bbaeea5bb19da7fbd532026605406cd7dad189f5dd0a14",
+      "role": "source-evidence"
+    },
+    {
+      "path": "scripts/generate-sbom.sh",
+      "sha256": "afa31e56bee7e83bb82812548348d69bacf554467a2c559f2bbab9bac86ae7e0",
+      "role": "source-evidence"
+    },
+    {
+      "path": "scripts/build-release-archive.sh",
+      "sha256": "1c8880c190d142b5c13f127d06c209b5ff292e63365296c1880ab655a8092143",
+      "role": "source-evidence"
+    },
+    {
+      "path": "tests/release-archive.bats",
+      "sha256": "4c5dfa2d290ef172ce11e6b08c835ebebed6fc8504d0933ec82f98330be021f7",
+      "role": "source-evidence"
+    },
+    {
+      "path": "config/release-attestation-exclusions.txt",
+      "sha256": "c26b3e5a4c6821295535d6042be4eadf29d6dcf7de8426c850fbbf54ea85df95",
+      "role": "source-evidence"
+    },
+    {
+      "path": "SHA256SUMS",
+      "sha256": "bea206b76ae0ec7ad91d7ea024ea2a5fea5166f1feea6ed81f8de9009dc53478",
+      "role": "source-evidence"
+    }
+  ],
+  "result": "pass",
+  "authority": {
+    "class": "local-verifier",
+    "signer_id": "scripts/check-control-plane-claim.py",
+    "independence": "project",
+    "signature": null
+  },
+  "limitations": [
+    "Fresh fixed-verifier source execution only; not installed Pi, public distribution, external approval-authority, or independent outcome evidence.",
+    "Earlier receipts remain unchanged and are not promoted by this record."
+  ]
+}
