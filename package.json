@@ -1,6 +1,6 @@
 {
   "name": "@gtwatts/mainframe-pi",
-  "version": "10.3.0",
+  "version": "10.3.1",
   "description": "Shell policy, task checkpoints, and execution evidence for Pi",
   "license": "MIT",
   "repository": {
@@ -15,6 +15,10 @@
     "pi-package",
     "mainframe",
     "agent-safety",
+    "pi-coding-agent",
+    "agent-working-memory",
+    "checkpoints",
+    "execution-evidence",
     "bash",
     "zsh"
   ],

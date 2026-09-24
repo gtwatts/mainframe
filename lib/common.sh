@@ -81,7 +81,7 @@ _mainframe_load_config
 # CONSTANTS
 # =============================================================================
 
-readonly MAINFRAME_VERSION="10.3.0"
+readonly MAINFRAME_VERSION="10.3.1"
 readonly MAINFRAME_NAME="mainframe"
 export MAINFRAME_VERSION MAINFRAME_NAME
 

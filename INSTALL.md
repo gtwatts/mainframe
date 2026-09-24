@@ -22,6 +22,11 @@ Inspect installer help for custom runtime or binary directories. Preserve the
 previous runtime until the new build and Pi package are verified. The installer
 can link the CLI and update managed shell-profile entries.
 
+For manual archive extraction, use a private destination and a restrictive
+umask such as `077`. Group-writable extracted directories are intentionally
+rejected by runtime trust checks. Do not weaken those checks to make a package
+load. Keep the previous runtime until verification and rollback checks finish.
+
 ```bash
 mainframe version
 mainframe doctor

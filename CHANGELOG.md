@@ -2,6 +2,30 @@
 
 Notable user-facing changes are recorded here. MAINFRAME follows semantic versioning for tagged releases.
 
+## 10.3.1 - Pi recovery candidate, unpublished
+
+### Fixed
+
+- Project-memory workers finalize persisted Evidence after a crash instead of
+  leaving the request indefinitely in progress. Recovery rechecks exact input,
+  preserves single execution, and never replays lost transient output.
+- Pi cancellation terminates surviving members of the owned process group when
+  the leader exits. Capture overflow uses bounded cancellation escalation
+  instead of waiting for the ordinary command timeout.
+- Metadata generation reads the large canonical manifest from a file instead
+  of exceeding Linux's argument-size limit. Failed generation preserves the
+  previous output rather than truncating it.
+- Offline release readiness separates historical Pi certificates from current
+  coverage without treating either as local runtime verification.
+
+### Added
+
+- Public-worker crash-boundary and exact-input regressions, process-supervision
+  regressions, a repeatable durable-core stress harness, and opt-in installed
+  package lifecycle tests using disposable projects and settings.
+- Pi-focused comparison, integration, issue-reporting, and package metadata.
+  Historical documents keep their original claims with explicit scope warnings.
+
 ## 10.3.0 - Pi-focused source build, unpublished
 
 ### Changed

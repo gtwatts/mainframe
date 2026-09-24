@@ -35,6 +35,14 @@ evidence cannot support a green gate. Public “ultimate control plane” langua
 is prohibited until the machine contract reaches `category-claim`; editing
 prose does not promote the contract.
 
+Historical 10.2 receipt files remain evidence about their named subject only.
+They are not evidence for the current Pi-focused source tree: a version bump,
+new local test run, or rewritten README cannot renew a receipt. Until the strict
+checker accepts fresh content-bound proofs, its failure remains an unmet
+publication gate, not a failure of an independently recorded local Pi test.
+Likewise, `mainframe release readiness --json` separates older Pi certificates
+from current-version coverage and keeps remote CI and distribution unverified.
+
 `source-candidate` intentionally requires only final release integrity,
 semantic authority, and runtime closure. `control-plane-preview` and every
 higher level additionally require explicit coding-agent and project-memory

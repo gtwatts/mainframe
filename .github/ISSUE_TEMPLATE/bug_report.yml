@@ -1,19 +1,19 @@
 name: Bug Report
-description: Report a bug in MAINFRAME
+description: Report a bug in Mainframe for Pi
 title: "[Bug]: "
 labels: ["bug", "triage"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report a bug! Please fill out the form below.
+        Report the smallest reproducible Mainframe for Pi issue. Redact credentials, personal paths, checkpoint contents, and private project data. Other coding-agent adapters are frozen compatibility material.
 
   - type: input
     id: function
     attributes:
-      label: Function Name
-      description: Which MAINFRAME function is affected?
-      placeholder: "e.g., json_object, validate_email, agent_exec, awm_get"
+      label: Affected Pi workflow or tool
+      description: Which Mainframe command, tool, or installation step is affected?
+      placeholder: "e.g., mainframe_awm checkpoint, protected Bash cancellation, /mainframe doctor"
     validations:
       required: true
 
@@ -32,8 +32,8 @@ body:
       label: Steps to Reproduce
       description: How can we reproduce this issue?
       placeholder: |
-        1. Source MAINFRAME: `source lib/common.sh`
-        2. Call function: `json_object "key=value"`
+        1. Start Pi in a disposable project with Mainframe loaded.
+        2. Run the affected command or tool with minimal non-private input.
         3. See error...
     validations:
       required: true
@@ -76,20 +76,14 @@ body:
     validations:
       required: true
 
-  - type: dropdown
-    id: ai-tool
+  - type: input
+    id: runtime-versions
     attributes:
-      label: AI Tool (if applicable)
-      description: Which AI coding assistant are you using?
-      options:
-        - Not using AI
-        - Claude Code
-        - Cursor
-        - Aider
-        - OpenCode
-        - Other AI Agent
+      label: Mainframe and Pi versions
+      description: Include Mainframe version/revision, Pi package name/version, Node version, and whether this is a custom Pi build.
+      placeholder: "Mainframe 10.3.1, Pi package/version, Node version"
     validations:
-      required: false
+      required: true
 
   - type: textarea
     id: context

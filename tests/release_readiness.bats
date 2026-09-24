@@ -20,7 +20,7 @@ copy_release_payload() {
         (cd "$destination" && tar -xf -)
 }
 
-@test "release readiness is offline, fail-closed, and exact about missing Pi platforms" {
+@test "release readiness excludes historical Pi certificates from current coverage" {
     run "$BASH_BIN" "$PROJECT_ROOT/bin/mainframe" release readiness --json
 
     [[ "$status" -eq 2 ]]
@@ -35,9 +35,9 @@ copy_release_payload() {
         reason: "external CI and distribution state are not proven by this offline report"
       } and
       .checked_in_contracts.readable_and_valid == true and
-      .checked_in_contracts.pi.certified_platforms == ["Darwin-arm64-none"] and
+      .checked_in_contracts.pi.certified_platforms == [] and
       .checked_in_contracts.pi.missing_advertised_platforms ==
-        ["Darwin-x86_64-none", "Linux-x86_64-glibc"] and
+        ["Darwin-arm64-none", "Darwin-x86_64-none", "Linux-x86_64-glibc"] and
       .checked_in_contracts.pi.complete_for_advertised_platforms == false and
       .checked_in_contracts.workflow_definition == "present-not-execution-proof" and
       .external_state == {
@@ -46,8 +46,13 @@ copy_release_payload() {
         homebrew_tap: "UNVERIFIED"
       } and
       (.next_actions[0].command == "scripts/dev/release-candidate.sh --check") and
-      ([.checked_in_contracts.pi.exact_certifications[].package] |
-        index("@earendil-works/pi-coding-agent") != null)
+      .checked_in_contracts.pi.exact_certifications == [] and
+      (.checked_in_contracts.pi.historical_certifications | length == 2) and
+      all(.checked_in_contracts.pi.historical_certifications[];
+        .mainframe_version == "10.2.0" and
+        .scope == "historical-only-not-current-release-proof") and
+      .checked_in_contracts.pi.local_runtime_verification ==
+        "not-inspected-use-in-session-mainframe-doctor"
     ' --arg version "$PROJECT_VERSION" <<< "$output"
 }
 
@@ -81,7 +86,9 @@ copy_release_payload() {
     temporary="$runtime/compatibility.json"
     cp "$compatibility" "$original"
 
-    jq '.certifications[0].platforms += ["Plan9-amd64-none"]' \
+    jq --arg version "$PROJECT_VERSION" \
+        '.certifications[0].mainframe_version = $version |
+         .certifications[0].platforms += ["Plan9-amd64-none"]' \
         "$original" > "$temporary"
     mv "$temporary" "$compatibility"
     run "$BASH_BIN" "$runtime/root/bin/mainframe" release readiness --json
@@ -104,6 +111,55 @@ copy_release_payload() {
     ' <<< "$output"
 }
 
+@test "release readiness counts only exact current-version certificates in a mixed fixture" {
+    local runtime payload_list compatibility temporary
+    runtime="$(mktemp -d "${TMPDIR:-/tmp}/mainframe-readiness-mixed.XXXXXX")"
+    payload_list="$runtime/payload.txt"
+    copy_release_payload "$runtime/root" "$payload_list"
+    compatibility="$runtime/root/config/pi-compatibility.json"
+    temporary="$runtime/compatibility.json"
+    # This synthetic fixture tests selection, not certificate issuance.
+    jq --arg version "$PROJECT_VERSION" \
+        '.certifications[0].mainframe_version = $version' \
+        "$compatibility" > "$temporary"
+    mv "$temporary" "$compatibility"
+
+    run "$BASH_BIN" "$runtime/root/bin/mainframe" release readiness --json
+    rm -rf -- "$runtime"
+
+    [[ "$status" -eq 2 ]]
+    jq -e --arg version "$PROJECT_VERSION" '
+      .overall.ready == false and
+      .checked_in_contracts.pi.certified_platforms == ["Darwin-arm64-none"] and
+      (.checked_in_contracts.pi.exact_certifications | length == 1) and
+      .checked_in_contracts.pi.exact_certifications[0].mainframe_version == $version and
+      (.checked_in_contracts.pi.historical_certifications | length == 1) and
+      .checked_in_contracts.pi.historical_certifications[0].mainframe_version == "10.2.0" and
+      .external_state.exact_candidate_ci == "UNVERIFIED"
+    ' <<< "$output"
+}
+
+@test "release readiness rejects future and malformed certificate versions" {
+    local runtime payload_list compatibility original temporary candidate_version
+    runtime="$(mktemp -d "${TMPDIR:-/tmp}/mainframe-readiness-version.XXXXXX")"
+    payload_list="$runtime/payload.txt"
+    copy_release_payload "$runtime/root" "$payload_list"
+    compatibility="$runtime/root/config/pi-compatibility.json"
+    original="$runtime/original.json"
+    temporary="$runtime/compatibility.json"
+    cp "$compatibility" "$original"
+    for candidate_version in 999999.0.0 10.02.0 not-a-version; do
+        jq --arg version "$candidate_version" \
+            '.certifications[0].mainframe_version = $version' \
+            "$original" > "$temporary"
+        mv "$temporary" "$compatibility"
+        run "$BASH_BIN" "$runtime/root/bin/mainframe" release readiness --json
+        [[ "$status" -eq 1 ]]
+        jq -e '.overall.status == "INSPECTION_BLOCKED"' <<< "$output"
+    done
+    rm -rf -- "$runtime"
+}
+
 @test "release readiness help and text output state the offline boundary" {
     run "$BASH_BIN" "$PROJECT_ROOT/bin/mainframe" release --help
     [[ "$status" -eq 0 ]]
@@ -117,6 +173,8 @@ copy_release_payload() {
     [[ "$output" == *"Exact-candidate CI: UNVERIFIED"* ]]
     [[ "$output" == *"Public immutable release: UNVERIFIED"* ]]
     [[ "$output" == *"Homebrew tap: UNVERIFIED"* ]]
+    [[ "$output" == *"Historical Pi certifications (not current release proof): 2"* ]]
+    [[ "$output" == *"Local Pi runtime: not inspected"* ]]
 }
 
 @test "release readiness rejects malformed invocation before inspection" {
@@ -132,8 +190,8 @@ copy_release_payload() {
 @test "top-level help exposes the read-only release report" {
     run "$BASH_BIN" "$PROJECT_ROOT/bin/mainframe" --help
     [[ "$status" -eq 0 ]]
-    [[ "$output" == *"release     Report checked-in release readiness (offline, read-only)"* ]]
-    [[ "$output" == *"mainframe release readiness --json"* ]]
+    [[ "$output" == *"release     Report publication readiness; local verification is separate"* ]]
+    [[ "$output" == *"Only Pi is in active product scope"* ]]
 }
 
 @test "bash and zsh completion expose only the bounded release report surface" {

@@ -6,7 +6,7 @@ MAINFRAME is a native Pi package. It checks shell commands before execution,
 keeps explicit project progress across sessions, and shows whether the running
 Pi session has the expected integration loaded.
 
-**10.3.0 is a Pi-focused source build.** Local runtime verification is separate
+**10.3.1 is a Pi-focused source build.** Local runtime verification is separate
 from public immutable release certification and cross-platform support.
 
 [![Pi checks](https://img.shields.io/github/actions/workflow/status/gtwatts/mainframe/pi.yml?branch=main&label=Pi%20checks)](https://github.com/gtwatts/mainframe/actions/workflows/pi.yml)
@@ -59,6 +59,25 @@ verification.
 
 ## Understand the status
 
+Pi exposes seven Mainframe tools:
+
+| Tool | Purpose |
+| --- | --- |
+| `mainframe_status` | Inspect the current runtime and integration |
+| `mainframe_awm` | Save and recover explicit project task state |
+| `mainframe_bash_safety_check` | Explain a command's policy classification without executing it |
+| `mainframe_search` | Find optional toolbox functions |
+| `mainframe_help` | Inspect a function's contract |
+| `mainframe_exec` | Invoke a reviewed function, or request confirmation for a legacy function |
+| `mainframe_install_commands` | Show installation and verification guidance |
+
+Use Pi's ordinary coding tools for ordinary work. Before stopping a task, save
+its progress, decisions, verification results, and next step through project
+AWM. A new session retrieves that checkpoint explicitly. Concurrent writes can
+return a conflict: re-read state and retry with a new request rather than assume
+every parallel update succeeded. A recovered invocation does not replay lost
+raw output; its durable outcome and a fresh read establish what happened.
+
 | Check | What it establishes |
 | --- | --- |
 | `mainframe doctor` | Installation files, dependencies, and shell identity |
@@ -95,6 +114,18 @@ bash scripts/test-pi-core.sh
 Core checks exercise shell policy, project memory, durable execution, Pi
 integration contracts, and product commands. Verify the actual installed Pi
 runtime separately before claiming local support.
+
+For repeatable concurrency and crash-boundary testing in disposable state:
+
+```bash
+python3 -B scripts/dev/stress-durable-core.py "$PWD" --workers 8 --rounds 2
+```
+
+See the [initial local acceptance report](docs/testing/PI_LOCAL_ACCEPTANCE_2026-09-24.md)
+for the recovery defect found in the first Pi-focused build, and the
+[10.3.1 source validation](docs/testing/PI_10_3_1_SOURCE_VALIDATION_2026-09-24.md)
+for the fixes, regression results, and remaining installed acceptance work.
+Passing source tests is not a substitute for testing the installed package.
 
 - [Active scope and acceptance criteria](docs/PI_PRODUCT_PLAN.md)
 - [Pi workflow](skills/pi/SKILL.md)

@@ -342,6 +342,10 @@ export async function runProcess(command: string, args: string[], opts: { cwd?: 
 		};
 		const done = (code: number | null, signal: string | null) => {
 			if (settled) return;
+			// A cancelled leader can close its pipes while descendants with their
+			// own stdio remain alive in its process group. Do not clear escalation
+			// and report completion until that cancelled group has been stopped.
+			if (stopping) terminate("SIGKILL");
 			settled = true;
 			clearTimeout(timer);
 			if (killTimer) clearTimeout(killTimer);
@@ -376,7 +380,7 @@ export async function runProcess(command: string, args: string[], opts: { cwd?: 
 				captureExceeded = true;
 				stdout = "";
 				stderr = "";
-				terminate("SIGTERM");
+				abortHandler();
 				return;
 			}
 			stdout += chunk;
@@ -390,7 +394,7 @@ export async function runProcess(command: string, args: string[], opts: { cwd?: 
 				captureExceeded = true;
 				stdout = "";
 				stderr = "";
-				terminate("SIGTERM");
+				abortHandler();
 				return;
 			}
 			stderr += chunk;

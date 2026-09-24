@@ -1,5 +1,5 @@
 class Mainframe < Formula
-  desc "Safer shell runtime and durable memory for coding agents"
+  desc "Shell policy, task checkpoints, and execution evidence for Pi"
   homepage "https://github.com/gtwatts/mainframe"
   url "https://github.com/gtwatts/mainframe/releases/download/v@VERSION@/mainframe-@VERSION@.tar.gz"
   sha256 "@SHA256@"

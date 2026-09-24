@@ -1,5 +1,11 @@
 # Enforced Agent Gateway
 
+> **Legacy adapter reference.** Pi is the sole active coding-agent integration.
+> The other-host routes below are frozen compatibility mechanisms accessed
+> through `mainframe legacy`; they are not current host-support claims. For Pi,
+> use the [Pi workflow](../skills/pi/SKILL.md). The shared classifier boundary
+> documented below remains current.
+
 MAINFRAME's Agent Gateway gives supported coding-agent hosts one policy entry
 point for shell commands. It runs before the host executes a shell tool,
 classifies the command with MAINFRAME's canonical destructive-command rules,
@@ -119,11 +125,11 @@ including Copilot's JSON-encoded `toolArgs`. It also rejects malformed JSON,
 missing shell commands, unavailable `jq`, classifier errors, and audit-log
 failures rather than silently allowing the call.
 
-The v10.2 classifier is an ordered 43-rule lexical policy. Its JavaScript
+The current classifier is an ordered 44-rule lexical policy. Its JavaScript
 distribution is a two-file contract: `security/gate-rules.json` declares the
 input view for each regex and identifies the shipped
 `security/gate-normalizer.mjs`, whose exported classifier must run before rule
-matching. `scripts/export-gate-rules.py --verify` currently proves 183
+matching. `scripts/export-gate-rules.py --verify` currently checks 265
 Bash/JavaScript parity cases.
 
 The runtime-mutation rule reserves MAINFRAME source updates, non-dry-run

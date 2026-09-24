@@ -389,10 +389,23 @@ corpus_patterns = [
     re.compile(count + r"\s*-\s*case\s+corpus", re.I),
     re.compile(count + r"\s+cases?\s+across\s+all\s+[0-9][0-9,]*\s+rules?", re.I),
 ]
-historical_header = re.compile(
-    r"^>\s+\*\*Historical v[0-9]+\.[0-9]+\.[0-9]+ verification record\.\*\*",
-    re.M,
-)
+# Only reviewed, exact archive paths can retain old generated counts. A
+# document cannot exempt itself by adding a historical-looking heading.
+historical_documents = {
+    "docs/A_PLUS_PLUS_VERIFICATION_REPORT.md":
+        "> **Historical v10.1.0 verification record.**",
+    "docs/legacy/README-10.2.md":
+        "> **Historical v10.2.0 reference.**",
+    "docs/legacy/INTEGRATION_MATRIX-10.2.md":
+        "> **Historical v10.2.0 reference.**",
+}
+try:
+    current_version = (root / "VERSION").read_text(encoding="utf-8").strip()
+except (OSError, UnicodeError) as exc:
+    metadata_failure(f"VERSION could not be read: {exc}")
+if not re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", current_version):
+    metadata_failure("VERSION must contain stable SemVer")
+current_version_tuple = tuple(map(int, current_version.split(".")))
 problems = {"rules": [], "corpus": []}
 
 for document in documents:
@@ -400,8 +413,25 @@ for document in documents:
         text = document.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
         metadata_failure(f"claim document could not be read ({document}): {exc}")
-    if document not in extra_documents and historical_header.search(text):
+    relative = str(document.relative_to(root)) if document.is_relative_to(root) else None
+    if document not in extra_documents and relative in historical_documents:
+        required_header = historical_documents[relative]
+        if not any(line.startswith(required_header) for line in text.splitlines()[:8]):
+            metadata_failure(f"historical count archive lacks its explicit warning: {relative}")
         continue
+    if document not in extra_documents and relative == "CHANGELOG.md":
+        # Versioned changelog entries are records, not current inventory claims.
+        # Blank only older sections, preserving offsets for useful diagnostics.
+        historical_section = False
+        scoped_lines = []
+        for line in text.splitlines(keepends=True):
+            heading = re.match(r"^## ([0-9]+\.[0-9]+\.[0-9]+) - ", line)
+            if line.startswith("## "):
+                historical_section = bool(heading) and (
+                    tuple(map(int, heading[1].split("."))) < current_version_tuple)
+            scoped_lines.append("".join("\n" if char == "\n" else " " for char in line)
+                                if historical_section else line)
+        text = "".join(scoped_lines)
     for kind, expected, patterns in (
         ("rules", rule_count, rule_patterns),
         ("corpus", corpus_count, corpus_patterns),

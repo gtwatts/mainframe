@@ -1,12 +1,12 @@
 name: Feature Request
-description: Suggest a new function or improvement
+description: Suggest an improvement to Mainframe for Pi
 title: "[Feature]: "
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for suggesting a feature! MAINFRAME is built for AI agents - features that improve safety, accuracy, and efficiency are especially welcome.
+        Mainframe focuses on Pi shell policy, task continuity, and execution evidence. Explain the Pi workflow this improves. Mainframe is a validation layer, not an OS sandbox.
 
   - type: dropdown
     id: category
@@ -14,13 +14,12 @@ body:
       label: Feature Category
       description: What area does this feature belong to?
       options:
-        - AI Agent Safety (validation, sandboxing, guardrails)
-        - AI Agent Efficiency (caching, lazy loading, performance)
-        - Structured Output (USOP, JSON envelopes)
-        - Multi-Agent Coordination (messaging, tasks, state)
-        - Agent Working Memory (AWM - persistent state, context)
-        - New Library (new domain of functionality)
-        - Existing Library Enhancement
+        - Pi shell policy and safety boundaries
+        - Pi tool integration and execution evidence
+        - Agent Working Memory (checkpoints, handoffs, recovery)
+        - Installation, updates, and rollback
+        - Reviewed registry contracts
+        - Performance and reliability
         - Documentation
         - Testing
         - Other

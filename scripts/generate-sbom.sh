@@ -139,7 +139,7 @@ PYEOF
     printf '      "bom-ref": "mainframe@%s",\n' "$VERSION"
     printf '      "name": "mainframe",\n'
     printf '      "version": "%s",\n' "$VERSION"
-    printf '      "description": "AI-native bash runtime: safety-hardened function library and agent working memory",\n'
+    printf '      "description": "Mainframe for Pi: shell policy, task checkpoints, and execution evidence",\n'
     printf '      "licenses": [{"license": {"id": "MIT"}}]\n'
     printf '    }\n'
     printf '  },\n'

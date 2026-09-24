@@ -1,5 +1,9 @@
 # MAINFRAME
 
+> **Historical v10.2.0 reference.** This archived overview records the previous
+> agent-agnostic product and its dated candidate claims. It does not define
+> current support or certify the current release. See the [Pi overview](../../README.md).
+
 **The agent-agnostic control plane for coding agents that touch real shells.**
 
 Coding agents are useful because they can act: edit files, run commands,

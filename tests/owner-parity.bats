@@ -24,6 +24,36 @@ setup() {
     [[ "$output" == *"VERIFY PASS"* ]]
 }
 
+@test "LSP metadata regeneration handles the full registry without large argv" {
+    local generated="$BATS_TEST_TMPDIR/generated.lsp.json"
+    run "$BASH" "$PROJECT_ROOT/lsp/scripts/generate-lsp-metadata.sh" \
+        "$PROJECT_ROOT/FUNCTIONS.json" "$generated"
+    [ "$status" -eq 0 ]
+    run python3 - "$PROJECT_ROOT/FUNCTIONS.lsp.json" "$generated" <<'PY'
+import json, sys
+def normalized(path):
+    with open(path) as stream:
+        result = json.load(stream)
+    result.pop("generated", None)
+    return result
+assert normalized(sys.argv[1]) == normalized(sys.argv[2]), "generated metadata drift"
+PY
+    [ "$status" -eq 0 ]
+}
+
+@test "LSP metadata failure preserves previous output and cleans staging" {
+    local invalid="$BATS_TEST_TMPDIR/invalid.json"
+    local generated="$BATS_TEST_TMPDIR/preserved.lsp.json"
+    printf 'not json\n' > "$invalid"
+    printf 'preserve previous metadata\n' > "$generated"
+    run "$BASH" "$PROJECT_ROOT/lsp/scripts/generate-lsp-metadata.sh" \
+        "$invalid" "$generated"
+    [ "$status" -ne 0 ]
+    [ "$(<"$generated")" = "preserve previous metadata" ]
+    local leftovers=("${generated}.tmp."*)
+    [ ! -e "${leftovers[0]}" ]
+}
+
 @test "release metadata verifiers honor the Python 3.9 runtime floor" {
     local system_python=/usr/bin/python3
     [ -x "$system_python" ] || skip "/usr/bin/python3 is unavailable"

@@ -1,205 +1,104 @@
-# Why MAINFRAME
+# Why MAINFRAME for Pi
 
-**Your coding agents may change. Your safety policy and working memory should
-not have to start over each time.**
+**Shell policy and explicit task continuity for your Pi sessions.**
 
-MAINFRAME is a user-owned local control layer for supported shell-capable
-coding agents. It adds durable handoffs, pre-execution shell guardrails,
-discoverable structured functions, and readiness evidence without replacing
-the agent, the user's Bash or zsh workflow, or the host's native controls.
+MAINFRAME adds a local shell-policy check, durable project checkpoints,
+optional reviewed shell helpers, and execution evidence to Pi. It does not
+replace Pi's coding tools, permissions, conversation history, or your OS
+isolation. Pi is the sole actively supported coding-agent integration.
 
-The shortest mental model is:
+## What it adds to Pi
 
-- **Seatbelt:** classify supported shell routes and deny configured destructive
-  patterns before they execute.
-- **Notebook:** preserve discoveries, checkpoints, progress, and bounded
-  handoffs outside an agent conversation.
-- **Toolbox:** let an agent search and invoke registered functions through a
-  small structured surface instead of continually rebuilding shell glue.
+- **Shell policy outside the prompt.** The loaded extension classifies Pi Bash
+  calls using the verified shared policy and blocks configured destructive
+  patterns. A missing or mismatched policy fails closed.
+- **Task state outside the conversation.** Explicit AWM discoveries, progress,
+  and handoffs can be retrieved by a fresh session. Memory is untrusted
+  reference data, never authorization or an automatic transcript archive.
+- **Optional reviewed helpers.** Search, inspect a function's contract, then
+  use a bounded invocation when that function fits the task. Ordinary coding
+  should continue through Pi's ordinary tools.
+- **Evidence beyond files on disk.** Installation, configuration, resolution,
+  loading, execution, and verification are different states. The in-session
+  doctor reports the Pi process you are actually using.
 
-MAINFRAME does not change a model's weights or reasoning ability. It improves
-the operating environment available to that model.
+These are mechanisms, not measured productivity improvements. MAINFRAME does
+not claim to make a model smarter or establish a general speed, accuracy, or
+token-saving advantage. Comparative outcomes require a published evaluation
+with its environment and limitations. See the
+[claims policy](CLAIMS_AND_BENCHMARKS.md).
 
-## The gap MAINFRAME fills
+## Where its protection stops
 
-Modern coding-agent hosts may already provide permissions, hooks, memory, or
-an operating-system sandbox. Those features remain valuable and should stay
-enabled. The practical problem is that their configuration, state, semantics,
-and evidence are specific to each host.
+MAINFRAME is defense in depth. Its shell classifier is a bounded lexical
+policy, not a complete interpreter or an OS sandbox. A `low` result means no
+configured rule matched; it does not prove downstream commands are harmless.
 
-MAINFRAME supplies one local layer the user can inspect and retain across the
-supported hosts:
+The gate does not protect native Pi `write`/`edit` tools, arbitrary third-party
+extensions, unobserved shell routes, or hostile processes running as the same
+user. Keep Pi's native controls enabled. Use a container, VM, or restricted
+account when code must not reach unrelated files, credentials, processes, or
+networks. Consult the [security boundary](../SECURITY.md) before running
+untrusted code.
 
-1. **A policy outside the prompt.** “Be careful” is advice. A supported native
-   pre-tool hook can make a configured denial before the shell action runs.
-2. **Memory outside the context window.** Agent Working Memory stores explicit
-   project discoveries and handoffs in private local state that a fresh
-   process can retrieve.
-3. **An interface outside ad hoc shell text.** Registry search, help,
-   structured results, and bounded invocation give agents a more predictable
-   substrate than inventing every operation from scratch.
-4. **Proof outside installation success.** Doctor, setup, protection status,
-   compatibility manifests, and exact-archive evidence distinguish “files are
-   present” from “this supported integration is ready.”
+## Evaluate it locally
 
-## How the layers differ
-
-These layers solve different problems and are strongest together.
-
-| Layer | Primary job | Durable cross-session handoff | Semantic shell guardrail | Host isolation |
-|---|---|---:|---:|---:|
-| Plain Bash or zsh | Execute commands as the user | Manual | No | No |
-| Coding-agent native controls | Apply that host's permissions, hooks, memory, or sandbox | Host-specific | Host-specific | Host-specific |
-| MAINFRAME | Carry user-owned policy, AWM, structured tools, and evidence across supported hosts | Yes | On explicitly supported and activated routes | No |
-| Container, VM, or separate OS user | Bound filesystem, process, and network authority | No | No | Yes |
-
-MAINFRAME is defense in depth. Use a container, VM, restricted account, and the
-agent host's native sandbox when the workload needs an operating-system
-boundary. MAINFRAME is not a boundary against malicious code or another
-hostile process running as the same user.
-
-## What “safer” means
-
-For an explicitly onboarded, supported route, MAINFRAME can:
-
-- normalize and classify a shell action through one generated policy;
-- block configured high-risk and critical patterns before execution;
-- fail closed when the policy, protected Bash, or required dependency cannot
-  be authenticated;
-- require a human terminal for MAINFRAME and Pi lifecycle mutations;
-- preserve unrelated host configuration during activation and removal; and
-- record bounded decision metadata without putting raw command text into the
-  default Pi audit record.
-
-It does **not** mean that every dangerous command is detectable, every shell
-route is intercepted, a low-risk label proves a command is harmless, or a
-same-user hostile process is contained. The exact security boundary is in
-[SECURITY.md](../SECURITY.md).
-
-## What “better” means
-
-MAINFRAME does not claim that an underlying model becomes generally smarter,
-faster, or more accurate. It gives supported agents better operational
-conditions:
-
-- explicit discoveries and decisions survive context loss;
-- fresh sessions can resume from a bounded handoff;
-- long tasks can checkpoint progress instead of reconstructing it from chat;
-- registered functions provide inspectable help and structured output; and
-- the same project memory and policy concepts remain available when the user
-  changes supported agent hosts.
-
-The deterministic harness proves these mechanisms execute. A real-provider
-comparative study is still required before claiming a measured improvement in
-agent outcomes. See [Agent Impact Evaluation](AGENT_IMPACT_EVALUATION.md) and
-[Claims and Benchmarks](CLAIMS_AND_BENCHMARKS.md).
-
-## Pi: the native first-party experience
-
-Pi is MAINFRAME's most integrated current path. The first-party package adds a
-focused tool surface, the `mainframe` skill and slash command, Agent Working
-Memory, canonical Bash-policy classification, a protected Bash wrapper, and
-transactional lifecycle management.
-
-Start outside Pi with read-only diagnosis and a no-write preview:
+Start from an installed MAINFRAME runtime with read-only inspection:
 
 ```bash
-mainframe pi status
+mainframe version
+mainframe setup --project .
+mainframe pi status --json
 mainframe pi doctor
-mainframe pi install --dry-run
+mainframe setup --project . --dry-run
 ```
 
-After reviewing the preview, a person may activate it from that external
-terminal:
-
-```bash
-mainframe pi install --yes
-```
-
-Reload or restart Pi, then prove the live process rather than merely the files
-on disk:
+Review the settings preview before a human applies setup with explicit
+consent. Follow the [installation and recovery guide](../INSTALL.md), then
+reload or restart Pi and run:
 
 ```text
 /mainframe doctor
 ```
 
-External `mainframe pi doctor` never starts Pi and cannot claim that a running
-Pi process loaded the package. Compatibility is exact by MAINFRAME version, Pi
-package and version, and platform; unknown combinations remain unverified. See
-[Pi compatibility](COMPATIBILITY.md#pi-package) for the current
-matrix.
+The external CLI does not start Pi and cannot establish what an existing
+session loaded. A `LOCAL_VERIFIED` result is bound to the local runtime and
+Mainframe files that were exercised, not a public-release or cross-platform
+certificate. Changed files and old running sessions require fresh checks.
+See [status meanings](../README.md#understand-the-status).
 
-## Other supported coding-agent hosts
-
-MAINFRAME also has explicit-consent project onboarding and native shell-policy
-adapters for OpenAI Codex, Claude Code, GitHub Copilot CLI, and Gemini CLI.
-Discovery does not select a host or modify the project:
-
-```bash
-mainframe setup --project .
-```
-
-The report provides an exact dry-run command for each candidate. After a user
-chooses and onboards one host, readiness remains independently inspectable:
-
-```bash
-mainframe protect status --project .
-mainframe launch HOST --project . --dry-run
-```
-
-Support is versioned and route-specific. A host name in the repository is not
-a universal claim about every client version, installation layout, platform,
-or tool route. See the [integration matrix](INTEGRATION_MATRIX.md).
-
-## A two-minute local evaluation
-
-Start with the commands that cannot write project or agent configuration:
-
-```bash
-mainframe doctor
-mainframe setup --project .
-mainframe pi doctor                 # when Pi is installed
-mainframe protect status --project .
-```
-
-Then inspect the two mechanisms that distinguish MAINFRAME from a raw shell:
+For optional helper discovery:
 
 ```bash
 mainframe search 'create json object'
-mainframe help validate_path_safe
-
-sid=$(mainframe awm init evaluation --namespace local-demo)
-mainframe awm discovery --session "$sid" \
-  'MAINFRAME handoff evaluation started' --importance high
-mainframe awm summary --session "$sid"
+mainframe help json_object
 ```
 
-The AWM commands intentionally create private local MAINFRAME state; the
-doctor, setup, status, search, and help commands are inspection paths.
+Search and help are inspection paths, not prerequisites for every Pi command.
+For a disposable invocation and checkpoint round trip, use:
 
-## When MAINFRAME is a good fit
+```bash
+mainframe setup --project . --proof
+```
 
-Use MAINFRAME when:
+That proof creates private temporary state and removes it afterward; it does
+not replace a real Pi session check. For task continuity, explicitly save a
+checkpoint through `mainframe_awm`, then retrieve and verify it in a fresh
+session. Record what succeeded and what remains instead of treating a saved
+checkpoint as proof that the task is complete.
 
-- coding agents run commands on a real macOS or Linux workstation;
-- work spans long sessions, context resets, or multiple supported agents;
-- the user wants a reviewable policy in addition to a host's native controls;
-- predictable structured shell functions reduce repeated glue code; or
-- activation, readiness, and removal need explicit evidence.
+## When it fits
 
-Use stronger isolation instead when:
+MAINFRAME is useful when you want an inspectable shell-policy layer and
+explicit task handoffs in Pi, and are willing to verify the exact local
+integration. It is not a substitute for isolation, human review, backups, or
+Pi's own coding workflow.
 
-- the repository or generated code may be malicious;
-- secrets or unrelated host data must be inaccessible by construction;
-- arbitrary child processes must be contained; or
-- the exact agent, version, platform, or execution route is not certified.
+Other-agent adapters and standalone MCP/LSP/binding material are frozen
+compatibility references, not additional active products. The
+[current integration matrix](INTEGRATION_MATRIX.md) separates Pi mechanisms
+from historical certification; the [README scope](../README.md#scope) defines
+the current support boundary.
 
-## The product promise
-
-The defensible promise is not “MAINFRAME makes agents safe.” It is:
-
-> **MAINFRAME helps users trust supported local coding agents with more work by
-> giving those agents guardrails, continuity, structured tools, and proof.**
-
-Installation availability and public release status are intentionally stated
-in one place: [Install and prove it works](../README.md#install-and-prove-it-works).
+Start with the [current Pi overview](../README.md#start-with-your-installed-pi).
+Local operation and public immutable release availability are separate claims.

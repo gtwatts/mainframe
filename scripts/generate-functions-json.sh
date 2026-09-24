@@ -22,7 +22,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LIB_DIR="$PROJECT_ROOT/lib"
 
 # Project version (from common.sh MAINFRAME_VERSION)
-PROJECT_VERSION="10.3.0"
+PROJECT_VERSION="10.3.1"
 
 # Output defaults
 OUTPUT_PATH="$PROJECT_ROOT/FUNCTIONS.json"

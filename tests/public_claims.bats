@@ -30,6 +30,12 @@ teardown() {
     [[ "$output" != *"docs/VALUE_PROOF.md"* ]]
 }
 
+@test "gate-count historical scope is exact and current claims fail closed" {
+    run "$PYTHON_BIN" -I -S -B "$PROJECT_ROOT/tests/public_claims_count_scope.py"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"Ran 9 tests"* ]]
+}
+
 @test "current public claims pass the release-aware verifier" {
     run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh"
 
@@ -170,6 +176,49 @@ PY
     [[ "$output" == *"Generated gate claim parity passed: $rule_count rules, $corpus_count corpus cases."* ]]
 }
 
+@test "historical headings in extra documents cannot hide stale current gate claims" {
+    local claims="$TEST_DIR/false-archive.md"
+    printf '%s\n' \
+        '> **Historical v10.2.0 verification record.**' \
+        '## 10.2.0 - Historical record' \
+        '1 canonical lexical gate rule; 1 Bash/JavaScript parity case.' > "$claims"
+
+    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" \
+        --extra-document "$claims"
+
+    [[ "$status" -ne 0 ]]
+    [[ "$output" == *"Generated gate-rule count claims are stale"* ]]
+    [[ "$output" == *"Generated exporter corpus claims are stale"* ]]
+}
+
+@test "canonical historical archives retain old counts without hiding current count parity" {
+    grep -Fq '> **Historical v10.2.0 reference.**' \
+        "$PROJECT_ROOT/docs/legacy/README-10.2.md"
+    grep -Fq '> **Historical v10.2.0 reference.**' \
+        "$PROJECT_ROOT/docs/legacy/INTEGRATION_MATRIX-10.2.md"
+    grep -Fq '43 canonical lexical gate rules' \
+        "$PROJECT_ROOT/docs/legacy/README-10.2.md"
+    grep -Fq '183 cases across all 43 rules' \
+        "$PROJECT_ROOT/docs/legacy/INTEGRATION_MATRIX-10.2.md"
+    grep -Fq '43 source rules' "$PROJECT_ROOT/CHANGELOG.md"
+
+    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh"
+
+    # The independent strict receipt gate may still block publication.
+    [[ "$output" == *"Generated gate claim parity passed: 44 rules, 265 corpus cases."* ]]
+    [[ "$output" != *"Generated gate-rule count claims are stale"* ]]
+    [[ "$output" != *"Generated exporter corpus claims are stale"* ]]
+}
+
+@test "an archive explicitly supplied as current documentation gets no count exemption" {
+    run "$BASH_BIN" "$PROJECT_ROOT/scripts/verify-public-claims.sh" \
+        --extra-document "$PROJECT_ROOT/docs/legacy/README-10.2.md"
+
+    [[ "$status" -ne 0 ]]
+    [[ "$output" == *"Generated gate-rule count claims are stale"* ]]
+    [[ "$output" == *"Generated exporter corpus claims are stale"* ]]
+}
+
 @test "every shipped Markdown document is scanned or explicitly quarantined" {
     local inventory_file="$TEST_DIR/document-inventory.txt"
     local payload_file="$TEST_DIR/release-payload.txt"
@@ -200,7 +249,7 @@ PY
         'docs/AGENT_IMPACT_LIVE_STUDY.md'; do
         grep -Fxq $'scan\t'"$current_doc" "$inventory_file"
     done
-    grep -Fq '**Your coding agents may change. Your safety policy and working memory should' \
+    grep -Fq '**Shell policy and explicit task continuity for your Pi sessions.**' \
         "$PROJECT_ROOT/docs/COMPARISON.md"
     grep -Fq 'MAINFRAME is defense in depth.' \
         "$PROJECT_ROOT/docs/COMPARISON.md"
@@ -258,26 +307,21 @@ PY
 }
 
 @test "unpublished verified install is not advertised as a live public path" {
-    grep -Fq 'Verified release install (publication gated)' "$PROJECT_ROOT/README.md"
-    grep -Fq '`get-mainframe.sh --latest` intentionally fails closed' "$PROJECT_ROOT/README.md"
-    grep -Fq 'currently usable public installation path' "$PROJECT_ROOT/INSTALL.md"
-    grep -Fq 'The verified mode is publication-gated' "$PROJECT_ROOT/INSTALL.md"
-    grep -Fq "MAINFRAME's immutable release path is publication-gated" \
-        "$PROJECT_ROOT/docs/AI_CLI_INTEGRATIONS.md"
-    grep -Fq 'the currently usable public path is' \
-        "$PROJECT_ROOT/docs/AI_CLI_INTEGRATIONS.md"
+    grep -Fq 'public immutable release certification' "$PROJECT_ROOT/README.md"
+    grep -Fq 'Pi-focused source build' "$PROJECT_ROOT/README.md"
+    grep -Fq 'Use a reviewed checkout or a locally' "$PROJECT_ROOT/INSTALL.md"
+    grep -Eq 'A public .* release and Homebrew formula are not' "$PROJECT_ROOT/INSTALL.md"
+    grep -Fq 'claimed by this guide' "$PROJECT_ROOT/INSTALL.md"
 }
 
-@test "primary install guides disclose control-plane, Pi, and managed-host Python prerequisites" {
-    grep -Fq 'A protected fixed-location Python 3.9+' \
-        "$PROJECT_ROOT/README.md"
-    grep -Fq 'A protected fixed-location Python 3.9+' \
-        "$PROJECT_ROOT/INSTALL.md"
-    grep -Fq 'durable control-plane CLI and Pi diagnosis/lifecycle' \
-        "$PROJECT_ROOT/README.md"
-    grep -Fq 'durable control-plane CLI and Pi diagnosis/lifecycle' \
-        "$PROJECT_ROOT/INSTALL.md"
-    grep -Fq 'mainframe pi doctor' "$PROJECT_ROOT/INSTALL.md"
+@test "primary Pi guides disclose current runtime prerequisites and live-session diagnosis" {
+    local document
+    for document in README.md INSTALL.md; do
+        grep -Fq 'Python 3.10+' "$PROJECT_ROOT/$document"
+        grep -Fq 'Bash 4.4+' "$PROJECT_ROOT/$document"
+        grep -Fq 'mainframe setup --project .' "$PROJECT_ROOT/$document"
+        grep -Fq '/mainframe doctor' "$PROJECT_ROOT/$document"
+    done
 }
 
 @test "extra current documentation cannot reintroduce unsupported outcome claims" {

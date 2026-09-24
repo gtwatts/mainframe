@@ -20,6 +20,10 @@ access or mutation. A workflow definition is never treated as a successful CI
 run, and this offline command never claims that a GitHub release or Homebrew tap
 is public.
 
+Historical Pi certificates remain listed but never satisfy current-release
+coverage. Local Pi runtime verification is separate; use /mainframe doctor
+inside the running Pi session.
+
 Exit 0 means every checked-in and external requirement is proven (not currently
 possible in offline mode); exit 2 means inspection succeeded but release
 readiness is not proven; exit 1 means the local contracts could not be trusted.
@@ -54,7 +58,7 @@ _mainframe_release_readiness() {
     local json=false version='' jq_bin="${_MAINFRAME_CLI_JQ:-}"
     local platforms_file compatibility_file workflow_file workflow_state required
     local advertised_json certified_json missing_json unexpected_json
-    local certifications_json report
+    local certifications_json historical_json report
     local -a required_files=()
 
     while (( $# > 0 )); do
@@ -146,7 +150,10 @@ _mainframe_release_readiness() {
       .unknown_policy == {support: "unverified", ready: false} and
       (.certifications | type == "array") and
       all(.certifications[];
-        .mainframe_version == $version and
+        (.mainframe_version | type == "string" and
+          test("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")) and
+        ((.mainframe_version | split(".") | map(tonumber)) <=
+          ($version | split(".") | map(tonumber))) and
         (.package | type == "string" and length > 0) and
         (.version | type == "string" and length > 0) and
         (.npm_integrity | test("^sha512-[A-Za-z0-9+/]+={0,2}$")) and
@@ -169,8 +176,11 @@ _mainframe_release_readiness() {
 
     advertised_json="$("$jq_bin" -c '[.platforms[].id] | unique' \
         "$platforms_file")" || return 1
-    certified_json="$("$jq_bin" -c \
-        '[.certifications[] | select(.support == "certified") | .platforms[]] | unique' \
+    # A preserved certificate proves only the MAINFRAME release it names.
+    # Historical records remain inspectable but cannot satisfy current gaps.
+    certified_json="$("$jq_bin" -c --arg version "$version" \
+        '[.certifications[] | select(.mainframe_version == $version and
+          .support == "certified") | .platforms[]] | unique' \
         "$compatibility_file")" || return 1
     unexpected_json="$("$jq_bin" -cn \
         --argjson advertised "$advertised_json" \
@@ -181,13 +191,21 @@ _mainframe_release_readiness() {
             'Pi compatibility certifies a platform outside the advertised release contract'
         return 1
     fi
-    certifications_json="$("$jq_bin" -c '
-      [.certifications[] | {
+    certifications_json="$("$jq_bin" -c --arg version "$version" '
+      [.certifications[] | select(.mainframe_version == $version) | {
+        mainframe_version,
         package,
         version,
         support,
         platforms: (.platforms | sort),
         evidence_date
+      }]
+    ' "$compatibility_file")" || return 1
+    historical_json="$("$jq_bin" -c --arg version "$version" '
+      [.certifications[] | select(.mainframe_version != $version) | {
+        mainframe_version, package, version, support,
+        platforms: (.platforms | sort), evidence_date,
+        scope: "historical-only-not-current-release-proof"
       }]
     ' "$compatibility_file")" || return 1
     missing_json="$("$jq_bin" -cn \
@@ -201,7 +219,8 @@ _mainframe_release_readiness() {
         --argjson advertised "$advertised_json" \
         --argjson certified "$certified_json" \
         --argjson missing "$missing_json" \
-        --argjson certifications "$certifications_json" '
+        --argjson certifications "$certifications_json" \
+        --argjson historical "$historical_json" '
       {
         schema_version: 1,
         kind: "mainframe-release-readiness",
@@ -217,6 +236,8 @@ _mainframe_release_readiness() {
           advertised_platforms: $advertised,
           pi: {
             exact_certifications: $certifications,
+            historical_certifications: $historical,
+            local_runtime_verification: "not-inspected-use-in-session-mainframe-doctor",
             certified_platforms: $certified,
             missing_advertised_platforms: $missing,
             complete_for_advertised_platforms: ($missing | length == 0)
@@ -238,7 +259,7 @@ _mainframe_release_readiness() {
           },
           {
             id: "prove-exact-platforms",
-            action: "Run the exact-candidate Pi, shell-onboarding, native-host, and Homebrew CI matrices on every advertised tuple; ingest only green artifact-bound evidence."
+            action: "Run the exact-candidate Pi and release/install lifecycle checks on every advertised tuple; ingest only green artifact-bound evidence. Historical other-agent matrices do not certify the Pi product."
           },
           {
             id: "promote-pi-evidence",
@@ -273,6 +294,9 @@ _mainframe_release_readiness() {
         printf 'Pi advertised platforms without exact certification: '
         "$jq_bin" -r 'if length == 0 then "none" else join(", ") end' \
             <<< "$missing_json"
+        printf 'Historical Pi certifications (not current release proof): '
+        "$jq_bin" -r 'length' <<< "$historical_json"
+        printf 'Local Pi runtime: not inspected; use /mainframe doctor in Pi\n'
         printf 'Exact-candidate CI: UNVERIFIED\n'
         printf 'Public immutable release: UNVERIFIED\n'
         printf 'Homebrew tap: UNVERIFIED\n'

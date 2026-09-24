@@ -312,7 +312,7 @@ out fail-closed and reports the exact lock directory for manual inspection.
    logs are troubleshooting evidence, not a tamper-proof security ledger.
 
 `low` is a lexical no-match result: after bounded resolution and normalization,
-none of the 43 ordered patterns matched. It does not establish command
+none of the 44 ordered patterns matched. It does not establish command
 semantics, inspect arbitrary scripts or delegated programs, or prove that
 execution is safe. A gateway may allow that tier under its selected block
 policy, but the label is not a general authorization; profile policy, path

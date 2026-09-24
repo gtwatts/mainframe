@@ -79,15 +79,6 @@ def run_project_memory_worker(
         except KeyError as exc:
             raise NotFound("project-memory request was not reserved") from exc
         parse_project_memory_reservation_binding(request.reservation_binding)
-        call = snapshot.tool_calls.get(request.call_id)
-        if call is not None and call.state in (
-            "succeeded",
-            "failed",
-            "timed_out",
-            "interrupted",
-        ):
-            _close_fd(input_fd)
-            return
         transient_input = control._registry.normalize_input(
             request.canonical_id, _read_input(input_fd)
         )
@@ -96,6 +87,11 @@ def run_project_memory_worker(
             or normalized_input_metadata(transient_input) != request.input_metadata
         ):
             raise BindingMismatch("project-memory worker input changed after reservation")
+        # A terminal ToolCall may still have an active Run if its owner died
+        # after Evidence, before aggregate creation or Run closure.  The exact
+        # input must remain bound even on recovery.  Under the worker/request
+        # locks, invoke finalizes those durable records without re-executing the
+        # adapter or reconstructing a previously lost transient result.
         completed = control.invoke(
             client_correlation_id=request.client_correlation_id,
             tool=request.canonical_id,

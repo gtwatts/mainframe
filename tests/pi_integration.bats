@@ -1,6 +1,8 @@
 #!/usr/bin/env bats
 
 setup() {
+    # Native Pi fixtures must be private even when the caller uses umask 002.
+    umask 077
     PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd -P)"
     TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mainframe-pi.XXXXXX")"
     TEST_ROOT="$(cd "$TEST_ROOT" && pwd -P)"

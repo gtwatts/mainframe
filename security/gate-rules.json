@@ -1,6 +1,6 @@
 {
-  "version": "10.3.0",
-  "generated": "2026-09-24T14:43:51Z",
+  "version": "10.3.1",
+  "generated": "2026-09-24T19:31:07Z",
   "source": "lib/agent_safety.sh (_agent_gate_match)",
   "normalizer": {
     "contract": "executable-marker-v1",

@@ -41,24 +41,24 @@ if [[ ! -f "$MANIFEST_PATH" ]]; then
     exit 1
 fi
 
-# name -> owner module (canonical ID mf:<pack>:<module>:<name>; module is the
-# third segment)
-OWNERS_JSON=$(jq -c '.name_index | with_entries(.value = (.value | split(":")[2]))' "$MANIFEST_PATH")
-SEMANTICS_JSON=$(jq -c '
-  .exports | to_entries | map({
-    key: .value.name,
-    value: {
-      canonicalId: .key,
-      executionExposure: .value.execution_exposure,
-      semanticStatus: .value.semantic_status,
-      stability: .value.stability,
-      declaredEffects: .value.declared_effects
-    }
-  }) | from_entries
-' "$MANIFEST_PATH")
+# Keep the large canonical metadata out of argv (Linux limits each argument).
+# Generate beside the destination, preserving prior metadata on any failure.
+TMP_OUTPUT=$(mktemp "${OUTPUT_PATH}.tmp.XXXXXX")
+trap 'rm -f -- "$TMP_OUTPUT"' EXIT
 
 # Generate LSP-optimized metadata with rich information
-jq --argjson owners "$OWNERS_JSON" --argjson semantics "$SEMANTICS_JSON" '
+jq --slurpfile manifest "$MANIFEST_PATH" '
+($manifest[0].name_index | with_entries(.value = (.value | split(":")[2]))) as $owners |
+($manifest[0].exports | to_entries | map({
+  key: .value.name,
+  value: {
+    canonicalId: .key,
+    executionExposure: .value.execution_exposure,
+    semanticStatus: .value.semantic_status,
+    stability: .value.stability,
+    declaredEffects: .value.declared_effects
+  }
+}) | from_entries) as $semantics |
 {
   version: .version,
   generated: (now | todate),
@@ -181,13 +181,14 @@ jq --argjson owners "$OWNERS_JSON" --argjson semantics "$SEMANTICS_JSON" '
     categories: (.stats.categories // [])
   }
 }
-' "$INPUT_PATH" > "$OUTPUT_PATH"
+' "$INPUT_PATH" > "$TMP_OUTPUT"
 
 # Validate output
-if [[ -f "$OUTPUT_PATH" ]]; then
-    count=$(jq '.completions | length' "$OUTPUT_PATH")
-    sigs=$(jq '.signatures | length' "$OUTPUT_PATH")
-    libs=$(jq '.libraries | length' "$OUTPUT_PATH")
+if [[ -s "$TMP_OUTPUT" ]]; then
+    count=$(jq '.completions | length' "$TMP_OUTPUT")
+    sigs=$(jq '.signatures | length' "$TMP_OUTPUT")
+    libs=$(jq '.libraries | length' "$TMP_OUTPUT")
+    mv -- "$TMP_OUTPUT" "$OUTPUT_PATH"
     echo "✓ Generated $count completion items"
     echo "✓ Generated $sigs signature help entries"
     echo "✓ Indexed $libs libraries"
