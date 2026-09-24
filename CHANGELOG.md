@@ -2,6 +2,38 @@
 
 Notable user-facing changes are recorded here. MAINFRAME follows semantic versioning for tagged releases.
 
+## 10.3.0 - Pi-focused source build, unpublished
+
+### Changed
+
+- Pi is the sole active coding-agent integration. Setup, help, documentation,
+  and routine CI now follow that scope; older integrations remain explicitly
+  available through `mainframe legacy` for compatibility and recovery.
+- Installation checks, policy canaries, in-process readiness, local behavioral
+  verification, and public release evidence have distinct labels.
+- Pi guidance supports ordinary coding tools and explicit project checkpoints
+  without requiring a Bash catalog search for every task.
+
+### Fixed
+
+- Shell classification handles heredoc boundaries and expansion, here-strings,
+  command separators, reordered flags, and supported global options consistently
+  in Bash and Pi. Ambiguous supported-parser cases fail closed.
+- Read-only executable aliases and idempotent file helpers obey their profile
+  and path boundaries.
+- Project memory preserves trailing newlines and reserved absolute expiry.
+  Durable execution enforces deadlines, ledger caps, private ancestry, and
+  exactly-once process-group cleanup.
+- Pi cancellation covers pre-aborted work and escalates stopped processes.
+  Session memory uses private state instead of the source-tree symlink.
+- Uninstall retains the custom binary directory recorded by a validated receipt.
+
+### Added
+
+- A native installed-Pi SDK verifier and private exact-runtime receipt. A
+  matching `LOCAL_VERIFIED` status is local evidence, not upstream compatibility,
+  an OS sandbox, a public release certificate, or proof about old running sessions.
+
 ## 10.2.0 - Unreleased
 
 ### Added

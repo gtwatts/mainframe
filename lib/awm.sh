@@ -1219,6 +1219,12 @@ _awm_build_checkpoint_meta() {
     [[ "$created_epoch" =~ ^[0-9]+$ ]] || return 1
     if (( ttl > 0 )); then
         expires_at_epoch=$((created_epoch + ttl))
+        if [[ -n "${_AWM_CHECKPOINT_RESERVED_EXPIRY:-}" ]]; then
+            # The kernel adapter supplies the first reservation's absolute
+            # expiry. Keep the sidecar's created_epoch + ttl invariant exact.
+            expires_at_epoch="$_AWM_CHECKPOINT_RESERVED_EXPIRY"
+            created_epoch=$((expires_at_epoch - ttl))
+        fi
     else
         expires_at_epoch=null
     fi
@@ -1270,6 +1276,10 @@ _awm_record_checkpoint_meta() {
 _awm_checkpoint_write_unlocked() {
     local sid="$1" key="$2" value="$3" importance="$4" tags="$5" ttl="$6" file="$7"
 
+    if [[ -n "${_AWM_CHECKPOINT_RESERVED_EXPIRY:-}" ]]; then
+        [[ "$_AWM_CHECKPOINT_RESERVED_EXPIRY" =~ ^[0-9]+$ ]] || return 1
+        (( ttl > 0 && _AWM_CHECKPOINT_RESERVED_EXPIRY > $(_awm_epoch) )) || return 1
+    fi
     _awm_atomic_write "$file" "$value" || return 1
     _awm_record_checkpoint_meta \
         "$sid" "$key" "$value" "$importance" "$tags" "$ttl" "$file"

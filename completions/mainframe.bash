@@ -26,9 +26,9 @@ _mainframe_completions() {
         cword=$COMP_CWORD
     fi
 
-    # Top-level commands (including aliases). Keep this in parity with the
-    # dispatch table in bin/mainframe; tests/unit/installer.bats enforces it.
-    local commands="version functions funcs list operations ops run invoke code help info describe search find grep awm work count quickref qr signatures sigs fzf fuzzy browse explore tui doctor check health shell agent-hook agent-gateway protect host pi control-plane claim setup onboard launch activate deactivate benchmark bench test tests update upgrade release uninstall new init build"
+    # Default commands and aliases. Retired host entry points are discoverable
+    # beneath legacy rather than suggested as supported top-level commands.
+    local commands="version functions funcs list operations ops run invoke code help info describe search find grep awm work count quickref qr signatures sigs fzf fuzzy browse explore tui status doctor check health shell agent-hook agent-gateway protect pi control-plane claim setup legacy deactivate benchmark bench test tests update upgrade release uninstall new init build"
 
     # Quickref options
     local quickref_opts="--list -l --all -a --search -s --json -j"
@@ -36,10 +36,10 @@ _mainframe_completions() {
     local awm_commands="project init resume checkpoint discovery progress get summary context find handoff list status doctor export inspect migrate"
     local awm_project_actions="ensure session status checkpoint get discovery progress summary context find handoff close"
     local onboard_hosts="codex claude-code copilot gemini"
-    local setup_hosts="$onboard_hosts pi"
+    local setup_hosts="pi"
     local managed_hosts="codex claude-code copilot"
     local onboard_opts="--host --project --dry-run --yes --help -h"
-    local setup_opts="--host --project --proof --runtime --dry-run --yes --help -h"
+    local setup_opts="--host --project --proof --dry-run --yes --help -h"
     local launch_opts="--project --policy --runtime --dry-run --help -h"
     local work_opts="--project --tokens --format --help -h"
     local runtime_policies="auto managed system"
@@ -50,6 +50,18 @@ _mainframe_completions() {
     local control_plane_actions="run-create run-transition call-create call-request-approval approval-grant approval-consume trace-execute disposable-write-execute show"
     local upgrade_opts="--version --allow-downgrade --dry-run --confirm-agents-stopped --recover --journal --help -h"
     local uninstall_opts="--dry-run --purge --purge-state --dir --bin --shell-config --help -h"
+
+    if [[ "${words[1]:-}" == status ]]; then
+        COMPREPLY=( $(compgen -W "--json --help -h" -- "$cur") )
+        return
+    fi
+    if [[ "${words[1]:-}" == legacy ]]; then
+        COMPREPLY=()
+        if (( cword == 2 )); then
+            COMPREPLY=( $(compgen -W "setup host onboard launch activate protect deactivate" -- "$cur") )
+        fi
+        return
+    fi
 
     if [[ "${words[1]:-}" == "shell" ]]; then
         if (( cword == 2 )); then
@@ -350,9 +362,6 @@ _mainframe_completions() {
             --runtime)
                 if [[ "${words[1]:-}" == "setup" ]]; then
                     COMPREPLY=()
-                    while IFS= read -r candidate; do
-                        COMPREPLY+=("$candidate")
-                    done < <(compgen -W "$runtime_policies" -- "$cur")
                     return
                 fi
                 ;;

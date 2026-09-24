@@ -478,8 +478,11 @@ _awm_file_push() {
 
     # Append with newline delimiter (handle multiline via base64)
     local encoded
-    encoded=$(echo -n "$value" | base64 -w 0)
-    echo "$encoded" >> "$file"
+    encoded=$(printf '%s' "$value" | base64 | tr -d '\n') || return 1
+    (
+        flock -x 200 || exit 1
+        printf '%s\n' "$encoded" >> "$file"
+    ) 200>"${file}.lock"
 }
 
 _awm_file_pop() {
@@ -489,16 +492,15 @@ _awm_file_pop() {
     list_hash=$(echo -n "$list" | _mainframe_sha256 | cut -c1-16)
     local file="$_AWM_STORAGE_DIR/lists/$list_hash"
 
-    [[ ! -f "$file" ]] && return 0
-
     # Get and remove first line (atomic via lock)
     (
-        flock -x 200
+        flock -x 200 || exit 1
+        [[ -f "$file" ]] || exit 0
         local first
         first=$(head -1 "$file")
-        tail -n +2 "$file" > "${file}.tmp"
-        mv -f "${file}.tmp" "$file"
-        echo -n "$first" | base64 -d
+        tail -n +2 "$file" > "${file}.tmp" || exit 1
+        mv -f "${file}.tmp" "$file" || exit 1
+        printf '%s' "$first" | base64 -d
     ) 200>"${file}.lock"
 }
 
@@ -511,14 +513,22 @@ _awm_file_range() {
     list_hash=$(echo -n "$list" | _mainframe_sha256 | cut -c1-16)
     local file="$_AWM_STORAGE_DIR/lists/$list_hash"
 
-    [[ ! -f "$file" ]] && echo '[]' && return 0
+    (
+    flock -s 200 || exit 1
+    [[ ! -f "$file" ]] && echo '[]' && exit 0
 
     local total
     total=$(wc -l < "$file")
 
     # Handle negative indices
-    [[ "$end" -lt 0 ]] && end=$((total + end + 1))
-    [[ "$start" -lt 0 ]] && start=$((total + start + 1))
+    [[ "$end" -lt 0 ]] && end=$((total + end))
+    [[ "$start" -lt 0 ]] && start=$((total + start))
+    (( start < 0 )) && start=0
+    (( end >= total )) && end=$((total - 1))
+    if (( start >= total || end < 0 || start > end )); then
+        printf '[]\n'
+        exit 0
+    fi
 
     # Convert to 1-indexed for sed
     local start_line=$((start + 1))
@@ -530,12 +540,11 @@ _awm_file_range() {
     sed -n "${start_line},${end_line}p" "$file" | while IFS= read -r encoded; do
         [[ $first -eq 0 ]] && echo -n ','
         first=0
-        local decoded
-        decoded=$(echo -n "$encoded" | base64 -d)
-        # Escape for JSON
-        printf '%s' "$decoded" | jq -Rs .
+        # Decode directly into JSON so trailing newlines remain part of the value.
+        printf '%s' "$encoded" | base64 -d | jq -Rs .
     done
     echo ']'
+    ) 200>"${file}.lock"
 }
 
 _awm_file_len() {
@@ -563,25 +572,26 @@ _awm_file_search() {
     local first=1
     local count=0
 
-    grep -rl "$query" "$index_dir" 2>/dev/null | head -n "$limit" | while read -r file; do
+    local file
+    for file in "$index_dir"/*; do
         [[ $count -ge $limit ]] && break
+        [[ -f "$file" ]] || continue
+        grep -qF -- "$query" "$file" || continue
 
         local key
         key=$(basename "$file")
-        local content
-        content=$(cat "$file")
 
         # Simple score: count of query occurrences
         local score
-        score=$(grep -c "$query" "$file" 2>/dev/null || echo 0)
+        score=$(grep -cF -- "$query" "$file") || return 1
 
         [[ $first -eq 0 ]] && results+=','
         first=0
 
         results+=$(printf '{"key":"%s","score":%d,"content":%s}' \
-            "$key" "$score" "$(echo "$content" | jq -Rs .)")
+            "$key" "$score" "$(jq -Rs . < "$file")")
 
-        ((count++))
+        count=$((count + 1))
     done
 
     echo "${results}]"

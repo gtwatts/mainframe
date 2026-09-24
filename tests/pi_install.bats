@@ -197,6 +197,7 @@ PY
         security/gate-rules.json \
         security/gate-normalizer.mjs \
         skills/pi/SKILL.md \
+        skills/pi/runtime-verification.mjs \
         skills/pi/extensions/mainframe.ts \
         lib/pi_restore.sh; do
         source="$PROJECT_ROOT/$relative"
@@ -223,10 +224,10 @@ PY
 
     run rg -n --fixed-strings -- \
         'trusted package-manager boundary' "$PROJECT_ROOT/SECURITY.md" \
-        "$PROJECT_ROOT/README.md" "$PROJECT_ROOT/docs/ONBOARDING.md" \
+        "$PROJECT_ROOT/docs/ONBOARDING.md" \
         "$PROJECT_ROOT/packaging/homebrew/README.md"
     [[ "$status" -eq 0 ]]
-    [[ "$(printf '%s\n' "$output" | wc -l | tr -d '[:space:]')" -eq 4 ]]
+    [[ "$(printf '%s\n' "$output" | wc -l | tr -d '[:space:]')" -eq 3 ]]
 }
 
 @test "status reports project-local precedence collisions and install never migrates project files" {
@@ -673,7 +674,7 @@ PY
     [[ "$output" == *'Unknown Pi command: unsupported'* ]]
 }
 
-@test "Pi doctor reports exact certified host separately from disk and live activation" {
+@test "Pi doctor does not inherit an older Mainframe version certification" {
     write_fake_pi '@earendil-works/pi-coding-agent' '0.84.2'
     _mainframe_pi_platform_tuple() { printf '%s\n' 'Darwin-arm64-none'; }
 
@@ -686,7 +687,7 @@ import sys
 document = json.loads(sys.argv[1])
 assert document["pi"]["executed"] is False
 assert document["pi"]["identity_consistent"] is True
-assert document["compatibility"]["support"] == "certified"
+assert document["compatibility"]["support"] == "unverified"
 assert document["integration"]["disk_state"] == "not-installed"
 assert document["integration"]["runtime_activation"] == "unverified"
 assert document["overall"] == {
@@ -721,17 +722,17 @@ import json
 import sys
 
 document = json.loads(sys.argv[1])
-assert document["compatibility"]["support"] == "certified"
+assert document["compatibility"]["support"] == "unverified"
 assert document["integration"]["disk_state"] == "ready"
 assert document["integration"]["configured_active"] is True
-assert document["overall"]["state"] == "activation-unverified"
+assert document["overall"]["state"] == "compatibility-unverified"
 assert document["overall"]["ready"] is False
-assert [item["command"] for item in document["actions"]] == ["/reload", "/mainframe doctor"]
+assert any(item["code"] == "treat-pi-compatibility-as-unverified" for item in document["actions"])
 PY
     [[ ! -e "$MAINFRAME_PI_TEST_EXECUTION_MARKER" ]]
 }
 
-@test "Pi doctor labels the exact legacy Pi host LIMITED and exposes its RPC Bash gap" {
+@test "Pi doctor does not inherit an older Mainframe limited compatibility record" {
     write_fake_pi '@mariozechner/pi-coding-agent' '0.73.1'
     _mainframe_pi_platform_tuple() { printf '%s\n' 'Darwin-arm64-none'; }
     run mainframe_pi_install --yes
@@ -744,12 +745,11 @@ import json
 import sys
 
 document = json.loads(sys.argv[1])
-assert document["overall"]["state"] == "limited"
+assert document["overall"]["state"] == "compatibility-unverified"
 assert document["overall"]["ready"] is False
-assert document["compatibility"]["support"] == "limited"
-assert document["compatibility"]["capabilities"]["rpc_user_bash_gate"] == "not-observable"
-assert document["compatibility"]["limitations"]
-assert any(action["code"] == "upgrade-pi-for-full-coverage" for action in document["actions"])
+assert document["compatibility"]["support"] == "unverified"
+assert not document["compatibility"]["capabilities"]
+assert any(action["code"] == "treat-pi-compatibility-as-unverified" for action in document["actions"])
 PY
     [[ ! -e "$MAINFRAME_PI_TEST_EXECUTION_MARKER" ]]
 }
@@ -1217,7 +1217,7 @@ PY
     [[ "$status" -eq 0 ]]
     [[ "$output" == *'state=ready'* ]]
 
-    [[ "$(<"$PROJECT_ROOT/skills/README.md")" == *'run `/mainframe doctor`'* ]]
+    [[ "$(<"$PROJECT_ROOT/skills/README.md")" == *'`/mainframe doctor` inside Pi'* ]]
 }
 
 @test "Pi restore validates one migration backup and exactly recovers the pre-install snapshot" {

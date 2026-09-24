@@ -15,6 +15,7 @@ setup() {
     TEST_HOME="$TEST_ROOT/home"
     PAYLOAD_LIST="$TEST_ROOT/release-payload-files.txt"
     mkdir -p "$RUNTIME_ROOT" "$TEST_HOME"
+    chmod 700 "$TEST_HOME"
 
     # Exercise the same files that ship in the release rather than allowing
     # adjacent checkout-only state to make doctor appear healthier.
@@ -100,8 +101,8 @@ assert_doctor_read_only() {
     [[ "$status" -eq 0 ]]
     assert_complete_report
     [[ "$output" == *"Libraries:      Loaded (OK)"* ]]
-    [[ "$output" == *"Agent gateway:  Ready (OK)"* ]]
-    [[ "$output" == *"Status: All checks passed!"* ]]
+    [[ "$output" == *"Agent gateway:  Installed (hook and jq present; live enforcement unverified)"* ]]
+    [[ "$output" == *"Status: Installation checks passed."* ]]
     assert_doctor_read_only "$runtime_before" "$home_before"
 }
 
@@ -134,7 +135,7 @@ assert_doctor_read_only() {
     assert_complete_report
     [[ "$output" == *"Functions:      REGISTRY UNAVAILABLE (ERROR)"* ]]
     [[ "$output" == *"Runtime loaded:"* ]]
-    [[ "$output" == *"Agent gateway:  Ready (OK)"* ]]
+    [[ "$output" == *"Agent gateway:  Installed (hook and jq present; live enforcement unverified)"* ]]
     [[ "$output" == *"Status: 1 issue(s) found"* ]]
     assert_doctor_read_only "$runtime_before" "$home_before"
 }

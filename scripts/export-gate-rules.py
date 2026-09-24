@@ -40,9 +40,10 @@ strictly read-only; --verify also proves Bash and JavaScript rule parity.
 _MARKER = r"\x1e"
 _RM_COMMAND = _MARKER + r"rm(?=\s)"
 _RM_BEFORE_FLAG = r"(?:\s+(?!--(?:\s|$))[^;\s|&()]+)*\s+"
-_RM_RECURSIVE_FLAG = r"(?:--recursive|-[A-Za-z]*[rR][A-Za-z]*)(?=\s|$)"
-_RM_FORCE_FLAG = r"(?:--force|-[A-Za-z]*f[A-Za-z]*)(?=\s|$)"
+_RM_RECURSIVE_FLAG = r"(?:--recursive|-[A-Za-z]*[rR][A-Za-z]*)(?=[\s;&|()]|$)"
+_RM_FORCE_FLAG = r"(?:--force|-[A-Za-z]*f[A-Za-z]*)(?=[\s;&|()]|$)"
 STRUCTURED_RULE_JS = {
+    ("unsupported_syntax", "true"): _MARKER + r"mainframe-unsupported-shell-syntax(?=[\s;&|()]|$)",
     ("unsupported_control", "true"): r"[\x00-\x08\x0b-\x1f\x7f]",
     ("dynamic_executable", "true"): (
         _MARKER
@@ -52,8 +53,7 @@ STRUCTURED_RULE_JS = {
     ),
     ("shell_eval", "true"): _MARKER + r"eval(?=[\s;&|()]|$)",
     ("dynamic_shell_expansion", "true"): (
-        r"(?:^(?:(?:\\[\s\S])|'[^']*'|[^'\\])*?(?:\$\(|`)"
-        r"|^(?:(?:\\[\s\S])|'[^']*'|\"(?:\\.|[^\"\\])*\"|[^'\"\\])*?[<>]\()"
+        _MARKER + r"mainframe-dynamic-shell-expansion(?=[\s;&|()]|$)"
     ),
     ("rm_flag_tier", "critical"): (
         _RM_COMMAND
@@ -78,12 +78,13 @@ STRUCTURED_RULE_JS = {
 }
 
 STRUCTURED_RULE_INPUT = {
+    ("unsupported_syntax", "true"): "normalized-both",
     ("unsupported_control", "true"): "raw",
     ("dynamic_executable", "true"): "normalized-both",
     ("shell_eval", "true"): "normalized-both",
-    # The raw view with inert (quoted-delimiter) heredoc bodies blanked;
-    # unquoted heredoc bodies remain visible because expansion is active there.
-    ("dynamic_shell_expansion", "true"): "raw-inert",
+    # Both normalizers emit this marker using their shared heredoc-aware lexer,
+    # including when recursively examining a shell's code operand.
+    ("dynamic_shell_expansion", "true"): "normalized-both",
     ("rm_flag_tier", "critical"): "normalized",
     ("rm_flag_tier", "high"): "normalized",
     ("runtime_mutation", "true"): "normalized",
@@ -253,6 +254,95 @@ CORPUS = [
     ("cat <<'EOF'\n/**\nEOF", "low"),
     ("bash <<'EOF'\nrm -rf /tmp/x\nEOF", "critical"),
     ("cat <<< '/**'", "low"),
+    # Command boundaries, option reordering, and global option operands.
+    ("git reset --hard;", "high"),
+    ("git reset --hard&&true", "high"),
+    ("(git reset --hard)", "high"),
+    ("git reset HEAD --hard", "high"),
+    ("git -C /tmp/project reset HEAD --hard;", "high"),
+    ("git reset -- --hard", "low"),
+    ("git reset HEAD --soft", "low"),
+    ("npm publish;", "medium"),
+    ("terraform destroy;", "high"),
+    ("git clean -fd;", "high"),
+    ("git push --force;", "medium"),
+    ("rm -rf;", "critical"),
+    ("rm --recursive --force&&true", "critical"),
+    ("kubectl --namespace production delete deployment api", "high"),
+    ("kubectl -nproduction --context cluster delete pod api;", "high"),
+    ("kubectl --namespace=production get pods", "low"),
+    ("docker --context production system prune -a", "high"),
+    ("docker -Hunix:///tmp/docker.sock --debug system prune --all;", "high"),
+    ("docker --context=production ps", "low"),
+    ("aws --profile production s3 rm s3://review-unused --recursive", "high"),
+    ("aws --region=us-east-1 --no-cli-pager s3 rm s3://review-unused --recursive;", "high"),
+    ("aws --profile production s3 ls", "low"),
+    ("kubectl --unknown-global value delete pod api", "critical"),
+    ("docker --unknown-global value system prune -a", "critical"),
+    ("aws --unknown-global value s3 rm s3://review-unused --recursive", "critical"),
+    # Body punctuation is data; the header and post-delimiter commands are code.
+    ("cat <<'EOF'\nIt's a document\nEOF\nrm -rf /tmp/x\n", "critical"),
+    ('cat <<\'EOF\'\nA "document\nEOF\nrm -rf /tmp/x\n', "critical"),
+    ("cat <<'EOF'\nIt's a document $(literal)\nEOF\ngit status\n", "low"),
+    ("cat <<'END MARK'\nIt's data\nEND MARK\nrm -rf /tmp/x", "critical"),
+    ("cat <<''\nIt's data\n\nrm -rf /tmp/x", "critical"),
+    ("cat <<'ONE' <<'TWO'\nsafe\nONE\nIt's fine\nTWO\nrm -rf /tmp/x\n", "critical"),
+    ("cat <<'ONE' <<TWO\nsafe\nONE\n'$(rm -rf /tmp/x)'\nTWO\n", "critical"),
+    ("cat <<EOF\n'$(rm -rf /tmp/x)'\nEOF\n", "critical"),
+    ("cat <<EOF\n'`rm -rf /tmp/x`'\nEOF\n", "critical"),
+    ("cat <<EOF\nIt's ordinary data\nEOF\ngit status", "low"),
+    ("cat <<EOF\n\\$(literal)\nEOF\n", "low"),
+    ("cat <<'EOF'; printf '%s' \"$(rm -rf /tmp/x)\"\nsafe\nEOF\n", "critical"),
+    ("<<'EOF' cat\nIt's data\nEOF\nrm -rf /tmp/x\n", "critical"),
+    ("<<'EOF' cat\nIt's data $(literal)\nEOF\ngit status", "low"),
+    ("<<'EOF' bash\nrm -rf /tmp/x\nEOF\n", "critical"),
+    ("cat <<-'EOF'\n\tIt's data\n\tEOF\nrm -rf /tmp/x", "critical"),
+    ("# <<'EOF'\nrm -rf /tmp/x\n", "critical"),
+    ("cat <<'EOF' # $(inert comment)\nIt's data\nEOF", "low"),
+    # Shell input is executable even when the outer here-string is quoted.
+    ("bash <<< 'rm -rf /tmp/x'", "critical"),
+    ("bash <<<'git reset --hard'", "high"),
+    ("sh -s <<< 'rm -rf /tmp/x'", "critical"),
+    ("ksh <<< 'rm -rf /tmp/x'", "critical"),
+    ("bash <<< 'printf harmless'", "low"),
+    ("cat <<< 'rm -rf /tmp/x'", "low"),
+    ("bash <<'EOF'\necho \"$(rm -rf /tmp/x)\"\nEOF", "critical"),
+    # Bounded parsing failures must not silently become an allow.
+    ("printf 'unterminated", "critical"),
+    ("cat <<EOF\ndata\\\nEOF\nrm -rf /tmp/x", "critical"),
+    ("npm publish>/tmp/output", "medium"),
+    ("eval>/tmp/output", "critical"),
+    ("rm -rf>/tmp/output", "critical"),
+    (r"printf '%s' $'it\'s $(literal)'", "low"),
+    # Descriptor redirections must preserve command and option context.
+    ("2>&1 rm -rf /tmp/never-executed", "critical"),
+    ("0<&0 rm -rf /tmp/never-executed", "critical"),
+    ("2>&- rm -rf /tmp/never-executed", "critical"),
+    ("3>&1- rm -rf /tmp/never-executed", "critical"),
+    ("3<&0- rm -rf /tmp/never-executed", "critical"),
+    ("rm 2>&1 -rf /tmp/never-executed", "critical"),
+    ("git reset HEAD 2>&1 --hard", "high"),
+    ("git 2>&1 reset --hard", "high"),
+    ("git reset HEAD 2>|/tmp/never-written --hard", "high"),
+    ("bash 2>&1 -c 'rm -rf /tmp/never-executed'", "critical"),
+    ("bash 2>&1 <<<'rm -rf /tmp/never-executed'", "critical"),
+    ("bash 0<>/tmp/never-written -c 'rm -rf /tmp/never-executed'", "critical"),
+    ("&>/tmp/never-written rm -rf /tmp/never-executed", "critical"),
+    ("&>>/tmp/never-written rm -rf /tmp/never-executed", "critical"),
+    ("2>&1 git status", "low"),
+    ("printf hello 2>&1", "low"),
+    ("printf hello 2>&-", "low"),
+    ("printf hello 3>&1-", "low"),
+    ("cat <<'EOF' 2>&1\nIt's literal $(text)\nEOF\ngit status", "low"),
+    ("cat 0<&0 <<'EOF'\nIt's literal $(text)\nEOF\ngit status", "low"),
+    # Config keys supplied through environment-backed Git options are aliases
+    # just as directly supplied alias keys are, regardless of option spelling.
+    ("WIPE=reset git --config-env=alias.wipe=WIPE wipe --hard", "critical"),
+    ("WIPE=reset git --config-env alias.wipe=WIPE wipe --hard", "critical"),
+    ("git '--config-env=alias.wipe=WIPE' wipe --hard", "critical"),
+    ("git 2>&1 --config-env=alias.wipe=WIPE wipe --hard", "critical"),
+    ("VALUE=false git --config-env=core.quotePath=VALUE status", "low"),
+    ("VALUE=false git --config-env core.quotePath=VALUE status", "low"),
 ]
 
 
@@ -483,7 +573,8 @@ def main():
 
 def verify(rules):
     # Bash side: exercise the same public classifier used by the gateway.
-    bash_src = f'source "{LIB}"; agent_safety_init project /tmp >/dev/null 2>&1 || true\n'
+    # Classification needs no profile initialization, audit writes, or AWM session.
+    bash_src = f'source "{LIB}"\n'
     fails = 0
     for cmd, expected in CORPUS:
         # Shell-quote corpus values. JSON's double-quoted representation would
@@ -506,13 +597,17 @@ def verify(rules):
     if len(bash_lines) != len(CORPUS):
         print(f"BASH-FAIL expected {len(CORPUS)} results, got {len(bash_lines)}")
         fails = 1
+    bash_matches = []
     for (cmd, expected), line in zip(CORPUS, bash_lines):
         labelled, got = line.split("|", 1)
         try:
-            tier = json.loads(got)["risk"]
+            classification = json.loads(got)
+            tier = classification["risk"]
+            bash_matches.append({"tier": tier, "id": classification["rule"]})
         except (json.JSONDecodeError, KeyError, TypeError):
             print(f"BASH-FAIL [{cmd}] invalid classifier output: {got}")
             fails = 1
+            bash_matches.append(None)
             continue
         if labelled != expected or tier != expected:
             print(f"BASH-FAIL [{cmd}] expect {expected} got {tier}")
@@ -524,14 +619,16 @@ const {pathToFileURL} = require("url");
 const rules = %s;
 const corpus = %s;
 const normalizerPath = %s;
+const bashMatches = %s;
 (async () => {
   const {classifyGateCommand} = await import(pathToFileURL(normalizerPath).href);
   let fails = 0;
-  for (const [cmd, expected] of corpus) {
-    const {tier} = classifyGateCommand(cmd, rules);
-    if (tier !== expected) {
+  for (const [index, [cmd, expected]] of corpus.entries()) {
+    const {tier, id} = classifyGateCommand(cmd, rules);
+    const bashMatch = bashMatches[index];
+    if (tier !== expected || tier !== bashMatch?.tier || id !== bashMatch?.id) {
       fails++;
-      console.log(`JS-FAIL [${cmd}] expect ${expected} got ${tier}`);
+      console.log(`JS-FAIL [${cmd}] expect ${expected}, Bash ${JSON.stringify(bashMatch)}, JS ${tier}/${id}`);
     }
   }
   console.log(`js fails=${fails}`);
@@ -552,6 +649,7 @@ const normalizerPath = %s;
         ]),
         json.dumps(CORPUS),
         json.dumps(NORMALIZER),
+        json.dumps(bash_matches),
     )
     js_out = subprocess.run(["node", "-e", node_src], capture_output=True, text=True)
     if js_out.returncode != 0 or "js fails=0" not in js_out.stdout:

@@ -260,7 +260,7 @@ function assertRejected(result, action) {
   return details;
 }
 
-const loaderPath = join(dirname(realpathSync(piBin)), "core", "extensions", "loader.js");
+const loaderPath = join(realpathSync(piBin).replace(/\/dist\/(?:bundle\/)?cli\.js$/, "/dist"), "core", "extensions", "loader.js");
 assert(existsSync(loaderPath), `Pi extension loader not found: ${loaderPath}`);
 const { loadExtensions } = await import(pathToFileURL(loaderPath).href);
 const extensionPath = join(root, "skills", "pi", "extensions", "mainframe.ts");

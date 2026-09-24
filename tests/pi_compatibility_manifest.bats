@@ -83,7 +83,7 @@ import { pathToFileURL } from "node:url";
 const projectRoot = process.argv[2];
 const piBin = process.argv[3];
 const piCli = realpathSync(piBin);
-const piPackageRoot = dirname(dirname(piCli));
+const piPackageRoot = piCli.replace(/\/dist\/(?:bundle\/)?cli\.js$/, "");
 const piManifest = JSON.parse(readFileSync(join(piPackageRoot, "package.json"), "utf8"));
 
 function assert(condition, message) {
@@ -120,6 +120,7 @@ copyFileSync(
   join(projectRoot, "skills", "pi", "extensions", "mainframe.ts"),
   join(runtimeRoot, "skills", "pi", "extensions", "mainframe.ts"),
 );
+copyFileSync(join(projectRoot, "skills", "pi", "runtime-verification.mjs"), join(runtimeRoot, "skills", "pi", "runtime-verification.mjs"));
 
 const mainframeVersion = readFileSync(join(projectRoot, "VERSION"), "utf8").trim();
 writeFileSync(join(runtimeRoot, "VERSION"), `${mainframeVersion}\n`);
@@ -166,7 +167,7 @@ function writeCompatibility(document) {
 }
 
 process.argv[1] = piCli;
-const loaderPath = join(dirname(piCli), "core", "extensions", "loader.js");
+const loaderPath = join(piCli.replace(/\/dist\/(?:bundle\/)?cli\.js$/, "/dist"), "core", "extensions", "loader.js");
 assert(existsSync(loaderPath), `Pi extension loader not found: ${loaderPath}`);
 const { loadExtensions } = await import(pathToFileURL(loaderPath).href);
 const extensionPath = join(runtimeRoot, "skills", "pi", "extensions", "mainframe.ts");

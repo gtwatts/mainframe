@@ -17,9 +17,11 @@ detect_bats_shell() {
 
 usage() {
     cat <<'EOF'
-Usage: tests/run_bats_suite.sh [--scope all|unit|top|integration] [bats args...]
+Usage: tests/run_bats_suite.sh [--scope pi|safety|all|unit|top|integration] [bats args...]
 
 Scopes:
+  pi           Pi package, product, and task-memory contract suites
+  safety       Shell gate, protected execution, and confinement suites
   all          Run the full Bats matrix (default)
   unit         Run tests/unit plus tests/lib contract suites
   top          Run top-level tests/*.bats suites
@@ -34,6 +36,18 @@ EOF
 
 collect_tests() {
     case "$1" in
+        pi)
+            printf '%s\n' "$SCRIPT_DIR"/pi_*.bats \
+                "$SCRIPT_DIR/durable_project_memory_route.bats" \
+                "$SCRIPT_DIR/durable_awm_contract.bats"
+            ;;
+        safety)
+            printf '%s\n' "$SCRIPT_DIR/agent_safety.bats" \
+                "$SCRIPT_DIR/security_gate.bats" \
+                "$SCRIPT_DIR/gate-rules-export.bats" \
+                "$SCRIPT_DIR/gate-hardening.bats" \
+                "$SCRIPT_DIR/integration/safety_pipeline.bats"
+            ;;
         all)
             find "$SCRIPT_DIR/unit" "$SCRIPT_DIR/lib" "$SCRIPT_DIR/integration" -type f -name '*.bats' -print
             find "$SCRIPT_DIR" -maxdepth 1 -type f -name '*.bats' -print

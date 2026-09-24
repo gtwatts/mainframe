@@ -99,7 +99,7 @@ function text(result) {
   return result?.content?.map((item) => item?.text || "").join("\n") || "";
 }
 
-const loaderPath = join(dirname(realpathSync(piBin)), "core", "extensions", "loader.js");
+const loaderPath = join(realpathSync(piBin).replace(/\/dist\/(?:bundle\/)?cli\.js$/, "/dist"), "core", "extensions", "loader.js");
 const { loadExtensions } = await import(pathToFileURL(loaderPath).href);
 const extensionPath = join(root, "skills", "pi", "extensions", "mainframe.ts");
 const { extensions, errors } = await loadExtensions([extensionPath], root);

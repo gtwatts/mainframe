@@ -294,6 +294,15 @@ class FixedProjectMemorySubprocessExecutor:
         process: Optional[subprocess.Popen[bytes]] = None
         transient_chunks: List[bytes] = []
         transient_error: List[BaseException] = []
+        group_cleaned = False
+
+        def cleanup_group() -> None:
+            nonlocal group_cleaned
+            if process is not None and not group_cleaned:
+                # Set before signalling, including the error path: a released
+                # process group ID must never be signalled a second time.
+                group_cleaned = True
+                _terminate_process_group(process)
 
         def collect_transient() -> None:
             try:
@@ -342,11 +351,11 @@ class FixedProjectMemorySubprocessExecutor:
             try:
                 stdout, stderr = process.communicate(input=input_bytes, timeout=remaining)
             except subprocess.TimeoutExpired:
-                _terminate_process_group(process)
+                cleanup_group()
                 raise ExecutorUnavailable(
                     "project-memory adapter exceeded its durable deadline"
                 )
-            _terminate_process_group(process)
+            cleanup_group()
             reader.join(1.5)
             if reader.is_alive() or transient_error:
                 raise ExecutorUnavailable("project-memory transient channel failed")
@@ -407,7 +416,7 @@ class FixedProjectMemorySubprocessExecutor:
         finally:
             if process is not None:
                 try:
-                    _terminate_process_group(process)
+                    cleanup_group()
                 except Exception:
                     pass
                 for stream in (process.stdin, process.stdout, process.stderr):

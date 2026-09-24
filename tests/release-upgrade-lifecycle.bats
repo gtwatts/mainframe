@@ -166,7 +166,7 @@ enable_authenticated_upgrade_fixture() {
     run env HOME="$TEST_HOME" PATH="$TEST_PATH" MAINFRAME_BASH="$BASH_BIN" \
         "$cli" doctor
     [[ "$status" -eq 0 ]]
-    [[ "$output" == *"Status: All checks passed!"* ]]
+    [[ "$output" == *"Status: Installation checks passed."* ]]
 
     nonce="release-upgrade-$RANDOM-$RANDOM-$$"
     run env HOME="$TEST_HOME" PATH="$TEST_PATH" MAINFRAME_BASH="$BASH_BIN" \
@@ -234,7 +234,7 @@ enable_authenticated_upgrade_fixture() {
     run env HOME="$TEST_HOME" PATH="$TEST_PATH" MAINFRAME_BASH="$BASH_BIN" \
         "$cli" doctor
     [[ "$status" -eq 0 ]]
-    [[ "$output" == *"Status: All checks passed!"* ]]
+    [[ "$output" == *"Status: Installation checks passed."* ]]
     run env HOME="$TEST_HOME" PATH="$TEST_PATH" MAINFRAME_BASH="$BASH_BIN" \
         AWM_ROOT="$INSTALL_DIR/awm" \
         "$cli" awm get --session "$session_id" upgrade_nonce

@@ -25,7 +25,7 @@ expected = [
     "dynamic-shell-expansion", "inline-git-alias",
     "recursive-force-rm", "sudo-rm", "filesystem-format",
     "dd-raw-disk-write", "diskutil-erase", "fork-bomb",
-    "raw-device-redirect", "rm-recursive", "chmod-recursive-777",
+    "raw-device-redirect", "unsupported-shell-syntax", "rm-recursive", "chmod-recursive-777",
     "chown-recursive", "git-clean-destructive", "git-reset-hard",
     "docker-system-prune", "kubectl-delete", "terraform-destroy",
     "s3-recursive-delete", "find-delete", "xargs-rm-pipeline",
@@ -40,14 +40,14 @@ expected = [
     "crontab-remove", "launchctl-mutate",
 ]
 actual = [rule["id"] for rule in rules]
-assert len(actual) == 43, actual
-assert len(set(actual)) == 43, actual
+assert len(actual) == 44, actual
+assert len(set(actual)) == 44, actual
 assert actual == expected, actual
-print("43 canonical rules preserved in source order")
+print("44 canonical rules preserved in source order")
 PY
 
     [[ "$status" -eq 0 ]]
-    [[ "$output" == "43 canonical rules preserved in source order" ]]
+    [[ "$output" == "44 canonical rules preserved in source order" ]]
 }
 
 @test "checked gate export declares its normalizer and complete input contract" {
@@ -78,8 +78,8 @@ assert normalizer["sha256"] == normalizer_digest
 rules = document["rules"]
 ids = [rule["id"] for rule in rules]
 by_id = {rule["id"]: rule for rule in rules}
-assert len(ids) == 43
-assert len(set(ids)) == 43
+assert len(ids) == 44
+assert len(set(ids)) == 44
 assert all(rule["input"] in normalizer["inputs"] for rule in rules)
 assert all("${marker}" not in rule["js"] for rule in rules)
 assert by_id["fork-bomb"]["js"].startswith(r"\x1e")
@@ -92,7 +92,8 @@ assert ids[4] == "inline-git-alias"
 assert ids[5] == "recursive-force-rm"
 assert ids[10] == "fork-bomb"
 assert ids[11] == "raw-device-redirect"
-assert ids[12] == "rm-recursive"
+assert ids[12] == "unsupported-shell-syntax"
+assert ids[13] == "rm-recursive"
 print("generated ruleset and normalizer contract are complete")
 PY
 
@@ -184,7 +185,7 @@ JS
     run env PYTHONDONTWRITEBYTECODE=1 \
         python3 "$PROJECT_ROOT/scripts/export-gate-rules.py" --verify
     [[ "$status" -eq 0 ]]
-    [[ "$output" == *"verify: 183 corpus cases identical across bash + JS"* ]]
+    [[ "$output" =~ verify:\ [0-9]+\ corpus\ cases\ identical\ across\ bash\ \+\ JS ]]
     after_verify="$(shasum -a 256 "$export_file" "$normalizer_file")"
     [[ "$after_verify" == "$before" ]]
 

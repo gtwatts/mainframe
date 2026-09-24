@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import errno
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -63,7 +64,7 @@ class DirectoryDurabilityTests(unittest.TestCase):
         real_fsync = durability.fsync_directory
 
         def capture(path: Path) -> None:
-            observed.append(Path(path))
+            observed.append(os.fstat(path).st_ino if isinstance(path, int) else Path(path).stat().st_ino)
             real_fsync(path)
 
         with mock.patch(
@@ -76,7 +77,7 @@ class DirectoryDurabilityTests(unittest.TestCase):
                 workspace=str(self.root),
                 policy="policy:test",
             )
-        self.assertEqual(observed, [self.root])
+        self.assertEqual(observed, [self.root.stat().st_ino])
         self.assertTrue(ledger.is_file())
         self.assertGreater(ledger.stat().st_size, 0)
 

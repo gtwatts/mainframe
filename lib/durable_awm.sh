@@ -398,31 +398,31 @@ _mainframe_durable_awm_receipt() {
             raw_value="$transient"
             ;;
         "$_MAINFRAME_PROJECT_MEMORY_GET")
-            key=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.key') || return 1
+            _mainframe_durable_awm_capture_output key _mainframe_durable_awm_jq -j '.key' <<<"$input" || return 1
             raw_value="$transient"
             ;;
         "$_MAINFRAME_PROJECT_MEMORY_CONTEXT")
-            key=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.task') || return 1
+            _mainframe_durable_awm_capture_output key _mainframe_durable_awm_jq -j '.task' <<<"$input" || return 1
             raw_value="$transient"
             ;;
         "$_MAINFRAME_PROJECT_MEMORY_FIND")
-            key=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.query') || return 1
+            _mainframe_durable_awm_capture_output key _mainframe_durable_awm_jq -j '.query' <<<"$input" || return 1
             raw_value="$transient"
             ;;
         "$_MAINFRAME_PROJECT_MEMORY_CHECKPOINT")
-            key=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.key') || return 1
-            raw_value=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.value') || return 1
+            _mainframe_durable_awm_capture_output key _mainframe_durable_awm_jq -j '.key' <<<"$input" || return 1
+            _mainframe_durable_awm_capture_output raw_value _mainframe_durable_awm_jq -j '.value' <<<"$input" || return 1
             ;;
         "$_MAINFRAME_PROJECT_MEMORY_DISCOVERY")
-            raw_value=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.value') || return 1
+            _mainframe_durable_awm_capture_output raw_value _mainframe_durable_awm_jq -j '.value' <<<"$input" || return 1
             ;;
         "$_MAINFRAME_PROJECT_MEMORY_PROGRESS")
-            key=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.task') || return 1
+            _mainframe_durable_awm_capture_output key _mainframe_durable_awm_jq -j '.task' <<<"$input" || return 1
             raw_value=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -cS \
                 '{current:.current,status:.status,total:.total}') || return 1
             ;;
         "$_MAINFRAME_PROJECT_MEMORY_HANDOFF")
-            recipient=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.target') || return 1
+            _mainframe_durable_awm_capture_output recipient _mainframe_durable_awm_jq -j '.target' <<<"$input" || return 1
             raw_value="$transient"
             ;;
     esac
@@ -534,6 +534,9 @@ _mainframe_durable_awm_apply_locked() {
     local observed_state observed_sid observed_digest fields state sid before after canonical
     local name expected key value importance tags ttl task current total status target tokens format include
     local query kind limit default is_read=false receipt_before
+    # This private binding is dynamically scoped only across the fixed checkpoint
+    # mutation. Storage must use the reservation's deadline, not renew its TTL.
+    local _AWM_CHECKPOINT_RESERVED_EXPIRY=''
     local transient='' outcome=succeeded error_code='' record_type rc receipt transient_sha transient_bytes
     observed_state=$(builtin printf '%s' "$identity" | _mainframe_durable_awm_jq -r '.observation.mapping_state') || return 1
     observed_sid=$(builtin printf '%s' "$identity" | _mainframe_durable_awm_jq -r '.observation.session_id // empty') || return 1
@@ -578,8 +581,8 @@ _mainframe_durable_awm_apply_locked() {
                 record_type=project_status
                 ;;
             "$_MAINFRAME_PROJECT_MEMORY_GET")
-                key=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.key') || return 1
-                default=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.default') || return 1
+                _mainframe_durable_awm_capture_output key _mainframe_durable_awm_jq -j '.key' <<<"$input" || return 1
+                _mainframe_durable_awm_capture_output default _mainframe_durable_awm_jq -j '.default' <<<"$input" || return 1
                 if _mainframe_durable_awm_capture_output transient \
                     _mainframe_durable_awm_read_get "$sid" "$key" "$default"; then rc=0; else rc=$?; fi
                 record_type=project_get
@@ -591,7 +594,7 @@ _mainframe_durable_awm_apply_locked() {
                 record_type=project_summary
                 ;;
             "$_MAINFRAME_PROJECT_MEMORY_CONTEXT")
-                task=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.task') || return 1
+                _mainframe_durable_awm_capture_output task _mainframe_durable_awm_jq -j '.task' <<<"$input" || return 1
                 tokens=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.max_tokens') || return 1
                 format=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.render_format') || return 1
                 include=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.include') || return 1
@@ -600,7 +603,7 @@ _mainframe_durable_awm_apply_locked() {
                 record_type=project_context
                 ;;
             "$_MAINFRAME_PROJECT_MEMORY_FIND")
-                query=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.query') || return 1
+                _mainframe_durable_awm_capture_output query _mainframe_durable_awm_jq -j '.query' <<<"$input" || return 1
                 kind=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.kind') || return 1
                 limit=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.limit') || return 1
                 if _mainframe_durable_awm_capture_output transient \
@@ -608,7 +611,7 @@ _mainframe_durable_awm_apply_locked() {
                 record_type=project_find
                 ;;
             "$_MAINFRAME_PROJECT_MEMORY_ENSURE")
-                name=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.name // empty') || return 1
+                _mainframe_durable_awm_capture_output name _mainframe_durable_awm_jq -j '.name // empty' <<<"$input" || return 1
                 if [[ "$state" == absent ]]; then
                     if sid=$(_awm_project_ensure_unlocked "$mapping" "$project_digest" "$name" unmapped ''); then rc=0; else rc=$?; fi
                 else
@@ -618,18 +621,22 @@ _mainframe_durable_awm_apply_locked() {
                 ;;
             "$_MAINFRAME_PROJECT_MEMORY_CHECKPOINT")
                 expected=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.expected_session_id') || return 1
-                key=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.key') || return 1
-                value=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.value') || return 1
+                _mainframe_durable_awm_capture_output key _mainframe_durable_awm_jq -j '.key' <<<"$input" || return 1
+                _mainframe_durable_awm_capture_output value _mainframe_durable_awm_jq -j '.value' <<<"$input" || return 1
                 importance=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.importance') || return 1
                 tags=$(_mainframe_durable_awm_tags_csv "$input") || return 1
                 ttl=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.ttl_seconds') || return 1
+                if (( ttl > 0 )); then
+                    _AWM_CHECKPOINT_RESERVED_EXPIRY=$(_mainframe_durable_awm_jq -er \
+                        '.expires_at | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601 | floor' <<<"$identity") || return 1
+                fi
                 if _awm_project_mutate_expected_unlocked "$mapping" "$project_digest" "$expected" \
                     checkpoint "$key" "$value" --importance "$importance" --tags "$tags" --ttl "$ttl"; then rc=0; else rc=$?; fi
                 sid="$expected" record_type=checkpoint
                 ;;
             "$_MAINFRAME_PROJECT_MEMORY_DISCOVERY")
                 expected=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.expected_session_id') || return 1
-                value=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.value') || return 1
+                _mainframe_durable_awm_capture_output value _mainframe_durable_awm_jq -j '.value' <<<"$input" || return 1
                 importance=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.importance') || return 1
                 tags=$(_mainframe_durable_awm_tags_csv "$input") || return 1
                 if _awm_project_mutate_expected_unlocked "$mapping" "$project_digest" "$expected" \
@@ -638,10 +645,10 @@ _mainframe_durable_awm_apply_locked() {
                 ;;
             "$_MAINFRAME_PROJECT_MEMORY_PROGRESS")
                 expected=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.expected_session_id') || return 1
-                task=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.task') || return 1
+                _mainframe_durable_awm_capture_output task _mainframe_durable_awm_jq -j '.task' <<<"$input" || return 1
                 current=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.current') || return 1
                 total=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.total') || return 1
-                status=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.status') || return 1
+                _mainframe_durable_awm_capture_output status _mainframe_durable_awm_jq -j '.status' <<<"$input" || return 1
                 if _awm_project_mutate_expected_unlocked "$mapping" "$project_digest" "$expected" \
                     progress "$task" "$current/$total" "$status"; then rc=0; else rc=$?; fi
                 sid="$expected" record_type=progress
@@ -653,7 +660,7 @@ _mainframe_durable_awm_apply_locked() {
                 ;;
             "$_MAINFRAME_PROJECT_MEMORY_HANDOFF")
                 expected=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.expected_session_id') || return 1
-                target=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.target') || return 1
+                _mainframe_durable_awm_capture_output target _mainframe_durable_awm_jq -j '.target' <<<"$input" || return 1
                 tokens=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.max_tokens') || return 1
                 format=$(builtin printf '%s' "$input" | _mainframe_durable_awm_jq -r '.render_format') || return 1
                 if transient=$(_awm_project_mutate_expected_unlocked "$mapping" "$project_digest" "$expected" \

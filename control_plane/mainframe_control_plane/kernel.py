@@ -1568,6 +1568,10 @@ def _reduce(state: _State, event: Mapping[str, Any]) -> None:
             raise InvalidTransition("approval consumption timestamp moved backwards")
         if consumed_time >= _parse_timestamp(approval.expires_at, "expires_at"):
             raise ApprovalExpired("approval has expired")
+        if call.timeout_at is not None and consumed_time >= _parse_timestamp(
+            call.timeout_at, "timeout_at"
+        ):
+            raise InvalidTransition("tool call deadline has elapsed")
         state.approvals[approval.approval_id] = replace(
             approval, state="consumed", consumed_at=consumed_at
         )
@@ -1695,11 +1699,20 @@ def _reduce(state: _State, event: Mapping[str, Any]) -> None:
         }.get(outcome)
         if expected_state is None:
             raise ValidationError("unsupported evidence outcome")
+        expired_before_execution = (
+            call.state == "ready"
+            and payload["call_from_state"] == "ready"
+            and outcome == "timed_out"
+            and approval_id is None
+            and call.timeout_at is not None
+            and _parse_timestamp(payload["recorded_at"], "recorded_at")
+            >= _parse_timestamp(call.timeout_at, "timeout_at")
+            and payload["body"] == {"error": {"code": "deadline_elapsed"}}
+        )
         if (
-            call.state != "running"
-            or payload["call_from_state"] != "running"
-            or payload["call_to_state"] != expected_state
-        ):
+            not expired_before_execution
+            and (call.state != "running" or payload["call_from_state"] != "running")
+        ) or payload["call_to_state"] != expected_state:
             raise InvalidTransition("evidence does not complete a running tool call")
         body = _normalized_object(payload["body"], "evidence body")
         body_digest = _validate_digest(payload["body_digest"], "body_digest")
@@ -2411,22 +2424,52 @@ class _EventLedger:
         return state
 
     def _open(self, create: bool) -> int:
-        parent = self.path.parent
-        if not parent.is_dir():
-            raise LedgerIOError("ledger parent directory does not exist")
+        # Pin each component with openat: checking Path.is_dir()/resolve() first
+        # would follow symlinks and allow ancestry replacement before open().
+        absolute = Path(os.path.abspath(self.path))
+        directory_flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY | os.O_NOFOLLOW
+        parent_fd = os.open(absolute.anchor, directory_flags)
         flags = os.O_CLOEXEC | os.O_RDWR
         if create:
             flags |= os.O_CREAT | os.O_APPEND
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
         try:
-            return os.open(str(self.path), flags, 0o600)
+            for component in absolute.parts[1:-1]:
+                next_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+                os.close(parent_fd)
+                parent_fd = next_fd
+                metadata = os.fstat(parent_fd)
+                # Shared system temp directories are valid ancestry anchors;
+                # their sticky bit protects the caller-owned private child.
+                sticky_system_temp = (
+                    metadata.st_uid == 0 and metadata.st_mode & stat.S_ISVTX
+                )
+                if metadata.st_uid not in (0, os.geteuid()) or (
+                    stat.S_IMODE(metadata.st_mode) & 0o022 and not sticky_system_temp
+                ):
+                    raise LedgerCorruption("ledger ancestry must not be writable by other users")
+            metadata = os.fstat(parent_fd)
+            if metadata.st_uid != os.geteuid() or stat.S_IMODE(metadata.st_mode) & 0o077:
+                raise LedgerCorruption("ledger parent must be owned by the current user and private")
+            fd = os.open(absolute.name, flags, 0o600, dir_fd=parent_fd)
+            if create:
+                try:
+                    # Persist the name through the same pinned parent used by
+                    # openat, including retries after an earlier fsync error.
+                    fsync_directory(parent_fd)
+                except BaseException:
+                    os.close(fd)
+                    raise
+            return fd
         except FileNotFoundError:
             raise
         except OSError as exc:
-            if exc.errno in (errno.ELOOP, errno.EMLINK):
+            if exc.errno in (errno.ELOOP, errno.EMLINK, errno.ENOTDIR):
                 raise LedgerCorruption("ledger path must not be a symbolic link") from exc
             raise LedgerIOError("unable to open ledger: {}".format(exc)) from exc
+        finally:
+            os.close(parent_fd)
 
     def load(self) -> _State:
         try:
@@ -2450,9 +2493,6 @@ class _EventLedger:
     ) -> _State:
         fd = self._open(create=True)
         try:
-            # Persist the ledger name before appending the first event. Doing
-            # this on every transaction also safely retries a prior fsync error.
-            fsync_directory(self.path.parent)
             fcntl.flock(fd, fcntl.LOCK_EX)
             self._validate_file(fd)
             state = self._parse(self._read_and_repair_final_frame(fd))
@@ -2471,6 +2511,8 @@ class _EventLedger:
             encoded = _canonical_json(event) + b"\n"
             if len(encoded) > MAX_EVENT_BYTES:
                 raise ValidationError("event exceeds the maximum supported size")
+            if os.fstat(fd).st_size + len(encoded) > MAX_LEDGER_BYTES:
+                raise LedgerIOError("ledger append would exceed the maximum supported size")
             _reduce(state, event)
             offset = 0
             while offset < len(encoded):
@@ -3306,11 +3348,30 @@ class ControlPlaneKernel:
         state = self._ledger.transact(recorded_at, finish)
         return state.evidence[evidence_id]
 
+    def _expire_ready_call(
+        self, call: ToolCallRecord, now: str
+    ) -> Optional[EvidenceRecord]:
+        """Close an elapsed allowed call without ever launching its executor."""
+        if call.state == "ready" and call.timeout_at is not None and _parse_timestamp(
+            now, "current time"
+        ) >= _parse_timestamp(call.timeout_at, "timeout_at"):
+            return self._record_execution_evidence(
+                call_id=call.call_id,
+                approval_id=None,
+                body={"error": {"code": "deadline_elapsed"}},
+                outcome="timed_out",
+            )
+        return None
+
     def execute_read_only(self, call_id: str, executor: Optional[Executor]) -> EvidenceRecord:
         call_id = _validate_id(call_id, "call_id")
         if executor is None:
             raise ExecutorUnavailable("no read-only executor was injected")
         started_at = self._now()
+        call = _require_call(self._ledger.load(), call_id)
+        evidence = self._expire_ready_call(call, started_at)
+        if evidence is not None:
+            return evidence
 
         def start(state: _State) -> Tuple[str, str, Dict[str, Any]]:
             call = _require_call(state, call_id)
@@ -3388,6 +3449,11 @@ class ControlPlaneKernel:
         ):
             raise BindingMismatch("canonical call no longer matches its frozen contract")
         started_at = self._now()
+        evidence = self._expire_ready_call(call, started_at)
+        if evidence is not None:
+            if call.client_correlation_id is not None:
+                self.transition_run(call.run_id, "failed")
+            return evidence
 
         def start(state: _State) -> Tuple[str, str, Dict[str, Any]]:
             current = _require_call(state, call_id)
@@ -3555,6 +3621,9 @@ class ControlPlaneKernel:
         ):
             raise BindingMismatch("project-memory input or aggregate identity changed")
         started_at = self._now()
+        evidence = self._expire_ready_call(call, started_at)
+        if evidence is not None:
+            return evidence
 
         def start(state: _State) -> Tuple[str, str, Dict[str, Any]]:
             current = _require_call(state, call_id)
@@ -3602,6 +3671,10 @@ class ControlPlaneKernel:
             after_start_hook()
         transient_result: Optional["ProjectMemoryExecutionResult"] = None
         try:
+            if expires_at is not None and _parse_timestamp(
+                self._now(), "current time"
+            ) >= _parse_timestamp(expires_at, "expires_at"):
+                raise ExecutionDenied("project-memory reservation has expired")
             raw_result = executor(request, normalized_input)
             result_outcome, receipt = validate_project_memory_result(
                 raw_result, request, contract, normalized_input
@@ -3832,6 +3905,9 @@ class ControlPlaneKernel:
         started_at = self._now()
 
         if approval is None:
+            evidence = self._expire_ready_call(call, started_at)
+            if evidence is not None:
+                return evidence
             def start(state: _State) -> Tuple[str, str, Dict[str, Any]]:
                 current = _require_call(state, call_id)
                 if current.effect != "read_only" or current.tool != contract.tool:

@@ -61,7 +61,7 @@ setup() {
 }
 
 @test "project AWM outer timeout stays above the inner session-lock budget" {
-    local extension lock_default
+    local extension lock_default outer_timeout_ms
     extension="$PROJECT_ROOT/skills/pi/extensions/mainframe.ts"
 
     # The Intel macOS Pi candidate cell flaked outcome_unknown when a loaded
@@ -69,16 +69,17 @@ setup() {
     # The outer bound must exceed AWM_LOCK_TIMEOUT (the inner session-lock
     # budget) with room for the fsync-bound operation itself. Pin both sides
     # of that structural invariant so neither can silently regress the margin.
-    run /usr/bin/grep -Fq \
-        'const MAINFRAME_PROJECT_AWM_TIMEOUT_MS = 15_000;' "$extension"
-    [[ "$status" -eq 0 ]]
+    outer_timeout_ms="$(/usr/bin/sed -nE \
+        's/^const MAINFRAME_PROJECT_AWM_TIMEOUT_MS = ([0-9_]+);$/\1/p' "$extension" | tr -d '_')"
+    [[ "$outer_timeout_ms" =~ ^[0-9]+$ ]]
     run /usr/bin/grep -Fq 'timeoutMs: MAINFRAME_PROJECT_AWM_TIMEOUT_MS,' "$extension"
     [[ "$status" -eq 0 ]]
 
     lock_default="$(/usr/bin/grep -E '^AWM_LOCK_TIMEOUT="\$\{AWM_LOCK_TIMEOUT:-[0-9]+\}"$' \
         "$PROJECT_ROOT/lib/awm.sh" | /usr/bin/sed -E 's/.*:-([0-9]+)\}"$/\1/' | /usr/bin/head -n 1)"
     [[ "$lock_default" =~ ^[0-9]+$ ]]
-    # 15s outer bound must leave at least 2x the inner lock budget for the
-    # operation after a worst-case full lock wait.
-    [[ $((lock_default * 3)) -le 15 ]]
+    # The configured outer bound must leave at least 2x the inner lock budget
+    # after a worst-case full lock wait and stay within runProcess's 300s cap.
+    [[ "$outer_timeout_ms" -le 300000 ]]
+    [[ $((lock_default * 3000)) -le "$outer_timeout_ms" ]]
 }

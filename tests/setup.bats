@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Guided setup must remain discovery-only until one host is explicit.
+# Pi setup is read-only until an explicit action; legacy host flows are opt-in.
 
 load 'test_helper'
 
@@ -60,6 +60,7 @@ setup() {
     cp "$PROJECT_ROOT/config/pi-compatibility.json" "$RUNTIME_ROOT/config/pi-compatibility.json"
     cp "$PROJECT_ROOT/package.json" "$RUNTIME_ROOT/package.json"
     cp "$PROJECT_ROOT/VERSION" "$RUNTIME_ROOT/VERSION"
+    cp "$PROJECT_ROOT/INVOCATION_INDEX.json" "$RUNTIME_ROOT/INVOCATION_INDEX.json"
     cp "$PROJECT_ROOT/security/gate-rules.json" "$RUNTIME_ROOT/security/gate-rules.json"
     cp "$PROJECT_ROOT/security/gate-normalizer.mjs" "$RUNTIME_ROOT/security/gate-normalizer.mjs"
     cp -R "$PROJECT_ROOT/skills/codex" "$RUNTIME_ROOT/skills/codex"
@@ -94,6 +95,14 @@ setup_discovery() {
 
 setup_full() {
     env PATH="$CLI_DIR:$BASE_PATH" "$BASH_BIN" "$RUNTIME_ROOT/bin/mainframe" setup "$@"
+}
+
+setup_legacy_discovery() {
+    env PATH="$DISCOVERY_PATH" "$BASH_BIN" "$RUNTIME_ROOT/bin/mainframe" legacy setup "$@"
+}
+
+setup_legacy_full() {
+    env PATH="$CLI_DIR:$BASE_PATH" "$BASH_BIN" "$RUNTIME_ROOT/bin/mainframe" legacy setup "$@"
 }
 
 setup_proof() {
@@ -217,16 +226,19 @@ make_pi_cli() {
     chmod +x "$CLI_DIR/pi"
 }
 
-@test "setup help documents discovery-only and explicit-host modes" {
+@test "setup help documents Pi-only discovery and explicit setup actions" {
     run setup_discovery --help
 
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"mainframe setup --project <dir>"* ]]
-    [[ "$output" == *"Without --host"*"strictly read-only"* ]]
-    [[ "$output" == *"never auto-selects a host"* ]]
-    [[ "$output" == *"codex, claude-code, copilot, gemini"* ]]
-    [[ "$output" == *"Pi uses a separate user-package flow"* ]]
-    [[ "$output" == *"--proof"*"hostless zero-residue first-run mechanism proof"* ]]
+    [[ "$output" == *"Without an action"*"without changes"* ]]
+    [[ "$output" == *"Pi is the only supported host"* ]]
+    [[ "$output" == *"--dry-run"*"Preview installation of the Pi package"* ]]
+    [[ "$output" == *"--yes"*"Apply the reviewed Pi package setup"* ]]
+    [[ "$output" == *"--proof"*"isolated invocation, checkpoint, and policy canary"* ]]
+    [[ "$output" == *"does not prove live Pi protection"* ]]
+    [[ "$output" != *"codex"* && "$output" != *"--runtime"* ]]
+    assert_no_setup_state
 }
 
 @test "top-level help leads with read-only setup and the Pi preview path" {
@@ -236,16 +248,63 @@ make_pi_cli() {
         "$BASH_BIN" "$RUNTIME_ROOT/bin/mainframe" --help
 
     [[ "$status" -eq 0 ]]
-    [[ "$output" == *"Start here (read-only):"* ]]
+    [[ "$output" == *"MAINFRAME for Pi"* ]]
+    [[ "$output" == *"Start here:"* ]]
     [[ "$output" == *"mainframe setup --project . --proof"* ]]
     [[ "$output" == *"mainframe setup --project ."* ]]
-    [[ "$output" == *"Using Pi:"* ]]
-    [[ "$output" == *"mainframe pi doctor"* ]]
-    [[ "$output" == *"mainframe pi install --dry-run"* ]]
-    start_line="$(grep -nF 'Start here (read-only):' <<< "$output" | cut -d: -f1)"
-    commands_line="$(grep -nF 'Commands:' <<< "$output" | cut -d: -f1)"
+    [[ "$output" == *"Pi commands:"* ]]
+    [[ "$output" == *"/mainframe doctor"* ]]
+    [[ "$output" == *"mainframe setup --project . --dry-run"* ]]
+    [[ "$output" == *"Only Pi is in active product scope"* ]]
+    [[ "$output" == *"native write/edit"*"outside its protection"* ]]
+    start_line="$(grep -nF 'Start here:' <<< "$output" | cut -d: -f1)"
+    commands_line="$(grep -nF 'Pi commands:' <<< "$output" | cut -d: -f1)"
     [[ "$start_line" -lt "$commands_line" ]]
     assert_no_setup_state
+}
+
+@test "legacy setup remains explicit and documented outside the Pi default" {
+    run setup_legacy_discovery --help
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"Usage: mainframe legacy setup"* ]]
+    [[ "$output" == *"Without --host"*"strictly read-only"* ]]
+    [[ "$output" == *"codex, claude-code, copilot, gemini"* ]]
+    assert_no_setup_state
+}
+
+@test "default setup previews then installs only the Pi package with explicit consent" {
+    run setup_full --project "$PROJECT_DIR" --dry-run
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *'action=install'* && "$output" == *'dry_run=true'* ]]
+    [[ "$output" == *"would_set_package_source=$RUNTIME_ROOT"* ]]
+    assert_no_setup_state
+
+    run setup_full --project "$PROJECT_DIR" --yes
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *'action=install'* && "$output" == *'changed=true'* ]]
+    jq -e --arg root "$RUNTIME_ROOT" '.packages == [$root]' "$PI_AGENT_DIR/settings.json" >/dev/null
+    [[ ! -e "$PROJECT_DIR/AGENTS.md" && ! -e "$PROJECT_DIR/.codex/hooks.json" ]]
+    [[ ! -e "$AWM_ROOT" && ! -e "$MAINFRAME_AGENT_AUDIT_LOG" ]]
+}
+
+@test "default setup rejects other coding agents without creating state" {
+    local host
+    for host in codex claude-code copilot gemini; do
+        run setup_full --project "$PROJECT_DIR" --host "$host" --yes
+        [[ "$status" -eq 2 ]]
+        [[ "$output" == *"only Pi is supported"*"mainframe legacy setup"* ]]
+        assert_no_setup_state
+    done
+}
+
+@test "retired top-level host commands require explicit legacy selection" {
+    local command_name
+    for command_name in host onboard launch activate; do
+        run env PATH="$DISCOVERY_PATH" "$BASH_BIN" "$RUNTIME_ROOT/bin/mainframe" "$command_name" --help
+        [[ "$status" -eq 64 ]]
+        [[ "$output" == *"mainframe legacy $command_name"* ]]
+        assert_no_setup_state
+    done
 }
 
 @test "setup proof exercises fixed mechanisms and retains no user project or audit state" {
@@ -266,9 +325,10 @@ make_pi_cli() {
     [[ "$output" == *"Session continuity: PASS (ephemeral untrusted record; fresh Bash process)"* ]]
     [[ "$output" != *"Durable memory:"* ]]
     [[ "$output" == *"Temporary state:    REMOVED (private mode 700)"* ]]
-    [[ "$output" == *"Shell policy:       PASS (classification only; canary not executed; rule=terraform-destroy)"* ]]
+    [[ "$output" == *"Policy canary:      PASS (terraform-destroy classification only; not a safety certification)"* ]]
     [[ "$output" == *"Pi package:"*"CLI found; not executed"* ]]
-    [[ "$output" == *"Host candidates: codex"* ]]
+    [[ "$output" != *"Host candidates:"* ]]
+    [[ "$output" != *"codex"* ]]
     [[ "$output" == *"Next safe command:  mainframe pi install --dry-run"* ]]
     [[ "$output" == *"Agent improvement/adoption: UNVERIFIED (mechanism proof only; no coding agent ran)"* ]]
     [[ "$output" == *"Live host protection: UNVERIFIED"* ]]
@@ -426,6 +486,7 @@ make_pi_cli() {
 
 @test "hostless setup reports Pi CLI and package state without executing or mutating Pi" {
     make_pi_cli
+    make_host_cli codex
 
     run setup_discovery --project "$PROJECT_DIR"
 
@@ -436,8 +497,12 @@ make_pi_cli() {
     [[ "$output" == *"mainframe pi status"* ]]
     [[ "$output" == *"mainframe pi doctor"* ]]
     [[ "$output" == *"mainframe pi install --dry-run"* ]]
+    [[ "$output" == *"Supported host: Pi"* ]]
+    [[ "$output" == *"Live protection: UNVERIFIED by this offline report."* ]]
+    [[ "$output" != *"Detected candidates:"* && "$output" != *"codex"* ]]
     [[ "$output" != *"mainframe setup"*"--host pi"*"--runtime"* ]]
     [[ ! -e "$FAKE_PI_LOG" ]]
+    [[ ! -e "$FAKE_HOST_LOG" && ! -e "$FAKE_HOST_PROBE_LOG" ]]
     assert_no_setup_state
 }
 
@@ -555,7 +620,7 @@ make_pi_cli() {
     run setup_full --project "$PROJECT_DIR" --host pi --runtime auto --dry-run
 
     [[ "$status" -eq 2 ]]
-    [[ "$output" == *"--runtime does not apply to Pi's user-package flow"* ]]
+    [[ "$output" == *"--runtime is a legacy multi-agent option; Pi uses its installed runtime"* ]]
     assert_no_setup_state
 
     run setup_full --project "$PROJECT_DIR" --host pi --dry-run --yes
@@ -565,9 +630,9 @@ make_pi_cli() {
     assert_no_setup_state
 }
 
-@test "bash and zsh setup completion expose the bounded host choices" {
+@test "bash and zsh setup completion expose only Pi" {
     local expected
-    expected="$(printf '%s\n' claude-code codex copilot gemini pi | LC_ALL=C sort)"
+    expected=pi
 
     run bash -c '
         source "$1"
@@ -579,6 +644,19 @@ make_pi_cli() {
     [[ "$status" -eq 0 ]]
     [[ "$output" == "$expected" ]]
 
+    run bash -c '
+        source "$1"
+        COMP_WORDS=(mainframe "")
+        COMP_CWORD=1
+        _mainframe_completions
+        printf "%s\n" "${COMPREPLY[@]}"
+    ' _ "$PROJECT_ROOT/completions/mainframe.bash"
+    [[ "$status" -eq 0 ]]
+    grep -Fxq status <<<"$output"
+    grep -Fxq legacy <<<"$output"
+    run grep -Eq '^(host|onboard|launch|activate)$' <<<"$output"
+    [[ "$status" -eq 1 ]]
+
     if command -v zsh >/dev/null 2>&1; then
         run zsh -f -c '
             compdef() { :; }
@@ -589,43 +667,44 @@ make_pi_cli() {
             _mainframe
         ' _ "$PROJECT_ROOT/completions/mainframe.zsh"
         [[ "$status" -eq 0 ]]
-    [[ "$output" == *"--host[host or Pi package flow to configure]:host:(codex claude-code copilot gemini pi)"* ]]
-    [[ "$output" == *"--project[project directory]:project directory:_directories"* ]]
-        [[ "$output" == *"--proof[run the hostless zero-residue first-run mechanism proof]"* ]]
+        [[ "$output" == *":host:(pi)"* ]]
+        [[ "$output" == *"--project[project directory]:project directory:_directories"* ]]
+        [[ "$output" == *"--proof["* ]]
+        [[ "$output" != *"--runtime["* ]]
     fi
 }
 
-@test "setup reports no detections and remains read-only even with --yes" {
+@test "legacy setup reports no detections and remains read-only even with --yes" {
     local host
-    run setup_discovery --project "$PROJECT_DIR" --yes
+    run setup_legacy_discovery --project "$PROJECT_DIR" --yes
 
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"Mode: discovery only (strictly read-only)"* ]]
     [[ "$output" == *"Shell discovery"*"bash"*"zsh"* ]]
     [[ "$output" == *"Detected candidates: none"* ]]
     [[ "$output" == *"No supported host CLI or project marker was detected."* ]]
-    [[ "$output" == *"mainframe host status codex"* ]]
-    [[ "$output" == *"mainframe host status claude-code"* ]]
-    [[ "$output" == *"mainframe host status copilot"* ]]
-    [[ "$output" == *"mainframe host status gemini"* ]]
+    [[ "$output" == *"mainframe legacy host status codex"* ]]
+    [[ "$output" == *"mainframe legacy host status claude-code"* ]]
+    [[ "$output" == *"mainframe legacy host status copilot"* ]]
+    [[ "$output" == *"mainframe legacy host status gemini"* ]]
     for host in codex claude-code copilot; do
-        [[ "$output" == *"mainframe host install $host --download --dry-run"* ]]
-        [[ "$output" == *"mainframe host install $host --download --yes"* ]]
-        [[ "$output" == *"mainframe host install $host --package-dir /absolute/path/to/pinned-tarballs --dry-run"* ]]
-        [[ "$output" == *"mainframe host install $host --package-dir /absolute/path/to/pinned-tarballs --yes"* ]]
+        [[ "$output" == *"mainframe legacy host install $host --download --dry-run"* ]]
+        [[ "$output" == *"mainframe legacy host install $host --download --yes"* ]]
+        [[ "$output" == *"mainframe legacy host install $host --package-dir /absolute/path/to/pinned-tarballs --dry-run"* ]]
+        [[ "$output" == *"mainframe legacy host install $host --package-dir /absolute/path/to/pinned-tarballs --yes"* ]]
         [[ "$output" == *"--host $host --runtime managed --dry-run"* ]]
         [[ "$output" == *"--host $host --runtime managed --yes"* ]]
     done
-    [[ "$output" != *"mainframe host install gemini"* ]]
+    [[ "$output" != *"mainframe legacy host install gemini"* ]]
     [[ "$output" != *"npm install --global"* ]]
     assert_no_setup_state
     [[ -z "$(find "$PROJECT_DIR" -mindepth 1 -print -quit)" ]]
 }
 
-@test "setup reports one detected CLI without auto-selecting it" {
+@test "legacy setup reports one detected CLI without auto-selecting it" {
     make_host_cli codex
 
-    run setup_discovery --project "$PROJECT_DIR"
+    run setup_legacy_discovery --project "$PROJECT_DIR"
 
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"codex"*"certified"* ]]
@@ -640,18 +719,18 @@ make_pi_cli() {
     assert_no_setup_state
 }
 
-@test "setup detects an incompatible same-named host and recommends only managed recovery" {
+@test "legacy setup detects an incompatible same-named host and recommends only managed recovery" {
     make_host_cli codex
     printf '%s\n' '# tampered after manifest pin' >> "$CLI_DIR/codex"
 
-    run setup_discovery --project "$PROJECT_DIR"
+    run setup_legacy_discovery --project "$PROJECT_DIR"
 
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"codex"*"incompatible"* ]]
     [[ "$output" == *"launcher bytes are not certified for version 0.146.0"* ]]
     [[ "$output" == *"# codex runtime is unavailable under policy auto"* ]]
-    [[ "$output" == *"mainframe host status codex"* ]]
-    [[ "$output" == *"mainframe host install codex --download --dry-run"* ]]
+    [[ "$output" == *"mainframe legacy host status codex"* ]]
+    [[ "$output" == *"mainframe legacy host install codex --download --dry-run"* ]]
     [[ "$output" == *"--host codex --runtime managed --dry-run"* ]]
     [[ "$output" != *"npm install --global"* ]]
     [[ "$output" != *"--host codex --runtime auto --dry-run"* ]]
@@ -660,16 +739,16 @@ make_pi_cli() {
     assert_no_setup_state
 }
 
-@test "explicit setup for missing Codex fails with actionable managed recovery and no state" {
-    run setup_discovery --project "$PROJECT_DIR" --host codex --dry-run
+@test "legacy explicit setup for missing Codex fails with actionable managed recovery and no state" {
+    run setup_legacy_discovery --project "$PROJECT_DIR" --host codex --dry-run
 
     [[ "$status" -eq 1 ]]
     [[ "$output" == *"onboarding was not changed"* ]]
-    [[ "$output" == *"mainframe host status codex --runtime auto"* ]]
-    [[ "$output" == *"mainframe host install codex --download --dry-run"* ]]
-    [[ "$output" == *"mainframe host install codex --download --yes"* ]]
-    [[ "$output" == *"mainframe host install codex --package-dir /absolute/path/to/pinned-tarballs --dry-run"* ]]
-    [[ "$output" == *"mainframe host install codex --package-dir /absolute/path/to/pinned-tarballs --yes"* ]]
+    [[ "$output" == *"mainframe legacy host status codex --runtime auto"* ]]
+    [[ "$output" == *"mainframe legacy host install codex --download --dry-run"* ]]
+    [[ "$output" == *"mainframe legacy host install codex --download --yes"* ]]
+    [[ "$output" == *"mainframe legacy host install codex --package-dir /absolute/path/to/pinned-tarballs --dry-run"* ]]
+    [[ "$output" == *"mainframe legacy host install codex --package-dir /absolute/path/to/pinned-tarballs --yes"* ]]
     [[ "$output" == *"--host codex --runtime managed --dry-run"* ]]
     [[ "$output" == *"--host codex --runtime managed --yes"* ]]
     [[ ! -e "$FAKE_HOST_LOG" ]]
@@ -678,19 +757,19 @@ make_pi_cli() {
     [[ -z "$(find "$PROJECT_DIR" -mindepth 1 -print -quit)" ]]
 }
 
-@test "setup combines multiple CLI and project-marker detections read-only" {
+@test "legacy setup combines multiple CLI and project-marker detections read-only" {
     make_host_cli codex
     mkdir -p "$PROJECT_DIR/.gemini"
     printf '%s\n' '{"user":"owned"}' > "$PROJECT_DIR/.gemini/settings.json"
 
-    run setup_discovery --project "$PROJECT_DIR" --dry-run
+    run setup_legacy_discovery --project "$PROJECT_DIR" --dry-run
 
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"Detected candidates: codex gemini"* ]]
     [[ "$output" == *".gemini/settings.json"* ]]
     [[ "$output" == *"--host codex --runtime auto --dry-run"* ]]
     [[ "$output" == *"# gemini runtime is unavailable under policy auto"* ]]
-    [[ "$output" == *"mainframe host status gemini"* ]]
+    [[ "$output" == *"mainframe legacy host status gemini"* ]]
     grep -Fxq '{"user":"owned"}' "$PROJECT_DIR/.gemini/settings.json"
     assert_no_setup_state
 }
@@ -699,15 +778,16 @@ make_pi_cli() {
     run setup_full --project "$PROJECT_DIR" --host all --yes
 
     [[ "$status" -eq 2 ]]
-    [[ "$output" == *"unsupported host: all"* ]]
+    [[ "$output" == *"only Pi is supported"* ]]
+    [[ "$output" != *"supported: codex"* ]]
     assert_no_setup_state
     [[ -z "$(find "$PROJECT_DIR" -mindepth 1 -print -quit)" ]]
 }
 
-@test "setup delegates explicit preview and consent to onboarding" {
+@test "legacy setup delegates explicit preview and consent to onboarding" {
     make_host_cli codex
 
-    run setup_full --project "$PROJECT_DIR" --host codex --dry-run
+    run setup_legacy_full --project "$PROJECT_DIR" --host codex --dry-run
 
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"MAINFRAME Onboarding Preflight"* ]]
@@ -715,7 +795,7 @@ make_pi_cli() {
     [[ "$output" == *"Dry run complete. No project files, AWM state, or audit records were changed."* ]]
     assert_no_setup_state
 
-    run setup_full --project "$PROJECT_DIR" --host codex --yes
+    run setup_legacy_full --project "$PROJECT_DIR" --host codex --yes
 
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"Consent: --yes"* ]]

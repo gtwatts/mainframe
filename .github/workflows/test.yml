@@ -1,14 +1,8 @@
-name: Tests
+name: Legacy platform validation (manual)
 
 on:
-  push:
-    branches: [main, develop]
-    tags: ['v*']
-  pull_request:
-    branches: [main]
-  schedule:
-    # Run nightly at 3 AM UTC
-    - cron: '0 3 * * *'
+  # Preserved for historical adapter/release investigations. Active development
+  # and pull-request checks are in pi.yml. No automatic legacy publication.
   workflow_dispatch:
 
 env:

@@ -542,7 +542,7 @@ _agent_has_recursive_flag() {
 _agent_confine_path() {
     local path="$1"
     local op_context="$2"
-    if ! _agent_validate_path_safe "$path" "$AGENT_SAFE_BASE"; then
+    if ! _agent_validate_path_safe "$path" "$AGENT_SAFE_BASE" "${3:-follow}"; then
         agent_error "unsafe $op_context target: $path" \
             "base=$AGENT_SAFE_BASE" \
             "suggestion=Keep operations inside AGENT_SAFE_BASE"
@@ -637,6 +637,9 @@ agent_validate_command() {
     fi
 
     local cmd="${_AGENT_NORMALIZED_ARGV[0]}"
+    # Policy names describe the invoked executable, independent of its path.
+    # Keep the original argv[0] for existence checks and actual execution.
+    local policy_cmd="${cmd##*/}"
     local -a args=("${_AGENT_NORMALIZED_ARGV[@]:1}")
 
     if [[ -z "$cmd" ]]; then
@@ -653,28 +656,28 @@ agent_validate_command() {
     local can_destructive="${_AGENT_PROFILE_CAN_DESTRUCTIVE[$AGENT_CURRENT_PROFILE]:-0}"
 
     # Tier 1: destructive disk/system commands
-    if _agent_in_tier "$cmd" "${_AGENT_DESTRUCTIVE_COMMANDS[@]}"; then
+    if _agent_in_tier "$policy_cmd" "${_AGENT_DESTRUCTIVE_COMMANDS[@]}"; then
         if (( ! can_destructive )); then
             agent_error "destructive command '$cmd' not allowed in profile '$AGENT_CURRENT_PROFILE'" \
                 "suggestion=Use 'system' profile for destructive disk operations"
             return 1
         fi
     # Tier 3: network commands
-    elif _agent_in_tier "$cmd" "${_AGENT_NETWORK_COMMANDS[@]}"; then
+    elif _agent_in_tier "$policy_cmd" "${_AGENT_NETWORK_COMMANDS[@]}"; then
         if (( ! can_network )); then
             agent_error "network command '$cmd' not allowed in profile '$AGENT_CURRENT_PROFILE'" \
                 "suggestion=Use 'system' profile for network operations"
             return 1
         fi
     # Tier 2: system administration commands
-    elif _agent_in_tier "$cmd" "${_AGENT_SYSTEM_COMMANDS[@]}"; then
+    elif _agent_in_tier "$policy_cmd" "${_AGENT_SYSTEM_COMMANDS[@]}"; then
         if (( ! can_system )); then
             agent_error "system command '$cmd' not allowed in profile '$AGENT_CURRENT_PROFILE'" \
                 "suggestion=Use 'system' profile for system administration"
             return 1
         fi
     # Tier 4: write-class commands
-    elif _agent_in_tier "$cmd" "${_AGENT_WRITE_COMMANDS[@]}"; then
+    elif _agent_in_tier "$policy_cmd" "${_AGENT_WRITE_COMMANDS[@]}"; then
         if (( ! can_write )); then
             agent_error "write command '$cmd' not allowed in profile '$AGENT_CURRENT_PROFILE'" \
                 "suggestion=Use 'project' or 'system' profile"
@@ -695,7 +698,7 @@ agent_validate_command() {
     # PATH CONFINEMENT (when AGENT_SAFE_BASE is set)
     # -----------------------------------------------------------------
     if [[ -n "${AGENT_SAFE_BASE:-}" ]]; then
-        if ! _agent_confine_write_targets "$cmd" "${args[@]}"; then
+        if ! _agent_confine_write_targets "$policy_cmd" "${args[@]}"; then
             return 1
         fi
     fi
@@ -741,15 +744,29 @@ _agent_validate_path_safe() {
     # Handle existing paths (resolve the FULL path, including a
     # final-component symlink: a link inside the base must not point
     # outside it), then non-existing paths via deepest existing ancestor.
-    if [[ -e "$path" || -L "$path" ]]; then
+    if [[ "${3:-follow}" == entry ]]; then
+        # Replacing a symlink mutates its directory entry, not its old referent.
+        # Resolve the parent physically, then validate the entry name without
+        # following the final component. The replacement referent is checked
+        # separately by the caller before anything is removed.
+        [[ "$path" != */ ]] || return 1
+        local entry_name
+        entry_name=$(basename -- "$path")
+        case "$entry_name" in ''|'.'|'..'|'/') return 1 ;; esac
+        abs_path=$(cd -- "$(dirname -- "$path")" && pwd -P) || return 1
+        abs_path="${abs_path%/}/$entry_name"
+    elif [[ -e "$path" || -L "$path" ]]; then
         abs_path=$(realpath "$path" 2>/dev/null) || abs_path=""
         if [[ -z "$abs_path" ]]; then
-            abs_path=$(cd "$(dirname -- "$path")" && pwd -P)/$(basename -- "$path")
+            # A parent-only fallback cannot establish a final symlink's target.
+            [[ -L "$path" ]] && return 1
+            abs_path=$(cd "$(dirname -- "$path")" && pwd -P) || return 1
+            abs_path="${abs_path%/}/$(basename -- "$path")"
         fi
     else
         local check_path="$path"
         local -a missing=()
-        while [[ ! -e "$check_path" ]]; do
+        while [[ ! -e "$check_path" && ! -L "$check_path" ]]; do
             missing+=("$(basename -- "$check_path")")
             check_path=$(dirname -- "$check_path")
             if [[ "$check_path" == "/" || -z "$check_path" ]]; then
@@ -764,8 +781,8 @@ _agent_validate_path_safe() {
         if [[ -d "$check_path" ]]; then
             abs_path=$(cd "$check_path" && pwd -P) || return 1
         else
-            # Deepest existing component is a file: resolve its directory
-            abs_path=$(cd "$(dirname -- "$check_path")" && pwd -P)/$(basename -- "$check_path") || return 1
+            # A file or dangling symlink cannot be a safe directory ancestor.
+            return 1
         fi
         local _avps_i
         for (( _avps_i=${#missing[@]}-1; _avps_i>=0; _avps_i-- )); do
@@ -973,146 +990,178 @@ _agent_gate_has_executable_named() {
     return 1
 }
 
-# Internal: find lexically active command/process substitution without
-# executing or rewriting the command. Single-quoted data and backslash-escaped
-# characters are intentionally ignored; substitutions remain active inside
-# double quotes, while process substitution does not.
-# Internal: find lexically active command/process substitution without
-# executing or rewriting the command. Single-quoted data and backslash-escaped
-# characters are intentionally ignored; substitutions remain active inside
-# double quotes, while process substitution does not.
-#
-# Heredoc awareness: a heredoc body introduced by a QUOTED delimiter
-# (<<'EOF', <<"EOF", <<\EOF, and mixed forms) is inert data - the shell
-# performs no expansion there - so the body is skipped entirely. A body with
-# an UNQUOTED delimiter (<<EOF) really does undergo $/` expansion, so it is
-# still scanned; nested heredoc detection is suppressed inside it because the
-# body is text to the shell, not syntax.
-_agent_gate_has_dynamic_shell_expansion() {
-    local input="$1" quote="" ch next i len=${#1}
-    local hd_body_mode=0 hd_bdelim="" hd_bstrip=0 hd_line=""
-
-    for (( i=0; i<len; i++ )); do
-        ch="${input:i:1}"
-
-        # Unquoted-heredoc body: scan with ordinary quote semantics, but track
-        # lines so the closing delimiter ends the body, and never treat body
-        # text as new heredoc syntax.
-        if (( hd_body_mode )); then
-            if [[ "$ch" == $'\n' ]]; then
-                local _hd_chk="$hd_line"
-                if (( hd_bstrip )); then
-                    while [[ "$_hd_chk" == $'\t'* ]]; do _hd_chk="${_hd_chk#$'\t'}"; done
-                fi
-                hd_line=""
-                [[ "$_hd_chk" == "$hd_bdelim" ]] && hd_body_mode=0
-                continue
-            fi
-            hd_line+="$ch"
+# Internal lexer shared by command-position and expansion analysis. Callers
+# provide local words/types arrays. Heredoc bodies are physical lines, never
+# ordinary shell words, so body quotes cannot swallow following commands.
+_agent_gate_tokenize() {
+    local _lex_input="$1" _lex_i=0 _lex_len=${#1} _lex_ch _lex_word _lex_quote
+    local _lex_ansi=0 _lex_bad=0 _lex_pending=-1 _lex_op _lex_delim _lex_quoted
+    local _lex_line _lex_check _lex_end _lex_closed _lex_strip _lex_kind _lex_q
+    local -a _lex_delims=() _lex_strips=() _lex_quotes=()
+    words=(); types=()
+    while (( _lex_i < _lex_len )); do
+        _lex_ch="${_lex_input:_lex_i:1}"
+        # Match redirects before list separators, including descriptor '&'.
+        _lex_op=""
+        case "${_lex_input:_lex_i:3}" in '&>>'|'<<<'|'<<-') _lex_op="${_lex_input:_lex_i:3}" ;; esac
+        if [[ -z "$_lex_op" ]]; then
+            case "${_lex_input:_lex_i:2}" in '&>'|'>>'|'<>'|'>&'|'<&'|'>|'|'<<') _lex_op="${_lex_input:_lex_i:2}" ;; esac
         fi
+        if [[ -z "$_lex_op" ]]; then
+            case "$_lex_ch" in '<'|'>') _lex_op="$_lex_ch" ;; esac
+        fi
+        if [[ -n "$_lex_op" ]]; then
+            if [[ "$_lex_op" == '<<' || "$_lex_op" == '<<-' ]]; then
+                (( _lex_pending >= 0 )) && _lex_bad=1
+                _lex_pending=0; [[ "$_lex_op" == '<<-' ]] && _lex_pending=1
+            fi
+            words+=("$_lex_op"); types+=(operator)
+            _lex_i=$((_lex_i + ${#_lex_op})); continue
+        fi
+        case "$_lex_ch" in
+            ' '|$'\t')
+                words+=("$_lex_ch"); types+=(space); _lex_i=$((_lex_i + 1)); continue ;;
+            '#')
+                _lex_word=""
+                while (( _lex_i < _lex_len )) && [[ "${_lex_input:_lex_i:1}" != $'\n' ]]; do
+                    _lex_word+="${_lex_input:_lex_i:1}"; _lex_i=$((_lex_i + 1))
+                done
+                words+=("$_lex_word"); types+=(comment); continue ;;
+            $'\n'|';'|'|'|'&'|'('|')')
+                (( _lex_pending >= 0 )) && _lex_bad=1
+                words+=("$_lex_ch"); types+=(separator); _lex_i=$((_lex_i + 1))
+                if [[ "$_lex_ch" == $'\n' ]]; then
+                    for (( _lex_q=0; _lex_q<${#_lex_delims[@]}; _lex_q++ )); do
+                        _lex_delim="${_lex_delims[_lex_q]}"
+                        _lex_strip="${_lex_strips[_lex_q]}"
+                        _lex_quoted="${_lex_quotes[_lex_q]}"
+                        while (( _lex_i < _lex_len )); do
+                            _lex_line=""; _lex_end=0
+                            while (( _lex_i < _lex_len )); do
+                                _lex_ch="${_lex_input:_lex_i:1}"
+                                _lex_i=$((_lex_i + 1))
+                                if [[ "$_lex_ch" == $'\n' ]]; then _lex_end=1; break; fi
+                                _lex_line+="$_lex_ch"
+                            done
+                            _lex_check="$_lex_line"
+                            if (( _lex_strip )); then
+                                while [[ "$_lex_check" == $'\t'* ]]; do _lex_check="${_lex_check#$'\t'}"; done
+                            fi
+                            _lex_closed=0
+                            [[ "$_lex_check" == "$_lex_delim" ]] && _lex_closed=1
+                            _lex_kind=heredoc-expandable
+                            (( _lex_quoted )) && _lex_kind=heredoc-inert
+                            (( _lex_closed )) && _lex_kind=heredoc-end
+                            words+=("$_lex_line"); types+=("$_lex_kind")
+                            # Backslash-newline in an expandable body changes
+                            # delimiter recognition; unsupported rather than guessed.
+                            if (( ! _lex_quoted )); then
+                                _lex_check="$_lex_line"
+                                local _lex_slashes=0
+                                while [[ "$_lex_check" == *'\' ]]; do
+                                    _lex_slashes=$((_lex_slashes + 1)); _lex_check="${_lex_check%?}"
+                                done
+                                (( _lex_slashes % 2 )) && _lex_bad=1
+                            fi
+                            if (( _lex_end )); then words+=($'\n'); types+=(separator); fi
+                            (( _lex_closed )) && break
+                        done
+                    done
+                    _lex_delims=(); _lex_strips=(); _lex_quotes=()
+                fi
+                continue ;;
+        esac
+        _lex_word=""; _lex_quote=""; _lex_ansi=0
+        while (( _lex_i < _lex_len )); do
+            _lex_ch="${_lex_input:_lex_i:1}"
+            if [[ -z "$_lex_quote" ]]; then
+                case "$_lex_ch" in ' '|$'\t'|$'\n'|';'|'<'|'>'|'&'|'|'|'('|')') break ;; esac
+            fi
+            _lex_word+="$_lex_ch"
+            if [[ -n "$_lex_quote" ]]; then
+                if [[ "$_lex_ch" == "$_lex_quote" ]]; then _lex_quote=""
+                elif [[ "$_lex_ch" == '\' && ( "$_lex_quote" == '"' || "$_lex_ansi" == 1 ) ]] && (( _lex_i + 1 < _lex_len )); then
+                    _lex_i=$((_lex_i + 1)); _lex_word+="${_lex_input:_lex_i:1}"
+                fi
+            else
+                case "$_lex_ch" in
+                    "'"|'"')
+                        _lex_ansi=0
+                        if (( _lex_i > 0 )) && [[ "$_lex_ch" == "'" && "${_lex_input:_lex_i-1:1}" == '$' ]]; then _lex_ansi=1; fi
+                        _lex_quote="$_lex_ch" ;;
+                    '\')
+                        if (( _lex_i + 1 < _lex_len )); then
+                            _lex_i=$((_lex_i + 1)); _lex_word+="${_lex_input:_lex_i:1}"
+                        else _lex_bad=1; fi ;;
+                esac
+            fi
+            _lex_i=$((_lex_i + 1))
+        done
+        [[ -n "$_lex_quote" ]] && _lex_bad=1
+        words+=("$_lex_word"); types+=(word)
+        if (( _lex_pending >= 0 )); then
+            _lex_delim=$(_agent_gate_decode_word "$_lex_word")
+            _lex_quoted=0
+            [[ "$_lex_word" == *"'"* || "$_lex_word" == *'"'* || "$_lex_word" == *'\'* ]] && _lex_quoted=1
+            [[ "$_lex_delim" == *$'\n'* ]] && _lex_bad=1
+            if (( ! _lex_quoted )) && [[ "$_lex_delim" == *'$'* || "$_lex_delim" == *$'\x60'* ]]; then _lex_bad=1; fi
+            _lex_delims+=("$_lex_delim"); _lex_strips+=("$_lex_pending"); _lex_quotes+=("$_lex_quoted")
+            _lex_pending=-1
+        fi
+    done
+    (( _lex_pending >= 0 )) && _lex_bad=1
+    (( _lex_bad == 0 ))
+}
 
+_agent_gate_heredoc_expands() {
+    local text="$1" ch next i
+    for (( i=0; i<${#text}; i++ )); do
+        ch="${text:i:1}"; next="${text:i+1:1}"
+        if [[ "$ch" == '\' ]]; then
+            case "$next" in '$'|$'\x60'|'\'|$'\n') i=$((i + 1)); continue ;; esac
+        fi
+        [[ "$ch" == $'\x60' || ( "$ch" == '$' && "$next" == '(' ) ]] && return 0
+    done
+    return 1
+}
+
+# Detect active substitutions in headers and expandable heredoc bodies.
+# Body apostrophes are literal; quoted delimiters make their whole body inert.
+_agent_gate_has_dynamic_shell_expansion() {
+    local input="" quote="" ch next i ansi_quote=0
+    local -a words=() types=()
+    _agent_gate_tokenize "$1" || :
+    for (( i=0; i<${#words[@]}; i++ )); do
+        case "${types[i]}" in
+            heredoc-expandable)
+                _agent_gate_heredoc_expands "${words[i]}" && return 0 ;;
+            heredoc-*|comment) ;;
+            *) input+="${words[i]}" ;;
+        esac
+    done
+    for (( i=0; i<${#input}; i++ )); do
+        ch="${input:i:1}"; next="${input:i+1:1}"
         if [[ "$quote" == "'" ]]; then
-            [[ "$ch" == "'" ]] && quote=""
+            if [[ "$ch" == "'" ]]; then quote=""
+            elif [[ "$ch" == '\' ]] && (( ansi_quote )); then i=$((i + 1)); fi
             continue
         fi
         if [[ "$quote" == '"' ]]; then
-            if [[ "$ch" == '"' ]]; then
-                quote=""
-            elif [[ "$ch" == $'\\' && $((i + 1)) -lt len ]]; then
-                next="${input:i+1:1}"
-                case "$next" in
-                    '$'|'`'|'"'|$'\\'|$'\n') i=$((i + 1)) ;;
-                esac
-            elif [[ "$ch" == '$' && "${input:i+1:1}" == '(' ]]; then
-                return 0
-            elif [[ "$ch" == '`' ]]; then
-                return 0
+            if [[ "$ch" == '"' ]]; then quote=""
+            elif [[ "$ch" == '\' ]]; then
+                case "$next" in '$'|$'\x60'|'"'|'\'|$'\n') i=$((i + 1)) ;; esac
+            elif [[ "$ch" == $'\x60' || ( "$ch" == '$' && "$next" == '(' ) ]]; then return 0
             fi
             continue
         fi
-
         case "$ch" in
-            "'") quote="'" ;;
-            '"') quote='"' ;;
-            $'\\') i=$((i + 1)) ;;
-            '$') [[ "${input:i+1:1}" == '(' ]] && return 0 ;;
-            '`') return 0 ;;
-            '>') [[ "${input:i+1:1}" == '(' ]] && return 0 ;;
-            '<')
-                [[ "${input:i+1:1}" == '(' ]] && return 0
-                if (( ! hd_body_mode )) && [[ "${input:i+1:1}" == '<' && "${input:i+2:1}" != '<' ]]; then
-                    # Candidate heredoc operator: parse optional strip-tabs
-                    # dash, whitespace, then the delimiter word.
-                    local j=$(( i + 2 )) hd_strip=0 hd_spec="" hd_ch
-                    [[ "${input:j:1}" == '-' ]] && { hd_strip=1; j=$(( j + 1 )); }
-                    while [[ "${input:j:1}" == ' ' || "${input:j:1}" == $'\t' ]]; do j=$(( j + 1 )); done
-                    while (( j < len )); do
-                        hd_ch="${input:j:1}"
-                        case "$hd_ch" in
-                            ' '|$'\t'|$'\n'|';'|'&'|'|'|'('|')'|'<'|'>') break ;;
-                        esac
-                        hd_spec+="$hd_ch"; j=$(( j + 1 ))
-                    done
-                    if [[ -n "$hd_spec" ]]; then
-                        # Decode the delimiter (quotes/backslashes removed) and
-                        # record whether any quoting made the body inert.
-                        local hd_delim="" hd_quoted=0 k hd_c
-                        for (( k=0; k<${#hd_spec}; k++ )); do
-                            hd_c="${hd_spec:k:1}"
-                            case "$hd_c" in
-                                "'"|'"') hd_quoted=1 ;;
-                                $'\\')
-                                    hd_quoted=1
-                                    if (( k + 1 < ${#hd_spec} )); then
-                                        k=$(( k + 1 )); hd_delim+="${hd_spec:k:1}"
-                                    fi
-                                    ;;
-                                *) hd_delim+="$hd_c" ;;
-                            esac
-                        done
-                        # Dynamic or empty delimiters cannot be matched safely;
-                        # leave the text to ordinary scanning.
-                        if [[ -n "$hd_delim" && "$hd_delim" != *'$'* && "$hd_delim" != *'`'* && "$hd_delim" != *$'\n'* ]]; then
-                            local _hd_after="${input:j}"
-                            if [[ "$_hd_after" == *$'\n'* ]]; then
-                                local _hd_body="${_hd_after#*$'\n'}"
-                                local _hd_pos=$(( ${#input} - ${#_hd_body} ))
-                                if (( hd_quoted )); then
-                                    # Inert body: skip lines through the
-                                    # closing delimiter.
-                                    local _hd_rest="$_hd_body" _hd_line2 _hd_chk2
-                                    while :; do
-                                        if [[ "$_hd_rest" == *$'\n'* ]]; then
-                                            _hd_line2="${_hd_rest%%$'\n'*}"
-                                            _hd_pos=$(( _hd_pos + ${#_hd_line2} + 1 ))
-                                        else
-                                            _hd_line2="$_hd_rest"
-                                            _hd_pos=$len
-                                        fi
-                                        _hd_chk2="$_hd_line2"
-                                        if (( hd_strip )); then
-                                            while [[ "$_hd_chk2" == $'\t'* ]]; do _hd_chk2="${_hd_chk2#$'\t'}"; done
-                                        fi
-                                        [[ "$_hd_chk2" == "$hd_delim" ]] && break
-                                        [[ "$_hd_rest" != *$'\n'* ]] && break
-                                        _hd_rest="${_hd_rest#*$'\n'}"
-                                    done
-                                    i=$(( _hd_pos - 1 ))
-                                    continue
-                                fi
-                                # Expansion-capable body: scan it, suppressing
-                                # nested heredoc detection until its delimiter.
-                                hd_body_mode=1
-                                hd_bdelim="$hd_delim"
-                                hd_bstrip=$hd_strip
-                                hd_line=""
-                                i=$(( _hd_pos - 1 ))
-                                continue
-                            fi
-                        fi
-                    fi
-                fi
-                ;;
+            "'"|'"')
+                ansi_quote=0
+                if (( i > 0 )) && [[ "$ch" == "'" && "${input:i-1:1}" == '$' ]]; then ansi_quote=1; fi
+                quote="$ch" ;;
+            '\') i=$((i + 1)) ;;
+            '$'|'<'|'>') [[ "$next" == '(' ]] && return 0 ;;
+            $'\x60') return 0 ;;
         esac
     done
     return 1
@@ -1150,56 +1199,17 @@ _agent_gate_has_unsupported_control() {
 _agent_gate_normalize_command_paths() {
     local input="$1" output="" token="" quote="" ch raw plain command inner
     local marker=$'\036'
+    local _AGENT_GATE_PARSE_DEPTH=$(( ${_AGENT_GATE_PARSE_DEPTH:-0} + 1 ))
+    if (( _AGENT_GATE_PARSE_DEPTH > 20 )); then
+        printf '%smainframe-unsupported-shell-syntax ' "$marker"
+        return 0
+    fi
     local -a words=() types=()
     local i len=${#input}
 
-    # First pass: split into shell words, whitespace, and command separators
-    # while keeping quoted and escaped separators inside their original word.
-    for (( i=0; i<len; i++ )); do
-        ch="${input:i:1}"
-        if [[ -n "$quote" ]]; then
-            token+="$ch"
-            if [[ "$ch" == "$quote" ]]; then
-                quote=""
-            elif [[ "$ch" == $'\\' && "$quote" == '"' && $((i + 1)) -lt len ]]; then
-                i=$((i + 1))
-                token+="${input:i:1}"
-            fi
-            continue
-        fi
-
-        case "$ch" in
-            "'"|'"') quote="$ch"; token+="$ch" ;;
-            $'\\')
-                token+="$ch"
-                if (( i + 1 < len )); then
-                    i=$((i + 1))
-                    token+="${input:i:1}"
-                fi
-                ;;
-            ' '|$'\t')
-                if [[ -n "$token" ]]; then
-                    words+=("$token"); types+=(word); token=""
-                fi
-                words+=("$ch"); types+=(space)
-                ;;
-            '<'|'>')
-                if [[ -n "$token" ]]; then
-                    words+=("$token"); types+=(word); token=""
-                fi
-                words+=("$ch"); types+=(operator)
-                ;;
-            $'\n'|';'|'|'|'&'|'('|')')
-                if [[ -n "$token" ]]; then
-                    words+=("$token"); types+=(word); token=""
-                fi
-                words+=("$ch"); types+=(separator)
-                ;;
-            *) token+="$ch" ;;
-        esac
-    done
-    if [[ -n "$token" ]]; then
-        words+=("$token"); types+=(word)
+    _agent_gate_tokenize "$input" || output+="${marker}mainframe-unsupported-shell-syntax "
+    if _agent_gate_has_dynamic_shell_expansion "$input"; then
+        output+="${marker}mainframe-dynamic-shell-expansion "
     fi
 
     local at_command=1 wrapper="" wrapper_arg_pending=0
@@ -1208,8 +1218,9 @@ _agent_gate_normalize_command_paths() {
     local current_command="" shell_code_pending=0
     local find_exec_pending=0 find_embedded_shell=0
     local git_preamble=0 terraform_preamble=0 option_arg_pending=0
+    local global_preamble="" git_reset=0 git_options_ended=0
     local git_config_arg_pending=0
-    local redirect_target_pending=0
+    local redirect_target_pending=0 here_string_pending=0
     local function_name_pending=0
 
     # Heredoc tracking. `<<`/`<<-` queue a body that begins at the next
@@ -1221,13 +1232,14 @@ _agent_gate_normalize_command_paths() {
     local heredoc_delim_pending=0 heredoc_strip_tabs=0
     local body_mode=0 body_cmd="" body_tabs=0 body_delim="" body_code=0
     local body_line="" body_text="" body_line_piped=0
-    local lt_prev=0 pending_pipe=0 line_pipes_to_shell=0
+    local pending_pipe=0 line_pipes_to_shell=0
 
     # Second pass: identify the words the shell treats as executables. Wrapper
     # options are omitted from the analysis form so their operands cannot be
     # mistaken for the wrapped command.
     for (( i=0; i<${#words[@]}; i++ )); do
         raw="${words[i]}"
+        [[ "${types[i]}" == comment ]] && continue
 
         # Heredoc body: accumulate lines until the closing delimiter. Body
         # words are data, so they never receive executable markers; a body
@@ -1268,8 +1280,9 @@ _agent_gate_normalize_command_paths() {
                         current_command=""; shell_code_pending=0
                         find_exec_pending=0; find_embedded_shell=0
                         git_preamble=0; terraform_preamble=0; option_arg_pending=0
+                        global_preamble=""; git_reset=0; git_options_ended=0
                         git_config_arg_pending=0
-                        redirect_target_pending=0
+                        redirect_target_pending=0; here_string_pending=0
                         function_name_pending=0
                     fi
                 else
@@ -1284,7 +1297,6 @@ _agent_gate_normalize_command_paths() {
         case "${types[i]}" in
             space)
                 output+="$raw"
-                lt_prev=0
                 continue
                 ;;
             separator)
@@ -1296,10 +1308,10 @@ _agent_gate_normalize_command_paths() {
                 current_command=""; shell_code_pending=0
                 find_exec_pending=0; find_embedded_shell=0
                 git_preamble=0; terraform_preamble=0; option_arg_pending=0
+                global_preamble=""; git_reset=0; git_options_ended=0
                 git_config_arg_pending=0
-                redirect_target_pending=0
+                redirect_target_pending=0; here_string_pending=0
                 function_name_pending=0
-                lt_prev=0
                 heredoc_delim_pending=0
                 if [[ "$raw" == '|' ]]; then
                     pending_pipe=1
@@ -1328,50 +1340,33 @@ _agent_gate_normalize_command_paths() {
                 continue
                 ;;
             operator)
-                output+="$raw"
-                if [[ "$raw" == '>' ]]; then
+                # Redirect syntax/operands are not command arguments. In
+                # particular descriptor '&' must not truncate option scans.
+                output+=" "
+                if [[ "$raw" == '<<<' ]]; then
+                    here_string_pending=1
+                elif [[ "$raw" == '<<' || "$raw" == '<<-' ]]; then
+                    heredoc_delim_pending=1
+                    heredoc_strip_tabs=0
+                    [[ "$raw" == '<<-' ]] && heredoc_strip_tabs=1
+                else
                     redirect_target_pending=1
-                elif [[ "$raw" == '<' ]]; then
-                    if (( lt_prev )); then
-                        lt_prev=0
-                        # '<<' introduces a heredoc unless a third '<' makes
-                        # it a herestring. A heredoc needs a command on this
-                        # line to receive the body.
-                        if [[ "${types[i+1]:-}" == operator && "${words[i+1]:-}" == '<' ]]; then
-                            : # '<<<' herestring: no body lines follow
-                        elif [[ -n "$current_command" ]]; then
-                            heredoc_delim_pending=1
-                            heredoc_strip_tabs=0
-                        fi
-                    else
-                        lt_prev=1
-                    fi
                 fi
                 continue
                 ;;
         esac
 
         plain=$(_agent_gate_decode_word "$raw")
-        lt_prev=0
 
         # Heredoc delimiter word: queue the body spec instead of treating the
         # word as an argument. `<<-` strips leading tabs from body lines.
         if (( heredoc_delim_pending )); then
-            if [[ "$raw" == "-" ]]; then
-                heredoc_strip_tabs=1
-                output+="$raw"
-                continue
-            fi
             local _hd_spec="$raw"
-            if [[ "$_hd_spec" == -* ]]; then
-                heredoc_strip_tabs=1
-                _hd_spec="${_hd_spec#-}"
-            fi
             local _hd_delim
             _hd_delim=$(_agent_gate_decode_word "$_hd_spec")
             local _hd_quoted=0 _hd_valid=1
             [[ "$_hd_spec" == *"'"* || "$_hd_spec" == *'"'* || "$_hd_spec" == *'\'* ]] && _hd_quoted=1
-            [[ -z "$_hd_delim" || "$_hd_delim" == *$'\n'* ]] && _hd_valid=0
+            [[ "$_hd_delim" == *$'\n'* ]] && _hd_valid=0
             if (( ! _hd_quoted )) && [[ "$_hd_delim" == *'$'* || "$_hd_delim" == *'`'* ]]; then
                 _hd_valid=0   # dynamic delimiter: cannot locate the body end
             fi
@@ -1382,17 +1377,30 @@ _agent_gate_normalize_command_paths() {
                 continue
             fi
             heredoc_delim_pending=0
-            # Invalid spec: fall through and treat the word as an argument.
+            output+="${marker}mainframe-unsupported-shell-syntax "
+        fi
+
+        if (( here_string_pending )); then
+            case "$current_command" in
+                '') output+="${marker}mainframe-unsupported-shell-syntax " ;;
+                sh|bash|dash|zsh|ksh|ssh)
+                    inner=$(_agent_gate_normalize_command_paths "$plain")
+                    output+=" ; $inner ; " ;;
+                *) output+="$plain" ;;
+            esac
+            here_string_pending=0
+            continue
         fi
 
         if (( redirect_target_pending )); then
             if [[ "${plain,,}" =~ ^/dev/(sd|disk|rdisk|nvme) ]]; then
                 output+="${marker}mainframe-raw-device-redirect "
             fi
-            output+="$plain"
             redirect_target_pending=0
             continue
         fi
+
+        if [[ "$raw" =~ ^[0-9]+$ && "${types[i+1]:-}" == operator ]]; then continue; fi
 
         # GNU env -S/--split-string reparses its operand as command argv. Treat
         # that operand as a nested shell command for policy analysis. This is
@@ -1508,6 +1516,7 @@ _agent_gate_normalize_command_paths() {
             at_command=0
             wrapper=""
             git_preamble=0; terraform_preamble=0; option_arg_pending=0
+            global_preamble=""
             case "$command" in
                 sudo|env|nice|command|builtin|exec|nohup|time|timeout|stdbuf)
                     wrapper="$command"
@@ -1517,7 +1526,16 @@ _agent_gate_normalize_command_paths() {
                     ;;
                 git) git_preamble=1 ;;
                 terraform|tofu) terraform_preamble=1 ;;
+                docker|kubectl|aws) global_preamble="$command" ;;
             esac
+            if [[ "$wrapper" != "$command" ]]; then
+                local _hd_index
+                for (( _hd_index=0; _hd_index<${#heredoc_queue[@]}; _hd_index++ )); do
+                    if [[ "${heredoc_queue[_hd_index]}" == $'\x1f'* ]]; then
+                        heredoc_queue[_hd_index]="${command}${heredoc_queue[_hd_index]}"
+                    fi
+                done
+            fi
             # A non-wrapper command consumes a pending pipe; remember when a
             # shell receives it so a queued heredoc body stays shell code.
             if [[ "$wrapper" != "$command" ]] && (( pending_pipe )); then
@@ -1551,12 +1569,12 @@ _agent_gate_normalize_command_paths() {
                 continue
             fi
             case "$plain" in
-                -c)
+                -c|--config-env)
                     option_arg_pending=1
                     git_config_arg_pending=1
                     continue
                     ;;
-                -C|--git-dir|--work-tree|--namespace|--super-prefix|--config-env)
+                -C|--git-dir|--work-tree|--namespace|--super-prefix)
                     option_arg_pending=1
                     git_config_arg_pending=0
                     continue
@@ -1565,10 +1583,16 @@ _agent_gate_normalize_command_paths() {
                     output+="${marker}mainframe-inline-git-alias"
                     continue
                     ;;
+                --config-env=*)
+                    if [[ "${plain,,}" == --config-env=alias.*=* ]]; then
+                        output+="${marker}mainframe-inline-git-alias"
+                    fi
+                    continue
+                    ;;
                 --git-dir=*|--work-tree=*|--namespace=*|--super-prefix=*|--config-env=*|-*)
                     continue
                     ;;
-                *) git_preamble=0 ;;
+                *) git_preamble=0; [[ "${plain,,}" == reset ]] && git_reset=1 ;;
             esac
         elif (( terraform_preamble )); then
             if (( option_arg_pending )); then
@@ -1580,6 +1604,40 @@ _agent_gate_normalize_command_paths() {
                 -chdir=*|-*) continue ;;
                 *) terraform_preamble=0 ;;
             esac
+        elif [[ -n "$global_preamble" ]]; then
+            if (( option_arg_pending )); then
+                option_arg_pending=$((option_arg_pending - 1)); continue
+            fi
+            local _global_key="${plain%%=*}" _global_kind=""
+            case "$global_preamble:$_global_key" in
+                docker:--config|docker:--context|docker:-c|docker:--host|docker:-H|docker:--log-level|docker:-l|docker:--tlscacert|docker:--tlscert|docker:--tlskey|\
+                kubectl:--namespace|kubectl:-n|kubectl:--context|kubectl:--cluster|kubectl:--server|kubectl:-s|kubectl:--user|kubectl:--kubeconfig|kubectl:--token|kubectl:--username|kubectl:--password|kubectl:--client-certificate|kubectl:--client-key|kubectl:--certificate-authority|kubectl:--request-timeout|kubectl:--as|kubectl:--as-group|kubectl:--as-uid|kubectl:--cache-dir|kubectl:--v|kubectl:-v|kubectl:--vmodule|kubectl:--profile|kubectl:--profile-output|kubectl:--kuberc|\
+                aws:--profile|aws:--region|aws:--output|aws:--endpoint-url|aws:--query|aws:--ca-bundle|aws:--cli-read-timeout|aws:--cli-connect-timeout|aws:--color|aws:--cli-binary-format)
+                    _global_kind=value ;;
+                docker:--debug|docker:-D|docker:--tls|docker:--tlsverify|docker:--version|docker:-v|docker:--help|\
+                kubectl:--insecure-skip-tls-verify|kubectl:--disable-compression|kubectl:--match-server-version|kubectl:--warnings-as-errors|kubectl:--help|\
+                aws:--debug|aws:--no-verify-ssl|aws:--no-paginate|aws:--no-sign-request|aws:--version|aws:--no-cli-pager|aws:--cli-auto-prompt|aws:--no-cli-auto-prompt|aws:--help)
+                    _global_kind=flag ;;
+            esac
+            if [[ "$_global_kind" == value ]]; then
+                [[ "$plain" != *=* ]] && option_arg_pending=1
+                continue
+            fi
+            [[ "$_global_kind" == flag ]] && continue
+            case "$global_preamble:$plain" in docker:-[cHl]?*|kubectl:-[nsv]?*) continue ;; esac
+            if [[ "$plain" == -- ]]; then global_preamble=""; continue; fi
+            if [[ "$plain" == -* ]]; then
+                output+="${marker}mainframe-unsupported-shell-syntax "
+                continue
+            fi
+            global_preamble=""
+        fi
+
+        if [[ "$current_command" == git ]] && (( git_reset )); then
+            [[ "$plain" == -- ]] && git_options_ended=1
+            if [[ "$plain" == --hard ]] && (( ! git_options_ended )); then
+                output+="${marker}mainframe-git-reset-hard "
+            fi
         fi
 
         if [[ "$current_command" == find && "$plain" =~ ^-exec(dir)?$ ]]; then
@@ -1709,11 +1767,15 @@ _agent_gate_match() {
     local raw="${2:-$1}" s structured raw_structured marker=$'\036'
     local LC_ALL=C dynamic_executable=false shell_eval=false
     local dynamic_shell_expansion=false unsupported_control=false
-    local runtime_mutation=false
+    local runtime_mutation=false unsupported_syntax=false
     _agent_gate_has_unsupported_control "$raw" && unsupported_control=true
     structured=$(_agent_gate_normalize_command_paths "$1")
     raw_structured=$(_agent_gate_normalize_command_paths "$raw")
     s="${structured,,}"
+    if _agent_gate_has_executable_named "$structured" mainframe-unsupported-shell-syntax ||
+       _agent_gate_has_executable_named "$raw_structured" mainframe-unsupported-shell-syntax; then
+        unsupported_syntax=true
+    fi
     if _agent_gate_has_dynamic_executable "$structured" ||
        _agent_gate_has_dynamic_executable "$raw_structured"; then
         dynamic_executable=true
@@ -1723,6 +1785,10 @@ _agent_gate_match() {
         shell_eval=true
     fi
     _agent_gate_has_dynamic_shell_expansion "$raw" && dynamic_shell_expansion=true
+    if _agent_gate_has_executable_named "$structured" mainframe-dynamic-shell-expansion ||
+       _agent_gate_has_executable_named "$raw_structured" mainframe-dynamic-shell-expansion; then
+        dynamic_shell_expansion=true
+    fi
     _agent_gate_has_runtime_mutation "$s" && runtime_mutation=true
     local rm_flag_tier
     rm_flag_tier=$(_agent_gate_rm_flag_tier "$s")
@@ -1732,42 +1798,42 @@ _agent_gate_match() {
     # These two rules are intentionally conservative. A hook cannot safely
     # prove what eval, command/process substitution, or legacy backticks will
     # execute after approval, so their presence is itself a blocking risk.
-    local re_sudo_rm="${marker}sudo[[:space:]]+${marker}rm([[:space:]]|$)"
-    local re_mkfs="${marker}(mkfs|mkfs\\.[a-z0-9]+|newfs|mkswap)([[:space:]]|$)"
+    local re_sudo_rm="${marker}sudo[[:space:]]+${marker}rm([[:space:];&|()]|$)"
+    local re_mkfs="${marker}(mkfs|mkfs\\.[a-z0-9]+|newfs|mkswap)([[:space:];&|()]|$)"
     local re_dd="${marker}dd[[:space:]][^${marker}]*of=/dev/"
     local re_diskutil="${marker}diskutil[[:space:]]+(erase|partition|unmountdisk|apfs)"
     local re_forkbomb="${marker}:\\(\\)\\{[[:space:]]+${marker}:\\|${marker}:&[[:space:]]+\\};${marker}:|${marker}:\\(\\)[[:space:]]+${marker}\\{:\\|${marker}:&\\};${marker}:"
-    local re_devredir="${marker}mainframe-raw-device-redirect([[:space:]]|$)"
-    local re_chmod777="${marker}chmod[[:space:]]+(([^${marker}]*[[:space:]])?(--recursive|-[a-zA-Z]*[rR][a-zA-Z]*)[[:space:]]+([^${marker}]*[[:space:]])?777([[:space:]]|$)|([^${marker}]*[[:space:]])?777[[:space:]]+([^${marker}]*[[:space:]])?(--recursive|-[a-zA-Z]*[rR][a-zA-Z]*)([[:space:]]|$))"
-    local re_chownR="${marker}chown[[:space:]]+([^${marker}]*[[:space:]])?(--recursive|-[a-zA-Z]*[rR][a-zA-Z]*)([[:space:]]|$)"
-    local re_gitclean="${marker}git[[:space:]]+clean[[:space:]]+([^${marker}]*[[:space:]])?-[a-zA-Z]*[fxd][a-zA-Z]*([[:space:]]|$)"
-    local re_gitreset="${marker}git[[:space:]]+reset[[:space:]]+--hard([[:space:]]|$)"
+    local re_devredir="${marker}mainframe-raw-device-redirect([[:space:];&|()]|$)"
+    local re_chmod777="${marker}chmod[[:space:]]+(([^${marker}]*[[:space:]])?(--recursive|-[a-zA-Z]*[rR][a-zA-Z]*)[[:space:]]+([^${marker}]*[[:space:]])?777([[:space:];&|()]|$)|([^${marker}]*[[:space:]])?777[[:space:]]+([^${marker}]*[[:space:]])?(--recursive|-[a-zA-Z]*[rR][a-zA-Z]*)([[:space:];&|()]|$))"
+    local re_chownR="${marker}chown[[:space:]]+([^${marker}]*[[:space:]])?(--recursive|-[a-zA-Z]*[rR][a-zA-Z]*)([[:space:];&|()]|$)"
+    local re_gitclean="${marker}git[[:space:]]+clean[[:space:]]+([^${marker}]*[[:space:]])?-[a-zA-Z]*[fxd][a-zA-Z]*([[:space:];&|()]|$)"
+    local re_gitreset="${marker}mainframe-git-reset-hard([[:space:];&|()]|$)"
     local re_dockerprune="${marker}docker[[:space:]]+system[[:space:]]+prune[^${marker}]*(-a|--all|--volumes)"
-    local re_kubectl="${marker}kubectl[[:space:]]+delete([[:space:]]|$)"
-    local re_tfdestroy="${marker}(terraform|tofu)[[:space:]]+destroy([[:space:]]|$)"
+    local re_kubectl="${marker}kubectl[[:space:]]+delete([[:space:];&|()]|$)"
+    local re_tfdestroy="${marker}(terraform|tofu)[[:space:]]+destroy([[:space:];&|()]|$)"
     local re_s3rm="${marker}aws[[:space:]]+s3[[:space:]]+rm[^${marker}]*--recursive"
-    local re_finddelete="${marker}find[[:space:]][^${marker}]*-delete([[:space:]]|$)"
-    local re_xargsrm="\\|[[:space:]]*${marker}xargs[[:space:]][^${marker}]*rm([[:space:]]|$)"
+    local re_finddelete="${marker}find[[:space:]][^${marker}]*-delete([[:space:];&|()]|$)"
+    local re_xargsrm="\\|[[:space:]]*${marker}xargs[[:space:]][^${marker}]*rm([[:space:];&|()]|$)"
     local re_rsyncdel="${marker}rsync[[:space:]][^${marker}]*--delete"
-    local re_pipeshell="\\|[[:space:]]*(${marker}(sudo|env|nice|command|nohup|time)[[:space:]]*)*${marker}(bash|sh|dash|zsh)([[:space:]]|$)"
+    local re_pipeshell="\\|[[:space:]]*(${marker}(sudo|env|nice|command|nohup|time)[[:space:]]*)*${marker}(bash|sh|dash|zsh)([[:space:];&|()]|$)"
     local re_pushmirror="${marker}git[[:space:]]+push[[:space:]][^${marker}]*--mirror"
-    local re_killall1="${marker}kill[[:space:]]+(-9|-kill)[[:space:]]+-1([[:space:]]|$)"
-    local re_pushforce="${marker}git[[:space:]]+push[[:space:]][^${marker}]*(--force|-f)([[:space:]]|$)"
-    local re_findexec="${marker}find[[:space:]][^${marker}]*-exec[[:space:]]+${marker}(sh|bash|dash|zsh|rm)([[:space:]]|$)"
+    local re_killall1="${marker}kill[[:space:]]+(-9|-kill)[[:space:]]+-1([[:space:];&|()]|$)"
+    local re_pushforce="${marker}git[[:space:]]+push[[:space:]][^${marker}]*(--force|-f)([[:space:];&|()]|$)"
+    local re_findexec="${marker}find[[:space:]][^${marker}]*-exec[[:space:]]+${marker}(sh|bash|dash|zsh|rm)([[:space:];&|()]|$)"
     local re_pyrmtree="${marker}python[0-9.]*[[:space:]][^${marker}]*(rmtree|os\\.remove|os\\.unlink|os\\.rmdir|\\.unlink\\()"
     local re_perlunlink="${marker}perl[[:space:]][^${marker}]*(unlink|rmtree)"
     local re_rbrm="${marker}ruby[[:space:]][^${marker}]*(rm_rf|rmtree|fileutils)"
     local re_noderm="${marker}node[[:space:]][^${marker}]*(rmsync|unlinksync|fs\\.rm)"
-    local re_project_memory_init="${marker}mainframe[[:space:]]+awm[[:space:]]+(project[[:space:]]+ensure([[:space:]]|$)|init[[:space:]][^${marker}]*--namespace(=|[[:space:]]+)projects([[:space:]]|$))|${marker}awm_project_ensure([[:space:]]|$)|${marker}awm_init[[:space:]][^${marker}]*--namespace(=|[[:space:]]+)projects([[:space:]]|$)"
-    local re_project_memory_close="${marker}mainframe[[:space:]]+awm[[:space:]]+project[[:space:]]+close([[:space:]]|$)"
-    local re_mainframe_yes="${marker}mainframe[[:space:]][^${marker}]*--yes([[:space:]]|$)"
+    local re_project_memory_init="${marker}mainframe[[:space:]]+awm[[:space:]]+(project[[:space:]]+ensure([[:space:];&|()]|$)|init[[:space:]][^${marker}]*--namespace(=|[[:space:]]+)projects([[:space:];&|()]|$))|${marker}awm_project_ensure([[:space:];&|()]|$)|${marker}awm_init[[:space:]][^${marker}]*--namespace(=|[[:space:]]+)projects([[:space:];&|()]|$)"
+    local re_project_memory_close="${marker}mainframe[[:space:]]+awm[[:space:]]+project[[:space:]]+close([[:space:];&|()]|$)"
+    local re_mainframe_yes="${marker}mainframe[[:space:]][^${marker}]*--yes([[:space:];&|()]|$)"
     local re_truncate="${marker}truncate[[:space:]]+(-s|--size)[[:space:]]"
-    local re_gitwipe="${marker}git[[:space:]]+(checkout|restore)[[:space:]]+(--[[:space:]]+)?\\.([[:space:]]|$)"
-    local re_killall="${marker}killall([[:space:]]|$)"
-    local re_npmpub="${marker}npm[[:space:]]+publish([[:space:]]|$)"
-    local re_crontab="${marker}crontab[[:space:]]+-r([[:space:]]|$)"
-    local re_launchctl="${marker}launchctl[[:space:]]+(load|unload|remove|kickstart)([[:space:]]|$)"
-    local re_inline_git_alias="${marker}mainframe-inline-git-alias([[:space:]]|$)"
+    local re_gitwipe="${marker}git[[:space:]]+(checkout|restore)[[:space:]]+(--[[:space:]]+)?\\.([[:space:];&|()]|$)"
+    local re_killall="${marker}killall([[:space:];&|()]|$)"
+    local re_npmpub="${marker}npm[[:space:]]+publish([[:space:];&|()]|$)"
+    local re_crontab="${marker}crontab[[:space:]]+-r([[:space:];&|()]|$)"
+    local re_launchctl="${marker}launchctl[[:space:]]+(load|unload|remove|kickstart)([[:space:];&|()]|$)"
+    local re_inline_git_alias="${marker}mainframe-inline-git-alias([[:space:];&|()]|$)"
 
     # --- critical -------------------------------------------------------------
     [[ "$unsupported_control" == "true" ]] \
@@ -1788,6 +1854,7 @@ _agent_gate_match() {
     [[ "$s" =~ $re_diskutil ]] && { printf 'critical diskutil-erase'; return 0; }
     [[ "$s" =~ $re_forkbomb ]] && { printf 'critical fork-bomb'; return 0; }
     [[ "$s" =~ $re_devredir ]] && { printf 'critical raw-device-redirect'; return 0; }
+    [[ "$unsupported_syntax" == "true" ]] && { printf 'critical unsupported-shell-syntax'; return 0; }
 
     # --- high -----------------------------------------------------------------
     [[ "$rm_flag_tier" == "high" ]] \
@@ -2592,6 +2659,10 @@ agent_ensure_line() {
         return 1
     fi
 
+    if [[ -n "$AGENT_SAFE_BASE" ]]; then
+        _agent_confine_path "$path" "ensure_line" || return 1
+    fi
+
     # Check if line exists
     if [[ -f "$path" ]] && grep -qxF "$line" "$path" 2>/dev/null; then
         agent_audit "ensure_line_exists" "path=$path"
@@ -2629,6 +2700,13 @@ agent_ensure_symlink() {
     if (( ! ${_AGENT_PROFILE_CAN_WRITE[$AGENT_CURRENT_PROFILE]:-0} )); then
         agent_error "write operation not allowed in profile '$AGENT_CURRENT_PROFILE'"
         return 1
+    fi
+
+    if [[ -n "$AGENT_SAFE_BASE" ]]; then
+        _agent_confine_path "$link" "ensure_symlink" entry || return 1
+        local target_path="$target"
+        [[ "$target" == /* ]] || target_path="$(dirname -- "$link")/$target"
+        _agent_confine_path "$target_path" "symlink referent" || return 1
     fi
 
     # Check if correct symlink already exists

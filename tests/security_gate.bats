@@ -19,11 +19,12 @@
 load 'test_helper'
 
 setup() {
+    TEST_DIR=$(create_test_dir "security_gate")
+    export AWM_ROOT="$TEST_DIR/awm"
     source_lib "agent_safety"
     source_lib "validation"
     source_lib "guard"
     export MAINFRAME_QUIET=1
-    TEST_DIR=$(create_test_dir "security_gate")
     export AGENT_AUDIT_LOG="$TEST_DIR/audit.jsonl"
     export AGENT_SAFE_BASE="$TEST_DIR"
     export AGENT_CURRENT_PROFILE="project"

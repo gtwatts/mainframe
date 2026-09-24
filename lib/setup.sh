@@ -1,19 +1,32 @@
 #!/usr/bin/env bash
 # =============================================================================
-# MAINFRAME/lib/setup.sh - Guided, discovery-first coding-agent setup
+# MAINFRAME/lib/setup.sh - Discovery-first Pi setup and frozen legacy setup
 # =============================================================================
-# Without an explicit --host this command is strictly read-only. It reports the
-# local shell, project-hook host signals, and Pi's separate user-package state,
-# then prints exact next commands. Project-hook hosts delegate to onboarding;
-# Pi delegates only to its dedicated package manager with explicit intent.
+# Pi discovery is read-only until --dry-run or --yes selects package setup.
+# Explicit legacy setup retains project-hook discovery and onboarding.
 # =============================================================================
 
 [[ -n "${_MAINFRAME_SETUP_LOADED:-}" ]] && return 0
 declare -g _MAINFRAME_SETUP_LOADED=1
 
 _mainframe_setup_usage() {
+    if [[ "${_MAINFRAME_LEGACY:-false}" != true ]]; then
+        cat <<'EOF'
+Usage: mainframe setup --project <dir> [--proof | --dry-run | --yes]
+
+Without an action, inspect installation and Pi package state without changes.
+  --proof    Exercise an isolated invocation, checkpoint, and policy canary.
+             This does not prove live Pi protection.
+  --dry-run  Preview installation of the Pi package.
+  --yes      Apply the reviewed Pi package setup.
+  --host pi  Optional explicit host selection. Pi is the only supported host.
+
+After setup, run /reload and /mainframe doctor inside Pi.
+EOF
+        return 0
+    fi
     cat <<'EOF'
-Usage: mainframe setup --project <dir> [--proof] [--host <host>] [--runtime <source>] [--dry-run] [--yes]
+Usage: mainframe legacy setup --project <dir> [--proof] [--host <host>] [--runtime <source>] [--dry-run] [--yes]
 
 Project-hook hosts: codex, claude-code, copilot, gemini
 Pi uses a separate user-package flow: --host pi
@@ -198,7 +211,7 @@ _mainframe_setup_proof_host_summary() {
     printf ' %s' "${detected_hosts[@]}"
     printf '\n'
     printf -v _MAINFRAME_SETUP_PROOF_HOST_ACTION \
-        'mainframe host status %q --runtime auto' "$first_host"
+        'mainframe legacy host status %q --runtime auto' "$first_host"
 }
 
 _mainframe_setup_proof_pi_summary() {
@@ -439,11 +452,13 @@ _mainframe_setup_proof() (
         _mainframe_setup_error 'shell policy proof returned an unexpected decision'
         return 1
     fi
-    printf 'Shell policy:       PASS (classification only; canary not executed; rule=terraform-destroy)\n'
+    printf 'Policy canary:      PASS (terraform-destroy classification only; not a safety certification)\n'
 
     printf '\nConcise integration discovery\n'
     _mainframe_setup_proof_pi_summary "$project" "$discovery_path"
-    _mainframe_setup_proof_host_summary "$project" "$discovery_path"
+    if [[ "${_MAINFRAME_LEGACY:-false}" == true ]]; then
+        _mainframe_setup_proof_host_summary "$project" "$discovery_path"
+    fi
     next_action="${_MAINFRAME_SETUP_PROOF_PI_ACTION:-}"
     [[ -n "$next_action" ]] || \
         next_action="${_MAINFRAME_SETUP_PROOF_HOST_ACTION:-}"
@@ -817,6 +832,14 @@ _mainframe_setup_discovery() {
     _mainframe_setup_shell_report "$project" "$discovery_path"
     _mainframe_setup_pi_report "$project" "$discovery_path"
 
+    if [[ "${_MAINFRAME_LEGACY:-false}" != true ]]; then
+        printf '\nSupported host: Pi\n'
+        printf 'Live protection: UNVERIFIED by this offline report.\n'
+        printf 'Next: mainframe pi doctor, then /mainframe doctor inside Pi.\n'
+        printf 'To preview setup: mainframe setup --project %q --dry-run\n' "$project"
+        return 0
+    fi
+
     printf '\nSupported host discovery\n'
     printf '  %-13s %-14s %-11s %s\n' 'HOST' 'CLI' 'PROTECTION' 'PROJECT MARKERS'
     while IFS= read -r host; do
@@ -916,23 +939,33 @@ _mainframe_setup_discovery() {
         if [[ "${runtime_states[$host]:-unavailable}" != 'ready' ]]; then
             printf '  # %s runtime is %s under policy %s\n' \
                 "$host" "${runtime_states[$host]:-unavailable}" "$runtime_policy"
-            printf '  mainframe host status %q --runtime %q\n' \
+            printf '  mainframe legacy host status %q --runtime %q\n' \
                 "$host" "$runtime_policy"
-            _mainframe_host_recovery_hints \
+            _mainframe_setup_legacy_recovery_hints \
                 "$host" "$runtime_policy" \
                 "${managed_states[$host]:-unsupported}" "$project"
         elif [[ "${launch_ready[$host]:-false}" == 'true' ]]; then
-            printf '  mainframe launch %q --project %q --runtime %q --dry-run\n' \
+            printf '  mainframe legacy launch %q --project %q --runtime %q --dry-run\n' \
                 "$host" "$project" "$runtime_policy"
-            printf '  mainframe launch %q --project %q --runtime %q\n' \
+            printf '  mainframe legacy launch %q --project %q --runtime %q\n' \
                 "$host" "$project" "$runtime_policy"
         else
-            printf '  mainframe setup --project %q --host %q --runtime %q --dry-run\n' \
+            printf '  mainframe legacy setup --project %q --host %q --runtime %q --dry-run\n' \
                 "$project" "$host" "$runtime_policy"
-            printf '  mainframe setup --project %q --host %q --runtime %q\n' \
+            printf '  mainframe legacy setup --project %q --host %q --runtime %q\n' \
                 "$project" "$host" "$runtime_policy"
         fi
     done < <(_mainframe_setup_hosts)
+}
+
+_mainframe_setup_legacy_recovery_hints() {
+    local hints
+    hints="$(_mainframe_host_recovery_hints "$@")" || return $?
+    hints="${hints//mainframe host /mainframe legacy host }"
+    hints="${hints//mainframe setup /mainframe legacy setup }"
+    hints="${hints//mainframe launch /mainframe legacy launch }"
+    hints="${hints//mainframe onboard /mainframe legacy onboard }"
+    printf '%s\n' "$hints"
 }
 
 mainframe_setup() {
@@ -1005,6 +1038,10 @@ mainframe_setup() {
         _mainframe_setup_usage >&2
         return 2
     fi
+    if [[ "$host_set" == true && "${_MAINFRAME_LEGACY:-false}" != true && "$host" != pi ]]; then
+        _mainframe_setup_error 'only Pi is supported; old integrations use mainframe legacy setup'
+        return 2
+    fi
     if [[ "$host_set" == 'true' ]] && ! _mainframe_setup_target_supported "$host"; then
         _mainframe_setup_error \
             "unsupported host: $host (supported: codex, claude-code, copilot, gemini, pi)"
@@ -1026,6 +1063,17 @@ mainframe_setup() {
         _mainframe_setup_error "could not resolve project directory: $project"
         return 2
     }
+
+    if [[ "${_MAINFRAME_LEGACY:-false}" != true ]]; then
+        if [[ "$runtime_set" == true ]]; then
+            _mainframe_setup_error '--runtime is a legacy multi-agent option; Pi uses its installed runtime'
+            return 2
+        fi
+        if [[ "$proof" != true && ( "$dry_run" == true || "$assume_yes" == true ) ]]; then
+            host=pi
+            host_set=true
+        fi
+    fi
 
     if [[ "$proof" == true ]] &&
        [[ "$host_set" == true || "$runtime_set" == true ||
@@ -1076,9 +1124,9 @@ mainframe_setup() {
         fi
         _mainframe_setup_error \
             "${_MAINFRAME_RUNTIME_ERROR:-host runtime resolution failed}; onboarding was not changed"
-        printf 'Inspect host runtime state:\n  mainframe host status %q --runtime %q\n' \
+        printf 'Inspect host runtime state:\n  mainframe legacy host status %q --runtime %q\n' \
             "$host" "$runtime_policy" >&2
-        _mainframe_host_recovery_hints \
+        _mainframe_setup_legacy_recovery_hints \
             "$host" "$runtime_policy" \
             "$recovery_managed_state" "$canonical_project" >&2
         return 1

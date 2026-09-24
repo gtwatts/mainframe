@@ -19,6 +19,7 @@ setup() {
     mkdir -p "$TEST_HOME" "$RUNTIME_ROOT/bin" "$RUNTIME_ROOT/lib"
     cp "$PROJECT_ROOT/bin/mainframe" "$RUNTIME_ROOT/bin/mainframe"
     cp "$PROJECT_ROOT/lib/common.sh" "$RUNTIME_ROOT/lib/common.sh"
+    cp "$PROJECT_ROOT/lib/runtime-closure.generated.bash" "$RUNTIME_ROOT/lib/runtime-closure.generated.bash"
     chmod 755 "$RUNTIME_ROOT/bin/mainframe"
     write_stub_uninstaller
 }
@@ -34,6 +35,7 @@ set -euo pipefail
 {
     printf 'install_dir=%s\n' "${MAINFRAME_INSTALL_DIR:-}"
     printf 'root=%s\n' "${MAINFRAME_ROOT:-}"
+    printf 'bin_dir=%s\n' "${MAINFRAME_BIN_DIR:-}"
     printf 'bash=%s\n' "${MAINFRAME_BASH:-}"
     printf 'argc=%d\n' "$#"
     index=0
@@ -79,7 +81,7 @@ write_release_receipt() {
     uninstaller_sha="$(sha256_file "$RUNTIME_ROOT/uninstall.sh")"
     printf '%s  uninstall.sh\n' "$uninstaller_sha" > "$RUNTIME_ROOT/SHA256SUMS"
     manifest_sha="$(sha256_file "$RUNTIME_ROOT/SHA256SUMS")"
-    bin_dir="$TEST_HOME/.local/bin"
+    bin_dir="${TEST_RECEIPT_BIN_DIR:-$TEST_HOME/.local/bin}"
     mkdir -p "$bin_dir"
     jq -n \
         --arg version "10.2.0" \
@@ -160,6 +162,27 @@ make_hostile_tool_path() {
     grep -Fxq 'argc=1' "$LOG_FILE"
     grep -Fxq 'arg[0]=--dry-run' "$LOG_FILE"
     [[ -f "$RUNTIME_ROOT/uninstall.sh" ]]
+}
+
+@test "uninstall preserves the validated release receipt custom bin directory" {
+    TEST_RECEIPT_BIN_DIR="$TEST_HOME/custom bin"
+    write_release_receipt
+    run_runtime_cli \
+        "$BASH_BIN" "$RUNTIME_ROOT/bin/mainframe" uninstall --dry-run
+    [[ "$status" -eq 0 ]]
+    grep -Fxq "bin_dir=$TEST_RECEIPT_BIN_DIR" "$LOG_FILE"
+}
+
+@test "uninstall rejects a receipt whose CLI link disagrees with its bin directory" {
+    write_release_receipt
+    local receipt="$RUNTIME_ROOT/.mainframe-install-receipt.json"
+    jq '.cli_link = "/unrelated/mainframe"' "$receipt" > "$receipt.tmp"
+    mv "$receipt.tmp" "$receipt"
+    chmod 600 "$receipt"
+    run_runtime_cli \
+        "$BASH_BIN" "$RUNTIME_ROOT/bin/mainframe" uninstall --dry-run
+    [[ "$status" -ne 0 ]]
+    [[ ! -e "$LOG_FILE" ]]
 }
 
 @test "source-owned uninstall ignores caller PATH tr and Git shims" {

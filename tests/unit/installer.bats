@@ -133,6 +133,12 @@ assert_unsafe_install_target_stops_at_preflight() {
 
 canonical_cli_commands() {
     awk '
+        BEGIN {
+            # These preserved handlers require the explicit legacy dispatcher.
+            legacy_only["host"] = legacy_only["onboard"] = 1
+            legacy_only["launch"] = legacy_only["activate"] = 1
+            print "legacy"
+        }
         /^if \[\[ "\$\{1:-\}" == "[A-Za-z][A-Za-z0-9-]*" \]\]; then$/ {
             public_command = $0
             sub(/^.*== "/, "", public_command)
@@ -156,7 +162,7 @@ canonical_cli_commands() {
 
             count = split(command_spec, names, "|")
             for (command_index = 1; command_index <= count; command_index++) {
-                if (names[command_index] !~ /^-/) {
+                if (names[command_index] !~ /^-/ && !legacy_only[names[command_index]]) {
                     print names[command_index]
                 }
             }

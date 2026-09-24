@@ -9,8 +9,22 @@ setup() {
         "$PROJECT_ROOT/config" \
         "$PROJECT_ROOT/scripts/dev/native-host" \
         "$PROJECT_ROOT/tests"
-    cp "$TEMPLATE_ROOT/VERSION" "$PROJECT_ROOT/VERSION"
+    # Synthetic historical artifact subject: keep VERSION, manifest, archive,
+    # tag and CLI arguments at 10.2.0 without certifying the current release.
+    printf '10.2.0\n' > "$PROJECT_ROOT/VERSION"
     cp "$TEMPLATE_ROOT/config/pi-compatibility.json" "$PROJECT_ROOT/config/"
+    python3 - "$PROJECT_ROOT/config/pi-compatibility.json" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+fixture = json.loads(path.read_text(encoding="utf-8"))
+fixture["mainframe_version"] = "10.2.0"
+fixture["certifications"] = [record for record in fixture["certifications"] if record["mainframe_version"] == "10.2.0"]
+assert len(fixture["certifications"]) == 2, "historical fixture requires its two unchanged 10.2.0 records"
+path.write_text(json.dumps(fixture, indent=2) + "\n", encoding="utf-8")
+PY
     cp "$TEMPLATE_ROOT/.github/pi-evidence-contract.json" "$PROJECT_ROOT/.github/"
     cp "$TEMPLATE_ROOT/.github/schemas/pi-release-evidence.schema.json" \
         "$PROJECT_ROOT/.github/schemas/"

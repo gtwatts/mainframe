@@ -419,6 +419,7 @@ class ProjectMemoryControlPlaneTestCase(unittest.TestCase):
         self.assertEqual(binding["expires_at"], "2026-08-20T12:01:00Z")
         reserved_ids = (request.run_id, request.call_id, request.decision_id)
 
+        executed_before = len(self.executor.requests)
         self.clock.value += timedelta(hours=1)
         completed = self.invoke(
             "memory-reserved-ttl", PROJECT_MEMORY_CHECKPOINT, tool_input
@@ -427,7 +428,13 @@ class ProjectMemoryControlPlaneTestCase(unittest.TestCase):
         self.assertEqual(
             (completed.run_id, completed.call_id, completed.decision_id), reserved_ids
         )
-        self.assertEqual(completed.receipt["expires_at"], "2026-08-20T12:01:00Z")
+        self.assertEqual(completed.outcome, "failed")
+        self.assertIsNone(completed.receipt)
+        self.assertIsNone(completed.memory_record)
+        self.assertEqual(len(self.executor.requests), executed_before)
+        self.assertEqual(self.control.snapshot().canonical_requests[
+            "memory-reserved-ttl"
+        ].reservation_binding["expires_at"], "2026-08-20T12:01:00Z")
         self.assertNotIn(b"reservation-secret", self.ledger.read_bytes())
 
     def test_all_operations_and_handoff_are_separate_immutable_aggregates(self) -> None:

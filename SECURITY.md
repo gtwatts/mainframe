@@ -2,7 +2,14 @@
 
 ## MAINFRAME Security Philosophy
 
-MAINFRAME is designed as an **AI-Native Bash Runtime** where security is foundational, not an afterthought. AI agents controlling computer systems through bash commands must operate within strict safety boundaries.
+MAINFRAME provides shell policy, task checkpoints, and execution evidence for
+Pi. Its shell gate classifies supported command syntax before execution. It is
+not an OS sandbox, and it does not gate Pi's native file write/edit tools or
+arbitrary third-party extensions. Use OS isolation when running hostile code.
+
+Version 10.3 focuses active development and local verification on Pi. Earlier
+multi-agent adapters and the broad Bash toolbox remain frozen compatibility
+code. A locally verified Pi build is not evidence of a published stable release.
 
 ### Core Security Principles
 
@@ -15,11 +22,12 @@ MAINFRAME is designed as an **AI-Native Bash Runtime** where security is foundat
 
 ## Supported Versions
 
-| Version | Supported          | Security Updates |
-| ------- | ------------------ | ---------------- |
-| 10.1.x  | :white_check_mark: | Active           |
-| 10.0.x  | :white_check_mark: | Security only    |
-| < 10.0  | :x:                | End of life      |
+| Version | Status | Scope |
+| ------- | ------ | ----- |
+| 10.3.x | Active development, local verification | Pi |
+| 10.2.x and earlier | Historical compatibility code | No new integration work |
+
+This table describes development scope, not a public release certification.
 
 ## Reporting a Vulnerability
 
@@ -79,7 +87,7 @@ Understanding it matters for deciding how much to trust each layer.
 | Threat | Defense |
 |--------|---------|
 | AI agent **mistakes** (wrong flags, wrong paths, hallucinated commands) | Destructive-command gate, risk scoring, profile tiers, path confinement |
-| Supported coding-agent shell calls before execution | Explicit Codex, Claude Code, Copilot CLI, and Gemini CLI pre-tool Agent Gateway activation |
+| Pi shell calls before execution | Pi agent shell and user shell hooks, checked against the loaded policy |
 | **Silent failures** that cascade into bad agent decisions | Structured errors (USOP), audit trails, fail-closed validation |
 | **Accidental** destructive operations (`rm -rf` wrong dir, `dd` to wrong device) | Destructive tier (system profile required), enforced risk threshold with approval flow |
 | Path traversal **in tool input** (`../`, encoded variants, symlink escapes) | Canonicalized path validation, boundary-aware containment |

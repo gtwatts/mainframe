@@ -128,6 +128,8 @@ expected_allowlist = [
     "security/gate-normalizer.mjs",
     "security/gate-rules.json",
     "skills/pi/SKILL.md",
+    "skills/pi/runtime-verification.mjs",
+    "scripts/dev/verify-pi-runtime.mjs",
     "skills/pi/extensions/mainframe.ts",
 ]
 assert manifest.get("files") == expected_allowlist, manifest.get("files")
@@ -172,6 +174,8 @@ required = {
     "security/gate-normalizer.mjs",
     "security/gate-rules.json",
     "skills/pi/SKILL.md",
+    "skills/pi/runtime-verification.mjs",
+    "scripts/dev/verify-pi-runtime.mjs",
     "skills/pi/extensions/mainframe.ts",
 }
 missing = sorted(required - paths)
@@ -188,6 +192,7 @@ missing_registry_files = sorted(registry_files - paths)
 assert not missing_registry_files, f"registry libraries are missing: {missing_registry_files}"
 
 allowed_roots = {
+    "scripts",
     "LICENSE",
     "README.md",
     "VERSION",
@@ -243,8 +248,10 @@ assert {path for path in paths if path.startswith("security/")} == {
 assert {path for path in paths if path.startswith("skills/")} == {
     "skills/README.md",
     "skills/pi/SKILL.md",
+    "skills/pi/runtime-verification.mjs",
     "skills/pi/extensions/mainframe.ts",
 }
+assert {path for path in paths if path.startswith("scripts/")} == {"scripts/dev/verify-pi-runtime.mjs"}
 packed_libraries = {path for path in paths if path.startswith("lib/")}
 source_libraries = {
     str(path.relative_to(manifest_path.parent))
@@ -256,11 +263,11 @@ assert packed_libraries == source_libraries, {
     "extra": sorted(packed_libraries - source_libraries),
 }
 
-for forbidden in (".pi/", ".github/", "benchmarks/", "bindings/", "demos/", "docs/", "evals/", "lsp/", "mcp/", "packaging/", "scripts/", "tests/"):
+for forbidden in (".pi/", ".github/", "benchmarks/", "bindings/", "demos/", "docs/", "evals/", "lsp/", "mcp/", "packaging/", "tests/"):
     assert not any(path.startswith(forbidden) for path in paths), forbidden
 
 assert report["entryCount"] == len(files)
-assert report["entryCount"] <= 240, report["entryCount"]
+assert report["entryCount"] <= 250, report["entryCount"]
 assert report["size"] <= 10_000_000, report["size"]
 assert report["unpackedSize"] <= 20_000_000, report["unpackedSize"]
 print(json.dumps({
@@ -300,7 +307,7 @@ const version = readFileSync(join(root, "VERSION"), "utf8").trim();
 if (manifest.name !== "@gtwatts/mainframe-pi" || manifest.version !== version) {
   throw new Error(`unexpected packed manifest: ${JSON.stringify(manifest)}`);
 }
-const loaderPath = join(dirname(piCli), "core", "extensions", "loader.js");
+const loaderPath = join(piCli.replace(/\/dist\/(?:bundle\/)?cli\.js$/, "/dist"), "core", "extensions", "loader.js");
 if (!existsSync(loaderPath)) throw new Error(`Pi extension loader not found: ${loaderPath}`);
 const { loadExtensions } = await import(pathToFileURL(loaderPath).href);
 const extensionPath = join(root, "skills", "pi", "extensions", "mainframe.ts");

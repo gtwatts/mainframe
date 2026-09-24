@@ -136,10 +136,15 @@ if ! report_or_fix "Pi compatibility MAINFRAME version" "$PI_COMPATIBILITY" "$cu
         echo "ERROR: refusing to overwrite existing backup: $PI_COMPATIBILITY.bak" >&2
         exit 1
     }
-    sed -i.bak \
-        "s/^[[:space:]]*\"mainframe_version\": \".*\",/  \"mainframe_version\": \"$VERSION\",/" \
-        "$PI_COMPATIBILITY"
-    rm -f -- "$PI_COMPATIBILITY.bak"
+    # Only the package version moves. Historical certifications describe the
+    # version that was actually exercised and cannot be promoted by a bump.
+    "$MAINFRAME_RELEASE_PYTHON" -I -S -B - "$PI_COMPATIBILITY" "$VERSION" <<'PYEOF'
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+document = json.loads(path.read_text())
+document["mainframe_version"] = sys.argv[2]
+path.write_text(json.dumps(document, indent=2) + "\n")
+PYEOF
 fi
 
 # --- MCP Python distribution ------------------------------------------------

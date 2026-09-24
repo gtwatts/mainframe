@@ -289,7 +289,7 @@ mainframe_onboard() {
         return 1
     fi
 
-    if preview_output="$("$cli" activate "$host" --project "$canonical_project" --enforce --dry-run 2>&1)"; then
+    if preview_output="$("$cli" legacy activate "$host" --project "$canonical_project" --enforce --dry-run 2>&1)"; then
         preview_status=0
     else
         preview_status=$?
@@ -369,7 +369,7 @@ mainframe_onboard() {
     printf 'AWM project session:  RECORDED (%s; non-authoritative)\n' "$awm_session_id"
     printf 'AWM project reads:    READY (durable control-plane; non-authoritative data)\n'
 
-    if apply_output="$("$cli" activate "$host" --project "$canonical_project" --enforce 2>&1)"; then
+    if apply_output="$("$cli" legacy activate "$host" --project "$canonical_project" --enforce 2>&1)"; then
         apply_status=0
     else
         apply_status=$?

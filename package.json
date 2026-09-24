@@ -1,7 +1,7 @@
 {
   "name": "@gtwatts/mainframe-pi",
-  "version": "10.2.0",
-  "description": "Native Pi integration for the MAINFRAME agent-safe Bash runtime",
+  "version": "10.3.0",
+  "description": "Shell policy, task checkpoints, and execution evidence for Pi",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -38,6 +38,8 @@
     "security/gate-normalizer.mjs",
     "security/gate-rules.json",
     "skills/pi/SKILL.md",
+    "skills/pi/runtime-verification.mjs",
+    "scripts/dev/verify-pi-runtime.mjs",
     "skills/pi/extensions/mainframe.ts"
   ],
   "peerDependencies": {

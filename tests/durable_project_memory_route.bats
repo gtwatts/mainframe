@@ -437,7 +437,7 @@ PY
     [[ "$output" == "project_memory_liveness=no_orphan" ]]
 }
 
-@test "project memory: setup and onboard succeed without authority claims" {
+@test "project memory: setup and legacy onboard succeed without authority claims" {
     run env \
         HOME="$TEST_HOME" XDG_STATE_HOME="$STATE_HOME" AWM_ROOT="$POISON_AWM_ROOT" \
         MAINFRAME_ROOT="$PROJECT_ROOT" MAINFRAME_BASH="$BASH_BIN" \
@@ -449,7 +449,7 @@ PY
     run env \
         HOME="$TEST_HOME" XDG_STATE_HOME="$STATE_HOME" AWM_ROOT="$POISON_AWM_ROOT" \
         MAINFRAME_ROOT="$PROJECT_ROOT" MAINFRAME_BASH="$BASH_BIN" \
-        "$MAINFRAME_BIN" onboard --host codex --project "$PROJECT_DIR" --dry-run
+        "$MAINFRAME_BIN" legacy onboard --host codex --project "$PROJECT_DIR" --dry-run
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"non-authoritative"* || "$output" == *"non-authorizing"* ]]
     [[ "$output" != *"authoritative=true"* ]]

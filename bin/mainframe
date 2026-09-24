@@ -27,7 +27,7 @@
 #   pi          Diagnose, install, or remove the native Pi package integration
 #   control-plane  Operate the durable run/approval/evidence kernel
 #   claim       Verify the evidence-bound control-plane promotion claim
-#   setup       Discover shells/hosts or explicitly onboard one host
+#   setup       Inspect or configure the native Pi package
 #   onboard     Preview, consent to, and verify one protected host setup
 #   launch      Preflight and start one onboarded coding-agent host
 #   update      Update MAINFRAME (if installed via git)
@@ -341,7 +341,11 @@ esac
 _mainframe_cli_caller_path="${PATH:-}"
 _MAINFRAME_CLI_CALLER_PATH="$_mainframe_cli_caller_path"
 _mainframe_cli_restore_caller_path=false
-case "${1:-}" in
+_mainframe_cli_discovery_command="${1:-}"
+if [[ "$_mainframe_cli_discovery_command" == legacy ]]; then
+    _mainframe_cli_discovery_command="${2:-}"
+fi
+case "$_mainframe_cli_discovery_command" in
     launch)
         export _MAINFRAME_LAUNCH_DISCOVERY_PATH="$_mainframe_cli_caller_path"
         ;;
@@ -354,7 +358,7 @@ case "${1:-}" in
             export _MAINFRAME_AGENT_DISCOVERY_PATH="$_mainframe_cli_caller_path"
         fi
         ;;
-    pi)
+    pi|status)
         # Pi status/lifecycle never executes the discovered CLI. Preserve the
         # caller PATH only as data so `pi doctor` can identify the executable
         # the user's shell would select while the command itself stays on the
@@ -372,6 +376,7 @@ case "${1:-}" in
         _mainframe_cli_restore_caller_path=true
         ;;
 esac
+unset _mainframe_cli_discovery_command
 
 PATH=/usr/bin:/bin:/usr/sbin:/sbin
 export PATH
@@ -810,6 +815,49 @@ fi
 # =============================================================================
 
 show_help() {
+    cat <<'EOF'
+MAINFRAME for Pi - Shell policy, task checkpoints, and execution evidence
+
+Usage: mainframe <command> [options]
+
+Start here:
+  mainframe setup --project .            Inspect this installation and Pi
+  mainframe setup --project . --proof    Exercise isolated local mechanisms
+  mainframe setup --project . --dry-run  Preview Pi package setup
+  mainframe status                      Inspect Pi readiness (offline)
+  /mainframe doctor                     Check the running session inside Pi
+
+Pi commands:
+  status      Inspect Pi compatibility and package state; accepts --json
+  setup       Inspect or explicitly configure the Pi package
+  pi          Package status, doctor, install, remove, and restore
+  doctor      Check local installation health, separate from live protection
+  version     Show the selected version and runtime
+
+Task memory and reviewed tools:
+  awm         Project checkpoints, discoveries, progress, and handoffs
+  work        Read a bounded task brief from existing project memory
+  invoke      Execute one of the reviewed canonical contracts
+  search      Discover optional Bash helpers
+  help NAME   Inspect a helper before using it
+
+Maintenance:
+  shell       Inspect or repair shell integration
+  release     Report publication readiness; local verification is separate
+  upgrade     Upgrade a receipt-backed release with recovery
+  uninstall   Preview or perform recoverable removal
+  test        Run tests
+  legacy      Show frozen compatibility commands for previous integrations
+
+Only Pi is in active product scope. The legacy Bash toolbox remains available
+for existing scripts. Shell policy is not an operating-system sandbox; Pi's
+native write/edit tools and other extensions are outside its protection.
+
+Documentation: https://github.com/gtwatts/mainframe
+EOF
+}
+
+show_legacy_help() {
     cat << 'EOF'
 MAINFRAME - Safer shell runtime and durable memory for coding agents
 
@@ -1355,7 +1403,7 @@ cmd_doctor() {
 
     echo -n "Agent gateway:  "
     if [[ -x "${MAINFRAME_ROOT}/hooks/agent-gateway.sh" ]] && command -v jq &>/dev/null; then
-        echo "Ready (OK)"
+        echo "Installed (hook and jq present; live enforcement unverified)"
     else
         echo "NOT READY (requires executable hook and jq)"
         errors=$((errors + 1))
@@ -1375,7 +1423,8 @@ cmd_doctor() {
     echo ""
 
     if ((errors == 0)); then
-        echo "Status: All checks passed!"
+        echo "Status: Installation checks passed."
+        echo "Pi protection: run /mainframe doctor inside Pi for the live verdict."
         return 0
     else
         echo "Status: ${errors} issue(s) found"
@@ -1536,6 +1585,7 @@ _mainframe_release_owns_uninstaller() {
         .install_dir == $root and
         (.bin_dir | type == "string" and startswith("/") and (test("[[:cntrl:]]") | not)) and
         (.cli_link | type == "string" and startswith("/") and (test("[[:cntrl:]]") | not)) and
+        .cli_link == ((.bin_dir | rtrimstr("/")) + "/mainframe") and
         (.installed_at | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
       ) | .manifest_sha256
     ' "$receipt" 2>/dev/null)" || return 1
@@ -1674,6 +1724,7 @@ _mainframe_pi_uninstall_interlock() {
 cmd_uninstall() {
     local uninstaller="$MAINFRAME_ROOT/uninstall.sh"
     local receipt="$MAINFRAME_ROOT/.mainframe-install-receipt.json"
+    local receipt_bin="${MAINFRAME_BIN_DIR:-$HOME/.local/bin}"
 
     _mainframe_pi_uninstall_interlock || return $?
 
@@ -1713,13 +1764,16 @@ cmd_uninstall() {
             echo "The MAINFRAME uninstaller is not owned by this verified release: $uninstaller" >&2
             return 1
         fi
+        # The validated receipt owns the default link location. An explicit
+        # --bin argument still takes precedence in the uninstaller itself.
+        receipt_bin="$(jq -er '.bin_dir' "$receipt")" || return 1
     elif ! _mainframe_source_owns_uninstaller "$uninstaller"; then
         echo "The MAINFRAME uninstaller is not owned by this source checkout: $uninstaller" >&2
         return 1
     fi
 
     exec env MAINFRAME_VERSION= MAINFRAME_ROOT="$MAINFRAME_ROOT" \
-        MAINFRAME_INSTALL_DIR="$MAINFRAME_ROOT" MAINFRAME_BASH="$BASH" \
+        MAINFRAME_INSTALL_DIR="$MAINFRAME_ROOT" MAINFRAME_BIN_DIR="$receipt_bin" MAINFRAME_BASH="$BASH" \
         "$BASH" --noprofile --norc -p "$uninstaller" "$@"
 }
 
@@ -2961,6 +3015,30 @@ _explore_function_details() {
 # MAIN DISPATCH
 # =============================================================================
 
+# Other coding-agent adapters are retained only for explicit legacy use and
+# recovery. They are outside the supported Pi product and its release checks.
+_MAINFRAME_LEGACY=false
+if [[ "${1:-}" == legacy ]]; then
+    _MAINFRAME_LEGACY=true
+    shift
+    if [[ $# -eq 0 || "${1:-}" == --help || "${1:-}" == -h ]]; then
+        printf '%s\n' 'Legacy compatibility commands (frozen, unsupported):' \
+            '  mainframe legacy setup|host|onboard|launch|activate|protect|deactivate ...' \
+            '  Existing Bash toolbox commands remain available for compatibility.' \
+            'Use mainframe setup and /mainframe doctor for the supported Pi workflow.'
+        exit 0
+    fi
+else
+    case "${1:-}" in
+        host|onboard|launch|activate)
+            printf 'MAINFRAME now supports Pi only. %s is a frozen legacy command.\n' "$1" >&2
+            printf 'For an existing integration, use: mainframe legacy %s ...\n' "$1" >&2
+            printf 'For Pi, use: mainframe setup --project .\n' >&2
+            exit 64
+            ;;
+    esac
+fi
+
 case "${1:-help}" in
     version|-v|--version)
         cmd_version
@@ -3050,6 +3128,11 @@ case "${1:-help}" in
         source "$MAINFRAME_ROOT/lib/host_runtime.sh"
         source "$MAINFRAME_ROOT/lib/host_lifecycle.sh"
         mainframe_host "$@"
+        ;;
+    status)
+        shift
+        source "$MAINFRAME_ROOT/lib/pi.sh"
+        mainframe_pi_doctor "$@"
         ;;
     pi)
         shift

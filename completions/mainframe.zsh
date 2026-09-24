@@ -88,20 +88,18 @@ _mainframe() {
         'explore:Browse functions in a terminal UI'
         'tui:Alias for explore'
         'doctor:Check MAINFRAME installation health'
+        'status:Inspect offline Pi compatibility and package state'
         'check:Alias for doctor'
         'health:Alias for doctor'
         'shell:Inspect or explicitly repair Bash/zsh integration identity'
         'agent-hook:Enforce shell policy as an AI host pre-tool hook'
         'agent-gateway:Alias for agent-hook'
         'protect:Inspect project host-hook enforcement readiness'
-        'host:Inspect, acquire, and manage private coding-agent host runtimes'
         'pi:Inspect, install, or remove the native Pi package integration'
         'control-plane:Operate durable runs, calls, approvals, and evidence'
         'claim:Verify the evidence-bound control-plane promotion claim'
-        'setup:Discover local shells and hosts or onboard one explicit host'
-        'onboard:Safely configure and verify MAINFRAME for a coding-agent host'
-        'launch:Preflight and start one onboarded coding-agent host'
-        'activate:Activate MAINFRAME for an AI host'
+        'setup:Inspect or explicitly configure the Pi package'
+        'legacy:Use frozen compatibility commands for previous integrations'
         'deactivate:Remove MAINFRAME-managed activation content'
         'benchmark:Run performance benchmarks'
         'bench:Alias for benchmark'
@@ -148,6 +146,16 @@ _mainframe() {
     )
 
     case "$words[2]" in
+        status)
+            _arguments \
+                '--json[show offline Pi readiness as JSON]' \
+                '(-h --help)'{-h,--help}'[show help]'
+            return
+            ;;
+        legacy)
+            _arguments '1:legacy command:(setup host onboard launch activate protect deactivate)'
+            return
+            ;;
         shell)
             if (( CURRENT == 3 )); then
                 local -a shell_actions
@@ -501,12 +509,11 @@ _mainframe() {
         setup)
             _arguments \
                 '(-h --help)'{-h,--help}'[show help]' \
-                '--host[host or Pi package flow to configure]:host:(codex claude-code copilot gemini pi)' \
+                '--host[explicit Pi package selection]:host:(pi)' \
                 '--project[project directory]:project directory:_directories' \
-                '--proof[run the hostless zero-residue first-run mechanism proof]' \
-                '--runtime[runtime selection policy]:runtime:(auto managed system)' \
-                '--dry-run[preview project changes without writing]' \
-                '--yes[confirm a reviewed non-interactive onboarding]'
+                '--proof[exercise isolated local mechanisms without proving live protection]' \
+                '--dry-run[preview Pi package setup without writing]' \
+                '--yes[apply reviewed Pi package setup]'
             return
             ;;
 

@@ -649,7 +649,7 @@ hook_command_from_tree() {
     run env HOME="$TEST_HOME" PATH="$installed_path" \
         MAINFRAME_ROOT="$EXTRACTED_DIR" "$TEST_BIN/mainframe" doctor
     [[ "$status" -eq 0 ]]
-    [[ "$output" == *"Status: All checks passed!"* ]]
+    [[ "$output" == *"Status: Installation checks passed."* ]]
 
     local proof_project="$TEST_DIR/installed-proof"
     local proof_gateway_audit="$TEST_DIR/proof-gateway.jsonl"
@@ -669,7 +669,7 @@ hook_command_from_tree() {
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"Install health:     PASS"* ]]
     [[ "$output" == *"Reviewed invocation: PASS"*"output=hello agent"* ]]
-    [[ "$output" == *"Shell policy:       PASS"*"canary not executed"* ]]
+    [[ "$output" == *"Policy canary:      PASS"*"not a safety certification"* ]]
     [[ "$output" == *"Next safe command:"* ]]
     [[ "$output" == *"Live host protection: UNVERIFIED"* ]]
     [[ ! -e "$proof_gateway_audit" ]]

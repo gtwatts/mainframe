@@ -187,7 +187,7 @@ file_sha() {
 
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"Shell identity: Homebrew-managed wrapper (selected; profiles not required)"* ]]
-    [[ "$output" == *"Status: All checks passed!"* ]]
+    [[ "$output" == *"Status: Installation checks passed."* ]]
     [[ "$output" != *"repair-required"* ]]
 
     run env -i \

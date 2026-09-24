@@ -364,7 +364,7 @@ make_delegation_fixture() {
         "$MODERN_BASH" "$MAINFRAME_BIN" doctor
 
     [[ "$status" -eq 0 ]]
-    [[ "$output" == *"Status: All checks passed!"* ]]
+    [[ "$output" == *"Status: Installation checks passed."* ]]
 }
 
 @test "macOS zsh login path ordering cannot strand the CLI on Apple Bash" {

@@ -514,6 +514,7 @@ _mainframe_pi_validate_package_root() {
         "$_MAINFRAME_PI_ROOT/security/gate-rules.json" \
         "$_MAINFRAME_PI_ROOT/security/gate-normalizer.mjs" \
         "$_MAINFRAME_PI_ROOT/skills/pi/SKILL.md" \
+        "$_MAINFRAME_PI_ROOT/skills/pi/runtime-verification.mjs" \
         "$_MAINFRAME_PI_ROOT/skills/pi/extensions/mainframe.ts" \
         "$_MAINFRAME_PI_ROOT/lib/pi_restore.sh"; do
         parent="${required%/*}"
@@ -1086,6 +1087,7 @@ _mainframe_pi_read_cli_identity() {
     local resolved="$1" package_root manifest
 
     case "$resolved" in
+        */dist/bundle/cli.js) package_root="${resolved%/dist/bundle/cli.js}" ;;
         */dist/cli.js) package_root="${resolved%/dist/cli.js}" ;;
         *) return 1 ;;
     esac

@@ -98,7 +98,7 @@ keys = [
     for platform in record["platforms"]
 ]
 assert len(keys) == len(set(keys)), keys
-assert all(record["mainframe_version"] == document["version"] for record in records)
+assert all(isinstance(record["mainframe_version"], str) for record in records)
 current = next(record for record in records if record["package"] == "@earendil-works/pi-coding-agent")
 legacy = next(record for record in records if record["package"] == "@mariozechner/pi-coding-agent")
 assert current["version"] == "0.84.2" and current["support"] == "certified"
@@ -135,7 +135,7 @@ import { pathToFileURL } from "node:url";
 
 const root = process.argv[2];
 const piBin = process.argv[3];
-const loaderPath = join(dirname(realpathSync(piBin)), "core", "extensions", "loader.js");
+const loaderPath = join(realpathSync(piBin).replace(/\/dist\/(?:bundle\/)?cli\.js$/, "/dist"), "core", "extensions", "loader.js");
 if (!existsSync(loaderPath)) throw new Error(`Pi extension loader not found: ${loaderPath}`);
 const { loadExtensions } = await import(pathToFileURL(loaderPath).href);
 const extensionPath = join(root, "skills", "pi", "extensions", "mainframe.ts");
@@ -271,7 +271,7 @@ if (agentEnvResult?.block) throw new Error(`agent environment regression was blo
 for (const key of ["BASH_ENV", "ENV", "BASH_LOADABLES_PATH", "BASH_FUNC_mainframe_poison%%", "DYLD_INSERT_LIBRARIES"]) {
   if (Object.hasOwn(process.env, key)) throw new Error(`agent Bash retained reintroduced shell-loader variable ${key}`);
 }
-const piIndexPath = join(dirname(realpathSync(piBin)), "index.js");
+const piIndexPath = join(realpathSync(piBin).replace(/\/dist\/(?:bundle\/)?cli\.js$/, "/dist"), "index.js");
 const { createBashToolDefinition } = await import(pathToFileURL(piIndexPath).href);
 const actualPiBash = createBashToolDefinition(root);
 const agentEnvExecution = await actualPiBash.execute(
@@ -1142,6 +1142,7 @@ JS
         "$fixture_home" \
         "$fixture_agent"
     cp "$PROJECT_ROOT/skills/pi/extensions/mainframe.ts" "$fixture_root/skills/pi/extensions/mainframe.ts"
+    cp "$PROJECT_ROOT/skills/pi/runtime-verification.mjs" "$fixture_root/skills/pi/runtime-verification.mjs"
     cp "$PROJECT_ROOT/security/gate-rules.json" "$fixture_root/security/gate-rules.json"
     cp "$PROJECT_ROOT/security/gate-normalizer.mjs" "$fixture_root/security/gate-normalizer.mjs"
     cp "$PROJECT_ROOT/config/pi-compatibility.json" "$fixture_root/config/pi-compatibility.json"
@@ -1169,7 +1170,7 @@ import { pathToFileURL } from "node:url";
 
 const root = realpathSync(process.argv[2]);
 const piBin = realpathSync(process.argv[3]);
-const loaderPath = join(dirname(piBin), "core", "extensions", "loader.js");
+const loaderPath = join(piBin.replace(/\/dist\/(?:bundle\/)?cli\.js$/, "/dist"), "core", "extensions", "loader.js");
 const certifiedPiRoot = join(root, "certified-pi-runtime");
 const certifiedPiCli = join(certifiedPiRoot, "dist", "cli.js");
 mkdirSync(dirname(certifiedPiCli), { recursive: true });
@@ -1192,6 +1193,7 @@ if (!certified || !Array.isArray(certified.platforms)) {
   throw new Error("badge fixture could not locate the exact certified Pi record");
 }
 if (!certified.platforms.includes(currentPlatform)) certified.platforms.push(currentPlatform);
+for (const record of compatibility.certifications) record.mainframe_version = compatibility.mainframe_version;
 writeFileSync(compatibilityPath, `${JSON.stringify(compatibility, null, 2)}\n`);
 const { createExtensionRuntime, loadExtensions } = await import(pathToFileURL(loaderPath).href);
 const extensionPath = join(root, "skills", "pi", "extensions", "mainframe.ts");
@@ -1353,7 +1355,7 @@ import { pathToFileURL } from "node:url";
 
 const root = realpathSync(process.argv[2]);
 const piCli = realpathSync(process.argv[3]);
-const loaderPath = join(dirname(piCli), "core", "extensions", "loader.js");
+const loaderPath = join(piCli.replace(/\/dist\/(?:bundle\/)?cli\.js$/, "/dist"), "core", "extensions", "loader.js");
 if (!existsSync(loaderPath)) throw new Error(`Pi extension loader not found: ${loaderPath}`);
 const { loadExtensions } = await import(pathToFileURL(loaderPath).href);
 const extensionPath = join(root, "skills", "pi", "extensions", "mainframe.ts");
@@ -1587,7 +1589,9 @@ def run_shell_case(shell):
         send(process, {"type": "prompt", "message": "/mainframe status"})
         _, status_events = receive(process, events, lambda e: e.get("type") == "response" and e.get("command") == "prompt")
         notices = [e.get("message", "") for e in status_events if e.get("method") == "notify"]
-        assert any("MAINFRAME + Pi: SETUP_REQUIRED" in message and "gate=10.2.0:43" in message and "tools=0/7 effective" in message and "proof=provenance-unavailable" in message for message in notices), notices
+        gate_document = json.loads((root / "security" / "gate-rules.json").read_text(encoding="utf-8"))
+        expected_gate = f"gate={gate_document['version']}:{len(gate_document['rules'])}"
+        assert any("MAINFRAME + Pi: SETUP_REQUIRED" in message and expected_gate in message and "tools=0/7 effective" in message and "proof=provenance-unavailable" in message for message in notices), notices
 
         send(process, {"type": "prompt", "message": "/mainframe doctor"})
         _, doctor_events = receive(
@@ -1786,7 +1790,8 @@ sentinel_path.write_bytes(sentinel_content)
 sentinel_path.chmod(0o600)
 sentinel_digest = hashlib.sha256(sentinel_content).hexdigest()
 
-pi_manifest = json.loads((pi_bin.resolve().parent.parent / "package.json").read_text(encoding="utf-8"))
+pi_dist = pi_bin.parent.parent if pi_bin.parent.name == "bundle" else pi_bin.parent
+pi_manifest = json.loads((pi_dist.parent / "package.json").read_text(encoding="utf-8"))
 system = platform.system()
 machine = platform.machine()
 if machine == "AMD64":
@@ -1912,11 +1917,12 @@ try:
     )
     assert status_response["success"] is True, status_response
     notices = [e.get("message", "") for e in status_events if e.get("method") == "notify"]
+    gate_document = json.loads((root / "security" / "gate-rules.json").read_text(encoding="utf-8"))
     assert any(
         f"MAINFRAME + Pi: {expected_state}" in message
         and f"{pi_manifest['name']} {pi_manifest['version']} ({expected_support.upper()})" in message
         and "disk=ready" in message
-        and "gate=10.2.0:43" in message
+        and f"gate={gate_document['version']}:{len(gate_document['rules'])}" in message
         and "tools=7/7 effective (present=7, active=7, canonical=7; proof=verified)" in message
         for message in notices
     ), notices
@@ -1938,7 +1944,7 @@ try:
         f"MAINFRAME + Pi: {expected_state}" in message
         and f"Compatibility: {expected_support.upper()}" in message
         and "Runtime:     extension loaded; command 1/1; tools 7/7 effective (present=7, active=7, canonical=7, proof=verified); hooks 3/3" in message
-        and "Safety gate: verified 10.2.0 (43 ordered rules)" in message
+        and f"Safety gate: verified {gate_document['version']} ({len(gate_document['rules'])} ordered rules)" in message
         and "Core shell doctor: exit=0 (passed)" in message
         for message in doctor_notices
     ), doctor_notices

@@ -12,8 +12,22 @@ setup() {
         "$BATS_TEST_TMPDIR/node-fixture" \
         "$BATS_TEST_TMPDIR/pi-runtime/node_modules/@earendil-works/pi-coding-agent/bin" \
         "$BATS_TEST_TMPDIR/pi-runtime/node_modules/.bin"
-    cp "$TEMPLATE_ROOT/VERSION" "$PROJECT_ROOT/VERSION"
+    # Synthetic historical artifact subject: keep VERSION, manifest, archive
+    # and CLI arguments at 10.2.0. This is not certification of current source.
+    printf '10.2.0\n' > "$PROJECT_ROOT/VERSION"
     cp "$TEMPLATE_ROOT/config/pi-compatibility.json" "$PROJECT_ROOT/config/"
+    python3 - "$PROJECT_ROOT/config/pi-compatibility.json" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+fixture = json.loads(path.read_text(encoding="utf-8"))
+fixture["mainframe_version"] = "10.2.0"
+fixture["certifications"] = [record for record in fixture["certifications"] if record["mainframe_version"] == "10.2.0"]
+assert len(fixture["certifications"]) == 2, "historical fixture requires its two unchanged 10.2.0 records"
+path.write_text(json.dumps(fixture, indent=2) + "\n", encoding="utf-8")
+PY
     cp "$TEMPLATE_ROOT/.github/pi-evidence-contract.json" "$PROJECT_ROOT/.github/"
     cp "$TEMPLATE_ROOT/.github/schemas/pi-cell-evidence.schema.json" \
         "$PROJECT_ROOT/.github/schemas/"
@@ -60,6 +74,9 @@ setup() {
     printf '%s\n' \
         '{"name":"@earendil-works/pi-coding-agent","version":"0.84.2"}' \
         > "$PACKAGE_ROOT/package.json"
+    # The mode-drift case changes this to 0600; make its starting mode
+    # independent of the caller's restrictive verification umask.
+    chmod 644 "$PACKAGE_ROOT/package.json"
     printf '#!/usr/bin/env node\n' > "$PACKAGE_ROOT/bin/pi.js"
     chmod 755 "$PACKAGE_ROOT/bin/pi.js"
     ln -s ../@earendil-works/pi-coding-agent/bin/pi.js "$RUNTIME_ROOT/.bin/pi"

@@ -36,6 +36,19 @@ const SHELLS = new Set(["sh", "bash", "dash", "zsh"]);
 // other heredoc body is data and never produces executable markers.
 const HEREDOC_CODE_RECEIVERS = new Set(["sh", "bash", "dash", "zsh", "ksh", "ssh"]);
 
+// Only documented global-option arities are skipped. An unknown option can
+// hide the subcommand boundary, so it produces an unsupported-syntax marker.
+const GLOBAL_VALUE_OPTIONS = {
+  docker: new Set(["--config", "--context", "-c", "--host", "-H", "--log-level", "-l", "--tlscacert", "--tlscert", "--tlskey"]),
+  kubectl: new Set(["--namespace", "-n", "--context", "--cluster", "--server", "-s", "--user", "--kubeconfig", "--token", "--username", "--password", "--client-certificate", "--client-key", "--certificate-authority", "--request-timeout", "--as", "--as-group", "--as-uid", "--cache-dir", "--v", "-v", "--vmodule", "--profile", "--profile-output", "--kuberc"]),
+  aws: new Set(["--profile", "--region", "--output", "--endpoint-url", "--query", "--ca-bundle", "--cli-read-timeout", "--cli-connect-timeout", "--color", "--cli-binary-format"]),
+};
+const GLOBAL_FLAG_OPTIONS = {
+  docker: new Set(["--debug", "-D", "--tls", "--tlsverify", "--version", "-v", "--help"]),
+  kubectl: new Set(["--insecure-skip-tls-verify", "--disable-compression", "--match-server-version", "--warnings-as-errors", "--help"]),
+  aws: new Set(["--debug", "--no-verify-ssl", "--no-paginate", "--no-sign-request", "--version", "--no-cli-pager", "--cli-auto-prompt", "--no-cli-auto-prompt", "--help"]),
+};
+
 function isNameStart(char) {
   return char !== undefined && /[A-Za-z_]/.test(char);
 }
@@ -259,50 +272,87 @@ export function decodeGateWord(input) {
 
 function tokenizeCommand(input) {
   const tokens = [];
-  let token = "";
-  let quote = "";
-
-  const flush = () => {
-    if (token) tokens.push({ type: "word", value: token });
-    token = "";
-  };
-
-  for (let index = 0; index < input.length; index += 1) {
+  const heredocs = [];
+  let pendingHeredoc = null;
+  for (let index = 0; index < input.length;) {
     const char = input[index];
-    if (quote) {
-      token += char;
-      if (char === quote) {
-        quote = "";
-      } else if (char === "\\" && quote === '"' && index + 1 < input.length) {
-        index += 1;
-        token += input[index];
+    if (char === " " || char === "\t") {
+      tokens.push({ type: "space", value: char });
+      index += 1;
+      continue;
+    }
+    if (char === "#") {
+      const end = input.indexOf("\n", index);
+      tokens.push({ type: "comment", value: input.slice(index, end < 0 ? input.length : end) });
+      index = end < 0 ? input.length : end;
+      continue;
+    }
+    // Longest match keeps descriptor duplication/moves and combined-output
+    // redirects intact; their '&' is not a command-list separator.
+    const redirect = ["&>>", "<<<", "<<-", "&>", ">>", "<>", ">&", "<&", ">|", "<<", ">", "<"]
+      .find((operator) => input.startsWith(operator, index));
+    if (redirect) {
+      if (redirect === "<<" || redirect === "<<-") {
+        if (pendingHeredoc !== null) tokens.unsupported = true;
+        pendingHeredoc = redirect === "<<-";
+      }
+      tokens.push({ type: "operator", value: redirect });
+      index += redirect.length;
+      continue;
+    }
+    if (["\n", ";", "|", "&", "(", ")"].includes(char)) {
+      if (pendingHeredoc !== null) tokens.unsupported = true;
+      tokens.push({ type: "separator", value: char });
+      index += 1;
+      // Consume queued bodies as physical lines BEFORE ordinary word quoting.
+      // Quotes and shell-looking text inside a body cannot hide its delimiter.
+      if (char === "\n") {
+        for (const { delim, strip, quoted } of heredocs.splice(0)) {
+          while (index < input.length) {
+            const end = input.indexOf("\n", index);
+            const line = input.slice(index, end < 0 ? input.length : end);
+            const check = strip ? line.replace(/^\t+/, "") : line;
+            const closed = check === delim;
+            tokens.push({ type: closed ? "heredoc-end" : quoted ? "heredoc-inert" : "heredoc-expandable", value: line });
+            // Unquoted backslash-newline changes delimiter recognition. Do not
+            // guess where such a body ends in this deliberately bounded lexer.
+            if (!quoted && /(?:^|[^\\])(?:\\\\)*\\$/.test(line)) tokens.unsupported = true;
+            if (end >= 0) tokens.push({ type: "separator", value: "\n" });
+            index = end < 0 ? input.length : end + 1;
+            if (closed) break;
+          }
+        }
       }
       continue;
     }
-
-    if (char === "'" || char === '"') {
-      quote = char;
-      token += char;
-    } else if (char === "\\") {
-      token += char;
-      if (index + 1 < input.length) {
-        index += 1;
-        token += input[index];
+    let word = "", quote = "", ansi = false;
+    while (index < input.length) {
+      const ch = input[index];
+      if (!quote && /[ \t\n;<>&|()]/.test(ch)) break;
+      word += ch;
+      if (quote) {
+        if (ch === quote) quote = "";
+        else if (ch === "\\" && (quote === '"' || ansi) && index + 1 < input.length) word += input[++index];
+      } else if (ch === "'" || ch === '"') {
+        ansi = ch === "'" && input[index - 1] === "$";
+        quote = ch;
+      } else if (ch === "\\") {
+        if (index + 1 < input.length) word += input[++index];
+        else tokens.unsupported = true;
       }
-    } else if (char === " " || char === "\t") {
-      flush();
-      tokens.push({ type: "space", value: char });
-    } else if (["<", ">"].includes(char)) {
-      flush();
-      tokens.push({ type: "operator", value: char });
-    } else if (["\n", ";", "|", "&", "(", ")"].includes(char)) {
-      flush();
-      tokens.push({ type: "separator", value: char });
-    } else {
-      token += char;
+      index += 1;
+    }
+    if (quote) tokens.unsupported = true;
+    tokens.push({ type: "word", value: word });
+    if (pendingHeredoc !== null) {
+      const delim = decodeGateWord(word);
+      const quoted = /["'\\]/.test(word);
+      if (delim.includes("\n") || (!quoted && /[$`]/.test(delim))) tokens.unsupported = true;
+      heredocs.push({ delim, strip: pendingHeredoc, quoted });
+      pendingHeredoc = null;
     }
   }
-  flush();
+  if (pendingHeredoc !== null) tokens.unsupported = true;
   return tokens;
 }
 
@@ -314,9 +364,11 @@ function executableBasename(value) {
  * Normalize one already-resolved command string and mark executable words.
  * Call normalizeGateCommand for the public resolved-command contract.
  */
-export function normalizeGateCommandPaths(input) {
+export function normalizeGateCommandPaths(input, depth = 0) {
+  if (depth >= 20) return `${EXECUTABLE_MARKER}mainframe-unsupported-shell-syntax `;
   const tokens = tokenizeCommand(String(input));
-  let output = "";
+  let output = tokens.unsupported ? `${EXECUTABLE_MARKER}mainframe-unsupported-shell-syntax ` : "";
+  if (hasDynamicShellExpansion(input)) output += `${EXECUTABLE_MARKER}mainframe-dynamic-shell-expansion `;
   let atCommand = true;
   let wrapper = "";
   let wrapperArgPending = 0;
@@ -328,9 +380,12 @@ export function normalizeGateCommandPaths(input) {
   let findEmbeddedShell = false;
   let gitPreamble = false;
   let terraformPreamble = false;
+  let globalPreamble = "";
+  let gitReset = false, gitOptionsEnded = false;
   let optionArgPending = 0;
   let gitConfigArgPending = false;
   let redirectTargetPending = false;
+  let hereStringPending = false;
   let functionNamePending = false;
   // Heredoc tracking: << / <<- queue a body that begins at the next newline.
   const heredocQueue = [];
@@ -344,7 +399,6 @@ export function normalizeGateCommandPaths(input) {
   let bodyLine = "";
   let bodyText = "";
   let bodyLinePiped = false;
-  let ltPrev = false;
   let pendingPipe = false;
   let linePipesToShell = false;
 
@@ -360,9 +414,12 @@ export function normalizeGateCommandPaths(input) {
     findEmbeddedShell = false;
     gitPreamble = false;
     terraformPreamble = false;
+    globalPreamble = "";
+    gitReset = false; gitOptionsEnded = false;
     optionArgPending = 0;
     gitConfigArgPending = false;
     redirectTargetPending = false;
+    hereStringPending = false;
     functionNamePending = false;
   };
 
@@ -380,6 +437,8 @@ export function normalizeGateCommandPaths(input) {
     const token = tokens[ti];
     const raw = token.value;
 
+    if (token.type === "comment") continue;
+
     // Heredoc body: accumulate lines until the closing delimiter. Body words
     // are data and never receive executable markers; a body feeding a shell
     // or interpreter is analyzed recursively as shell code.
@@ -388,7 +447,7 @@ export function normalizeGateCommandPaths(input) {
         let line = bodyLine;
         if (bodyTabs) line = line.replace(/^\t+/, "");
         if (line === bodyDelim) {
-          if (bodyCode && bodyText) output += ` ; ${normalizeGateCommandPaths(bodyText)}`;
+          if (bodyCode && bodyText) output += ` ; ${normalizeGateCommandPaths(bodyText, depth + 1)}`;
           output += "\n";
           if (heredocQueue.length) {
             popHeredoc();
@@ -412,13 +471,11 @@ export function normalizeGateCommandPaths(input) {
 
     if (token.type === "space") {
       output += raw;
-      ltPrev = false;
       continue;
     }
     if (token.type === "separator") {
       output += raw;
       resetAtBoundary();
-      ltPrev = false;
       heredocDelimPending = false;
       if (raw === "|") {
         pendingPipe = true;
@@ -436,50 +493,30 @@ export function normalizeGateCommandPaths(input) {
       continue;
     }
     if (token.type === "operator") {
-      output += raw;
-      if (raw === ">") {
+      // Redirection syntax and operands are not command arguments. Omitting
+      // them also prevents descriptor '&' from truncating later option scans.
+      output += " ";
+      if (raw === "<<<") {
+        hereStringPending = true;
+      } else if (raw === "<<" || raw === "<<-") {
+        heredocDelimPending = true;
+        heredocStripTabs = raw === "<<-";
+      } else {
         redirectTargetPending = true;
-      } else if (raw === "<") {
-        if (ltPrev) {
-          ltPrev = false;
-          // "<<" introduces a heredoc unless a third "<" makes it a
-          // herestring. A heredoc needs a command on this line to receive
-          // the body.
-          const nextToken = tokens[ti + 1];
-          if (nextToken && nextToken.type === "operator" && nextToken.value === "<") {
-            // "<<<" herestring: no body lines follow
-          } else if (currentCommand) {
-            heredocDelimPending = true;
-            heredocStripTabs = false;
-          }
-        } else {
-          ltPrev = true;
-        }
       }
       continue;
     }
 
     const plain = decodeGateWord(raw);
-    ltPrev = false;
 
     // Heredoc delimiter word: queue the body spec instead of treating the
     // word as an argument. "<<-" strips leading tabs from body lines.
     if (heredocDelimPending) {
-      if (raw === "-") {
-        heredocStripTabs = true;
-        output += raw;
-        continue;
-      }
-      let spec = raw;
-      if (spec.startsWith("-")) {
-        heredocStripTabs = true;
-        spec = spec.slice(1);
-      }
+      const spec = raw;
       const delim = decodeGateWord(spec);
       const quoted = /["'\\]/.test(spec);
-      // Dynamic or empty delimiters cannot be matched safely; fall through
-      // and treat the word as an argument.
-      const valid = delim.length > 0 && !delim.includes("\n") &&
+      // Delimiters outside the bounded lexer fail closed.
+      const valid = !delim.includes("\n") &&
         (quoted || !/[$`]/.test(delim));
       if (valid) {
         heredocQueue.push({ cmd: currentCommand, stripTabs: heredocStripTabs, delim });
@@ -488,24 +525,34 @@ export function normalizeGateCommandPaths(input) {
         continue;
       }
       heredocDelimPending = false;
+      output += `${EXECUTABLE_MARKER}mainframe-unsupported-shell-syntax `;
+    }
+
+    if (hereStringPending) {
+      if (!currentCommand) output += `${EXECUTABLE_MARKER}mainframe-unsupported-shell-syntax `;
+      else if (HEREDOC_CODE_RECEIVERS.has(currentCommand)) output += ` ; ${normalizeGateCommandPaths(plain, depth + 1)} ; `;
+      else output += plain;
+      hereStringPending = false;
+      continue;
     }
 
     if (redirectTargetPending) {
       if (/^\/dev\/(?:sd|disk|rdisk|nvme)/i.test(plain)) {
         output += `${EXECUTABLE_MARKER}mainframe-raw-device-redirect `;
       }
-      output += plain;
       redirectTargetPending = false;
       continue;
     }
 
+    if (/^[0-9]+$/.test(raw) && tokens[ti + 1]?.type === "operator") continue;
+
     if (wrapperSplitStringPending) {
-      output += ` ${normalizeGateCommandPaths(plain)}`;
+      output += ` ${normalizeGateCommandPaths(plain, depth + 1)}`;
       wrapperSplitStringPending = false;
       continue;
     }
     if (shellCodePending) {
-      output += ` ; ${normalizeGateCommandPaths(plain)}`;
+      output += ` ; ${normalizeGateCommandPaths(plain, depth + 1)}`;
       shellCodePending = false;
       continue;
     }
@@ -561,7 +608,7 @@ export function normalizeGateCommandPaths(input) {
             const inner = plain.startsWith("--split-string=")
               ? plain.slice(plain.indexOf("=") + 1)
               : plain.slice(2);
-            output += ` ${normalizeGateCommandPaths(inner)}`;
+            output += ` ${normalizeGateCommandPaths(inner, depth + 1)}`;
             continue;
           }
           if (wrapper === "env" && (plain === "-S" || plain === "--split-string")) {
@@ -580,6 +627,7 @@ export function normalizeGateCommandPaths(input) {
       wrapper = "";
       gitPreamble = false;
       terraformPreamble = false;
+      globalPreamble = "";
       optionArgPending = 0;
       if (WRAPPERS.has(command)) {
         wrapper = command;
@@ -590,6 +638,11 @@ export function normalizeGateCommandPaths(input) {
         gitPreamble = true;
       } else if (command === "terraform" || command === "tofu") {
         terraformPreamble = true;
+      } else if (Object.prototype.hasOwnProperty.call(GLOBAL_VALUE_OPTIONS, command)) {
+        globalPreamble = command;
+      }
+      if (!WRAPPERS.has(command)) {
+        for (const pending of heredocQueue) if (!pending.cmd) pending.cmd = command;
       }
       // A non-wrapper command consumes a pending pipe; remember when a shell
       // receives it so a queued heredoc body stays shell code.
@@ -620,13 +673,12 @@ export function normalizeGateCommandPaths(input) {
         gitConfigArgPending = false;
         continue;
       }
-      if (plain === "-c") {
+      if (plain === "-c" || plain === "--config-env") {
         optionArgPending = 1;
         gitConfigArgPending = true;
         continue;
       }
-      if (["-C", "--git-dir", "--work-tree", "--namespace", "--super-prefix",
-           "--config-env"].includes(plain)) {
+      if (["-C", "--git-dir", "--work-tree", "--namespace", "--super-prefix"].includes(plain)) {
         optionArgPending = 1;
         gitConfigArgPending = false;
         continue;
@@ -635,11 +687,16 @@ export function normalizeGateCommandPaths(input) {
         output += `${EXECUTABLE_MARKER}mainframe-inline-git-alias`;
         continue;
       }
+      if (/^--config-env=alias\.[^=]+=/i.test(plain)) {
+        output += `${EXECUTABLE_MARKER}mainframe-inline-git-alias`;
+        continue;
+      }
       if (/^(?:--git-dir|--work-tree|--namespace|--super-prefix|--config-env)=/.test(plain) ||
           plain.startsWith("-")) {
         continue;
       }
       gitPreamble = false;
+      gitReset = plain.toLowerCase() === "reset";
     } else if (terraformPreamble) {
       if (optionArgPending) {
         optionArgPending -= 1;
@@ -651,6 +708,26 @@ export function normalizeGateCommandPaths(input) {
       }
       if (plain.startsWith("-chdir=") || plain.startsWith("-")) continue;
       terraformPreamble = false;
+    } else if (globalPreamble) {
+      if (optionArgPending) { optionArgPending -= 1; continue; }
+      const values = GLOBAL_VALUE_OPTIONS[globalPreamble];
+      const flags = GLOBAL_FLAG_OPTIONS[globalPreamble];
+      const key = plain.split("=", 1)[0];
+      if (values.has(plain)) { optionArgPending = 1; continue; }
+      if ((plain.includes("=") && (values.has(key) || flags.has(key))) || flags.has(plain)) continue;
+      if ((globalPreamble === "docker" && /^-[cHl].+/.test(plain)) ||
+          (globalPreamble === "kubectl" && /^-[nsv].+/.test(plain))) continue;
+      if (plain === "--") { globalPreamble = ""; continue; }
+      if (plain.startsWith("-")) {
+        output += `${EXECUTABLE_MARKER}mainframe-unsupported-shell-syntax `;
+        continue;
+      }
+      globalPreamble = "";
+    }
+
+    if (currentCommand === "git" && gitReset) {
+      if (plain === "--") gitOptionsEnded = true;
+      if (plain === "--hard" && !gitOptionsEnded) output += `${EXECUTABLE_MARKER}mainframe-git-reset-hard `;
     }
 
     if (currentCommand === "find" && /^-exec(?:dir)?$/.test(plain)) {
@@ -665,155 +742,52 @@ export function normalizeGateCommandPaths(input) {
     let line = bodyLine;
     if (bodyTabs) line = line.replace(/^\t+/, "");
     if (line !== bodyDelim) bodyText += bodyLine;
-    if (bodyCode && bodyText) output += ` ; ${normalizeGateCommandPaths(bodyText)}`;
+    if (bodyCode && bodyText) output += ` ; ${normalizeGateCommandPaths(bodyText, depth + 1)}`;
   }
 
   return output;
 }
 
-/**
- * Blank the bodies of inert (quoted-delimiter) heredocs in a raw command
- * string, preserving length and newlines. A heredoc body introduced by a
- * quoted delimiter (<<'EOF', <<"EOF", <<\EOF, and mixed forms) is inert
- * data: the shell performs no expansion there, so scans for active
- * substitution must not see it. Bodies with unquoted delimiters really do
- * undergo $/` expansion, so they are copied verbatim without nested heredoc
- * detection (a body is text to the shell, not syntax).
- */
-export function maskInertHeredocs(value) {
-  const input = String(value);
-  let output = "";
-  let quote = "";
-  let bodyMode = false;
-  let bodyDelim = "";
-  let bodyStrip = false;
-  let bodyLine = "";
-
+// Heredoc expansion uses double-quote-like backslash rules, but quote
+// characters in the body are literal and cannot suppress $() or backticks.
+function heredocHasExpansion(input) {
   for (let i = 0; i < input.length; i += 1) {
-    const ch = input[i];
+    if (input[i] === "\\" && /[$\x60\\\n]/.test(input[i + 1] || "")) { i += 1; continue; }
+    if (input[i] === "\x60" || (input[i] === "$" && input[i + 1] === "(")) return true;
+  }
+  return false;
+}
 
-    // Unquoted-heredoc body: copy verbatim until the closing delimiter; the
-    // text remains visible to rule scans but never starts a nested heredoc.
-    if (bodyMode) {
-      if (ch === "\n") {
-        let line = bodyLine;
-        if (bodyStrip) line = line.replace(/^\t+/, "");
-        bodyLine = "";
-        output += ch;
-        if (line === bodyDelim) bodyMode = false;
-        continue;
-      }
-      bodyLine += ch;
-      output += ch;
-      continue;
-    }
+/** Analysis view: omit inert bodies/comments and expose active heredoc expansion. */
+export function maskInertHeredocs(value) {
+  return tokenizeCommand(String(value)).map((token) => {
+    if (token.type === "heredoc-expandable") return heredocHasExpansion(token.value) ? " $(mainframe-heredoc-expansion) " : "";
+    if (token.type.startsWith("heredoc-") || token.type === "comment") return "";
+    return token.value;
+  }).join("");
+}
 
+function hasDynamicShellExpansion(value) {
+  const input = maskInertHeredocs(value);
+  let quote = "", ansiQuote = false;
+  for (let i = 0; i < input.length; i += 1) {
+    const ch = input[i], next = input[i + 1];
     if (quote === "'") {
-      output += ch;
       if (ch === "'") quote = "";
+      else if (ch === "\\" && ansiQuote) i += 1;
       continue;
     }
     if (quote === '"') {
-      output += ch;
-      if (ch === '"') {
-        quote = "";
-      } else if (ch === "\\" && i + 1 < input.length) {
-        i += 1;
-        output += input[i];
-      }
+      if (ch === '"') quote = "";
+      else if (ch === "\\" && /[$\x60"\\\n]/.test(next || "")) i += 1;
+      else if (ch === "\x60" || (ch === "$" && next === "(")) return true;
       continue;
     }
-
-    if (ch === "'" || ch === '"') {
-      quote = ch;
-      output += ch;
-      continue;
-    }
-    if (ch === "\\") {
-      output += ch;
-      if (i + 1 < input.length) {
-        i += 1;
-        output += input[i];
-      }
-      continue;
-    }
-
-    if (ch === "<" && input[i + 1] === "<" && input[i + 2] !== "<") {
-      // Candidate heredoc operator: optional strip-tabs dash, whitespace,
-      // then the delimiter word.
-      let j = i + 2;
-      let strip = false;
-      if (input[j] === "-") {
-        strip = true;
-        j += 1;
-      }
-      while (input[j] === " " || input[j] === "\t") j += 1;
-      let spec = "";
-      while (j < input.length && !/[ \t\n;&|()<>]/.test(input[j])) {
-        spec += input[j];
-        j += 1;
-      }
-      if (spec) {
-        // Decode the delimiter (quotes/backslashes removed) and record
-        // whether any quoting made the body inert.
-        let delim = "";
-        let quoted = false;
-        for (let k = 0; k < spec.length; k += 1) {
-          const c = spec[k];
-          if (c === "'" || c === '"') {
-            quoted = true;
-          } else if (c === "\\") {
-            quoted = true;
-            if (k + 1 < spec.length) {
-              k += 1;
-              delim += spec[k];
-            }
-          } else {
-            delim += c;
-          }
-        }
-        // Dynamic or empty delimiters cannot be matched safely; leave the
-        // text to ordinary scanning.
-        if (delim && !/[$`\n]/.test(delim)) {
-          const nl = input.indexOf("\n", j);
-          if (nl >= 0) {
-            output += input.slice(i, nl + 1);
-            if (quoted) {
-              // Inert body: blank every body line through the closing
-              // delimiter, preserving length and newlines.
-              let pos = nl + 1;
-              while (pos <= input.length) {
-                const end = input.indexOf("\n", pos);
-                const line = end < 0 ? input.slice(pos) : input.slice(pos, end);
-                const check = strip ? line.replace(/^\t+/, "") : line;
-                output += line.replace(/[\s\S]/g, " ");
-                if (end < 0) {
-                  pos = input.length;
-                  break;
-                }
-                output += "\n";
-                pos = end + 1;
-                if (check === delim) break;
-              }
-              i = pos - 1;
-              continue;
-            }
-            bodyMode = true;
-            bodyDelim = delim;
-            bodyStrip = strip;
-            bodyLine = "";
-            i = nl;
-            continue;
-          }
-        }
-      }
-      output += ch;
-      continue;
-    }
-
-    output += ch;
+    if (ch === "'" || ch === '"') { quote = ch; ansiQuote = ch === "'" && input[i - 1] === "$"; }
+    else if (ch === "\\") i += 1;
+    else if (ch === "\x60" || (ch === "$" && next === "(") || ((ch === "<" || ch === ">") && next === "(")) return true;
   }
-  return output;
+  return false;
 }
 
 /** Resolve simple variables, then return the executable-marker command form. */

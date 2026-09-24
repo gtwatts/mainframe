@@ -24,7 +24,7 @@ _UNSUPPORTED_FSYNC_ERRNOS = frozenset(
 )
 
 
-def fsync_directory(path: PathLike) -> None:
+def fsync_directory(path: Union[PathLike, int]) -> None:
     """Persist directory entries or fail closed when the platform cannot do so."""
 
     directory_flag = getattr(os, "O_DIRECTORY", None)
@@ -36,7 +36,7 @@ def fsync_directory(path: PathLike) -> None:
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
     try:
-        fd = os.open(os.fspath(path), flags)
+        fd = os.dup(path) if isinstance(path, int) else os.open(os.fspath(path), flags)
     except OSError as exc:
         if exc.errno in _UNSUPPORTED_FSYNC_ERRNOS:
             raise DurabilityUnavailable(

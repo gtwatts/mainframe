@@ -484,7 +484,7 @@ class SupervisedExecutorTestCase(unittest.TestCase):
         }
         adapter = release / "bin" / "mainframe"
         adapter.write_text(
-            "#!/bin/sh\nprintf '%s\\n' '{}'\n".format(
+            "#!/bin/sh\n/bin/cat >/dev/null\nprintf '%s\\n' '{}'\n".format(
                 json.dumps(envelope, separators=(",", ":"))
             ),
             encoding="utf-8",
@@ -541,7 +541,7 @@ class SupervisedExecutorTestCase(unittest.TestCase):
             side_effect=reject_reused_pgid,
         ):
             evidence = kernel.execute_canonical(call.call_id, executor=executor)
-        self.assertEqual(evidence.outcome, "succeeded")
+        self.assertEqual(evidence.outcome, "succeeded", evidence.body)
         self.assertEqual(cleanup_calls, 1)
 
     def test_foreground_sigint_and_sigterm_cancel_and_close_durably(self) -> None:
@@ -907,7 +907,7 @@ class SupervisedExecutorTestCase(unittest.TestCase):
         (fake_release / "bin").mkdir(parents=True)
         adapter = fake_release / "bin" / "mainframe"
         adapter.write_text(
-            "#!/bin/sh\n"
+            "#!/bin/bash\n"
             "(\n"
             "  trap '' TERM HUP\n"
             "  : <&198 || exit 97\n"

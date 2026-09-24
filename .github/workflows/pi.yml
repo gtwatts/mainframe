@@ -1,0 +1,47 @@
+name: Mainframe for Pi
+
+on:
+  push:
+    branches: [main, develop, 'codex/mainframe-pi-*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pi-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: Pi source contracts (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y jq bash python3
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: brew install bash jq
+      - name: Prepare private fixture defaults and pinned Bats
+        shell: bash
+        run: |
+          umask 077
+          make test-deps
+      - name: Run source contracts
+        shell: bash
+        run: |
+          umask 077
+          bash scripts/test-pi-core.sh > "$RUNNER_TEMP/mainframe-pi-tests.log" 2>&1 || {
+            tail -n 200 "$RUNNER_TEMP/mainframe-pi-tests.log"
+            exit 1
+          }
+          tail -n 30 "$RUNNER_TEMP/mainframe-pi-tests.log"
