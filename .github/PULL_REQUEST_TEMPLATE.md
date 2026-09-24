@@ -11,14 +11,14 @@
 - [ ] Performance improvement
 - [ ] Code refactoring (no functional changes)
 
-## AI Agent Impact
+## Pi Workflow Impact
 
-<!-- How does this change affect AI agents using MAINFRAME? -->
+<!-- Which Pi Coding Agent workflow improves? Other coding-agent integrations are frozen compatibility scope. -->
 
-- [ ] **Safety** - Improves validation, sandboxing, or guardrails
+- [ ] **Shell policy** - Improves classification or bounded execution; not OS sandboxing
 - [ ] **Accuracy** - Improves structured output, error handling, or first-time correctness
 - [ ] **Efficiency** - Improves performance, caching, or token savings
-- [ ] **New capability** - Adds functionality for agent automation
+- [ ] **Task continuity** - Improves explicit checkpoints, recovery, or handoffs
 - [ ] No direct agent impact
 
 ## Which Libraries Are Affected?
@@ -35,11 +35,13 @@
 </details>
 
 <details>
-<summary>Agent Libraries (v3+)</summary>
+<summary>Pi integration and durable runtime</summary>
 
 - [ ] output.sh (USOP)
 - [ ] agent_safety.sh
-- [ ] agent_comm.sh
+- [ ] skills/pi/extensions/mainframe.ts
+- [ ] lib/durable_awm.sh
+- [ ] control_plane/mainframe_control_plane
 - [ ] idempotent.sh
 - [ ] atomic.sh
 - [ ] observe.sh
@@ -64,18 +66,20 @@
 - [ ] Functions are documented with usage comments
 - [ ] No `eval` used (or justified exception with security review)
 - [ ] Function names use snake_case
-- [ ] Functions are exported with `export -f`
+- [ ] Public functions use the declared export policy; no new loader-order collision
 
 ### Testing
-- [ ] All existing Bash tests pass (`./tests/run_bats_suite.sh --scope all`)
+- [ ] Active Pi source checks pass (`bash scripts/test-pi-core.sh`)
 - [ ] New tests added for new functionality
 - [ ] ShellCheck passes with no warnings
 - [ ] Tested on Bash 4.4+
 - [ ] AWM state isolation verified (if touching agent libraries)
+- [ ] Installed-Pi checks run when runtime behavior changes; platform and skips disclosed
+- [ ] Unrelated machine packages, Pi settings, and integrations left unchanged
 
 ### Documentation
 - [ ] CHEATSHEET.md updated (if adding/changing public functions)
-- [ ] CLAUDE.md updated (if AI agent behavior changes)
+- [ ] Pi skill and product documentation updated (if Pi behavior changes)
 - [ ] README.md updated (if user-facing changes)
 
 ## Testing Instructions
@@ -84,6 +88,9 @@
 # How to test this PR
 source lib/common.sh
 # your_function "args"
+
+# Active Pi source checks
+bash scripts/test-pi-core.sh
 
 # Run specific tests
 ./tests/bats/bin/bats tests/your_test.bats

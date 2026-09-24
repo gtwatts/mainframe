@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Function Reference (CHEATSHEET.md)
-    url: https://github.com/gtwatts/mainframe/blob/main/CHEATSHEET.md
-    about: Complete reference for all 2,000+ functions - check here before asking about function signatures
+  - name: Mainframe for Pi setup and recovery
+    url: https://github.com/gtwatts/mainframe/blob/main/INSTALL.md
+    about: Install, verify, update, roll back, or remove Mainframe in Pi Coding Agent
   - name: Discussions
     url: https://github.com/gtwatts/mainframe/discussions
     about: Ask questions, share ideas, and connect with the community
-  - name: Wiki Documentation
-    url: https://github.com/gtwatts/mainframe/wiki
-    about: Extended guides, tutorials, and AI agent integration examples
+  - name: Pi workflow and task memory
+    url: https://github.com/gtwatts/mainframe/blob/main/skills/pi/SKILL.md
+    about: Understand shell policy, explicit checkpoints, runtime status, and limitations

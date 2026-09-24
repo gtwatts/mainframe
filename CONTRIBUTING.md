@@ -1,30 +1,29 @@
-# Contributing to MAINFRAME
+# Contributing to Mainframe for Pi
 
-```
-+============================================================================+
-|  BUILDING PERSISTENT MEMORY AND SAFER SHELL TOOLS FOR AI AGENTS             |
-|  Generated registry | Cross-platform tests | Evidence before claims         |
-|  Every contribution makes AI agents safer and more accurate                |
-+============================================================================+
-```
-
-Thank you for considering contributing to MAINFRAME! We're building a safe, efficient runtime for AI agents that control computer systems through bash.
+Mainframe focuses on Pi Coding Agent: shell policy, explicit project task
+checkpoints, reliable execution, and evidence that describes what actually ran.
+Other coding-agent adapters, standalone MCP/LSP integrations, and broad toolbox
+expansion are outside active product development. Existing compatibility code
+remains available; do not remove it or promise renewed support incidentally.
 
 ## Our Mission
 
-**AI agents control computers through bash. MAINFRAME makes that safe, accurate, and efficient.**
+Make ordinary Pi coding work more dependable. Priorities are correct shell
+classification, recoverable project memory, bounded cancellation, clear status,
+and predictable installation and rollback. Mainframe is not an OS sandbox;
+native Pi write/edit and other extension tools are outside its shell gate.
 
-Every function you contribute helps AI agents:
-- Execute commands safely (no accidental `rm -rf /`)
-- Get first-time correctness (structured output, clear errors)
-- Save tokens (one function call vs. 15 lines of fragile bash)
-- Maintain persistent memory across sessions (Agent Working Memory)
+Read the [product scope](docs/PI_PRODUCT_PLAN.md), [Pi workflow](skills/pi/SKILL.md),
+and [security boundaries](SECURITY.md) before proposing a change.
 
 ## Current project facts
 
 - `VERSION` is the product-version source.
 - `FUNCTIONS.json` is the generated function and library inventory.
-- `./tests/run_bats_suite.sh --scope all` is the supported Bash suite.
+- `bash scripts/test-pi-core.sh` is the active Pi source suite.
+- `.github/workflows/pi.yml` runs source contracts on Linux and macOS.
+- The broad Bash matrix is retained for explicit compatibility work, not the
+  default Pi acceptance target.
 - Bash 4.4+ is required.
 
 ## Code of Conduct
@@ -37,17 +36,18 @@ Be excellent to each other. We're building tools for the future of AI-human coll
 
 1. Check if the bug has already been reported in [Issues](https://github.com/gtwatts/mainframe/issues)
 2. Use the bug report template
-3. Include your bash version (`bash --version`)
+3. Include Mainframe, Pi package, Node, Bash, and operating-system versions
 4. Provide a minimal reproduction example
-5. Note if the bug affects AI agent behavior
+5. Describe the affected Pi workflow and redact secrets and private memory
 
 ### Suggesting Features
 
-New function ideas are welcome! Please include:
+Start with a concrete Pi workflow, not a function-count or multi-harness goal.
+Please include:
 
 | Question | Why It Matters |
 |----------|----------------|
-| **Use case** | How would an AI agent use this? |
+| **Use case** | How would this improve a Pi coding task? |
 | **Safety** | Does it prevent or enable dangerous operations? |
 | **Pure bash** | Can it be done without external tools? |
 | **Idempotency** | Is it safe to run multiple times? |
@@ -57,10 +57,10 @@ New function ideas are welcome! Please include:
 
 1. **Fork** the repo
 2. **Create a branch** (`git checkout -b feature/amazing-function`)
-3. **Write tests first** (BATS tests in `tests/unit/`)
+3. **Write a regression first** in the relevant Bash, Python, or Node suite
 4. **Follow the style guide** (below)
 5. **Run ShellCheck** (`shellcheck lib/your_library.sh`)
-6. **Run tests locally** (`./tests/run_bats_suite.sh --scope all`)
+6. **Run Pi source checks** (`bash scripts/test-pi-core.sh`) and affected focused tests
 7. **Submit PR** with the template filled out
 
 ## Style Guide
@@ -229,13 +229,17 @@ my_function() {
 
 ## Testing
 
-### BATS Framework
+### Test Layers
 
-MAINFRAME uses [BATS](https://github.com/bats-core/bats-core) (Bash Automated Testing System). Every new function needs BATS tests.
+Mainframe uses [BATS](https://github.com/bats-core/bats-core) for Bash behavior,
+Python tests for durable control-plane contracts, and Node tests for the Pi
+extension. Match the test to the changed layer. Source checks do not prove an
+installed package is loaded in a live Pi session.
 
 ### Test File Structure
 
-Tests are organized in `tests/unit/` with one test file per library:
+Library unit tests live in `tests/unit/`; Pi contracts also live directly under
+`tests/`, with durable-kernel tests in `tests/control_plane/`:
 
 ```
 tests/
@@ -284,8 +288,12 @@ setup() {
 ### Running Tests
 
 ```bash
-# Run the full Bats matrix
-./tests/run_bats_suite.sh --scope all
+# Install pinned repository test helpers, then run active source checks
+make test-deps
+bash scripts/test-pi-core.sh
+
+# Run disposable concurrency, recovery, and retention checks
+python3 -B scripts/dev/stress-durable-core.py "$PWD" --workers 8 --rounds 2
 
 # Run unit + contract tests
 ./tests/run_bats_suite.sh --scope unit
@@ -293,8 +301,8 @@ setup() {
 # Run specific test file
 ./tests/bats/bin/bats tests/unit/your_library.bats
 
-# Run integration tests
-./tests/run_bats_suite.sh --scope integration
+# Broader compatibility tests, when the change explicitly affects that scope
+./tests/run_bats_suite.sh --scope all
 
 # Run with verbose output
 ./tests/bats/bin/bats -t tests/unit/your_library.bats
@@ -310,11 +318,15 @@ setup() {
 
 ## Agent Working Memory (AWM) Contributions
 
-AWM is MAINFRAME's persistent external memory system for AI agents. It enables:
-- Session persistence across context limits
-- Sub-agent state inheritance
-- Discovery tracking and compression
-- Token budget estimation
+Pi project AWM stores explicit task checkpoints, discoveries, progress, and
+handoffs through the durable control plane. It does not automatically remember
+every conversation. Retrieved content is untrusted data, not authorization.
+Pi history and personal-knowledge plugins retain their separate roles.
+
+Pi project operations must use the durable route in `lib/durable_awm.sh` and
+`control_plane/mainframe_control_plane/`. Do not add a direct-write fallback
+around reservations, locks, receipts, or evidence. The low-level patterns below
+are storage-maintenance references, not a replacement for that route.
 
 ### AWM Guidelines
 
@@ -357,12 +369,15 @@ awm_function() {
 AWM tests should verify:
 - Session lifecycle (init, resume, close)
 - Data persistence across function calls
-- Sub-agent inheritance
-- Token estimation accuracy
-- Compression behavior
-- Concurrent access safety
+- Crash recovery without duplicate adapter execution
+- Exact replay, conflicts, and fresh retries
+- Retention, byte limits, and sensitive-content exclusion from the ledger
+- Cancellation, timeout cleanup, and concurrent access safety
 
 ## Library Organization
+
+This table maps the retained Bash catalog for maintenance. It is not an active
+roadmap or a promise of Pi support for every library.
 
 | Library | Purpose | Add functions here if... |
 |---------|---------|-------------------------|
@@ -393,20 +408,21 @@ AWM tests should verify:
 
 ## Continuous Integration
 
-All PRs run through GitHub Actions CI:
+The active Pi workflow runs source contracts on pull requests and configured
+branches. The older broad workflow is manual-only compatibility coverage.
 
 | Job | Description |
 |-----|-------------|
-| **Lint** | ShellCheck on all `.sh` files |
-| **Linux Bats Matrix** | Full BATS matrix via `tests/run_bats_suite.sh --scope all` |
-| **macOS Bats Matrix** | Full cross-platform verification via the same runner |
+| **Pi source contracts, Linux** | `bash scripts/test-pi-core.sh` |
+| **Pi source contracts, macOS** | The same source suite on macOS |
 
 ### CI Requirements
 
 Before your PR can be merged:
 - [ ] ShellCheck passes with no new warnings
-- [ ] The full Linux Bats matrix passes
-- [ ] The full macOS Bats matrix passes
+- [ ] Active Pi source contracts pass on supported CI platforms
+- [ ] Changed installed-runtime behavior has separate native Pi evidence
+- [ ] Skips, unavailable platforms, and untested UI behavior are disclosed
 
 ### Local CI Simulation
 
@@ -414,8 +430,8 @@ Before your PR can be merged:
 # Run ShellCheck
 shellcheck -x lib/your_library.sh
 
-# Run the same full suite CI uses
-./tests/run_bats_suite.sh --scope all
+# Run the active source suite CI uses
+bash scripts/test-pi-core.sh
 ```
 
 ## Commit Messages
@@ -429,7 +445,7 @@ docs: update README with agent examples
 test: add tests for json_object edge cases
 perf: optimize array_unique using associative arrays
 security: add input validation to agent_safe_exec
-feat(awm): add session inheritance for sub-agents
+fix(awm): preserve checkpoint evidence across Pi restart
 ```
 
 ## Review Checklist
@@ -437,15 +453,16 @@ feat(awm): add session inheritance for sub-agents
 Before submitting, verify:
 
 - [ ] ShellCheck passes with no warnings
-- [ ] All tests pass (`./tests/run_bats_suite.sh --scope all`)
-- [ ] New functions have BATS tests
+- [ ] Pi source checks and the affected focused tests pass
+- [ ] New behavior has regression coverage in the appropriate test layer
 - [ ] Public functions are listed in `MAINFRAME_<MODULE>_EXPORTS`
 - [ ] No new public-name collision or loader-order-dependent owner is introduced
 - [ ] Aliases include migration annotations, warning coverage, and a removal floor
 - [ ] CHEATSHEET.md updated (for new public functions)
 - [ ] No `eval` used (or justified and security-reviewed)
 - [ ] Works on Bash 4.4+
-- [ ] Works on both Linux and macOS (if applicable)
+- [ ] Platform and installed-Pi claims match the evidence actually collected
+- [ ] No unrelated system packages, settings, or integrations were changed
 
 ## Questions?
 
@@ -455,6 +472,5 @@ Before submitting, verify:
 
 ---
 
-**Building for a safe and accurate agentic future.**
-
-*"Mainframe can make a computer do anything short of tap dance."*
+Contributions should make Pi workflows dependable without overstating the
+protection boundary or verification results.
