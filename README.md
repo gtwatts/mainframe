@@ -124,7 +124,7 @@ python3 -B scripts/dev/stress-durable-core.py "$PWD" --workers 8 --rounds 2
 See the [initial local acceptance report](docs/testing/PI_LOCAL_ACCEPTANCE_2026-09-24.md)
 for the recovery defect found in the first Pi-focused build, and the
 [10.3.1 source validation](docs/testing/PI_10_3_1_SOURCE_VALIDATION_2026-09-24.md)
-for the fixes, regression results, and remaining installed acceptance work.
+for the fixes, regression results, and installed acceptance requirements.
 Passing source tests is not a substitute for testing the installed package.
 
 - [Active scope and acceptance criteria](docs/PI_PRODUCT_PLAN.md)

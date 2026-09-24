@@ -1,13 +1,18 @@
 """Regressions reproduced in the Mainframe review, using private fixture state."""
 
 from datetime import datetime, timedelta, timezone
+import ctypes
+import fcntl
 import hashlib
 import json
 import os
 from pathlib import Path
+import select
+import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -175,6 +180,83 @@ class ReliabilityRegressionTests(unittest.TestCase):
                                  tool_input={**body, "key": "expired"}, **common)
         self.assertEqual(expired.outcome, "failed")
         self.assertFalse(any(self.root.rglob("expired.json")))
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "deterministic file-open synchronization requires inotify")
+    def test_memory_executor_observes_mutable_session_only_after_project_lock(self):
+        executor = FixedProjectMemorySubprocessExecutor(ledger_path=self.ledger)
+        control = ProjectMemoryControlPlane(self.ledger, executor=executor)
+        common = dict(actor="test", workspace=str(self.workspace))
+        ensured = control.invoke(client_correlation_id="ensure", tool=PROJECT_MEMORY_ENSURE, tool_input={}, **common)
+        body = dict(expected_session_id=ensured.session_id, key="concurrent", value="exact-payload",
+                    importance="normal", tags=[], ttl_seconds=0)
+        request = control.reserve(client_correlation_id="concurrent", tool=PROJECT_MEMORY_CHECKPOINT,
+                                  tool_input=body, **common)
+        mapping = next(self.root.rglob(request.reservation_binding["project_digest"] + ".json"))
+        session = next(path for path in self.root.rglob(ensured.session_id) if path.is_dir())
+        libc = ctypes.CDLL(None, use_errno=True)
+        libc.inotify_init1.argtypes = [ctypes.c_int]
+        libc.inotify_add_watch.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
+        notify_fd = libc.inotify_init1(os.O_NONBLOCK | os.O_CLOEXEC)
+        self.assertGreaterEqual(notify_fd, 0)
+        observed_before_lock = []
+        thread_errors = []
+        try:
+            with open(str(mapping) + ".lock", "r+") as writer_lock:
+                fcntl.flock(writer_lock, fcntl.LOCK_EX)
+                # Model a cooperating atomic writer under the normal project
+                # lock: committed content plus a temporary file awaiting rename.
+                # The probe sorts first; find/sort enumerates the temporary path
+                # before hashing it. Complete the writer when hashing starts.
+                probe = session / "000-digest-probe"
+                transient = session / "zzz.tmp.diagnostic"
+                probe.write_text("committed fixture content")
+                transient.write_text("temporary fixture content")
+                probe.chmod(0o600)
+                transient.chmod(0o600)
+                probe_watch = libc.inotify_add_watch(notify_fd, os.fsencode(probe), 0x20)
+                lock_watch = libc.inotify_add_watch(notify_fd, os.fsencode(str(mapping) + ".lock"), 0x20)
+                self.assertGreaterEqual(probe_watch, 0)
+                self.assertGreaterEqual(lock_watch, 0)
+
+                def complete_writer():
+                    try:
+                        # Positive child barrier: old code opens the session
+                        # probe first; fixed code opens the lock first. A slow
+                        # child cannot pass merely by outlasting a quiet window.
+                        if not select.select([notify_fd], [], [], 10)[0]:
+                            raise AssertionError("executor opened neither probe nor project lock")
+                        watch, mask, _, _ = struct.unpack_from("iIII", os.read(notify_fd, 65536))
+                        if watch not in (probe_watch, lock_watch) or not mask & 0x20:
+                            raise AssertionError("unexpected executor synchronization event")
+                        observed_before_lock.append(watch == probe_watch)
+                        transient.unlink()
+                    except Exception as error:
+                        thread_errors.append(error)
+                    finally:
+                        fcntl.flock(writer_lock, fcntl.LOCK_UN)
+
+                writer = threading.Thread(target=complete_writer)
+                writer.start()
+                try:
+                    result = control.invoke(client_correlation_id="concurrent", tool=PROJECT_MEMORY_CHECKPOINT,
+                                            tool_input=body, **common)
+                finally:
+                    writer.join(11)
+                self.assertFalse(writer.is_alive())
+        finally:
+            os.close(notify_fd)
+        self.assertEqual(thread_errors, [])
+        self.assertEqual(observed_before_lock, [False], "executor scanned a mutable session before acquiring its project lock")
+        self.assertEqual(result.outcome, "recovery_required")
+        self.assertIsNotNone(result.receipt)
+        self.assertFalse(result.receipt["authoritative"])
+        self.assertFalse(any(self.root.rglob("concurrent.json")))
+        before = self.ledger.read_bytes()
+        replay = control.invoke(client_correlation_id="concurrent", tool=PROJECT_MEMORY_CHECKPOINT, tool_input=body, **common)
+        self.assertEqual(replay.evidence_id, result.evidence_id)
+        self.assertEqual(self.ledger.read_bytes(), before)
+        retry = control.invoke(client_correlation_id="fresh", tool=PROJECT_MEMORY_CHECKPOINT, tool_input=body, **common)
+        self.assertEqual(retry.outcome, "succeeded")
 
 
 if __name__ == "__main__":

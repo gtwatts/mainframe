@@ -728,7 +728,7 @@ _mainframe_durable_awm_apply_locked() {
 }
 
 _mainframe_durable_awm_hidden_executor() {
-    local tool="$1" identity input fields state sid digest mapping canonical project_digest
+    local tool="$1" identity input mapping project_digest
     [[ -w /dev/fd/196 && -r /dev/fd/197 && -r /dev/fd/198 ]] || return 126
     _mainframe_durable_awm_start_liveness_guardian 198 || return $?
     exec 198<&-
@@ -742,8 +742,9 @@ _mainframe_durable_awm_hidden_executor() {
     _mainframe_durable_awm_input_is_exact "$tool" "$input" || return 1
     project_digest=$(builtin printf '%s' "$identity" | _mainframe_durable_awm_jq -r '.project_digest') || return 1
     [[ "$project_digest" == "$(_mainframe_durable_awm_sha256_text "$(pwd -P)")" ]] || return 1
-    fields=$(_mainframe_durable_awm_observe_fields .) || return 1
-    IFS=$'\037' read -r state sid digest mapping canonical <<<"$fields"
+    # Resolve the lock from the validated identity, without reading mutable
+    # session files. The locked apply path performs the authoritative observation.
+    mapping="$AWM_ROOT/projects/$project_digest.json"
     _awm_with_lock "${mapping}.lock" _mainframe_durable_awm_apply_locked \
         "$tool" "$identity" "$input" "$mapping" "$project_digest"
 }

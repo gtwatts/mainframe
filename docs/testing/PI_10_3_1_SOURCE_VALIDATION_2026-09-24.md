@@ -25,6 +25,12 @@ The previously installed build is not changed by these tests.
 4. Metadata generation exceeded Linux's per-argument size limit while passing
    the full registry to jq and truncated the previous output. It now reads
    the manifest from a file and atomically replaces output after success.
+5. The project-memory executor scanned mutable session files before acquiring
+   the project lock. A cooperating writer could replace a temporary file
+   during that scan, causing an invalid executor result instead of an explicit
+   conflict. The executor now derives the lock path from the validated project
+   identity and observes session state only inside the existing locked apply
+   path. Reservation comparison, evidence, and replay behavior are unchanged.
 
 The release-readiness diagnostic also now distinguishes historical Pi
 certificates from current coverage. Historical records cannot make a new
@@ -34,10 +40,11 @@ release appear certified, and malformed or future-version records are rejected.
 
 | Check | Result |
 | --- | --- |
-| Full Pi source suite | 480 passed, 2 skipped, exit 0 |
+| Full Pi source suite | 481 passed, 2 skipped, exit 0 |
 | Bash/JavaScript classifier parity | All 265 corpus cases matched |
 | Public project-memory integration | 15 passed, including 4 new regression methods with multiple subcases |
 | Durable stress | 14 scenario runs passed, 212 public invocations, 8 workers, 2 rounds |
+| Additional concurrent-write stress | 10 rounds passed, 170 public invocations, 8 writers per round |
 | Pi process supervision | 8 passed, independently rerun |
 | Final native SDK probe | All 9 check groups passed, no live receipt written |
 | Owner/metadata parity | 22 passed, including full-registry generation and failed-generation preservation |
@@ -46,7 +53,7 @@ release appear certified, and malformed or future-version records are rejected.
 | Offline release-readiness tests | 9 passed |
 | Issue templates | YAML parsed successfully |
 
-The full source suite comprises 9 Node tests, 102 Python control-plane tests,
+The full source suite comprises 9 Node tests, 103 Python control-plane tests,
 215 safety tests, 111 Pi tests, and 43 doctor/uninstall/setup tests. The two
 skips require an unavailable historical Pi 0.84.2 package or a retired direct
 project-storage route. The installed Pi SDK and replacement durable route were
@@ -58,6 +65,23 @@ recovery-required results, exact-input rejection before and after finalization,
 and four-way recovery after Evidence, aggregate creation, and Run closure.
 Evidence and aggregates remain single, adapter execution does not repeat, and
 raw checkpoint and handoff contents remain absent from the durable ledger.
+
+A later staged-package run passed 13 of 14 stress scenarios but returned an
+unexpected failure during concurrent distinct writes. Its original fixture was
+not retained, so the exact cause of that individual run cannot be established.
+Investigation reproduced the pre-lock observation race above with a cooperating
+writer and deterministic Linux file-open synchronization. The regression fails
+before the fix and passes afterward, including stable replay and a successful
+fresh retry. The stress harness now retains bounded synthetic call and ledger
+diagnostics on failure before removing its disposable fixture.
+
+The new regression uses a positive child file-open event rather than inferring
+ordering from elapsed time. It is Linux-only; portable public integration and
+stress tests remain available for other platforms. This fix does not add locks
+to the separate read-only reservation observer or claim that every possible
+race is eliminated. The final strengthened regression was rerun after the full
+suite's Python stage and passed against the corrected source; it still fails
+against the unchanged earlier staged package.
 
 The real-adapter stress reproduces crash boundaries in subprocesses. Other
 scenarios cover all 26 reviewed contracts, false predicates, malformed input,

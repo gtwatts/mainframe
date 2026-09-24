@@ -47,6 +47,7 @@ class InstalledChecks:
         }
         self.invocations = 0
         self.sequence = 0
+        self.call_diagnostics = []
 
     def invoke(self, tool, body, correlation, *, memory=False, expect=True):
         command = [str(self.cli)]
@@ -59,6 +60,10 @@ class InstalledChecks:
                                    text=True, capture_output=True, cwd=self.project,
                                    env=self.environment, timeout=45)
         self.invocations += 1
+        self.call_diagnostics.append({
+            "correlation": correlation, "tool": tool, "returncode": completed.returncode,
+            "stdout": completed.stdout[:32768], "stderr": completed.stderr[:4096],
+        })
         require(not completed.stderr, "unexpected CLI stderr: " + completed.stderr[:1000])
         parsed = json.loads(completed.stdout)
         if expect:
@@ -82,6 +87,19 @@ class InstalledChecks:
     def snapshot(self):
         kernel = importlib.import_module("mainframe_control_plane").ControlPlaneKernel
         return kernel(self.ledger).snapshot()
+
+    def failure_diagnostics(self):
+        # Only this harness's disposable, synthetic fixture data is retained.
+        # Capture it before TemporaryDirectory removes the failing state.
+        details = {"recent_calls": self.call_diagnostics[-64:]}
+        try:
+            with self.ledger.open("rb") as stream:
+                size = stream.seek(0, os.SEEK_END)
+                stream.seek(max(0, size - 1048576))
+                details.update(ledger_bytes=size, ledger_tail=stream.read().decode("utf-8", errors="replace"))
+        except OSError as error:
+            details["ledger_read_error"] = str(error)
+        return details
 
     def registry_all_contracts_and_negatives(self):
         index = json.loads((self.release / "INVOCATION_INDEX.json").read_text())
@@ -435,7 +453,7 @@ def main():
                     result.update(status="passed", details=getattr(checks, name)())
                 except Exception as error:
                     result.update(status="failed", error=type(error).__name__ + ": " + str(error),
-                                  traceback=traceback.format_exc())
+                                  traceback=traceback.format_exc(), diagnostics=checks.failure_diagnostics())
                 report["invocations"] += checks.invocations
             result["seconds"] = round(time.monotonic() - started, 3)
             report["checks"].append(result)
