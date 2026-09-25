@@ -240,7 +240,7 @@ teardown() {
 }
 
 @test "with_timeout: times out slow command" {
-    run with_timeout 1 sleep 3
+    run with_timeout 1 sleep 2
     [[ $status -eq 124 ]]
 }
 
@@ -392,7 +392,7 @@ teardown() {
     circuit_breaker_call "test_svc" false || true
 
     # Wait for timeout
-    sleep 2
+    sleep 0.5
 
     local state
     state=$(circuit_breaker_state "test_svc")
@@ -405,7 +405,7 @@ teardown() {
     circuit_breaker_call "test_svc" false || true
 
     # Wait for timeout to transition to half-open
-    sleep 2
+    sleep 0.5
 
     # Success in half-open should close
     circuit_breaker_call "test_svc" true
@@ -527,7 +527,7 @@ teardown() {
     local marker="${TEST_TEMP_DIR}/ready"
 
     # Create the marker after 2 seconds
-    (sleep 2 && touch "$marker") &
+    (sleep 0.5 && touch "$marker") &
 
     run wait_for --timeout 5 --interval 1 test -f "$marker"
     assert_success
@@ -548,7 +548,7 @@ teardown() {
 @test "wait_for_file: waits for file creation" {
     local file="${TEST_TEMP_DIR}/delayed.txt"
 
-    (sleep 2 && touch "$file") &
+    (sleep 0.5 && touch "$file") &
 
     run wait_for_file "$file" 5
     assert_success
@@ -699,7 +699,7 @@ teardown() {
     [[ $status -eq 1 ]]
 
     # Wait well beyond refill period (1s period + margin)
-    sleep 3
+    sleep 1.5
 
     # Should have tokens again
     run rate_limit_acquire "test_rl" --no-wait
