@@ -6,6 +6,8 @@ MAINFRAME is a native Pi package. It checks shell commands before execution,
 keeps explicit project progress across sessions, and shows whether the running
 Pi session has the expected integration loaded.
 
+Built by [Todd Watts](https://toddwatts.dev). The [MAINFRAME engineering case study](https://toddwatts.dev/work/mainframe) explains the shell-policy, checkpoint and execution-evidence decisions. This repository contains the public source and installation documentation.
+
 **10.3.1 is a Pi-focused source build.** Local runtime verification is separate
 from public immutable release certification and cross-platform support.
 
