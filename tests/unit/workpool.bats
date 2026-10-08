@@ -118,7 +118,7 @@ teardown() {
 
     # Submit a long-running job
     local job_id
-    job_id=$(pool_submit "test_pool" sleep 3)
+    job_id=$(pool_submit "test_pool" sleep 0.8)
 
     # Give it time to start
     sleep 0.2
@@ -423,7 +423,7 @@ EOF
     pool_create "test_pool"
 
     local job_id
-    job_id=$(pool_submit "test_pool" sleep 2)
+    job_id=$(pool_submit "test_pool" sleep 0.5)
 
     sleep 0.2  # Let it start
 
@@ -443,7 +443,7 @@ EOF
     pool_create "test_pool" 1
 
     # Submit a blocking job to occupy the worker
-    pool_submit "test_pool" sleep 2 > /dev/null
+    pool_submit "test_pool" sleep 0.5 > /dev/null
     sleep 0.2
 
     # Submit another job that will be pending

@@ -100,7 +100,7 @@ teardown() {
 
 @test "awm_store_set respects TTL" {
     awm_store_set "ttl_key" "expires_soon" 1
-    sleep 2
+    sleep 0.5
     result=$(awm_store_get "ttl_key" "expired")
     [ "$result" = "expired" ]
 }
