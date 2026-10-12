@@ -1117,7 +1117,7 @@ assert "id-token: write" in attest and "attestations: write" in attest
 assert "actions/download-artifact@" in attest
 assert "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093" in attest
 assert "merge-multiple: true" in attest
-assert "actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d" in attest
+assert "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6" in attest
 assert "actions/checkout@" not in attest
 assert re.search(r"(?m)^      - name: .*\n        run:", attest) is None
 assert "mainframe-mcp" in attest
