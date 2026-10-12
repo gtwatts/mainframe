@@ -339,7 +339,7 @@ expected_subjects.each do |name, subject|
   step = signer.fetch("steps").find { |candidate| candidate["name"] == name }
   raise "MCP attestation missing: #{name}" unless step
   raise "MCP attestation action pin drift" unless step.fetch("uses") ==
-    "actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d"
+    "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6"
   raise "MCP SLSA subject drift: #{name}" unless
     step.fetch("with") == {"subject-path" => subject}
 end
@@ -646,7 +646,7 @@ steps = workflow.fetch("jobs").fetch("release-build").fetch("steps")
 attest = steps.find { |step| step["name"] == "Attest release evidence predicate" }
 raise "custom attestation step missing" unless attest
 raise "custom attestation action pin drift" unless attest.fetch("uses") ==
-  "actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d"
+  "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6"
 inputs = attest.fetch("with")
 expected_subjects = [
   "dist/mainframe-${{ steps.version.outputs.version }}.tar.gz",

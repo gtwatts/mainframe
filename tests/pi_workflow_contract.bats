@@ -449,7 +449,7 @@ raise "Pi signer must emit six one-subject attestations" unless
       expected_subjects
 attest_steps.each do |step|
   raise "Pi cell attestation action pin drift" unless step.fetch("uses") ==
-    "actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d"
+    "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6"
   raise "Pi cell attestation must follow strict validation" unless
     signing_steps.index(step) > validation_index
 end
